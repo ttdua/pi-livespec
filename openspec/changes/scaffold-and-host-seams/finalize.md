@@ -2,9 +2,9 @@
 
 **Change**: `scaffold-and-host-seams`
 **Finalized at**: `2026-11-13 23:45`
-**Outcome**: `kept-as-is`
+**Outcome**: `pr-created`
 
-> Deviation from the canonical git-side closeout: the worktree branch was merged into the feature branch locally (fast-forward, tests green on the merged result), but nothing was pushed and no PR was opened, because the project rules require explicit user permission for push and PR. The outcome is therefore `kept-as-is` until that permission is given.
+> Deviation from the canonical git-side closeout: the worktree branch was merged into the feature branch locally (fast-forward, tests green on the merged result). The push and the PR were done only after the maintainer gave explicit permission in chat; the push used HTTPS with the `ttdua` account.
 
 ---
 
@@ -12,8 +12,8 @@
 
 - **Branch**: `spec/scaffold-and-host-seams`
 - **Base branch**: `main`
-- **Final state**: `kept-open` (merged locally, not pushed)
-- **PR URL**: `N/A`
+- **Final state**: `pr-open`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/12`
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted`
 
 ---
 
@@ -46,4 +46,4 @@
 
 ## Next step
 
-Give explicit permission to push `spec/scaffold-and-host-seams` and open a PR. Then run `/opsx-archive` on this branch, push the archive commits, and merge the PR. Remove the worktree with `wt remove scaffold-and-host-seams`.
+Wait for PR code review. After approval, run `/opsx-archive` on this feature branch, push the archive commits to update the PR, then merge the PR. Remove the worktree with `wt remove scaffold-and-host-seams` from the main checkout.
