@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `package.json` (pi manifest, peer dependency `*`, `yaml`, scripts), `tsconfig.json`, `vitest.config.ts` and the lockfile
-- [ ] 1.2 Add `src/version.ts` and `src/extension.ts` registering `/livespec` that prints the version, with tests
-- [ ] 1.3 Add a test that checks manifest paths and the dependency policy
-- [ ] 1.4 Add `.github/workflows/ci.yml` running typecheck and tests on push and pull request
+- [x] 1.1 Add `package.json` (pi manifest, peer dependency `*`, `yaml`, scripts), `tsconfig.json`, `vitest.config.ts` and the lockfile
+- [x] 1.2 Add `src/version.ts` and `src/extension.ts` registering `/livespec` that prints the version, with tests
+- [x] 1.3 Add a test that checks manifest paths and the dependency policy
+- [x] 1.4 Add `.github/workflows/ci.yml` running typecheck and tests on push and pull request
 
 ## 2. Probe harness and local-only probes
 
