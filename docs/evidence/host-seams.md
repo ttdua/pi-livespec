@@ -69,7 +69,7 @@ Per turn `input / cacheRead` (tokens; `input` is the uncached part):
 | 6 | 265 / 14541 | 318 / 14558 | 2320 / 8448 | 2349 / 8448 |
 | 7 | 243 / 14804 | 280 / 14837 | 2319 / 8576 | 2604 / 8320 |
 
-In every run cache reads grow with the conversation and stay close to the previous total. With the appended card, `cacheRead` matches the control run turn by turn within about 20 tokens, and the uncached `input` is only about 35 to 300 tokens higher than the control (the size of one card and the last message). The 1st turn of "haiku append" started warm because the control run had just cached the same prefix. One control turn (luna, turn 5) missed the cache entirely, so single misses happen without the hook.
+In every run cache reads grow with the conversation. With the appended card, `cacheRead` is within one cache block of the control run at each turn (differences of 0 to 33 tokens on haiku and 0 to 256 on luna; luna caches in steps of 128 tokens). The uncached `input` of the append runs is within about 300 tokens of the control runs, the size of one card plus the last message. The first haiku append turn started warm because the control run had just cached the same prefix. One control turn (luna, turn 5) missed the cache entirely, so an occasional full miss happens without the hook too; no append run had one.
 
 ### Consequence
 Appending a replaced phase card at the end of the message list keeps the earlier messages in the cache. The phase card (LS-04/LS-05) can be injected this way, with a per-turn cost of one card.
@@ -147,7 +147,7 @@ After each `turn_end`, `ctx.getContextUsage().tokens` was compared with the prov
 | 3 | 10040 | 10171 | +131 |
 | 4 | 10240 | 10240 | 0 |
 
-At `turn_start` the value equals the previous `turn_end` value (0 on the very first turn). The error was at most 1.3% of the window use; it comes from the estimate for trailing messages.
+At `turn_start` the value equals the previous `turn_end` value (0 on the very first turn). The error was at most 1.3% of the reported tokens; it comes from the estimate for trailing messages.
 
 ### Consequence
 `context>=N%` conditions (LS-07) can use `getContextUsage().percent`. Before the first model response it is 0, so a condition must not fire on turn 1. Use a margin of about 2 percentage points on the threshold.
