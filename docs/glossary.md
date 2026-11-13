@@ -1,0 +1,31 @@
+# Glossary
+
+- **Amendment**: an approved change to a unit after its digest was locked. It is recorded as an old-to-new digest pair.
+- **Approver**: the adapter that brings gates, questions and stuck reports to a human and returns the outcome. The user chooses it in config.
+- **Base**: the full commit SHA of the integration branch that the change branch started from or last merged. It is written in the change issue.
+- **Capability**: a named area of system behavior with one living spec, `specs/<capability>/spec.md`.
+- **Change**: one unit of delivered work. It has one issue, one branch `livespec/<change>` and one pull request.
+- **Context manifest**: the list of sources a subagent must receive for its role. Each source has an id and a version.
+- **Decision point**: a place where the flow must classify something, such as lane, tags or difficulty. Code decides it through the decision seam.
+- **Decision record**: a tool-written record of one decision. It holds the point, the source (`rule` or `human`), the facts, the outcome and the reason.
+- **Digest**: a hash of a unit's contract. It is locked when the plan gate is approved.
+- **Drift**: a mismatch between `specs/` and the code or other durable docs.
+- **Durable docs**: `specs/<capability>/spec.md`, `product.md`, `glossary.md`, `constraints.md` and `decisions/`.
+- **Finding**: one review result, with severity, location, evidence, fix and scope.
+- **Flow pack**: the YAML file that declares the phases, skills, checks, gates, loop caps and subagent policy.
+- **Forge**: the code host that holds issues and pull requests. In v1 that is GitHub or Gitea.
+- **Gate**: a point where the flow waits for an outcome. A `human` gate needs an approver result. A `self` gate needs passing checks.
+- **Guard**: a `tool_call` hook that blocks forbidden commands before they run.
+- **Initiative**: a tracking issue that groups several changes and their dependencies.
+- **Integration branch**: the branch changes are created from and merged into. Config `integrationBranch`, defaulting to the forge's default branch. Updates from it are merges, never rebases.
+- **Living spec**: the current truth about system behavior, kept in `specs/` and edited in place by changes.
+- **Packet**: the self-contained brief the parent builds for a subagent.
+- **Parallel lane**: one worktree in which a subagent builds a unit concurrently with others.
+- **Phase**: one step of the flow: `shape`, `define`, `plan`, `build`, `review`, `ship` or `close`.
+- **Phase card**: the dynamic status block appended at the end of the context each turn. It shows the change, the phase and the next step.
+- **Receipt**: a tool-written record of running a unit's `Verify` command before (red) and after (green) the work.
+- **Routing note**: the static instructions at the start of the context. They do not change between turns.
+- **Small-fix lane**: the path for small fixes, with no issue and no ceremony. A post-check can move the work into a full change.
+- **Stuck report**: what the flow sends a human when a loop cap is reached. It covers where the work stopped, what was tried, a hypothesis, and two or three options.
+- **Unit**: the smallest planned piece of a change. It covers one boundary and has `Files`, `Done means`, `Scenarios` and exactly one `Verify` command.
+- **Verify**: the single command that proves a unit. It must fail before the work and pass after it.
