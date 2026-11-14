@@ -72,3 +72,7 @@ The real server sends `content_version`, so the fallback path was exercised by h
 
 - GitHub Enterprise (`--hostname`) was only tested against the fake `gh`.
 - GitHub token scopes beyond what `gh` already had were not varied.
+
+## Re-run after the final polish commits
+
+The error classification, timeout and `gitea.ts` split commits (`80a93d1`, `d5a3a0a`) changed adapter code after the first run, so the full scripts were run again at HEAD `b051207`: GitHub against `ttdua/superspecplan` and Gitea against a new scratch repo (deleted afterwards, DELETE 204), plus the older-server fallback. Every step gave the same result as in the tables above. Cleanup was repeated: PR closed and branch deleted, issue deleted, three labels removed, scratch Gitea repo deleted.
