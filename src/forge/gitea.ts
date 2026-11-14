@@ -272,7 +272,7 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async getPermission(login: string): Promise<"none" | "read" | "write" | "admin"> {
-		const json = await this.http.object("getPermission", "GET", `${this.repoPath}/collaborators/${encodeURIComponent(login)}/permission`, isObject);
+		const json = await this.http.object("getPermission", "GET", `${this.repoPath}/collaborators/${encodeURIComponent(login)}/permission`, isPermissionDto);
 		return toPermission(json.permission);
 	}
 
@@ -431,7 +431,7 @@ export class GiteaForge implements Forge, LabelRepo {
 	private async statusPages(ref: string): Promise<StatusDto[]> {
 		const path = `${this.repoPath}/commits/${encodeURIComponent(ref)}/status`;
 		return this.http.pages("getChecks", async (page) => {
-			const combined = await this.http.object("getChecks", "GET", `${path}?limit=${PAGE_SIZE}&page=${page}`, isObject);
+			const combined = await this.http.object("getChecks", "GET", `${path}?limit=${PAGE_SIZE}&page=${page}`, isCombinedStatusDto);
 			const statuses = combined.statuses ?? [];
 			if (!Array.isArray(statuses)) throw shapeError("getChecks", 200, "a statuses array");
 			return statuses.map((entry) => {
@@ -592,6 +592,15 @@ function parseSuccessBody(operation: string, status: number, text: string): unkn
 
 function isObject(value: unknown): value is Json {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Combined status: `state` is required; `statuses` may be absent or null (an empty set) but never another type. */
+function isCombinedStatusDto(value: unknown): value is Json {
+	return isObject(value) && required(value.state, "string") && (value.statuses == null || Array.isArray(value.statuses));
+}
+
+function isPermissionDto(value: unknown): value is Json {
+	return isObject(value) && required(value.permission, "string");
 }
 
 type Guard<T> = (value: unknown) => value is T;

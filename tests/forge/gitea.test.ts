@@ -499,6 +499,25 @@ describe("gitea adapter", () => {
 			await expect(forgeWith(json('{"state":"pending","statuses":null}')).getChecks("sha")).resolves.toMatchObject({ state: "none", checks: [] });
 		});
 
+		it.each(["{}", '{"message":"x"}', '{"statuses":[]}', '{"state":null,"statuses":[]}', '{"state":5}'])(
+			"combined status %s is an http error",
+			async (body) => {
+				await expect(forgeWith(json(body)).getChecks("sha")).rejects.toMatchObject({ code: "http", status: 200, operation: "getChecks" });
+			},
+		);
+
+		it("a combined status with a state and no statuses is an empty set", async () => {
+			await expect(forgeWith(json('{"state":"success"}')).getChecks("sha")).resolves.toMatchObject({ state: "none", checks: [] });
+		});
+
+		it.each(["{}", '{"message":"x"}', '{"permission":null}', '{"permission":5}'])("permission payload %s is an http error", async (body) => {
+			await expect(forgeWith(json(body)).getPermission("bob")).rejects.toMatchObject({ code: "http", status: 200, operation: "getPermission" });
+		});
+
+		it("a permission payload with an unknown level maps to none", async () => {
+			await expect(forgeWith(json('{"permission":"weird"}')).getPermission("bob")).resolves.toBe("none");
+		});
+
 		it("an empty body is fine where there is no payload", async () => {
 			const forge = forgeWith(json("", 204));
 			await expect(forge.closeIssue(1)).resolves.toBeUndefined();
