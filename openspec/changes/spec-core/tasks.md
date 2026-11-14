@@ -55,7 +55,7 @@ Blocked by: 5
 
 Blocked by: 4, 5
 
-- [ ] 7.1 Parse GIVEN lines into `Scenario.given` in `src/core/spec.ts`
-- [ ] 7.2 Make `spec-normative` and `spec-when-then` warnings; accept GIVEN as a trigger; add error `spec-no-requirements` in `src/core/validate-spec.ts`
-- [ ] 7.3 Update tests and the command tests so errors and exit status follow the new severities; re-run migrate then validate on the pi-superspec specs
+- [x] 7.1 Parse GIVEN lines into `Scenario.given` in `src/core/spec.ts`
+- [x] 7.2 Make `spec-normative` and `spec-when-then` warnings; accept GIVEN as a trigger; add error `spec-no-requirements` in `src/core/validate-spec.ts`
+- [x] 7.3 Update tests and the command tests so errors and exit status follow the new severities; re-run migrate then validate on the pi-superspec specs
 
