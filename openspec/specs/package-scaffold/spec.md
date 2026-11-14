@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the installable pi package that every later pi-livespec capability builds on: how pi loads it, which dependencies it may have, how CI gates changes, and the `/livespec` version command.
 
 ## Requirements
 

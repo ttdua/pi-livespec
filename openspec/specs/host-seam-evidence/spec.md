@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the evidence document that records how pi behaves at the host seams later specs rely on, so each design assumption has a checked result and a named fallback before it is built on.
 
 ## Requirements
 
