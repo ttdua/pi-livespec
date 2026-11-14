@@ -11,7 +11,7 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ engine/      flow pack loader · state machine · next step · loop counters         │
 │ decide/      decision seam, rules and decision records                            │
 │ forge/       Forge interface · GitHub adapter (gh) · Gitea adapter (REST)         │
-│              · cache with ETag · comment markers                                  │
+│              · cache with version · comment markers · read-only mode              │
 │ interaction/ Approver interface and adapters (gates, questions, stuck reports)    │
 │ tools/       spec_status · spec_next · spec_validate · spec_write · spec_gate ·  │
 │              spec_question · spec_stuck · plan_units · unit_amend · unit_start · │
@@ -58,6 +58,8 @@ specs/
 | Review findings | Pull request review comments, plus a summary comment on the issue | Severity, location, evidence, fix, scope |
 
 **Local, and only a cache:** `~/.pi/agent/livespec/` holds the agent-skills clone, user config and an issue cache. Deleting the cache loses nothing.
+
+**Forge writes are checked by version.** Every issue, pull request and comment the `Forge` returns carries an opaque `version`, and a body edit passes the version the caller read. A stale edit returns a conflict and writes nothing. The mechanism differs by adapter ([ADR 0007](decisions/0007-forge-concurrency-by-adapter.md)): Gitea uses `content_version` when the server sends it, GitHub (and Gitea without that field) re-reads and compares. When the forge cannot be reached, reads come from the cache marked stale and writes are refused.
 
 ## Phase flow
 
