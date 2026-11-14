@@ -11,7 +11,7 @@
 - **Branch**: `forge-layer`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: see the PR comment below; filled in when the PR was opened (`gh pr view forge-layer --json url`)
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/14
 
 ---
 
@@ -26,7 +26,7 @@ Apply ran on the feature branch itself (the worktree branch and the feature bran
 
 ## PR comment
 
-- **PR comment status**: `pending` (set after the PR exists)
+- **PR comment status**: `posted`
 
 ---
 
@@ -50,7 +50,7 @@ Evidence taken at HEAD `f0c1d00`: `bun run test` 404/404, `bun run typecheck` cl
 
 - **Workflow**: `.github/workflows/ci.yml` (`push` and `pull_request`): `bun install --frozen-lockfile`, `bun run typecheck`, `bun run test`.
 - **Local rehearsal**: passed (see Tests).
-- **Remote result**: recorded in the PR; check the run on the pull request before merging.
+- **Remote result**: green on PR #14. The `push` run (`actions/runs/43592422904`) and the `pull_request` run (`actions/runs/43592431996`) both passed in about 30 seconds.
 
 ---
 
