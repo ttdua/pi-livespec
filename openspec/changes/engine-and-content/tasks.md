@@ -36,11 +36,11 @@ Blocked by: 1, 2, 3
 
 Blocked by: 1, 3
 
-- [ ] 5.1 Add `src/content/paths.ts`, `src/content/lock.ts` (lock read/write) and `src/content/wip.ts` (`registerWorkInProgress` and the default build-phase predicate)
-- [ ] 5.2 Add `src/content/mirror.ts` (bare mirror fetch, checkout into staging with a temporary index) tested against a local bare upstream
-- [ ] 5.3 Add `src/content/compat.ts` (skill front matter and persona checks)
-- [ ] 5.4 Add `src/content/upgrade.ts`: pure `decideUpgrade` plus install, atomic `current` switch, skill-change diff, pin, unpin, rollback, kept-tree pruning, work-in-progress guard for automatic, update and pin
-- [ ] 5.5 Add `src/content/expose.ts` (pack → real skill paths, exclusions, initialized-only)
+- [x] 5.1 Add `src/content/paths.ts`, `src/content/lock.ts` (lock read/write) and `src/content/wip.ts` (`registerWorkInProgress` and the default build-phase predicate)
+- [x] 5.2 Add `src/content/mirror.ts` (bare mirror fetch, checkout into staging with a temporary index) tested against a local bare upstream
+- [x] 5.3 Add `src/content/compat.ts` (skill front matter and persona checks)
+- [x] 5.4 Add `src/content/upgrade.ts`: pure `decideUpgrade` plus install, atomic `current` switch, skill-change diff, pin, unpin, rollback, kept-tree pruning, work-in-progress guard for automatic, update and pin
+- [x] 5.5 Add `src/content/expose.ts` (pack → real skill paths, exclusions, initialized-only)
 
 ## 6. Init, doctor and skills commands
 
