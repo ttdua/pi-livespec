@@ -33,7 +33,16 @@ interface CacheEntry {
 
 const DEFAULT_CACHE_ROOT = join(homedir(), ".pi", "agent", "livespec", "cache");
 
-function isUnreachable(error: unknown): boolean {
+function readOnlyError(operation: string, cause?: ForgeError): ForgeError {
+	const detail = cause ? ` (${cause.message})` : "";
+	return new ForgeError({
+		code: "readonly",
+		operation,
+		message: `${operation} refused: the forge could not be reached${detail}; this cache is read-only until a read succeeds.`,
+	});
+}
+
+function isUnreachable(error: unknown): error is ForgeError {
 	return error instanceof ForgeError && error.code === "unreachable";
 }
 
@@ -55,7 +64,12 @@ export class CachedForge implements Forge {
 		opts: CachedForgeOptions,
 	) {
 		this.kind = inner.kind;
-		this.cacheDir = join(opts.cacheRoot ?? DEFAULT_CACHE_ROOT, opts.host, opts.owner, opts.repo);
+		this.cacheDir = join(
+			opts.cacheRoot ?? DEFAULT_CACHE_ROOT,
+			opts.host,
+			opts.owner,
+			opts.repo,
+		);
 	}
 
 	isReadOnly(): boolean {
@@ -77,7 +91,7 @@ export class CachedForge implements Forge {
 			if (!cached) throw error;
 			return { ...cached.issue, stale: true };
 		}
-		await this.writeCache(issue);
+		await this.tryWriteCache(issue);
 		return issue;
 	}
 
@@ -89,52 +103,66 @@ export class CachedForge implements Forge {
 		return this.track(() => this.inner.getPermission(login));
 	}
 
-	async createIssue(i: { title: string; body: string; labels: string[] }): Promise<Issue> {
-		this.assertWritable("createIssue");
-		const issue = await this.track(() => this.inner.createIssue(i));
-		await this.writeCache(issue);
+	async createIssue(i: {
+		title: string;
+		body: string;
+		labels: string[];
+	}): Promise<Issue> {
+		const issue = await this.writeAttempt("createIssue", () =>
+			this.inner.createIssue(i),
+		);
+		await this.tryWriteCache(issue);
 		return issue;
 	}
 
-	async updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult<Issue>> {
-		this.assertWritable("updateIssueBody");
-		const result = await this.track(() => this.inner.updateIssueBody(n, body, expect));
-		if (result.status === "written") await this.writeCache(result.item);
+	async updateIssueBody(
+		n: number,
+		body: string,
+		expect: Version,
+	): Promise<WriteResult<Issue>> {
+		const result = await this.writeAttempt("updateIssueBody", () =>
+			this.inner.updateIssueBody(n, body, expect),
+		);
+		if (result.status === "written") await this.tryWriteCache(result.item);
 		return result;
 	}
 
 	async closeIssue(n: number): Promise<void> {
-		this.assertWritable("closeIssue");
-		await this.track(() => this.inner.closeIssue(n));
+		await this.writeAttempt("closeIssue", () => this.inner.closeIssue(n));
 	}
 
 	async reopenIssue(n: number): Promise<void> {
-		this.assertWritable("reopenIssue");
-		await this.track(() => this.inner.reopenIssue(n));
+		await this.writeAttempt("reopenIssue", () => this.inner.reopenIssue(n));
 	}
 
 	async addLabels(n: number, labels: string[]): Promise<void> {
-		this.assertWritable("addLabels");
-		await this.track(() => this.inner.addLabels(n, labels));
+		await this.writeAttempt("addLabels", () => this.inner.addLabels(n, labels));
 	}
 
 	async removeLabels(n: number, labels: string[]): Promise<void> {
-		this.assertWritable("removeLabels");
-		await this.track(() => this.inner.removeLabels(n, labels));
+		await this.writeAttempt("removeLabels", () =>
+			this.inner.removeLabels(n, labels),
+		);
 	}
 
 	listComments(n: number): Promise<Comment[]> {
 		return this.track(() => this.inner.listComments(n));
 	}
 
-	async createComment(n: number, body: string): Promise<Comment> {
-		this.assertWritable("createComment");
-		return this.track(() => this.inner.createComment(n, body));
+	createComment(n: number, body: string): Promise<Comment> {
+		return this.writeAttempt("createComment", () =>
+			this.inner.createComment(n, body),
+		);
 	}
 
-	async updateComment(id: string, body: string, expect: Version): Promise<WriteResult<Comment>> {
-		this.assertWritable("updateComment");
-		return this.track(() => this.inner.updateComment(id, body, expect));
+	updateComment(
+		id: string,
+		body: string,
+		expect: Version,
+	): Promise<WriteResult<Comment>> {
+		return this.writeAttempt("updateComment", () =>
+			this.inner.updateComment(id, body, expect),
+		);
 	}
 
 	findOpenPullRequest(head: string): Promise<PullRequest | null> {
@@ -145,7 +173,10 @@ export class CachedForge implements Forge {
 		return this.track(() => this.inner.getPullRequest(n));
 	}
 
-	listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }): Promise<PullRequest[]> {
+	listPullRequests(q: {
+		state: "open" | "closed" | "all";
+		head?: string;
+	}): Promise<PullRequest[]> {
 		return this.track(() => this.inner.listPullRequests(q));
 	}
 
@@ -157,27 +188,38 @@ export class CachedForge implements Forge {
 		return this.track(() => this.inner.listReviews(pr));
 	}
 
-	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
-		this.assertWritable("createPullRequest");
-		return this.track(() => this.inner.createPullRequest(p));
+	createPullRequest(p: {
+		head: string;
+		base: string;
+		title: string;
+		body: string;
+	}): Promise<PullRequest> {
+		return this.writeAttempt("createPullRequest", () =>
+			this.inner.createPullRequest(p),
+		);
 	}
 
-	async updatePullRequest(
+	updatePullRequest(
 		n: number,
 		p: { title?: string; body?: string },
 		expect: Version,
 	): Promise<WriteResult<PullRequest>> {
-		this.assertWritable("updatePullRequest");
-		return this.track(() => this.inner.updatePullRequest(n, p, expect));
+		return this.writeAttempt("updatePullRequest", () =>
+			this.inner.updatePullRequest(n, p, expect),
+		);
 	}
 
 	listReviewComments(pr: number): Promise<ReviewComment[]> {
 		return this.track(() => this.inner.listReviewComments(pr));
 	}
 
-	async createReviewComment(pr: number, c: { path: string; line: number; body: string }): Promise<void> {
-		this.assertWritable("createReviewComment");
-		await this.track(() => this.inner.createReviewComment(pr, c));
+	async createReviewComment(
+		pr: number,
+		c: { path: string; line: number; body: string },
+	): Promise<void> {
+		await this.writeAttempt("createReviewComment", () =>
+			this.inner.createReviewComment(pr, c),
+		);
 	}
 
 	getChecks(ref: string): Promise<CheckSummary> {
@@ -196,32 +238,53 @@ export class CachedForge implements Forge {
 		}
 	}
 
-	private assertWritable(operation: string): void {
-		if (!this.readOnly) return;
-		throw new ForgeError({
-			code: "readonly",
-			operation,
-			message: `${operation} refused: the forge is unreachable and this cache is read-only. Retry when the forge is reachable.`,
-		});
+	/**
+	 * Runs one write. Refused without calling the inner forge while read-only; an `unreachable`
+	 * failure from the inner forge is reported as `readonly`. Other errors pass through unchanged.
+	 */
+	private async writeAttempt<T>(
+		operation: string,
+		call: () => Promise<T>,
+	): Promise<T> {
+		if (this.readOnly) throw readOnlyError(operation);
+		try {
+			return await this.track(call);
+		} catch (error) {
+			if (isUnreachable(error)) throw readOnlyError(operation, error);
+			throw error;
+		}
 	}
 
 	private issueFile(n: number): string {
 		return join(this.cacheDir, `${n}.json`);
 	}
 
+	/** Returns undefined for a missing, unreadable or corrupt file: the cache is disposable, so it counts as not cached. */
 	private async readCache(n: number): Promise<CacheEntry | undefined> {
-		let raw: string;
 		try {
-			raw = await readFile(this.issueFile(n), "utf8");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-			throw error;
+			return JSON.parse(
+				await readFile(this.issueFile(n), "utf8"),
+			) as CacheEntry;
+		} catch {
+			return undefined;
 		}
-		return JSON.parse(raw) as CacheEntry;
+	}
+
+	/** Best-effort: a failed cache write must not fail a forge call that already succeeded. */
+	private async tryWriteCache(issue: Issue): Promise<void> {
+		try {
+			await this.writeCache(issue);
+		} catch {
+			// Ignored deliberately: the cache is disposable and no logging infrastructure exists yet.
+		}
 	}
 
 	private async writeCache(issue: Issue): Promise<void> {
-		const entry: CacheEntry = { issue, version: issue.version, fetchedAt: new Date().toISOString() };
+		const entry: CacheEntry = {
+			issue,
+			version: issue.version,
+			fetchedAt: new Date().toISOString(),
+		};
 		const file = this.issueFile(issue.number);
 		await mkdir(dirname(file), { recursive: true });
 		await writeFile(file, `${JSON.stringify(entry, null, 2)}\n`, "utf8");

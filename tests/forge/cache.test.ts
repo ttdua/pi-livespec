@@ -20,11 +20,16 @@ function cachePath(n: number): string {
 	return join(cacheRoot, HOST, OWNER, REPO, `${n}.json`);
 }
 
-async function readCacheFile(n: number): Promise<{ issue: { body: string }; version: Version; fetchedAt: string }> {
+async function readCacheFile(
+	n: number,
+): Promise<{ issue: { body: string }; version: Version; fetchedAt: string }> {
 	return JSON.parse(await readFile(cachePath(n), "utf8"));
 }
 
-async function expectForgeError(promise: Promise<unknown>, code: string): Promise<ForgeError> {
+async function expectForgeError(
+	promise: Promise<unknown>,
+	code: string,
+): Promise<ForgeError> {
 	const error = await promise.then(
 		() => {
 			throw new Error("expected a ForgeError, but the call resolved");
@@ -40,7 +45,12 @@ beforeEach(async () => {
 	cacheRoot = await mkdtemp(join(tmpdir(), "forge-cache-"));
 	world = new MemoryWorld();
 	inner = world.forge;
-	forge = new CachedForge(inner, { cacheRoot, host: HOST, owner: OWNER, repo: REPO });
+	forge = new CachedForge(inner, {
+		cacheRoot,
+		host: HOST,
+		owner: OWNER,
+		repo: REPO,
+	});
 });
 
 afterEach(async () => {
@@ -65,7 +75,9 @@ describe("issue cache", () => {
 		const issue = await forge.getIssue(n);
 
 		const entry = await readCacheFile(n);
-		expect(entry.issue).toEqual(expect.objectContaining({ number: n, body: "hello" }));
+		expect(entry.issue).toEqual(
+			expect.objectContaining({ number: n, body: "hello" }),
+		);
 		expect(entry.version).toBe(issue.version);
 		expect(Number.isNaN(Date.parse(entry.fetchedAt))).toBe(false);
 	});
@@ -81,7 +93,9 @@ describe("issue cache", () => {
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(issue.body).toBe("first");
 		expect(issue.stale).toBeUndefined();
-		expect((await readCacheFile(n)).issue).toEqual(expect.objectContaining({ body: "first" }));
+		expect((await readCacheFile(n)).issue).toEqual(
+			expect.objectContaining({ body: "first" }),
+		);
 	});
 });
 
@@ -105,7 +119,10 @@ describe("read-only mode", () => {
 		await forge.getIssue(n);
 		const spy = vi.spyOn(inner, "updateIssueBody");
 
-		const error = await expectForgeError(forge.updateIssueBody(n, "new body", version), "readonly");
+		const error = await expectForgeError(
+			forge.updateIssueBody(n, "new body", version),
+			"readonly",
+		);
 
 		expect(spy).not.toHaveBeenCalled();
 		expect(error.operation).toBe("updateIssueBody");
@@ -157,6 +174,86 @@ describe("read-only mode", () => {
 
 		const result = await forge.updateIssueBody(n, "after recovery", version);
 
+		expect(result.status).toBe("written");
+	});
+
+	it("enters read-only mode when a write is unreachable and refuses later writes without calling inner", async () => {
+		const n = await world.seedIssue({ body: "cached" });
+		const version = (await forge.getIssue(n)).version;
+		await world.makeUnreachable();
+		const spy = vi.spyOn(inner, "updateIssueBody");
+
+		const error = await expectForgeError(
+			forge.updateIssueBody(n, "new", version),
+			"readonly",
+		);
+
+		expect(error.operation).toBe("updateIssueBody");
+		expect(error.message).toContain("updateIssueBody");
+		expect(error.message).toMatch(/could not be reached/);
+		expect(forge.isReadOnly()).toBe(true);
+		expect(spy).toHaveBeenCalledTimes(1);
+
+		await expectForgeError(
+			forge.updateIssueBody(n, "again", version),
+			"readonly",
+		);
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
+	it("passes HTTP errors from writes through without entering read-only mode", async () => {
+		const n = await world.seedIssue({ body: "body" });
+		await forge.getIssue(n);
+
+		const error = await expectForgeError(
+			forge.updateComment("missing-comment", "x", "cv:0" as Version),
+			"http",
+		);
+
+		expect(error.status).toBe(404);
+		expect(forge.isReadOnly()).toBe(false);
+	});
+
+	it("treats a corrupt cache file as not cached on the unreachable path", async () => {
+		const n = await world.seedIssue({ body: "body" });
+		await forge.getIssue(n);
+		await writeFile(cachePath(n), "{not json", "utf8");
+		await world.makeUnreachable();
+
+		const error = await expectForgeError(forge.getIssue(n), "unreachable");
+
+		expect(error).not.toBeInstanceOf(SyntaxError);
+		expect(forge.isReadOnly()).toBe(true);
+	});
+
+	it("refetches over a corrupt cache file on the normal read path", async () => {
+		const n = await world.seedIssue({ body: "fresh" });
+		await forge.getIssue(n);
+		await writeFile(cachePath(n), "{not json", "utf8");
+
+		const issue = await forge.getIssue(n);
+
+		expect(issue.body).toBe("fresh");
+		expect((await readCacheFile(n)).issue).toEqual(
+			expect.objectContaining({ body: "fresh" }),
+		);
+	});
+
+	it("does not fail reads or writes when the cache directory cannot be written", async () => {
+		const blocker = join(cacheRoot, "blocker");
+		await writeFile(blocker, "not a directory", "utf8");
+		const blocked = new CachedForge(inner, {
+			cacheRoot: blocker,
+			host: HOST,
+			owner: OWNER,
+			repo: REPO,
+		});
+		const n = await world.seedIssue({ body: "body" });
+
+		const issue = await blocked.getIssue(n);
+		expect(issue.body).toBe("body");
+
+		const result = await blocked.updateIssueBody(n, "changed", issue.version);
 		expect(result.status).toBe("written");
 	});
 
