@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { LoadedPack } from "../../src/engine/pack-types.ts";
 import { registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
@@ -41,6 +41,14 @@ beforeEach(() => {
 });
 
 describe("default pack", () => {
+	test("default pack validates without stub checks", async () => {
+		// A fresh module graph has an empty registry: only pack-load's own imports can register the checks.
+		vi.resetModules();
+		const fresh = await import("../../src/engine/pack-load.ts");
+		const r = await fresh.loadPack("/proj", withOverride(undefined));
+		expect(r.ok).toBe(true);
+	});
+
 	test("Default pack loads", async () => {
 		const r = await load();
 		expect(r.ok).toBe(true);

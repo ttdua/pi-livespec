@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+// Side effect: built-in named checks are registered before any pack is validated.
+import "./checks.ts";
 import { type Document, LineCounter, type Node, isAlias, isMap, isScalar, parseDocument, visit } from "yaml";
 import { type Merged, type Origin, type ParsedPack, mergePack, standalonePack } from "./pack-merge.ts";
 import { validatePackDocument } from "./pack-schema.ts";
