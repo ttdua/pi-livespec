@@ -127,9 +127,8 @@ describe("override merge", () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.errors).toHaveLength(1);
-		expect(r.errors[0]?.message).toContain("a");
-		expect(r.errors[0]?.message).toContain("b");
-		expect(r.errors[0]?.message).toContain("cycle");
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 6, col: 15 });
+		expect(r.errors[0]?.message).toBe("requires cycle: a -> b -> a");
 	});
 
 	test("duplicate phase id is an error", async () => {
@@ -153,6 +152,8 @@ describe("override limits", () => {
 		const r = await load("extends: superpowers\n");
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 1, col: 10 });
 		expect(r.errors[0]?.message).toContain("superpowers");
 	});
 
@@ -160,13 +161,23 @@ describe("override limits", () => {
 		const r = await load("extends: agent-skills\nname: mine\n");
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
-		expect(r.errors[0]).toMatchObject({ line: 2, col: 1 });
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 2, col: 1 });
 	});
 
 	test("Standalone pack", async () => {
 		const r = await load("name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n  - id: two\n    requires: [one]\n");
 		expect(okPack(r).phases.map((p) => p.id)).toEqual(["one", "two"]);
 		expect(okPack(r).name).toBe("mine");
+	});
+
+	test("an unresolved alias in an override returns an error and does not reject", async () => {
+		const r = await load("extends: agent-skills\nphases: *missing\n");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 2, col: 9 });
+		expect(r.errors[0]?.message).toBe("`phases` must be a list");
 	});
 
 	test("empty override file reports a positioned error", async () => {

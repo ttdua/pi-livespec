@@ -136,7 +136,7 @@ function validateOutputs(r: Reporter, node: Node | null, path: string): void {
 	}
 }
 
-const PHASE_VALIDATORS: Record<string, (r: Reporter, node: Node | null, path: string) => void> = {
+const PHASE_VALIDATORS = new Map<string, (r: Reporter, node: Node | null, path: string) => void>(Object.entries({
 	id: (r, node, path) => {
 		if (!isScalar(node) || typeof node.value !== "string" || node.value === "") r.at(node, path, "`id` must be a non-empty string");
 	},
@@ -148,7 +148,7 @@ const PHASE_VALIDATORS: Record<string, (r: Reporter, node: Node | null, path: st
 	checks: validateCheckNames,
 	gate: (r, node, path) => enumValue(r, node, path, GATES),
 	subagents: (r, node, path) => validateRegistered(r, "subagents", node, path),
-};
+}));
 
 function validatePhase(r: Reporter, node: Node | null, index: number): void {
 	const path = `phases[${index}]`;
@@ -156,7 +156,7 @@ function validatePhase(r: Reporter, node: Node | null, index: number): void {
 	checkKeys(r, node, PHASE_KEYS, path);
 	for (const pair of node.items) {
 		const key = keyName(pair);
-		if (key && PHASE_VALIDATORS[key]) PHASE_VALIDATORS[key](r, pair.value as Node | null, `${path}.${key}`);
+		if (key) PHASE_VALIDATORS.get(key)?.(r, pair.value as Node | null, `${path}.${key}`);
 	}
 	if (!getPair(node, "id")) r.at(node, path, "a phase needs an `id`");
 }
@@ -174,7 +174,7 @@ function validatePhases(r: Reporter, node: Node | null): void {
 	});
 }
 
-const TOP_VALIDATORS: Record<string, (r: Reporter, node: Node | null) => void> = {
+const TOP_VALIDATORS = new Map<string, (r: Reporter, node: Node | null) => void>(Object.entries({
 	name: (r, n) => stringScalar(r, n, "name"),
 	content: (r, n) => stringScalar(r, n, "content"),
 	version: (r, n) => {
@@ -190,7 +190,7 @@ const TOP_VALIDATORS: Record<string, (r: Reporter, node: Node | null) => void> =
 			r.at(n, "extends", `unknown pack \`${isScalar(n) ? String(n.value) : "?"}\`; known: ${KNOWN_PACKS.join(", ")}`);
 		}
 	},
-};
+}));
 
 function stringScalar(r: Reporter, node: Node | null, path: string): void {
 	if (!isScalar(node) || typeof node.value !== "string" || node.value === "") r.at(node, path, `\`${path}\` must be a non-empty string`);
@@ -201,7 +201,7 @@ function validateTopLevel(r: Reporter, map: YAMLMap, mode: Mode): void {
 	const extending = mode === "override" && getPair(map, "extends") !== undefined;
 	for (const pair of map.items) {
 		const key = keyName(pair);
-		if (key && TOP_VALIDATORS[key]) TOP_VALIDATORS[key](r, pair.value as Node | null);
+		if (key) TOP_VALIDATORS.get(key)?.(r, pair.value as Node | null);
 		if (extending && key && ["name", "version", "content"].includes(key)) {
 			r.at(pair.key as Node, key, `an override with \`extends\` must not change \`${key}\``);
 		}

@@ -87,10 +87,20 @@ phases:
 
 	test("YAML syntax error", () => {
 		const errors = validate("name: p\nphases: [a\n  - b: : :\n");
-		expect(errors.length).toBeGreaterThan(0);
-		expect(errors[0]?.line).toBeGreaterThanOrEqual(2);
-		expect(errors[0]?.col).toBeGreaterThanOrEqual(1);
+		expect(at(errors)[0]).toEqual({ file: FILE, line: 2, col: 10 });
 		expect(errors[0]?.severity).toBe("error");
+	});
+
+	test("top-level __proto__ is an unknown key", () => {
+		const errors = validate(`__proto__: {}\n${HEAD}`);
+		expect(at(errors)).toEqual([{ file: FILE, line: 1, col: 1 }]);
+		expect(errors[0]?.message).toContain("unknown key `__proto__`");
+	});
+
+	test("phase-level __proto__ is an unknown key", () => {
+		const errors = validate(pack("    __proto__: {}\n"));
+		expect(at(errors)).toEqual([{ file: FILE, line: 9, col: 5 }]);
+		expect(errors[0]?.message).toContain("unknown key `__proto__`");
 	});
 
 	test("Unregistered subagents", () => {

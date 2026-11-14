@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { LineCounter, parseDocument, isMap, isScalar } from "yaml";
+import { type Document, LineCounter, type Node, isAlias, isMap, isScalar, parseDocument, visit } from "yaml";
 import { type Merged, type Origin, type ParsedPack, mergePack, standalonePack } from "./pack-merge.ts";
 import { validatePackDocument } from "./pack-schema.ts";
 import type { LoadedPack, PackError } from "./pack-types.ts";
@@ -21,13 +21,32 @@ async function readFs(path: string): Promise<string | undefined> {
 	}
 }
 
+/** Converts the document; a failure (e.g. an unresolved alias) becomes an error at the offending node. */
+function toValue(doc: Document, file: string, lc: LineCounter): { value: Record<string, unknown>; errors: PackError[] } {
+	try {
+		const js = doc.toJS({ maxAliasCount: 100 });
+		const value = typeof js === "object" && js !== null && !Array.isArray(js) ? (js as Record<string, unknown>) : {};
+		return { value, errors: [] };
+	} catch (e) {
+		let node: Node | null = doc.contents as Node | null;
+		visit(doc, {
+			Alias(_key, alias) {
+				if (node === doc.contents && isAlias(alias) && alias.resolve(doc) === undefined) node = alias;
+			},
+		});
+		const { line, col } = lc.linePos(node?.range?.[0] ?? 0);
+		const message = e instanceof Error ? e.message : String(e);
+		return { value: {}, errors: [{ severity: "error", file, line, col, path: "", message }] };
+	}
+}
+
 function parse(text: string, file: string, mode: "pack" | "override"): Parsed {
 	const lc = new LineCounter();
 	const doc = parseDocument(text, { keepSourceTokens: false, lineCounter: lc });
 	const errors = validatePackDocument(doc, file, lc, mode);
-	const js = doc.toJS({ maxAliasCount: 100 });
-	const value = typeof js === "object" && js !== null && !Array.isArray(js) ? (js as Record<string, unknown>) : {};
-	return { parsed: { file, value, lc, doc }, errors };
+	if (errors.some((e) => e.severity === "error")) return { parsed: { file, value: {}, lc, doc }, errors };
+	const converted = toValue(doc, file, lc);
+	return { parsed: { file, value: converted.value, lc, doc }, errors: [...errors, ...converted.errors] };
 }
 
 /** An override with no `extends` is a complete pack; an empty or scalar file stays an override error. */
