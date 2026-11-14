@@ -1,0 +1,179 @@
+{
+	"name": "agent-skills",
+	"version": 1,
+	"content": "agent-skills",
+	"limits": {
+		"max_units": 8,
+		"max_capabilities": 3
+	},
+	"loops": {
+		"unit_attempts": 3,
+		"unit_rebuilds": 2,
+		"review_rounds": 3,
+		"change_iterations": 5,
+		"discovered_deps": 2
+	},
+	"decisions": {},
+	"init": {
+		"skills": [
+			"constraint-driven-development"
+		]
+	},
+	"phases": [
+		{
+			"id": "shape",
+			"requires": [],
+			"skills": {
+				"required": [
+					"interview-me"
+				],
+				"optional": [
+					"idea-refine"
+				]
+			},
+			"outputs": [],
+			"redirects": [],
+			"checks": [],
+			"gate": "self",
+			"subagents": []
+		},
+		{
+			"id": "define",
+			"requires": [
+				"shape"
+			],
+			"skills": {
+				"required": [
+					"spec-driven-development"
+				],
+				"optional": [
+					"api-and-interface-design",
+					"documentation-and-adrs",
+					"deprecation-and-migration"
+				]
+			},
+			"outputs": [
+				"issue#Capabilities",
+				"issue#Proposal",
+				"specs-diff"
+			],
+			"redirects": [
+				"Write requirements into specs/<capability>/spec.md, never SPEC.md",
+				"Proposal and design go to the change issue via livespec tools, never a local file"
+			],
+			"checks": [
+				"spec-format",
+				"capabilities-match-diff"
+			],
+			"gate": "human",
+			"subagents": []
+		},
+		{
+			"id": "plan",
+			"requires": [
+				"define"
+			],
+			"skills": {
+				"required": [
+					"planning-and-task-breakdown"
+				],
+				"optional": []
+			},
+			"outputs": [
+				"issue#Units"
+			],
+			"redirects": [
+				"No tasks/plan.md or tasks/todo.md; units live in the change issue"
+			],
+			"checks": [
+				"units-format",
+				"done-maps-scenarios"
+			],
+			"gate": "human",
+			"subagents": []
+		},
+		{
+			"id": "build",
+			"requires": [
+				"plan"
+			],
+			"per": "unit",
+			"skills": {
+				"required": [
+					"incremental-implementation",
+					"test-driven-development",
+					"git-workflow-and-versioning"
+				],
+				"optional": [
+					"doubt-driven-development",
+					"debugging-and-error-recovery",
+					"source-driven-development",
+					"frontend-ui-engineering",
+					"browser-testing-with-devtools",
+					"observability-and-instrumentation"
+				]
+			},
+			"outputs": [],
+			"redirects": [],
+			"checks": [],
+			"gate": "none",
+			"subagents": []
+		},
+		{
+			"id": "review",
+			"requires": [
+				"build"
+			],
+			"skills": {
+				"required": [
+					"code-review-and-quality"
+				],
+				"optional": [
+					"code-simplification",
+					"security-and-hardening",
+					"performance-optimization"
+				]
+			},
+			"outputs": [],
+			"redirects": [],
+			"checks": [],
+			"gate": "self",
+			"subagents": []
+		},
+		{
+			"id": "ship",
+			"requires": [
+				"review"
+			],
+			"skills": {
+				"required": [
+					"shipping-and-launch"
+				],
+				"optional": [
+					"ci-cd-and-automation",
+					"documentation-and-adrs"
+				]
+			},
+			"outputs": [],
+			"redirects": [],
+			"checks": [],
+			"gate": "human",
+			"subagents": []
+		},
+		{
+			"id": "close",
+			"requires": [
+				"ship"
+			],
+			"skills": {
+				"required": [],
+				"optional": []
+			},
+			"outputs": [],
+			"redirects": [],
+			"checks": [],
+			"gate": "none",
+			"subagents": []
+		}
+	]
+}
