@@ -24,6 +24,7 @@
 | `ForgeError` | new | `class ForgeError extends Error { code: "unreachable"\|"auth"\|"http"\|"readonly"\|"unsupported"; operation: string; status?: number }` | yes |
 | `Forge` | new | interface from issue #3 with `version` replacing the ETag; `updateIssueBody(n, body, expect: Version): Promise<WriteResult>`; `updatePullRequest(n, patch: {title?; body?}, expect: Version): Promise<WriteResult>` (user decision: matches fail-closed spec; sketch had no `expect`); `updateComment(id, body, expect: Version): Promise<WriteResult>` | yes |
 | `registerKind` / marker API | new | `registerKind(name: string): void`; `writeMarked(kind, id, data): string`; `readMarkedComments(forge, issue): Promise<{comments: MarkedComment[]; warnings: string[]}>` | yes |
+| `LabelRepo` (internal) | new | `{ listLabels(): Promise<string[]>; createLabel(name: string): Promise<void> }`; `ensureLabels(repo, labels)`. Adapters in Tasks 4 and 5 implement it; the public `Forge` interface stays unchanged (internal deviation from Task 2, kept to avoid widening the public contract) | no |
 | Label constants | new | `LABEL_LIVESPEC="livespec"`, `phaseLabel(p)="livespec:phase/<p>"`, `LABEL_INITIATIVE`, `LABEL_PARKED` | yes |
 | `CachedForge` | new | `new CachedForge(inner: Forge, opts: {cacheRoot?: string; host; owner; repo}): Forge` | yes |
 | `detectForge` | new | `detectForge(repoRoot: string, deps?: {exec; fetch; env}): Promise<Forge>` | yes |

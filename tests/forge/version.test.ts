@@ -8,6 +8,7 @@ describe("bodyVersion", () => {
 	it("returns a gh-prefixed version with updatedAt and a sha256 of the body", () => {
 		const v = bodyVersion("2026-11-14T10:00:00Z", "hello");
 		expect(v).toMatch(/^gh:2026-11-14T10:00:00Z:[0-9a-f]{64}$/);
+		expect(v.endsWith("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")).toBe(true);
 	});
 
 	it("uses the rc prefix when asked for the re-read scheme", () => {
