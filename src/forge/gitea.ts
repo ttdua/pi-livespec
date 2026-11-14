@@ -596,78 +596,95 @@ function isObject(value: unknown): value is Json {
 
 type Guard<T> = (value: unknown) => value is T;
 
-// ---- DTO guards: check only the fields the mapping reads (absent or null is fine) ----
+// ---- DTO guards: required fields are enforced per endpoint; only fields Gitea
+// really omits or nulls (issue/pull `body`, `user`, `target_url`, ...) stay optional ----
 
 function optional(value: unknown, type: "string" | "number" | "boolean"): boolean {
 	return value === undefined || value === null || typeof value === type;
+}
+
+function required(value: unknown, type: "string" | "number" | "boolean"): boolean {
+	return typeof value === type;
+}
+
+function requiredText(value: unknown): boolean {
+	return typeof value === "string" && value !== "";
 }
 
 function optionalObject(value: unknown, check: (o: Json) => boolean): boolean {
 	return value === undefined || value === null || (isObject(value) && check(value));
 }
 
+/** A `user` object that must carry a login. */
+function hasLogin(value: unknown): boolean {
+	return isObject(value) && requiredText(value.login);
+}
+
 function isUserDto(value: unknown): value is UserDto {
-	return isObject(value) && optional(value.login, "string");
+	return isObject(value) && requiredText(value.login);
 }
 
 function isLabelDto(value: unknown): value is LabelDto {
-	return isObject(value) && optional(value.id, "number") && optional(value.name, "string");
+	return isObject(value) && required(value.id, "number") && required(value.name, "string");
 }
 
-function isIssueDto(value: unknown): value is IssueDto {
+/** Fields shared by issues and pull requests. */
+function hasCommonFields(value: Json): boolean {
 	return (
-		isObject(value) &&
-		optional(value.number, "number") &&
-		optional(value.title, "string") &&
+		required(value.number, "number") &&
+		required(value.title, "string") &&
+		required(value.state, "string") &&
+		required(value.updated_at, "string") &&
 		optional(value.body, "string") &&
-		optional(value.state, "string") &&
-		optional(value.updated_at, "string") &&
 		optional(value.content_version, "number") &&
-		optionalObject(value.user, (u) => isUserDto(u)) &&
-		(value.labels === undefined || value.labels === null || (Array.isArray(value.labels) && value.labels.every(isLabelDto)))
+		optionalObject(value.user, (u) => optional(u.login, "string"))
 	);
 }
 
-const hasOptionalRef = (value: unknown): boolean => optionalObject(value, (o) => optional(o.ref, "string"));
+function isIssueDto(value: unknown): value is IssueDto {
+	return isObject(value) && hasCommonFields(value) && Array.isArray(value.labels) && value.labels.every(isLabelDto);
+}
+
+const hasRef = (value: unknown): boolean => isObject(value) && required(value.ref, "string");
 
 function isPullDto(value: unknown): value is PullDto {
-	if (!isIssueDto(value)) return false;
-	const o = value as Json;
-	return optional(o.merged, "boolean") && optional(o.merged_at, "string") && hasOptionalRef(o.head) && hasOptionalRef(o.base);
+	if (!isObject(value) || !hasCommonFields(value)) return false;
+	const labelsOk = value.labels === undefined || value.labels === null || (Array.isArray(value.labels) && value.labels.every(isLabelDto));
+	return labelsOk && optional(value.merged, "boolean") && optional(value.merged_at, "string") && hasRef(value.head) && hasRef(value.base);
 }
 
 function isCommentDto(value: unknown): value is CommentDto {
 	return (
 		isObject(value) &&
-		optional(value.id, "number") &&
-		optional(value.body, "string") &&
+		required(value.id, "number") &&
+		required(value.body, "string") &&
+		required(value.updated_at, "string") &&
 		optional(value.created_at, "string") &&
-		optional(value.updated_at, "string") &&
-		optionalObject(value.user, (u) => isUserDto(u))
+		hasLogin(value.user)
 	);
 }
 
 function isReviewDto(value: unknown): value is ReviewDto {
-	return isObject(value) && optional(value.id, "number") && optional(value.state, "string") && optional(value.body, "string") && optionalObject(value.user, (u) => isUserDto(u));
+	return isObject(value) && required(value.id, "number") && required(value.state, "string") && optional(value.body, "string") && hasLogin(value.user);
 }
 
 function isReviewCommentDto(value: unknown): value is ReviewCommentDto {
 	return (
 		isObject(value) &&
-		optional(value.path, "string") &&
+		required(value.path, "string") &&
+		required(value.body, "string") &&
 		optional(value.line, "number") &&
 		optional(value.position, "number") &&
-		optional(value.body, "string") &&
-		optionalObject(value.user, (u) => isUserDto(u))
+		hasLogin(value.user)
 	);
 }
 
 function isFileDto(value: unknown): value is { filename?: string } {
-	return isObject(value) && optional(value.filename, "string");
+	return isObject(value) && required(value.filename, "string");
 }
 
 function isStatusDto(value: unknown): value is StatusDto {
-	return isObject(value) && optional(value.context, "string") && optional(value.status, "string") && optional(value.target_url, "string");
+	return isObject(value) && required(value.context, "string") && required(value.status, "string") && optional(value.target_url, "string");
 }
 
 function shapeError(operation: string, status: number, expected: string): ForgeError {

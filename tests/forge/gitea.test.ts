@@ -24,6 +24,9 @@ vi.mock("node:child_process", () => ({
 runContract("gitea-cv", () => GiteaWorld.create({ withContentVersion: true }));
 runContract("gitea-no-cv", () => GiteaWorld.create({ withContentVersion: false }));
 
+const COMMENT = { id: 1, body: "x", user: { login: "u" }, updated_at: "2026-01-01T00:00:00Z" };
+const ISSUE = { number: 1, title: "t", body: "b", state: "open", updated_at: "2026-01-01T00:00:00Z", labels: [] };
+
 describe("gitea adapter", () => {
 	const worlds: GiteaWorld[] = [];
 
@@ -265,9 +268,129 @@ describe("gitea adapter", () => {
 				owner: "o",
 				repo: "r",
 				env: { GITEA_TOKEN: FAKE_TOKEN },
-				fetch: (async () => new Response(JSON.stringify([{ id: 1, body: "x" }]), { status: 200 })) as unknown as typeof fetch,
+				fetch: (async () => new Response(JSON.stringify([COMMENT]), { status: 200 })) as unknown as typeof fetch,
 			});
 			await expect(forge.listComments(1)).resolves.toHaveLength(1);
+		});
+	});
+
+	describe("required response fields", () => {
+		interface Seen {
+			method: string;
+			path: string;
+		}
+		function forgeWith(respond: (seen: Seen) => Response, seen: Seen[] = []): GiteaForge {
+			return new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				fetch: (async (url: string, init?: RequestInit) => {
+					const call = { method: init?.method ?? "GET", path: new URL(url).pathname };
+					seen.push(call);
+					return respond(call);
+				}) as unknown as typeof fetch,
+			});
+		}
+		const reply = (value: unknown) => () => new Response(JSON.stringify(value), { status: 200 });
+		const without = (base: object, key: string, value?: unknown) => ({ ...base, [key]: value });
+		const bad = (operation: string) => ({ code: "http", status: 200, operation });
+
+		it("whoami rejects {} and a message-only object", async () => {
+			await expect(forgeWith(reply({})).whoami()).rejects.toMatchObject(bad("whoami"));
+			await expect(forgeWith(reply({ message: "x" })).whoami()).rejects.toMatchObject(bad("whoami"));
+			await expect(forgeWith(reply({ login: null })).whoami()).rejects.toMatchObject(bad("whoami"));
+		});
+
+		it("getIssue rejects {} and a message-only object", async () => {
+			await expect(forgeWith(reply({})).getIssue(1)).rejects.toMatchObject(bad("getIssue"));
+			await expect(forgeWith(reply({ message: "x" })).getIssue(1)).rejects.toMatchObject(bad("getIssue"));
+		});
+
+		it.each(["number", "title", "state", "updated_at", "labels"])("getIssue rejects a missing or null %s", async (key) => {
+			await expect(forgeWith(reply(without(ISSUE, key))).getIssue(1)).rejects.toMatchObject(bad("getIssue"));
+			await expect(forgeWith(reply(without(ISSUE, key, null))).getIssue(1)).rejects.toMatchObject(bad("getIssue"));
+		});
+
+		it("getIssue accepts a null or absent body as an empty body", async () => {
+			await expect(forgeWith(reply(without(ISSUE, "body", null))).getIssue(1)).resolves.toMatchObject({ number: 1, body: "" });
+			const { body: _drop, ...noBody } = ISSUE;
+			await expect(forgeWith(reply(noBody)).getIssue(1)).resolves.toMatchObject({ body: "" });
+		});
+
+		it.each(["id", "body", "updated_at", "user"])("comment endpoints reject a missing %s", async (key) => {
+			await expect(forgeWith(reply([without(COMMENT, key)])).listComments(1)).rejects.toMatchObject(bad("listComments"));
+			await expect(forgeWith(reply(without(COMMENT, key))).createComment(1, "x")).rejects.toMatchObject(bad("createComment"));
+		});
+
+		it("a comment user without a login is rejected", async () => {
+			await expect(forgeWith(reply([without(COMMENT, "user", {})])).listComments(1)).rejects.toMatchObject(bad("listComments"));
+		});
+
+		it("a commit status needs context and status", async () => {
+			await expect(forgeWith(reply({ statuses: [{}] })).getChecks("sha")).rejects.toMatchObject(bad("getChecks"));
+			await expect(forgeWith(reply({ statuses: [{ context: "ci" }] })).getChecks("sha")).rejects.toMatchObject(bad("getChecks"));
+		});
+
+		const PULL = { ...ISSUE, head: { ref: "h" }, base: { ref: "b" } };
+		it("pull requests reject {} and a missing head, base or state", async () => {
+			await expect(forgeWith(reply({})).getPullRequest(1)).rejects.toMatchObject(bad("getPullRequest"));
+			for (const key of ["head", "base", "state", "number"]) {
+				await expect(forgeWith(reply(without(PULL, key))).getPullRequest(1)).rejects.toMatchObject(bad("getPullRequest"));
+			}
+			await expect(forgeWith(reply(without(PULL, "head", {}))).getPullRequest(1)).rejects.toMatchObject(bad("getPullRequest"));
+		});
+
+		it("reviews and review comments reject entries without their required fields", async () => {
+			await expect(forgeWith(reply([{}])).listReviews(1)).rejects.toMatchObject(bad("listReviews"));
+			const review = { id: 7, state: "COMMENT", body: "", user: { login: "a" } };
+			const respond = (seen: Seen) => new Response(JSON.stringify(seen.path.endsWith("/comments") ? [{}] : [review]), { status: 200 });
+			await expect(forgeWith(respond).listReviewComments(1)).rejects.toMatchObject(bad("listReviewComments"));
+		});
+
+		it("an invalid fresh read during a body write sends no PATCH", async () => {
+			const seen: Seen[] = [];
+			const forge = forgeWith(reply({}), seen);
+
+			await expect(forge.updateIssueBody(1, "mine", "rc:x:y" as never)).rejects.toMatchObject({ code: "http", operation: "updateIssueBody" });
+
+			expect(seen.some((c) => c.method === "PATCH")).toBe(false);
+		});
+
+		it("an invalid PATCH response is not reported as written", async () => {
+			const forge = forgeWith((seen) => new Response(JSON.stringify(seen.method === "PATCH" ? {} : ISSUE), { status: 200 }));
+			const read = await forge.getIssue(1);
+
+			await expect(forge.updateIssueBody(1, "mine", read.version)).rejects.toMatchObject({ code: "http", operation: "updateIssueBody" });
+			await expect(forge.updateIssueBody(1, "mine", "cv:3" as never)).rejects.toMatchObject({ code: "http", operation: "updateIssueBody" });
+		});
+	});
+
+	describe("pagination regressions", () => {
+		const forgeFor = (page: (n: number) => unknown[]): GiteaForge =>
+			new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				fetch: (async (url: string) => new Response(JSON.stringify(page(Number(new URL(url).searchParams.get("page")))), { status: 200 })) as unknown as typeof fetch,
+			});
+		const comment = (id: number, body = "same") => ({ ...COMMENT, id, body });
+
+		it("a runaway paginator hits the page cap with an http error and no partial result", async () => {
+			const forge = forgeFor((n) => [comment(n)]);
+			await expect(forge.listComments(1)).rejects.toMatchObject({ code: "http", operation: "listComments" });
+		});
+
+		it("entries with the same content but distinct ids are not collapsed", async () => {
+			const forge = forgeFor((n) => (n === 1 ? [comment(1), comment(2), comment(3)] : []));
+			expect((await forge.listComments(1)).map((c) => c.id)).toEqual(["1", "2", "3"]);
+		});
+
+		it("a page mixing old and new entries keeps every new entry", async () => {
+			const pages: Record<number, unknown[]> = { 1: [comment(1), comment(2)], 2: [comment(2), comment(3), comment(4)] };
+			const forge = forgeFor((n) => pages[n] ?? []);
+			expect((await forge.listComments(1)).map((c) => c.id)).toEqual(["1", "2", "3", "4"]);
 		});
 	});
 
