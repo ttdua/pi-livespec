@@ -33,6 +33,41 @@ interface CacheEntry {
 
 const DEFAULT_CACHE_ROOT = join(homedir(), ".pi", "agent", "livespec", "cache");
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+	return typeof value === "string";
+}
+
+function isIssueShape(value: unknown, n: number): value is Issue {
+	if (!isRecord(value)) return false;
+	return (
+		value.number === n &&
+		isString(value.title) &&
+		isString(value.body) &&
+		Array.isArray(value.labels) &&
+		value.labels.every(isString) &&
+		(value.state === "open" || value.state === "closed") &&
+		isString(value.author) &&
+		isString(value.updatedAt) &&
+		isString(value.version) &&
+		value.version !== ""
+	);
+}
+
+/** Validates untrusted cache JSON for issue `n`; anything else counts as not cached. */
+function isCacheEntry(value: unknown, n: number): value is CacheEntry {
+	if (!isRecord(value)) return false;
+	return (
+		isIssueShape(value.issue, n) &&
+		isString(value.version) &&
+		value.version !== "" &&
+		isString(value.fetchedAt)
+	);
+}
+
 function readOnlyError(operation: string, cause?: ForgeError): ForgeError {
 	const detail = cause ? ` (${cause.message})` : "";
 	return new ForgeError({
@@ -51,8 +86,8 @@ function isUnreachable(error: unknown): error is ForgeError {
  *
  * An `unreachable` failure from the inner forge enters read-only mode: `getIssue`
  * falls back to the cached copy marked `stale`, and every write is refused with
- * `ForgeError("readonly")` without reaching the inner forge. Any later successful
- * call leaves read-only mode. HTTP and auth failures never change the mode.
+ * `ForgeError("readonly")` without reaching the inner forge. Only a later successful
+ * read leaves read-only mode; a completing write never does. HTTP and auth failures never change the mode.
  */
 export class CachedForge implements Forge {
 	readonly kind: ForgeKind;
@@ -226,12 +261,17 @@ export class CachedForge implements Forge {
 		return this.track(() => this.inner.getChecks(ref));
 	}
 
-	/** Runs one inner call: success leaves read-only mode, `unreachable` enters it, other errors pass through. */
+	/** Runs one inner read: success leaves read-only mode, `unreachable` enters it, other errors pass through. */
 	private async track<T>(call: () => Promise<T>): Promise<T> {
+		const value = await this.enterOnUnreachable(call);
+		this.readOnly = false;
+		return value;
+	}
+
+	/** Runs one inner call; `unreachable` enters read-only mode, but success never leaves it. */
+	private async enterOnUnreachable<T>(call: () => Promise<T>): Promise<T> {
 		try {
-			const value = await call();
-			this.readOnly = false;
-			return value;
+			return await call();
 		} catch (error) {
 			if (isUnreachable(error)) this.readOnly = true;
 			throw error;
@@ -248,7 +288,7 @@ export class CachedForge implements Forge {
 	): Promise<T> {
 		if (this.readOnly) throw readOnlyError(operation);
 		try {
-			return await this.track(call);
+			return await this.enterOnUnreachable(call);
 		} catch (error) {
 			if (isUnreachable(error)) throw readOnlyError(operation, error);
 			throw error;
@@ -262,9 +302,10 @@ export class CachedForge implements Forge {
 	/** Returns undefined for a missing, unreadable or corrupt file: the cache is disposable, so it counts as not cached. */
 	private async readCache(n: number): Promise<CacheEntry | undefined> {
 		try {
-			return JSON.parse(
+			const parsed: unknown = JSON.parse(
 				await readFile(this.issueFile(n), "utf8"),
-			) as CacheEntry;
+			);
+			return isCacheEntry(parsed, n) ? parsed : undefined;
 		} catch {
 			return undefined;
 		}
