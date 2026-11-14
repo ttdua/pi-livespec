@@ -86,3 +86,50 @@ describe("validate-units.test", () => {
 		expect(checkDoneMapsScenarios(parseChange(wrap(U3)))).toEqual([]);
 	});
 });
+
+describe("validate-units grammar regressions", () => {
+	it("Depends line may be omitted", () => {
+		expect(units(u3("Depends: U1\n", ""))).toEqual([]);
+	});
+
+	it("Depends: — means no dependency", () => {
+		expect(units(u3("Depends: U1", "Depends: —"))).toEqual([]);
+	});
+
+	it("Depends with a missing target is still an error", () => {
+		expect(codes(units(u3("Depends: U1", "Depends: U9")))).toEqual(["units-format"]);
+	});
+
+	it("stray text in Done means is flagged", () => {
+		const r = units(u3("- [cap] the 101st request within 60 s from one IP gets 429", "- [cap] the 101st request within 60 s from one IP gets 429\nsome stray text"));
+		expect(r).toHaveLength(1);
+		expect(r[0]?.line).toBeDefined();
+	});
+
+	it("alternate bullet in Scenarios is flagged even with a valid item present", () => {
+		const r = units(u3("- [cap] test/ratelimit.test.ts › rejects 101st request", "- [cap] test/ratelimit.test.ts › rejects 101st request\n* [cap] test/ratelimit.test.ts › other"));
+		expect(codes(r)).toEqual(["units-format"]);
+		expect(r[0]?.message).toContain("Scenarios");
+	});
+
+	it("unlabelled item next to a valid item is flagged", () => {
+		const r = units(u3("- [cap] the 101st request within 60 s from one IP gets 429", "- [cap] the 101st request within 60 s from one IP gets 429\n- unlabelled item"));
+		expect(codes(r)).toEqual(["units-format"]);
+		expect(r[0]?.message).toContain("Done means");
+	});
+
+	it("Scenarios entry without a test reference is flagged", () => {
+		const r = units(u3("- [cap] test/ratelimit.test.ts › rejects 101st request", "- [cap]"));
+		expect(codes(r)).toEqual(["units-format", "units-format"]);
+		expect(r.map((x) => x.message).join("\n")).toContain("test reference");
+	});
+
+	it("one Done label with two scenarios of that label is not an error", () => {
+		const c = parseChange(wrap(u3(
+			"- [cap] test/ratelimit.test.ts › rejects 101st request",
+			"- [cap] test/ratelimit.test.ts › rejects 101st request\n- [cap] test/ratelimit.test.ts › second",
+		)));
+		expect(checkDoneMapsScenarios(c)).toEqual([]);
+		expect(validateUnits(c)).toEqual([]);
+	});
+});

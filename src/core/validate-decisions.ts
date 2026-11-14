@@ -1,8 +1,8 @@
 import type { Decision } from "./decision.ts";
+import { parseGitDiff } from "./git-diff.ts";
 import type { Result } from "./result.ts";
 
 const DECISION_PATH = /^specs\/decisions\/[^/]+\.md$/;
-const DIFF_HEADER = /^diff --git a\/(\S+) b\/(\S+)$/;
 
 function label(d: Decision): string {
 	return `specs/decisions/${String(d.number).padStart(4, "0")}-${d.slug}.md`;
@@ -34,18 +34,12 @@ export function validateDecisions(ds: Decision[]): Result[] {
 	return results;
 }
 
-/** Reports decision files that a git diff deletes: a decision is never deleted, only superseded. */
+/** Reports decision files that a git diff deletes or renames away: a decision is never deleted, only superseded. */
 export function validateDecisionDiff(diff: string): Result[] {
 	const deleted = new Set<string>();
-	let current: string | undefined;
-	for (const raw of diff.split(/\r?\n/)) {
-		const h = DIFF_HEADER.exec(raw);
-		if (h) {
-			current = h[1];
-			continue;
-		}
-		const isDelete = raw.startsWith("deleted file mode") || raw === "+++ /dev/null";
-		if (isDelete && current && DECISION_PATH.test(current)) deleted.add(current);
+	for (const f of parseGitDiff(diff)) {
+		if (!DECISION_PATH.test(f.oldPath)) continue;
+		if (f.deletedFile || (f.renamed && !DECISION_PATH.test(f.newPath))) deleted.add(f.oldPath);
 	}
 	return [...deleted].map((file) =>
 		error("decision-deleted", file, "A decision is never deleted, only superseded"),

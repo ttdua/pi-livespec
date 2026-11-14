@@ -2,25 +2,36 @@ import type { Change, Unit } from "./change.ts";
 import type { Result } from "./result.ts";
 
 const COVERS = /^[a-z0-9][a-z0-9-]*\/Requirement: \S/;
-const LABELLED = /^- \[[^\]\s][^\]]*\]\s+\S/;
+const ITEM = /^- \[[^\]\s][^\]]*\]\s+\S/;
+const FIELD_NAME = /^(Covers|Difficulty|Tags|Files|Done means|Scenarios|Depends|Verify|Kind):/;
 const SINGLE_COMMAND = /^`[^`]+`$/;
 const DIFFICULTIES = ["low", "medium", "high"];
-const REQUIRED = ["Covers", "Difficulty", "Tags", "Files", "Done means", "Scenarios", "Depends", "Verify"];
+const REQUIRED = ["Covers", "Difficulty", "Tags", "Files", "Done means", "Scenarios", "Verify"];
+
+type ListName = "Done means" | "Scenarios";
+const ITEM_HINT: Record<ListName, string> = {
+	"Done means": 'Done means item must be "- [label] text"',
+	Scenarios: 'Scenarios item must be "- [label] test reference"',
+};
 
 function issue(code: string, u: Unit, message: string): Result {
 	return { code, severity: "error", section: u.id, line: u.startLine + 1, message: `${u.id}: ${message}` };
 }
 
-/** Lines of a Done means / Scenarios list that are list items without a `[label]`. */
-function unlabelledItems(c: Change, u: Unit): Map<string, number> {
-	const bad = new Map<string, number>();
-	let list: string | undefined;
+/** Every non-empty line of a Done means / Scenarios list that is not a `- [label] text` item, one entry per line. */
+function badListLines(c: Change, u: Unit): { line: number; message: string }[] {
+	const bad: { line: number; message: string }[] = [];
+	let list: ListName | undefined;
 	for (let i = u.startLine + 1; i <= u.endLine; i++) {
 		if (i === u.statusLine) continue;
 		const text = c.lines[i]?.text ?? "";
-		const f = /^([A-Za-z ]+):/.exec(text);
-		if (f) list = f[1] === "Done means" || f[1] === "Scenarios" ? f[1] : undefined;
-		else if (list && /^- /.test(text) && !LABELLED.test(text) && !bad.has(list)) bad.set(list, i + 1);
+		const field = FIELD_NAME.exec(text);
+		if (field) {
+			list = field[1] === "Done means" || field[1] === "Scenarios" ? field[1] : undefined;
+			continue;
+		}
+		if (list === undefined || text.trim() === "" || ITEM.test(text)) continue;
+		bad.push({ line: i + 1, message: `${ITEM_HINT[list]}: ${text.trim()}` });
 	}
 	return bad;
 }
@@ -46,15 +57,15 @@ function checkFields(c: Change, u: Unit, out: Result[]): void {
 	if ("Kind" in u.raw && u.kind === undefined) out.push(issue("units-format", u, "Kind must be refactor"));
 	if ("Done means" in u.raw && u.doneMeans.length === 0) out.push(issue("units-format", u, "Done means has no labelled item"));
 	if ("Scenarios" in u.raw && u.scenarios.length === 0) out.push(issue("units-format", u, "Scenarios has no labelled line"));
-	for (const [list, line] of unlabelledItems(c, u)) {
-		out.push({ ...issue("units-format", u, `${list} item without a [label]`), line });
+	for (const b of badListLines(c, u)) {
+		out.push({ ...issue("units-format", u, b.message), line: b.line });
 	}
 	if (u.statusText !== "- [ ] pending" && u.statusText !== "- [x] done") {
 		out.push(issue("units-format", u, "status line must be '- [ ] pending' or '- [x] done'"));
 	}
 }
 
-/** `units-format`: required fields, well-formed values, unique ids, existing Depends targets. */
+/** `units-format`: required fields, well-formed values, unique ids, existing Depends targets (Depends itself is optional). */
 export function validateUnits(c: Change): Result[] {
 	const out: Result[] = [];
 	const ids = new Set(c.units.map((u) => u.id));
@@ -70,7 +81,10 @@ export function validateUnits(c: Change): Result[] {
 	return out;
 }
 
-/** `done-maps-scenarios`: Done means labels and Scenarios labels match one to one. */
+/**
+ * `done-maps-scenarios`: label coverage in both directions. Every Done means label needs at least one
+ * Scenario with that label, and every Scenario label must appear in Done means. Several scenarios may share a label.
+ */
 export function checkDoneMapsScenarios(c: Change): Result[] {
 	const out: Result[] = [];
 	for (const u of c.units) {

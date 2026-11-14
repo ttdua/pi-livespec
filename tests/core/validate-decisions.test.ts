@@ -58,3 +58,61 @@ describe("validate-decisions.test", () => {
 		expect(validateDecisionDiff(diff)).toEqual([]);
 	});
 });
+
+describe("validate-decisions diff regressions", () => {
+	const header = (a: string, b = a) => `diff --git a/${a} b/${b}`;
+
+	it("deleting a non-decision file after a decision edit is not an error", () => {
+		const diff = [
+			header("specs/decisions/0001-x.md"),
+			"--- a/specs/decisions/0001-x.md",
+			"+++ b/specs/decisions/0001-x.md",
+			"@@ -1 +1 @@",
+			header("specs/cache/spec.md"),
+			"deleted file mode 100644",
+		].join("\n");
+		expect(validateDecisionDiff(diff)).toEqual([]);
+	});
+
+	it("deleting a decision after a non-decision edit is reported", () => {
+		const diff = [
+			header("specs/cache/spec.md"),
+			"--- a/specs/cache/spec.md",
+			"+++ b/specs/cache/spec.md",
+			"@@ -1 +1 @@",
+			header("specs/decisions/0002-y.md"),
+			"deleted file mode 100644",
+		].join("\n");
+		expect(validateDecisionDiff(diff).map((x) => x.file)).toEqual(["specs/decisions/0002-y.md"]);
+	});
+
+	it("paths with spaces in a deleted decision are reported with the real name", () => {
+		const diff = [
+			header("specs/decisions/0003-my note.md"),
+			"deleted file mode 100644",
+			"--- a/specs/decisions/0003-my note.md",
+			"+++ /dev/null",
+		].join("\n");
+		expect(validateDecisionDiff(diff).map((x) => x.file)).toEqual(["specs/decisions/0003-my note.md"]);
+	});
+
+	it("renaming a decision out of decisions/ is reported as a deletion", () => {
+		const diff = [
+			header("specs/decisions/0004-z.md", "specs/cache/z.md"),
+			"similarity index 90%",
+			"rename from specs/decisions/0004-z.md",
+			"rename to specs/cache/z.md",
+		].join("\n");
+		expect(validateDecisionDiff(diff).map((x) => x.file)).toEqual(["specs/decisions/0004-z.md"]);
+	});
+
+	it("renaming a decision within decisions/ is allowed", () => {
+		const diff = [
+			header("specs/decisions/0004-z.md", "specs/decisions/0004-renamed.md"),
+			"similarity index 90%",
+			"rename from specs/decisions/0004-z.md",
+			"rename to specs/decisions/0004-renamed.md",
+		].join("\n");
+		expect(validateDecisionDiff(diff)).toEqual([]);
+	});
+});
