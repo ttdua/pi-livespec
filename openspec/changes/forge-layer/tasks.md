@@ -56,5 +56,5 @@ Blocked by: 4, 5
 Blocked by: 6, 7
 
 - [x] 8.1 Update the forge row and ETag wording in `docs/architecture.md`
-- [ ] 8.2 Run a manual smoke run against one real GitHub and one real Gitea repository and record it in `openspec/changes/forge-layer/smoke.md`
+- [x] 8.2 Run a manual smoke run against one real GitHub and one real Gitea repository and record it in `openspec/changes/forge-layer/smoke.md`
 - [ ] 8.3 Run `bun run typecheck` and `bun run test`
