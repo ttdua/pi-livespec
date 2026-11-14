@@ -61,6 +61,19 @@ function runAuthStatus(store) {
 	process.stdout.write(`github.com\n  Logged in to github.com account ${data.login}\n`);
 }
 
+const PAGED_KEYS = ["check_runs", "statuses"];
+
+/** Slices one page out of a list response: a bare array, or an object whose list sits under a known key. Default 30 per page, as GitHub. */
+function pageOf(result, query, page) {
+	const perPage = Math.min(Number(query.get("per_page") ?? 30), 100);
+	const slice = (list) => list.slice((page - 1) * perPage, page * perPage);
+	if (Array.isArray(result)) return { value: slice(result), full: slice(result).length === perPage };
+	const key = result && PAGED_KEYS.find((k) => Array.isArray(result[k]));
+	if (!key) return { value: result, full: false };
+	const items = slice(result[key]);
+	return { value: { ...result, [key]: items }, full: items.length === perPage };
+}
+
 function runApi(store, args) {
 	const opts = parseApiArgs(args);
 	const method = opts.method ?? (Object.keys(opts.fields).length > 0 || opts.input ? "POST" : "GET");
@@ -86,8 +99,18 @@ function runApi(store, args) {
 	}
 	store.write(data);
 	if (result === undefined) return;
-	const out = opts.paginate && opts.slurp ? [result] : result;
-	process.stdout.write(`${JSON.stringify(out)}\n`);
+	if (opts.paginate && opts.slurp) {
+		const pages = [];
+		for (let page = 1; ; page++) {
+			const { value, full } = pageOf(result, query, page);
+			pages.push(value);
+			if (!full) break;
+		}
+		process.stdout.write(`${JSON.stringify(pages)}\n`);
+		return;
+	}
+	const requested = Number(query.get("page") ?? 1);
+	process.stdout.write(`${JSON.stringify(pageOf(result, query, requested).value)}\n`);
 }
 
 const statePath = process.env.FAKE_GH_STATE;

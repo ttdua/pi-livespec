@@ -1,9 +1,10 @@
 // GitHub adapter. Talks to the forge only through `gh api` with JSON output.
 // GitHub has no conditional write, so body edits re-read, compare and then
-// PATCH (see design.md).
+// PATCH (see design.md); such writes report `check: "best-effort"`.
 
 import { execFile } from "node:child_process";
 import { ForgeError, type ForgeErrorCode } from "./errors.ts";
+import { parseMarked } from "./markers.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
 import type {
 	Check,
@@ -59,6 +60,8 @@ interface ApiCall {
 	body?: Record<string, unknown>;
 	/** Follow pagination and merge the pages into one array. */
 	paginate?: boolean;
+	/** With `paginate`: return the pages as they are instead of concatenating arrays (object responses). */
+	pages?: boolean;
 }
 
 interface JsonUser {
@@ -118,6 +121,12 @@ interface JsonStatus {
 	target_url: string | null;
 }
 
+type SnapshotKind = "issue" | "pull";
+
+function snapshotKey(kind: SnapshotKind, n: number, version: Version): string {
+	return `${kind}#${n}@${version}`;
+}
+
 const HTTP_STATUS = /\(HTTP (\d{3})\)/;
 
 export class GitHubForge implements Forge, LabelRepo {
@@ -128,7 +137,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	private readonly base: string;
 	private authenticated = false;
 	/** What each version this adapter handed out looked like, to name changed fields on conflict. */
-	private readonly snapshots = new Map<Version, ComparableIssue>();
+	private readonly snapshots = new Map<string, ComparableIssue>();
 
 	constructor(opts: GitHubForgeOptions) {
 		this.ghPath = opts.ghPath;
@@ -186,10 +195,10 @@ export class GitHubForge implements Forge, LabelRepo {
 		const route = `${this.base}/issues/${n}`;
 		const current = this.toIssue(await this.api<JsonIssue>("updateIssueBody", route));
 		if (current.version !== expect) {
-			return this.conflict(expect, current.version, current);
+			return this.conflict("issue", n, expect, current.version, current);
 		}
 		const raw = await this.api<JsonIssue>("updateIssueBody", route, { method: "PATCH", body: { body } });
-		return { status: "written", item: this.toIssue(raw), check: "strict" };
+		return { status: "written", item: this.toIssue(raw), check: "best-effort" };
 	}
 
 	async closeIssue(n: number): Promise<void> {
@@ -238,9 +247,18 @@ export class GitHubForge implements Forge, LabelRepo {
 		return toComment(await this.api<JsonComment>("createComment", `${this.base}/issues/${n}/comments`, { method: "POST", body: { body } }));
 	}
 
-	/** Last write wins: GitHub offers no check for comments, so `expect` is not compared. */
+	/**
+	 * Refuses unless the stored comment is a marked comment of the current login.
+	 * Last write wins: GitHub offers no check for comments, so `expect` is not compared.
+	 */
 	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
-		const raw = await this.api<JsonComment>("updateComment", `${this.base}/issues/comments/${id}`, { method: "PATCH", body: { body } });
+		const route = `${this.base}/issues/comments/${id}`;
+		const stored = await this.api<JsonComment>("updateComment", route);
+		const { login } = await this.whoami();
+		if (!parseMarked(stored.body ?? "") || stored.user?.login !== login) {
+			throw fail("unsupported", "updateComment", `refusing to edit comment ${id}: not a marked comment written by ${login}`);
+		}
+		const raw = await this.api<JsonComment>("updateComment", route, { method: "PATCH", body: { body } });
 		return { status: "written", item: toComment(raw), check: "best-effort" };
 	}
 
@@ -280,10 +298,10 @@ export class GitHubForge implements Forge, LabelRepo {
 		const route = `${this.base}/pulls/${n}`;
 		const current = this.toPull(await this.api<JsonPull>("updatePullRequest", route));
 		if (current.version !== expect) {
-			return this.conflict(expect, current.version, { title: current.title, body: current.body, labels: [], state: current.state });
+			return this.conflict("pull", n, expect, current.version, { title: current.title, body: current.body, labels: [], state: current.state });
 		}
 		const raw = await this.api<JsonPull>("updatePullRequest", route, { method: "PATCH", body: p });
-		return { status: "written", item: this.toPull(raw), check: "strict" };
+		return { status: "written", item: this.toPull(raw), check: "best-effort" };
 	}
 
 	async listReviewComments(pr: number): Promise<ReviewComment[]> {
@@ -303,11 +321,17 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async getChecks(ref: string): Promise<CheckSummary> {
 		const sha = encodeURIComponent(ref);
-		const runs = await this.api<{ check_runs: JsonCheckRun[] }>("getChecks", `${this.base}/commits/${sha}/check-runs?per_page=100`);
-		const statuses = await this.api<{ statuses: JsonStatus[] }>("getChecks", `${this.base}/commits/${sha}/status`);
+		const runPages = await this.api<{ check_runs: JsonCheckRun[] }[]>("getChecks", `${this.base}/commits/${sha}/check-runs?per_page=100`, {
+			paginate: true,
+			pages: true,
+		});
+		const statusPages = await this.api<{ statuses: JsonStatus[] }[]>("getChecks", `${this.base}/commits/${sha}/status?per_page=100`, {
+			paginate: true,
+			pages: true,
+		});
 		const checks: Check[] = [
-			...runs.check_runs.map((r) => withUrl({ name: r.name, state: runState(r) }, r.details_url)),
-			...statuses.statuses.map((s) => withUrl({ name: s.context, state: statusState(s.state) }, s.target_url)),
+			...runPages.flatMap((page) => page.check_runs.map((r) => withUrl({ name: r.name, state: runState(r) }, r.details_url))),
+			...statusPages.flatMap((page) => page.statuses.map((s) => withUrl({ name: s.context, state: statusState(s.state) }, s.target_url))),
 		];
 		return { state: overallState(checks), checks };
 	}
@@ -330,7 +354,7 @@ export class GitHubForge implements Forge, LabelRepo {
 			updatedAt: raw.updated_at,
 			version: bodyVersion(raw.updated_at, body, "gh"),
 		};
-		this.snapshots.set(issue.version, issue);
+		this.snapshots.set(snapshotKey("issue", issue.number, issue.version), { ...issue, labels: [...issue.labels] });
 		return issue;
 	}
 
@@ -347,12 +371,18 @@ export class GitHubForge implements Forge, LabelRepo {
 			version: bodyVersion(raw.updated_at, body, "gh"),
 		};
 		if (raw.merged_at) pull.mergedAt = raw.merged_at;
-		this.snapshots.set(pull.version, { title: pull.title, body, labels: [], state: pull.state });
+		this.snapshots.set(snapshotKey("pull", pull.number, pull.version), { title: pull.title, body, labels: [], state: pull.state });
 		return pull;
 	}
 
-	private conflict(expected: Version, current: Version, now: ComparableIssue): { status: "conflict"; current: Version; changed: string[] } {
-		const before = this.snapshots.get(expected);
+	private conflict(
+		kind: SnapshotKind,
+		n: number,
+		expected: Version,
+		current: Version,
+		now: ComparableIssue,
+	): { status: "conflict"; current: Version; changed: string[] } {
+		const before = this.snapshots.get(snapshotKey(kind, n, expected));
 		const changed = before ? changedFields(before, now) : [];
 		// A version mismatch with equal compared fields still means the item moved on.
 		return { status: "conflict", current, changed: changed.length > 0 ? changed : ["body"] };
@@ -384,7 +414,7 @@ export class GitHubForge implements Forge, LabelRepo {
 		const res = await this.run(args, input);
 		if (res.spawnError !== undefined) throw fail("unreachable", operation, `${operation}: cannot run gh: ${res.spawnError}`);
 		if (res.code !== 0) throw this.failedCall(operation, res);
-		return parseResponse<T>(operation, res.stdout, call.paginate === true);
+		return parseResponse<T>(operation, res.stdout, call.paginate === true, call.pages === true);
 	}
 
 	private failedCall(operation: string, res: ExecResult): ForgeError {
@@ -408,7 +438,7 @@ function looksLikeNetworkError(detail: string): boolean {
 	return /error connecting|dial tcp|timeout|timed out|no such host|connection refused|network/i.test(detail);
 }
 
-function parseResponse<T>(operation: string, stdout: string, paged: boolean): T {
+function parseResponse<T>(operation: string, stdout: string, paged: boolean, rawPages: boolean): T {
 	if (stdout.trim() === "") return undefined as T;
 	let value: unknown;
 	try {
@@ -417,7 +447,7 @@ function parseResponse<T>(operation: string, stdout: string, paged: boolean): T 
 		throw fail("http", operation, `${operation}: gh returned invalid JSON`);
 	}
 	// `--paginate --slurp` yields an array of pages.
-	return (paged ? (value as unknown[]).flat() : value) as T;
+	return (paged && !rawPages ? (value as unknown[]).flat() : value) as T;
 }
 
 function toComment(raw: JsonComment): Comment {

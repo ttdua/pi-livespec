@@ -275,6 +275,7 @@ function routes(data: FakeGhData): [string, RegExp, Handler][] {
 		["POST", /^labels$/, (_m, req) => createLabel(data, req)],
 		["GET", /^issues\/(\d+)\/comments$/, (m) => Object.values(data.comments).filter((c) => c.issue === Number(m[1])).map(commentJson)],
 		["POST", /^issues\/(\d+)\/comments$/, (m, req) => createComment(data, m[1], req)],
+		["GET", /^issues\/comments\/(\d+)$/, (m) => commentJson(data.comments[m[1]] ?? notFound(`comment ${m[1]}`))],
 		["PATCH", /^issues\/comments\/(\d+)$/, (m, req) => patchComment(data, m[1], req)],
 		["GET", /^pulls$/, (_m, req) => listPulls(data, req)],
 		["POST", /^pulls$/, (_m, req) => createPull(data, req)],
