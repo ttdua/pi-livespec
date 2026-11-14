@@ -1,7 +1,7 @@
 // State of the fake `gh`: one JSON file shared by the fake executable (which
 // serves API calls) and the test world (which seeds and inspects it).
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 export type PermissionLevel = "none" | "read" | "write" | "admin";
 
@@ -138,8 +138,11 @@ export class FakeGhStore {
 		return JSON.parse(readFileSync(this.path, "utf8")) as FakeGhData;
 	}
 
+	/** Atomic (temp file + rename): adapters may run several fake `gh` processes at once. */
 	write(data: FakeGhData): void {
-		writeFileSync(this.path, JSON.stringify(data));
+		const temp = `${this.path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
+		writeFileSync(temp, JSON.stringify(data));
+		renameSync(temp, this.path);
 	}
 
 	/** Runs `fn` on the current data and saves the result. */

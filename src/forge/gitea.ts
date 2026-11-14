@@ -2,16 +2,31 @@
 // request body edits use `content_version` when the server sends it (strict
 // check); otherwise they fall back to a re-read and compare (best-effort).
 
-import { readFile } from "node:fs/promises";
-import { homedir as osHomedir, platform as osPlatform } from "node:os";
-import { join } from "node:path";
-import { parse } from "yaml";
-import { ForgeError, isAuthStatus } from "./errors.ts";
+import {
+	type CommentDto,
+	type Guard,
+	type IssueDto,
+	type PullDto,
+	type StatusDto,
+	isCombinedStatusDto,
+	isCommentDto,
+	isFileDto,
+	isIssueDto,
+	isLabelDto,
+	isPermissionDto,
+	isPullDto,
+	isReviewCommentDto,
+	isReviewDto,
+	isStatusDto,
+	isUserDto,
+	shapeError,
+} from "./gitea-dto.ts";
+import { GiteaTransport, PAGE_SIZE } from "./gitea-transport.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
 import { assertOwnMarkedComment } from "./markers.ts";
+import { overallState, toCheckState, toPermission, toReviewState } from "./mapping.ts";
 import type {
 	Check,
-	CheckState,
 	CheckSummary,
 	Comment,
 	Forge,
@@ -20,7 +35,6 @@ import type {
 	PullRequest,
 	Review,
 	ReviewComment,
-	ReviewState,
 	Version,
 	WriteResult,
 } from "./types.ts";
@@ -39,216 +53,12 @@ export interface GiteaOptions {
 	/** Test seams for the default `tea` config lookup. */
 	homedir?: string;
 	platform?: NodeJS.Platform;
-	/** Limit for one HTTP request, response body included; default {@link DEFAULT_TIMEOUT_MS}. */
+	/** Limit for one HTTP request, response body included; default 30 000 ms. */
 	timeoutMs?: number;
 }
 
-/** Default limit for one Gitea HTTP request. */
-export const DEFAULT_TIMEOUT_MS = 30_000;
-
-const PAGE_SIZE = 50;
-/** Hard stop for a runaway paginator (a server that never returns an empty page). */
-const MAX_PAGES = 1000;
 const DEFAULT_LABEL_COLOR = "ededed";
 const CONTENT_VERSION_PREFIX = "cv:";
-
-// Minimal DTOs: only the fields the mapping reads. Everything else stays `unknown`.
-interface UserDto {
-	login?: string;
-}
-interface LabelDto {
-	id?: number;
-	name?: string;
-}
-interface IssueDto {
-	number?: number;
-	title?: string;
-	body?: string;
-	state?: string;
-	user?: UserDto;
-	updated_at?: string;
-	content_version?: number;
-	labels?: LabelDto[];
-}
-interface PullDto extends IssueDto {
-	merged?: boolean;
-	merged_at?: string | null;
-	head?: { ref?: string };
-	base?: { ref?: string };
-}
-interface CommentDto {
-	id?: number;
-	body?: string;
-	user?: UserDto;
-	created_at?: string;
-	updated_at?: string;
-}
-interface ReviewDto {
-	id?: number;
-	state?: string;
-	body?: string;
-	user?: UserDto;
-}
-interface ReviewCommentDto {
-	path?: string;
-	line?: number;
-	position?: number;
-	body?: string;
-	user?: UserDto;
-}
-interface StatusDto {
-	context?: string;
-	status?: string;
-	target_url?: string;
-}
-type Json = Record<string, unknown>;
-
-interface Reply {
-	status: number;
-	/** Parsed body; `undefined` when the body was empty. */
-	json: unknown;
-}
-
-/** Authenticated JSON transport. Maps failures to ForgeError; callers pass `accept` for statuses they handle themselves. */
-class GiteaTransport {
-	private token?: string;
-	private readonly fetchFn: typeof fetch;
-	private readonly env: Record<string, string | undefined>;
-
-	constructor(private readonly opts: GiteaOptions) {
-		this.fetchFn = opts.fetch ?? fetch;
-		this.env = opts.env ?? process.env;
-	}
-
-	async call(operation: string, method: string, path: string, body?: unknown, accept: number[] = []): Promise<Reply> {
-		const token = await this.resolveToken(operation);
-		const signal = AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-		let response: Response;
-		try {
-			response = await this.fetchFn(`${this.opts.baseUrl.replace(/\/+$/, "")}/api/v1${path}`, {
-				method,
-				headers: {
-					authorization: `token ${token}`,
-					accept: "application/json",
-					...(body === undefined ? {} : { "content-type": "application/json" }),
-				},
-				body: body === undefined ? undefined : JSON.stringify(body),
-				signal,
-			});
-		} catch (error) {
-			throw new ForgeError({ code: "unreachable", operation, message: `${operation}: ${describe(error)}` });
-		}
-		let text: string;
-		try {
-			text = await response.text();
-		} catch (error) {
-			throw new ForgeError({ code: "unreachable", operation, message: `${operation}: reading the response failed: ${describe(error)}` });
-		}
-		if (response.ok) return { status: response.status, json: parseSuccessBody(operation, response.status, text) };
-
-		const parsed = parseLenient(text);
-		if (accept.includes(response.status)) return { status: response.status, json: parsed };
-		const message = (parsed as { message?: unknown } | undefined)?.message;
-		const detail = typeof message === "string" ? message : text.slice(0, 200);
-		const code = isAuthStatus(response.status) ? "auth" : "http";
-		throw new ForgeError({ code, operation, status: response.status, message: `${operation}: HTTP ${response.status} ${detail}`.trim() });
-	}
-
-	/** A call whose successful body must be a JSON object. */
-	async object<T>(operation: string, method: string, path: string, guard: Guard<T>, body?: unknown): Promise<T> {
-		const reply = await this.call(operation, method, path, body);
-		return this.asObject<T>(operation, reply, guard);
-	}
-
-	asObject<T>(operation: string, reply: Reply, guard: Guard<T>): T {
-		if (!isObject(reply.json)) throw shapeError(operation, reply.status, "a JSON object");
-		if (!guard(reply.json)) throw shapeError(operation, reply.status, "a well-formed object");
-		return reply.json;
-	}
-
-	/** Reads every page of a paginated list endpoint. */
-	async list<T>(operation: string, path: string, guard: Guard<T>): Promise<T[]> {
-		const sep = path.includes("?") ? "&" : "?";
-		return this.pages(operation, async (page) => this.getArray(operation, `${path}${sep}limit=${PAGE_SIZE}&page=${page}`, guard));
-	}
-
-	/**
-	 * Calls `fetchPage` for page 1, 2, ... until a page is empty or holds only
-	 * entries already seen (an endpoint that ignores `page`). The server may cap
-	 * the page size below the requested limit, so a short page is not the end.
-	 */
-	async pages<T>(operation: string, fetchPage: (page: number) => Promise<T[]>): Promise<T[]> {
-		const all: T[] = [];
-		const seen = new Set<string>();
-		for (let page = 1; page <= MAX_PAGES; page++) {
-			const items = await fetchPage(page);
-			const fresh = items.filter((item) => !seen.has(JSON.stringify(item)));
-			if (fresh.length === 0) return all;
-			for (const item of fresh) seen.add(JSON.stringify(item));
-			all.push(...fresh);
-		}
-		throw new ForgeError({ code: "http", operation, message: `${operation}: pagination did not end after ${MAX_PAGES} pages` });
-	}
-
-	/** A single GET of an unpaginated list endpoint. */
-	async getArray<T>(operation: string, path: string, guard: Guard<T>): Promise<T[]> {
-		const reply = await this.call(operation, "GET", path);
-		if (!Array.isArray(reply.json)) throw shapeError(operation, reply.status, "a JSON array");
-		return reply.json.map((entry) => {
-			if (!guard(entry)) throw shapeError(operation, reply.status, "a list of well-formed entries");
-			return entry;
-		});
-	}
-
-	private async resolveToken(operation: string): Promise<string> {
-		if (this.token) return this.token;
-		const token = this.env.GITEA_TOKEN || (await this.tokenFromTeaConfig());
-		if (!token) {
-			throw new ForgeError({
-				code: "auth",
-				operation,
-				message: `${operation}: no Gitea token; set GITEA_TOKEN or log in with tea for ${this.opts.baseUrl}`,
-			});
-		}
-		this.token = token;
-		return token;
-	}
-
-	/** Reads the token of the `tea` login whose url has the same host as `baseUrl`. Never runs `tea`. */
-	private async tokenFromTeaConfig(): Promise<string | undefined> {
-		const config = await this.readTeaConfig();
-		const host = hostOf(this.opts.baseUrl);
-		const logins = (config as { logins?: { url?: string; token?: string }[] } | null)?.logins;
-		const login = Array.isArray(logins) ? logins.find((l) => l?.url && hostOf(l.url) === host && l.token) : undefined;
-		return login?.token;
-	}
-
-	/** The first readable `tea` config: the explicit path, else tea's own lookup order. */
-	private async readTeaConfig(): Promise<unknown> {
-		for (const path of this.teaConfigCandidates()) {
-			let text: string;
-			try {
-				text = await readFile(path, "utf8");
-			} catch {
-				continue;
-			}
-			try {
-				return parse(text);
-			} catch {
-				return undefined;
-			}
-		}
-		return undefined;
-	}
-
-	private teaConfigCandidates(): string[] {
-		if (this.opts.teaConfigPath) return [this.opts.teaConfigPath];
-		const home = this.opts.homedir ?? osHomedir();
-		const xdg = this.env.XDG_CONFIG_HOME;
-		const base = xdg ? xdg : (this.opts.platform ?? osPlatform()) === "darwin" ? join(home, "Library", "Application Support") : join(home, ".config");
-		return [join(base, "tea", "config.yml"), join(home, ".tea", "tea.yml")];
-	}
-}
 
 export class GiteaForge implements Forge, LabelRepo {
 	readonly kind = "gitea";
@@ -331,12 +141,12 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async listLabels(): Promise<string[]> {
-		const items = await this.http.list("addLabels", `${this.repoPath}/labels`, isLabelDto);
+		const items = await this.http.list("listLabels", `${this.repoPath}/labels`, isLabelDto);
 		return items.map((l) => String(l.name));
 	}
 
 	async createLabel(name: string): Promise<void> {
-		await this.http.call("addLabels", "POST", `${this.repoPath}/labels`, { name, color: DEFAULT_LABEL_COLOR });
+		await this.http.call("createLabel", "POST", `${this.repoPath}/labels`, { name, color: DEFAULT_LABEL_COLOR });
 	}
 
 	// ---- comments ----
@@ -366,7 +176,7 @@ export class GiteaForge implements Forge, LabelRepo {
 	// ---- pull requests ----
 
 	async findOpenPullRequest(head: string): Promise<PullRequest | null> {
-		const [found] = await this.listPullRequests({ state: "open", head }, "findOpenPullRequest");
+		const [found] = await this.queryPullRequests("findOpenPullRequest", { state: "open", head });
 		return found ?? null;
 	}
 
@@ -374,7 +184,11 @@ export class GiteaForge implements Forge, LabelRepo {
 		return this.readPull("getPullRequest", n);
 	}
 
-	async listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }, operation = "listPullRequests"): Promise<PullRequest[]> {
+	async listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }): Promise<PullRequest[]> {
+		return this.queryPullRequests("listPullRequests", q);
+	}
+
+	private async queryPullRequests(operation: string, q: { state: "open" | "closed" | "all"; head?: string }): Promise<PullRequest[]> {
 		const items = await this.http.list(operation, `${this.repoPath}/pulls?state=${q.state}`, isPullDto);
 		return items.map((json) => this.pullOf(json)).filter((p) => q.head === undefined || p.head === q.head);
 	}
@@ -583,172 +397,4 @@ function toPull(json: PullDto): PullRequest {
 		body,
 		version: toVersion(json, body),
 	};
-}
-
-function toPermission(value: unknown): "none" | "read" | "write" | "admin" {
-	if (value === "owner" || value === "admin") return "admin";
-	if (value === "write" || value === "read") return value;
-	return "none";
-}
-
-function toReviewState(value: unknown): ReviewState {
-	if (value === "APPROVED") return "approved";
-	if (value === "REQUEST_CHANGES") return "changes_requested";
-	return "commented";
-}
-
-function toCheckState(value: unknown): Exclude<CheckState, "none"> {
-	if (value === "success") return "success";
-	if (value === "failure" || value === "error") return "failure";
-	return "pending";
-}
-
-function overallState(checks: Check[]): CheckState {
-	if (checks.length === 0) return "none";
-	if (checks.some((c) => c.state === "failure")) return "failure";
-	if (checks.some((c) => c.state === "pending")) return "pending";
-	return "success";
-}
-
-// ---- small helpers ----
-
-function parseLenient(text: string): unknown {
-	try {
-		return text ? JSON.parse(text) : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-/** An empty body is `undefined` (no payload); malformed JSON on a success status is an error. */
-function parseSuccessBody(operation: string, status: number, text: string): unknown {
-	if (!text) return undefined;
-	try {
-		return JSON.parse(text);
-	} catch {
-		throw new ForgeError({ code: "http", operation, status, message: `${operation}: HTTP ${status} response is not valid JSON` });
-	}
-}
-
-function isObject(value: unknown): value is Json {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Combined status: `state` is required; `statuses` may be absent or null (an empty set) but never another type. */
-function isCombinedStatusDto(value: unknown): value is Json {
-	return isObject(value) && required(value.state, "string") && (value.statuses == null || Array.isArray(value.statuses));
-}
-
-function isPermissionDto(value: unknown): value is Json {
-	return isObject(value) && required(value.permission, "string");
-}
-
-type Guard<T> = (value: unknown) => value is T;
-
-// ---- DTO guards: required fields are enforced per endpoint; only fields Gitea
-// really omits or nulls (issue/pull `body`, `user`, `target_url`, ...) stay optional ----
-
-function optional(value: unknown, type: "string" | "number" | "boolean"): boolean {
-	return value === undefined || value === null || typeof value === type;
-}
-
-function required(value: unknown, type: "string" | "number" | "boolean"): boolean {
-	return typeof value === type;
-}
-
-function requiredText(value: unknown): boolean {
-	return typeof value === "string" && value !== "";
-}
-
-function optionalObject(value: unknown, check: (o: Json) => boolean): boolean {
-	return value === undefined || value === null || (isObject(value) && check(value));
-}
-
-/** A `user` object that must carry a login. */
-function hasLogin(value: unknown): boolean {
-	return isObject(value) && requiredText(value.login);
-}
-
-function isUserDto(value: unknown): value is UserDto {
-	return isObject(value) && requiredText(value.login);
-}
-
-function isLabelDto(value: unknown): value is LabelDto {
-	return isObject(value) && required(value.id, "number") && required(value.name, "string");
-}
-
-/** Fields shared by issues and pull requests. */
-function hasCommonFields(value: Json): boolean {
-	return (
-		required(value.number, "number") &&
-		required(value.title, "string") &&
-		required(value.state, "string") &&
-		required(value.updated_at, "string") &&
-		optional(value.body, "string") &&
-		optional(value.content_version, "number") &&
-		optionalObject(value.user, (u) => optional(u.login, "string"))
-	);
-}
-
-function isIssueDto(value: unknown): value is IssueDto {
-	return isObject(value) && hasCommonFields(value) && Array.isArray(value.labels) && value.labels.every(isLabelDto);
-}
-
-const hasRef = (value: unknown): boolean => isObject(value) && required(value.ref, "string");
-
-function isPullDto(value: unknown): value is PullDto {
-	if (!isObject(value) || !hasCommonFields(value)) return false;
-	const labelsOk = value.labels === undefined || value.labels === null || (Array.isArray(value.labels) && value.labels.every(isLabelDto));
-	return labelsOk && optional(value.merged, "boolean") && optional(value.merged_at, "string") && hasRef(value.head) && hasRef(value.base);
-}
-
-function isCommentDto(value: unknown): value is CommentDto {
-	return (
-		isObject(value) &&
-		required(value.id, "number") &&
-		required(value.body, "string") &&
-		required(value.updated_at, "string") &&
-		optional(value.created_at, "string") &&
-		hasLogin(value.user)
-	);
-}
-
-function isReviewDto(value: unknown): value is ReviewDto {
-	return isObject(value) && required(value.id, "number") && required(value.state, "string") && optional(value.body, "string") && hasLogin(value.user);
-}
-
-function isReviewCommentDto(value: unknown): value is ReviewCommentDto {
-	return (
-		isObject(value) &&
-		required(value.path, "string") &&
-		required(value.body, "string") &&
-		optional(value.line, "number") &&
-		optional(value.position, "number") &&
-		hasLogin(value.user)
-	);
-}
-
-function isFileDto(value: unknown): value is { filename?: string } {
-	return isObject(value) && required(value.filename, "string");
-}
-
-function isStatusDto(value: unknown): value is StatusDto {
-	return isObject(value) && required(value.context, "string") && required(value.status, "string") && optional(value.target_url, "string");
-}
-
-function shapeError(operation: string, status: number, expected: string): ForgeError {
-	return new ForgeError({ code: "http", operation, status, message: `${operation}: HTTP ${status} response is not ${expected}` });
-}
-
-function hostOf(url: string): string | undefined {
-	try {
-		return new URL(url).host;
-	} catch {
-		return undefined;
-	}
-}
-
-function describe(error: unknown): string {
-	const cause = (error as { cause?: { code?: string } } | undefined)?.cause?.code;
-	return `${error instanceof Error ? error.message : String(error)}${cause ? ` (${cause})` : ""}`;
 }

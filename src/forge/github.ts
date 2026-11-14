@@ -4,7 +4,8 @@
 
 import { execFile } from "node:child_process";
 import { ForgeError, type ForgeErrorCode, isAuthStatus } from "./errors.ts";
-import { parseMarked } from "./markers.ts";
+import { assertOwnMarkedComment } from "./markers.ts";
+import { overallState, toCheckState, toPermission, toReviewState } from "./mapping.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
 import type {
 	Check,
@@ -17,7 +18,6 @@ import type {
 	PullRequest,
 	Review,
 	ReviewComment,
-	ReviewState,
 	Version,
 	WriteResult,
 } from "./types.ts";
@@ -146,6 +146,7 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	private readonly ghPath: string;
 	private readonly exec: ExecFn;
+	private readonly owner: string;
 	private readonly base: string;
 	private readonly hostArgs: string[];
 	private authenticated = false;
@@ -156,6 +157,7 @@ export class GitHubForge implements Forge, LabelRepo {
 		this.ghPath = opts.ghPath;
 		this.exec = opts.exec ?? defaultExec;
 		this.hostArgs = opts.hostname ? ["--hostname", opts.hostname] : [];
+		this.owner = opts.repo.owner;
 		this.base = `repos/${opts.repo.owner}/${opts.repo.repo}`;
 	}
 
@@ -168,18 +170,7 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async getPermission(login: string): Promise<"none" | "read" | "write" | "admin"> {
 		const res = await this.api<{ permission: string }>("getPermission", `${this.base}/collaborators/${encodeURIComponent(login)}/permission`);
-		switch (res.permission) {
-			case "admin":
-				return "admin";
-			case "write":
-			case "maintain":
-				return "write";
-			case "read":
-			case "triage":
-				return "read";
-			default:
-				return "none";
-		}
+		return toPermission(res.permission);
 	}
 
 	// --- issues -----------------------------------------------------------
@@ -266,12 +257,8 @@ export class GitHubForge implements Forge, LabelRepo {
 	 * Last write wins: GitHub offers no check for comments, so `expect` is not compared.
 	 */
 	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
-		const route = `${this.base}/issues/comments/${id}`;
-		const stored = await this.api<JsonComment>("updateComment", route);
-		const { login } = await this.whoami();
-		if (!parseMarked(stored.body ?? "") || stored.user?.login !== login) {
-			throw fail("unsupported", "updateComment", `refusing to edit comment ${id}: not a marked comment written by ${login}`);
-		}
+		const route = `${this.base}/issues/comments/${encodeURIComponent(id)}`;
+		await assertOwnMarkedComment(this, toComment(await this.api<JsonComment>("updateComment", route)));
 		const raw = await this.api<JsonComment>("updateComment", route, { method: "PATCH", body: { body } });
 		return { status: "written", item: toComment(raw), check: "best-effort" };
 	}
@@ -289,7 +276,7 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }): Promise<PullRequest[]> {
 		const params = new URLSearchParams({ state: q.state, per_page: "100" });
-		if (q.head !== undefined) params.set("head", q.head.includes(":") ? q.head : `${this.owner()}:${q.head}`);
+		if (q.head !== undefined) params.set("head", q.head.includes(":") ? q.head : `${this.owner}:${q.head}`);
 		const raw = await this.api<JsonPull[]>("listPullRequests", `${this.base}/pulls?${params}`, { paginate: true });
 		return raw.map((p) => this.toPull(p));
 	}
@@ -335,26 +322,19 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async getChecks(ref: string): Promise<CheckSummary> {
 		const sha = encodeURIComponent(ref);
-		const runPages = await this.api<{ check_runs: JsonCheckRun[] }[]>("getChecks", `${this.base}/commits/${sha}/check-runs?per_page=100`, {
-			paginate: true,
-			pages: true,
-		});
-		const statusPages = await this.api<{ statuses: JsonStatus[] }[]>("getChecks", `${this.base}/commits/${sha}/status?per_page=100`, {
-			paginate: true,
-			pages: true,
-		});
+		const paged: ApiCall = { paginate: true, pages: true };
+		const [runPages, statusPages] = await Promise.all([
+			this.api<{ check_runs: JsonCheckRun[] }[]>("getChecks", `${this.base}/commits/${sha}/check-runs?per_page=100`, paged),
+			this.api<{ statuses: JsonStatus[] }[]>("getChecks", `${this.base}/commits/${sha}/status?per_page=100`, paged),
+		]);
 		const checks: Check[] = [
 			...runPages.flatMap((page) => page.check_runs.map((r) => withUrl({ name: r.name, state: runState(r) }, r.details_url))),
-			...statusPages.flatMap((page) => page.statuses.map((s) => withUrl({ name: s.context, state: statusState(s.state) }, s.target_url))),
+			...statusPages.flatMap((page) => page.statuses.map((s) => withUrl({ name: s.context, state: toCheckState(s.state) }, s.target_url))),
 		];
 		return { state: overallState(checks), checks };
 	}
 
 	// --- mapping ----------------------------------------------------------
-
-	private owner(): string {
-		return this.base.split("/")[1];
-	}
 
 	private toIssue(raw: JsonIssue): Issue {
 		const body = raw.body ?? "";
@@ -482,12 +462,6 @@ function toComment(raw: JsonComment): Comment {
 	};
 }
 
-function toReviewState(state: string): ReviewState {
-	if (state === "APPROVED") return "approved";
-	if (state === "CHANGES_REQUESTED") return "changes_requested";
-	return "commented";
-}
-
 function withUrl(check: Check, url: string | null): Check {
 	return url ? { ...check, url } : check;
 }
@@ -502,17 +476,4 @@ function runState(run: JsonCheckRun): CheckState {
 		default:
 			return "failure";
 	}
-}
-
-function statusState(state: string): CheckState {
-	if (state === "success") return "success";
-	if (state === "failure" || state === "error") return "failure";
-	return "pending";
-}
-
-function overallState(checks: Check[]): CheckState {
-	if (checks.length === 0) return "none";
-	if (checks.some((c) => c.state === "failure")) return "failure";
-	if (checks.some((c) => c.state === "pending")) return "pending";
-	return "success";
 }
