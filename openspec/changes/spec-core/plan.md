@@ -23,7 +23,7 @@
 | `Result` | new | `{ code: string; severity: "error" \| "warning"; file?: string; section?: string; line?: number; message: string }` | yes |
 | `Frontmatter` | new | `parseFrontmatter(text): { data: Record<string, unknown>; body: Line[]; raw: Line[] }` (raw empty when absent) | no |
 | `matchGlob` / `validateGlob` | new | `matchGlob(pattern: string, path: string): boolean`; `validateGlob(pattern: string): string \| null` (error message or null) | yes |
-| `Spec` | new | `parseSpec(text, capability): Spec`; `serializeSpec(s): string`; `Spec = { capability; paths: string[]; purpose: string; requirements: Requirement[]; lines: Line[] }`; `Requirement = { name; text; line: number; scenarios: Scenario[] }`; `Scenario = { name; line; when: string[]; then: string[] }` | yes |
+| `Spec` | new | `parseSpec(text, capability): Spec`; `serializeSpec(s): string`; `Spec = { capability; paths: string[]; purpose: string; requirements: Requirement[]; lines: Line[] }`; `Requirement = { name; text; line: number; scenarios: Scenario[] }`; `Scenario = { name; line; given: string[]; when: string[]; then: string[] }` | yes |
 | `Decision` | new | `parseDecision(file, text): Decision`; `Decision = { file: string; number: number; slug: string; status: "accepted" \| "superseded"; statusRaw: string; supersededBy?: number; spine: boolean; capabilities: string[]; lines: Line[] }` (`file` = name given to `parseDecision`, used as result file; `statusRaw` = raw front matter status, `""` when absent; both added in review fix to report invalid statuses and real file names); `serializeDecision` | yes |
 | `Glossary` | new | `parseGlossary(text): { entries: { term; definition; line }[]; lines: Line[] }`; `serializeGlossary` | yes |
 | `BareWork` | new | `parseBareWork(text): { entries: { date; files: string[]; summary; line }[]; lines }`; `serializeBareWork` | yes |
@@ -129,6 +129,20 @@
 
 ---
 
+## Task 7: Align spec checks with OpenSpec severities — implements 7
+
+**Covers:** 7.1, 7.2, 7.3
+**Difficulty:** Normal
+**Blocked by:** Task 4, Task 5
+**Files:** modify `src/core/spec.ts`, `src/core/validate-spec.ts`, `tests/core/spec.test.ts`, `tests/core/validate-spec.test.ts`, `tests/commands/validate.test.ts`, `tests/extension.test.ts` if affected
+
+- [ ] **Step 1:** Write failing tests: GIVEN parsed into `given`; `spec-normative` and `spec-when-then` are `warning`; GIVEN+THEN gives no result; THEN-only gives a warning; spec with zero requirements gives error `spec-no-requirements`.
+- [ ] **Step 2:** Implement the parser and validator changes; severity helper `warning(...)` next to `error(...)`.
+- [ ] **Step 3:** Fix affected command tests (warnings alone give exit code 0).
+- [ ] **Step 4:** Run tests and typecheck; commit `fix(core): align spec check severities with OpenSpec`.
+
+---
+
 ## Scenario → test
 
 package-scaffold:
@@ -178,7 +192,10 @@ change-issue-format:
 
 spec-validation:
 - Result shape → `validate-spec.test › result shape`
-- Missing normative word → `validate-spec.test › missing normative word`
+- Missing normative word → `validate-spec.test › missing normative word` (warning)
+- Scenario missing trigger → `validate-spec.test › scenario missing trigger`
+- GIVEN accepted as trigger → `validate-spec.test › given accepted as trigger`
+- Spec without requirements → `validate-spec.test › spec without requirements`
 - Requirement without scenario → `validate-spec.test › requirement without scenario`
 - Scenario missing THEN → `validate-spec.test › scenario missing THEN`
 - Duplicate requirement name → `validate-spec.test › duplicate requirement name`

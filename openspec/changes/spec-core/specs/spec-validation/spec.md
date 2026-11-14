@@ -8,11 +8,11 @@ Every validator SHALL return a list of results `{ code, severity, file or sectio
 - **THEN** the result has a stable `code`, a `severity`, a location, a line (when known) and a message
 
 ### Requirement: Living spec checks
-The validator SHALL report an error when a requirement lacks SHALL or MUST, a requirement has no scenario, a scenario lacks WHEN or THEN, requirement names repeat within a capability, or a `paths` glob is invalid.
+The validator SHALL report an error when a requirement has no scenario, requirement names repeat, a `paths` glob is invalid, or the spec has no requirement. It SHALL report only a warning when a requirement lacks SHALL or MUST, or a scenario lacks a trigger (WHEN or GIVEN) or an outcome (THEN). These severities match the OpenSpec validator in its default mode.
 
 #### Scenario: Missing normative word
 - **WHEN** a requirement text has neither SHALL nor MUST
-- **THEN** an error is reported at that requirement
+- **THEN** a warning is reported at that requirement and no error
 
 #### Scenario: Requirement without scenario
 - **WHEN** a requirement has no scenario
@@ -20,7 +20,15 @@ The validator SHALL report an error when a requirement lacks SHALL or MUST, a re
 
 #### Scenario: Scenario missing THEN
 - **WHEN** a scenario has WHEN but no THEN
-- **THEN** an error is reported
+- **THEN** a warning is reported and no error
+
+#### Scenario: Scenario missing trigger
+- **WHEN** a scenario has THEN but neither WHEN nor GIVEN
+- **THEN** a warning is reported and no error
+
+#### Scenario: GIVEN accepted as trigger
+- **WHEN** a scenario has GIVEN and THEN but no WHEN
+- **THEN** no result is reported for that scenario
 
 #### Scenario: Duplicate requirement name
 - **WHEN** two requirements in one capability share a name
@@ -28,6 +36,10 @@ The validator SHALL report an error when a requirement lacks SHALL or MUST, a re
 
 #### Scenario: Invalid paths glob
 - **WHEN** front matter `paths` contains `src/{a,b`
+- **THEN** an error is reported
+
+#### Scenario: Spec without requirements
+- **WHEN** a spec has no requirement at all
 - **THEN** an error is reported
 
 #### Scenario: Valid spec

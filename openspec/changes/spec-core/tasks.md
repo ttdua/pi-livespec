@@ -50,3 +50,12 @@ Blocked by: 5
 - [x] 6.1 Add `src/commands/migrate.ts`: collect only `openspec/specs/*/spec.md`, pre-check conflicts, `git mv` those files, report; touch nothing else
 - [x] 6.2 Tests on temp git repos: move, only spec files moved (other files stay), conflict refusal, nothing to migrate
 - [x] 6.3 Copy only the `spec.md` files of pi-superspec's `openspec/specs` into a scratch git repo, run migrate then validate; record warnings in the verify record
+
+## 7. Align spec checks with OpenSpec severities
+
+Blocked by: 4, 5
+
+- [ ] 7.1 Parse GIVEN lines into `Scenario.given` in `src/core/spec.ts`
+- [ ] 7.2 Make `spec-normative` and `spec-when-then` warnings; accept GIVEN as a trigger; add error `spec-no-requirements` in `src/core/validate-spec.ts`
+- [ ] 7.3 Update tests and the command tests so errors and exit status follow the new severities; re-run migrate then validate on the pi-superspec specs
+
