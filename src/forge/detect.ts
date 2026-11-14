@@ -23,6 +23,8 @@ export interface DetectDeps {
 interface RemoteRef {
 	/** Lower-cased host name, without port. */
 	host: string;
+	/** Host plus the http(s) port when the remote carries one; never an SSH daemon port. */
+	authority: string;
 	/** Server root used for the Gitea probe, e.g. `https://git.example.org`. */
 	baseUrl: string;
 	owner: string;
@@ -77,7 +79,7 @@ export async function detectForge(repoRoot: string, deps: Partial<DetectDeps> = 
 		return giteaFor(config.giteaUrl ?? `https://${config.host}`, repo, resolved);
 	}
 	if (config.forge === "github" || remote.host === "github.com" || config.githubHosts.includes(remote.host)) {
-		return new GitHubForge({ ghPath: "gh", repo, exec: resolved.exec, ...(remote.host === "github.com" ? {} : { hostname: remote.host }) });
+		return new GitHubForge({ ghPath: "gh", repo, exec: resolved.exec, ...(remote.host === "github.com" ? {} : { hostname: remote.authority }) });
 	}
 	if (config.forge === "gitea") {
 		return giteaFor(config.giteaUrl ?? remote.baseUrl, repo, resolved);
@@ -103,6 +105,7 @@ export function parseRemote(raw: string): RemoteRef | null {
 	let host: string;
 	let path: string;
 	let baseUrl: string;
+	let authority: string;
 
 	if (url.includes("://")) {
 		let parsed: URL;
@@ -118,18 +121,25 @@ export function parseRemote(raw: string): RemoteRef | null {
 		// An ssh port is the SSH daemon's, not the web server's; only http(s) keeps it.
 		const webScheme = scheme === "http" || scheme === "https" ? scheme : "https";
 		const port = webScheme === scheme && parsed.port ? `:${parsed.port}` : "";
-		baseUrl = `${webScheme}://${host}${port}`;
+		authority = `${host}${port}`;
+		baseUrl = `${webScheme}://${authority}`;
 	} else {
 		const match = SCP_LIKE_REMOTE.exec(url);
 		if (!match) return null;
 		host = match[1].toLowerCase();
 		path = match[2];
+		authority = host;
 		baseUrl = `https://${host}`;
 	}
 
 	const segments = path.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/, "").split("/");
 	if (segments.length !== 2 || segments.some((segment) => segment === "")) return null;
-	return { host, baseUrl, owner: segments[0], repo: segments[1] };
+	return { host, authority, baseUrl, owner: segments[0], repo: segments[1] };
+}
+
+/** Drops a trailing `:port` from a host entry; bracketed or bare IPv6 literals are left alone. */
+function stripPort(host: string): string {
+	return host.replace(/^([^:[\]]+):\d+$/, "$1");
 }
 
 /** Reads the optional project config. A missing file means no configuration. */
@@ -155,7 +165,7 @@ function parseConfig(text: string | undefined): ProjectConfig {
 	return {
 		forge,
 		host: typeof raw.host === "string" ? raw.host.toLowerCase() : undefined,
-		githubHosts: githubHosts.map((host) => host.toLowerCase()),
+		githubHosts: githubHosts.map((host) => stripPort(host.trim().toLowerCase())),
 		giteaUrl: typeof raw.giteaUrl === "string" ? raw.giteaUrl : undefined,
 	};
 }

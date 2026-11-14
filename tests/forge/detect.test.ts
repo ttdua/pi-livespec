@@ -96,6 +96,45 @@ describe("detectForge", () => {
 		expect(await hostArgsOf("https://github.com/acme/widgets.git")).not.toContain("--hostname");
 	});
 
+	describe("GitHub Enterprise authority", () => {
+		/** Returns the `--hostname` value of each gh call made by whoami(). */
+		const hostnamesOf = async (origin: string, config: string): Promise<string[]> => {
+			const values: string[] = [];
+			const { deps } = baseDeps({ origin, config });
+			const gitExec = deps.exec;
+			deps.exec = async (file, args, input) => {
+				if (file === "git") return gitExec(file, args, input);
+				const at = args.indexOf("--hostname");
+				values.push(at === -1 ? "<none>" : args[at + 1]);
+				return { stdout: JSON.stringify({ login: "bot" }), stderr: "", code: 0 };
+			};
+			await (await detectForge(REPO, deps)).whoami();
+			return values;
+		};
+
+		it("keeps the https port in the hostname for gh auth status and gh api", async () => {
+			const values = await hostnamesOf("https://ghe.example:8443/acme/widgets.git", "forge: github\n");
+			expect(values.length).toBeGreaterThanOrEqual(2);
+			expect(new Set(values)).toEqual(new Set(["ghe.example:8443"]));
+		});
+
+		it("matches githubHosts by host without port and by entry written with port", async () => {
+			const origin = "https://ghe.example:8443/acme/widgets.git";
+			for (const entry of ["ghe.example", "ghe.example:8443"]) {
+				const values = await hostnamesOf(origin, `githubHosts:\n  - ${entry}\n`);
+				expect(new Set(values)).toEqual(new Set(["ghe.example:8443"]));
+			}
+		});
+
+		it("never carries an ssh daemon port into the hostname", async () => {
+			for (const origin of ["ssh://git@ghe.example:2222/acme/widgets.git", "git@ghe.example:acme/widgets.git"]) {
+				const values = await hostnamesOf(origin, "forge: github\n");
+				expect(values.length).toBeGreaterThanOrEqual(2);
+				expect(new Set(values)).toEqual(new Set(["ghe.example"]));
+			}
+		});
+	});
+
 	it("selects Gitea by config without probing", async () => {
 		const { deps, probe } = baseDeps({
 			origin: "git@gitea.example.org:acme/widgets.git",
