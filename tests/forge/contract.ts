@@ -102,9 +102,9 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				expect(result.status).toBe("written");
 				if (result.status === "written") {
-					expect(result.issue.body).toBe("mine");
-					expectVersion(result.issue);
-					expect(result.issue.version).not.toBe(read.version);
+					expect(result.item.body).toBe("mine");
+					expectVersion(result.item);
+					expect(result.item.version).not.toBe(read.version);
 					expect(["strict", "best-effort"]).toContain(result.check);
 				}
 				expect(await w.bodyOf(n)).toBe("mine");
@@ -117,9 +117,9 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expectVersion(initial);
 				const first = await w.forge.updateIssueBody(n, "v1", initial.version);
 				if (first.status !== "written") throw new Error("first write was not written");
-				expectVersion(first.issue);
+				expectVersion(first.item);
 
-				const second = await w.forge.updateIssueBody(n, "v2", first.issue.version);
+				const second = await w.forge.updateIssueBody(n, "v2", first.item.version);
 
 				expect(second.status).toBe("written");
 				expect(await w.bodyOf(n)).toBe("v2");
@@ -192,6 +192,10 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				const result = await w.forge.updateComment(created.id, "edited", created.version);
 				expect(result.status).toBe("written");
+				if (result.status === "written") {
+					expect(result.item.body).toBe("edited");
+					expectVersion(result.item);
+				}
 				expect(await w.commentBodyOf(created.id)).toBe("edited");
 				expect((await w.forge.listComments(n))[0].body).toBe("edited");
 			});
@@ -302,6 +306,11 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				const result = await w.forge.updatePullRequest(created.number, { title: "Add A2", body: "new body" }, got.version);
 				expect(result.status).toBe("written");
+				if (result.status === "written") {
+					expect(result.item).toMatchObject({ title: "Add A2", body: "new body" });
+					expectVersion(result.item);
+					expect(result.item.version).not.toBe(got.version);
+				}
 				const after = await w.forge.getPullRequest(created.number);
 				expect(after).toMatchObject({ title: "Add A2", body: "new body" });
 				expect(after.version).not.toBe(got.version);

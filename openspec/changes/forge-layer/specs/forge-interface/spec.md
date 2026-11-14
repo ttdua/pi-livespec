@@ -20,7 +20,7 @@ The package SHALL export a `Forge` interface with `kind` (`github` or `gitea`) a
 
 #### Scenario: Current version edit
 - **WHEN** the caller passes the version it just read
-- **THEN** the result is `written` and the returned issue has a new version
+- **THEN** the result is `written` and the returned `item` has a version different from the one passed in
 
 ### Requirement: Failures are thrown, not blocked by server version
 Transport, authentication and HTTP failures SHALL throw `ForgeError` with a `code` of `unreachable`, `auth`, `http`, `readonly` or `unsupported`. An adapter MUST NOT refuse an operation only because of the server version; only a failed call blocks.

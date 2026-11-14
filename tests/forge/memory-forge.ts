@@ -297,7 +297,7 @@ class MemoryForge implements Forge {
 		return this.view(record);
 	}
 
-	async updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult> {
+	async updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult<Issue>> {
 		this.guard("updateIssueBody");
 		const issue = this.s.issue(n);
 		const current = toVersion(issue.rev);
@@ -306,7 +306,7 @@ class MemoryForge implements Forge {
 		}
 		issue.body = body;
 		this.s.touch(issue);
-		return { status: "written", issue: this.view(issue), check: "strict" };
+		return { status: "written", item: this.view(issue), check: "strict" };
 	}
 
 	async closeIssue(n: number): Promise<void> {
@@ -352,13 +352,13 @@ class MemoryForge implements Forge {
 	}
 
 	/** Comment edits are last-write-wins: `expect` is not enforced. */
-	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult> {
+	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
 		this.guard("updateComment");
 		const comment = this.s.comment(id);
 		comment.body = body;
 		comment.rev += 1;
 		comment.updatedAt = this.s.tick();
-		return { status: "written", issue: this.view(this.s.issue(comment.issue)), check: "best-effort" };
+		return { status: "written", item: commentView(comment), check: "best-effort" };
 	}
 
 	async findOpenPullRequest(head: string): Promise<PullRequest | null> {
@@ -398,7 +398,7 @@ class MemoryForge implements Forge {
 		return this.pullView(record);
 	}
 
-	async updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult> {
+	async updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult<PullRequest>> {
 		this.guard("updatePullRequest");
 		const pull = this.s.pull(n);
 		const current = toVersion(pull.rev);
@@ -408,7 +408,7 @@ class MemoryForge implements Forge {
 		if (p.title !== undefined) pull.title = p.title;
 		if (p.body !== undefined) pull.body = p.body;
 		pull.rev += 1;
-		return { status: "written", issue: pullAsIssue(pull), check: "strict" };
+		return { status: "written", item: this.pullView(pull), check: "strict" };
 	}
 
 	async listReviewComments(pr: number): Promise<ReviewComment[]> {
@@ -487,20 +487,6 @@ function commentView(c: CommentRecord): Comment {
 		createdAt: c.createdAt,
 		updatedAt: c.updatedAt,
 		version: toVersion(c.rev),
-	};
-}
-
-/** `WriteResult.written` carries an `Issue`, so a pull request edit is reported in that shape. */
-function pullAsIssue(p: PullRecord): Issue {
-	return {
-		number: p.number,
-		title: p.title,
-		body: p.body,
-		labels: [],
-		state: p.state,
-		author: BOT_LOGIN,
-		updatedAt: "",
-		version: toVersion(p.rev),
 	};
 }
 

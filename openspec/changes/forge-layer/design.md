@@ -22,7 +22,7 @@
 
 **Gitea capability is detected per response, never by version number.** If the issue JSON has `content_version`, send it and map 409 to conflict. If absent, use the GitHub-style re-read check and return `check: "best-effort"` in `WriteResult`. Nothing is blocked because of server version; only a real failed call blocks. Reason: user feedback; avoids guessing a minimum version. Gitea releases that have the field are noted in the smoke record for information only.
 
-**Write result is a union, errors are thrown.** `WriteResult = {status:"written", issue, check:"strict"|"best-effort"} | {status:"conflict", current: Version, changed: string[]}`. Transport, auth and HTTP failures throw `ForgeError` with `code` in `unreachable | auth | http | readonly | unsupported`. Reason: a conflict is an expected outcome the engine handles; the rest are failures.
+**Write result is a union, typed per entity, errors are thrown.** `WriteResult<T> = {status:"written", item: T, check:"strict"|"best-effort"} | {status:"conflict", current: Version, changed: string[]}`, with `T` = `Issue`, `Comment` or `PullRequest` per edit method (user decision). `written.item` is the entity after the write. Transport, auth and HTTP failures throw `ForgeError` with `code` in `unreachable | auth | http | readonly | unsupported`. Reason: a conflict is an expected outcome the engine handles; the rest are failures.
 
 **Comments are last-write-wins.** `updateComment` takes a `Version` (updated-at hash) and re-reads on both forges, best-effort, but the check that matters is ownership: the plugin edits only comments carrying its marker and account.
 
@@ -38,7 +38,7 @@
 
 - [GitHub re-read window] → accepted, documented, covered by the `check` field; the caller always compares against its own read.
 - [Fake servers drift from real APIs] → manual smoke run per forge recorded in the change; probe (g) facts encoded in the fake.
-- [Gitea without `content_version` is best-effort] → `WriteResult.check` makes it visible; no block.
+- [Gitea without `content_version` is best-effort] → `WriteResult<T>.check` makes it visible; no block.
 - [`gh` output format changes] → use `gh api` JSON only, never human-readable output.
 - [Large module] → split by responsibility: `types`, `errors`, `markers`, `labels`, `cache`, `github`, `gitea`, `detect`.
 

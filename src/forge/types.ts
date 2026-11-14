@@ -83,14 +83,16 @@ export interface CheckSummary {
 }
 
 /**
- * `written`: the body was sent. `check` says how strong the concurrency
- * check was: `strict` means the forge enforced it, `best-effort` means a
- * re-read and compare only.
+ * Result of an edit that takes `expect`, typed per entity (user decision).
+ * `written`: `item` is the entity as the forge holds it after the write, with
+ * its new `version`. `check` says how strong the concurrency check was:
+ * `strict` means the forge enforced it, `best-effort` means a re-read and
+ * compare only.
  * `conflict`: nothing was written; `changed` names what differs from the
  * caller's version.
  */
-export type WriteResult =
-	| { status: "written"; issue: Issue; check: "strict" | "best-effort" }
+export type WriteResult<T extends { version: Version }> =
+	| { status: "written"; item: T; check: "strict" | "best-effort" }
 	| { status: "conflict"; current: Version; changed: string[] };
 
 /**
@@ -107,7 +109,7 @@ export interface Forge {
 	searchIssues(q: IssueQuery): Promise<Issue[]>;
 	getPermission(login: string): Promise<"none" | "read" | "write" | "admin">;
 	createIssue(i: { title: string; body: string; labels: string[] }): Promise<Issue>;
-	updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult>;
+	updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult<Issue>>;
 	closeIssue(n: number): Promise<void>;
 	reopenIssue(n: number): Promise<void>;
 	addLabels(n: number, labels: string[]): Promise<void>;
@@ -115,7 +117,7 @@ export interface Forge {
 
 	listComments(n: number): Promise<Comment[]>;
 	createComment(n: number, body: string): Promise<Comment>;
-	updateComment(id: string, body: string, expect: Version): Promise<WriteResult>;
+	updateComment(id: string, body: string, expect: Version): Promise<WriteResult<Comment>>;
 
 	findOpenPullRequest(head: string): Promise<PullRequest | null>;
 	getPullRequest(n: number): Promise<PullRequest>;
@@ -123,7 +125,7 @@ export interface Forge {
 	getPullRequestFiles(pr: number): Promise<string[]>;
 	listReviews(pr: number): Promise<Review[]>;
 	createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest>;
-	updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult>;
+	updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult<PullRequest>>;
 	listReviewComments(pr: number): Promise<ReviewComment[]>;
 	createReviewComment(pr: number, c: { path: string; line: number; body: string }): Promise<void>;
 
