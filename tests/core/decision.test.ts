@@ -20,6 +20,15 @@ describe("decision.test", () => {
 		expect(d.supersededBy).toBeUndefined();
 	});
 
+	it("CRLF front matter read and round trip", () => {
+		const text = "---\r\nstatus: superseded\r\nsuperseded_by: 3\r\n---\r\n# Title\r\n";
+		const d = parseDecision("specs/decisions/0004-crlf.md", text);
+		expect(d.status).toBe("superseded");
+		expect(d.supersededBy).toBe(3);
+		expect(d.slug).toBe("crlf");
+		expect(serializeDecision(d)).toBe(text);
+	});
+
 	it("spine and capabilities read", () => {
 		const d = parseDecision("0010-y.md", "---\nstatus: accepted\nspine: true\ncapabilities: [a, b]\n---\n");
 		expect(d.number).toBe(10);

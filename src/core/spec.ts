@@ -16,6 +16,25 @@ const REQUIREMENT = /^### Requirement:\s*(.*?)\s*$/;
 const SCENARIO = /^#### Scenario:\s*(.*?)\s*$/;
 const WHEN = /^\s*[-*]\s+\*\*WHEN\*\*\s*(.*?)\s*$/;
 const THEN = /^\s*[-*]\s+\*\*THEN\*\*\s*(.*?)\s*$/;
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
+
+type Fence = { char: string; len: number };
+
+/** Opens a fenced code block; a backtick fence's info string may not contain backticks. */
+function openFence(t: string): Fence | undefined {
+	const m = FENCE_OPEN.exec(t);
+	if (!m) return undefined;
+	const marker = m[1] ?? "";
+	if (marker[0] === "`" && (m[2] ?? "").includes("`")) return undefined;
+	return { char: marker[0] ?? "", len: marker.length };
+}
+
+/** A closing fence uses the same character, at least the opening length, and nothing else. */
+function closesFence(t: string, f: Fence): boolean {
+	const m = FENCE_CLOSE.exec(t);
+	return m !== null && m[1]?.[0] === f.char && (m[1]?.length ?? 0) >= f.len;
+}
 
 /** Parses a living spec. `lines` keeps every original line, so serializing is byte-exact. */
 export function parseSpec(text: string, capability: string): Spec {
@@ -28,8 +47,21 @@ export function parseSpec(text: string, capability: string): Spec {
 	let section = "";
 	let req: Requirement | undefined;
 	let scenario: Scenario | undefined;
+	let fence: Fence | undefined;
 	for (let i = fm.raw.length; i < lines.length; i++) {
 		const t = lines[i]?.text ?? "";
+		// Fence lines (open, body, close) are never structure; they stay as text in their section.
+		const wasFenced = fence !== undefined;
+		if (fence) {
+			if (closesFence(t, fence)) fence = undefined;
+		} else {
+			fence = openFence(t);
+		}
+		if (wasFenced || fence) {
+			if (section === "Purpose") purpose.push(t);
+			else if (section === "Requirements" && req && !scenario) bodies[bodies.length - 1]?.push(t);
+			continue;
+		}
 		const h2 = H2.exec(t);
 		if (h2) {
 			section = h2[1]?.trim() ?? "";

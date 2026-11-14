@@ -54,6 +54,83 @@ describe("spec", () => {
 		expect(spec.requirements).toHaveLength(1);
 	});
 
+	it("fenced requirement header is not structure", () => {
+		const text = [
+			"## Requirements",
+			"### Requirement: Real",
+			"The system SHALL do x.",
+			"",
+			"```markdown",
+			"### Requirement: Example only",
+			"#### Scenario: fake",
+			"- **WHEN** fake",
+			"- **THEN** fake",
+			"```",
+			"",
+			"#### Scenario: real",
+			"- **WHEN** a",
+			"- **THEN** b",
+			"",
+		].join("\n");
+		const spec = parseSpec(text, "x");
+		expect(serializeSpec(spec)).toBe(text);
+		expect(spec.requirements.map((r) => r.name)).toEqual(["Real"]);
+		expect(spec.requirements[0]?.scenarios.map((s) => s.name)).toEqual(["real"]);
+		expect(spec.requirements[0]?.text).toContain("### Requirement: Example only");
+	});
+
+	it("fenced level-2 heading does not end Requirements", () => {
+		const text = [
+			"## Requirements",
+			"### Requirement: Real",
+			"~~~",
+			"## Notes",
+			"~~~",
+			"#### Scenario: real",
+			"- **WHEN** a",
+			"- **THEN** b",
+			"",
+		].join("\n");
+		const spec = parseSpec(text, "x");
+		expect(serializeSpec(spec)).toBe(text);
+		expect(spec.requirements[0]?.scenarios).toHaveLength(1);
+		expect(spec.requirements[0]?.scenarios[0]?.then).toEqual(["b"]);
+	});
+
+	it("fence closes only on matching char and length", () => {
+		const text = [
+			"## Requirements",
+			"### Requirement: Real",
+			"````",
+			"~~~",
+			"```",
+			"### Requirement: Fake",
+			"````",
+			"#### Scenario: real",
+			"- **WHEN** a",
+			"- **THEN** b",
+			"",
+		].join("\n");
+		const spec = parseSpec(text, "x");
+		expect(spec.requirements.map((r) => r.name)).toEqual(["Real"]);
+		expect(spec.requirements[0]?.scenarios.map((s) => s.name)).toEqual(["real"]);
+	});
+
+	it("empty input", () => {
+		const spec = parseSpec("", "x");
+		expect(spec.requirements).toEqual([]);
+		expect(spec.purpose).toBe("");
+		expect(serializeSpec(spec)).toBe("");
+	});
+
+	it("spec without Requirements section", () => {
+		const text = "## Purpose\nOnly a purpose.\n";
+		const spec = parseSpec(text, "x");
+		expect(spec.purpose).toBe("Only a purpose.");
+		expect(spec.requirements).toEqual([]);
+		expect(serializeSpec(spec)).toBe(text);
+	});
+
 	it("last scenario without trailing newline", () => {
 		const text = fixture.trimEnd();
 		const spec = parseSpec(text, "x");
