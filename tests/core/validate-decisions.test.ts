@@ -20,6 +20,25 @@ describe("validate-decisions.test", () => {
 		expect(r.map((x) => x.code)).toEqual(["decision-superseded"]);
 	});
 
+	it("missing status is reported", () => {
+		const r = validateDecisions([d("0001-a.md", "spine: false")]);
+		expect(r.map((x) => x.code)).toEqual(["decision-status"]);
+		expect(r[0]?.file).toBe("specs/decisions/0001-a.md");
+	});
+
+	it("bogus status is reported", () => {
+		const r = validateDecisions([d("0001-a.md", "status: maybe")]);
+		expect(r.map((x) => x.code)).toEqual(["decision-status"]);
+		expect(r[0]?.message).toContain("accepted");
+	});
+
+	it("non-numbered file reports the real file name", () => {
+		const r = validateDecisions([d("notes.md", "status: accepted")]);
+		expect(r.map((x) => x.code)).toEqual(["decision-number"]);
+		expect(r[0]?.file).toBe("specs/decisions/notes.md");
+		expect(r[0]?.message).not.toContain("NaN");
+	});
+
 	it("valid supersession", () => {
 		const r = validateDecisions([
 			d("0001-a.md", "status: superseded\nsuperseded_by: 2"),

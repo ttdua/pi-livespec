@@ -2,9 +2,14 @@ import { parseFrontmatter } from "./frontmatter.ts";
 import { type Line, joinLines, splitLines } from "./lines.ts";
 
 export type Decision = {
+	/** File name (or path) the decision was parsed from; used verbatim in results. */
+	file: string;
 	number: number;
 	slug: string;
+	/** Normalized: anything other than `superseded` reads as `accepted`; see `statusRaw` for validation. */
 	status: "accepted" | "superseded";
+	/** Raw front matter `status` value, "" when absent. */
+	statusRaw: string;
 	supersededBy?: number;
 	spine: boolean;
 	capabilities: string[];
@@ -29,9 +34,11 @@ export function parseDecision(file: string, text: string): Decision {
 		? data.capabilities.filter((c): c is string => typeof c === "string")
 		: [];
 	return {
+		file,
 		number: m ? Number(m[1]) : Number.NaN,
 		slug: m?.[2] ?? "",
 		status: data.status === "superseded" ? "superseded" : "accepted",
+		statusRaw: typeof data.status === "string" ? data.status : "",
 		...(supersededBy === undefined ? {} : { supersededBy }),
 		spine: data.spine === true,
 		capabilities: caps,

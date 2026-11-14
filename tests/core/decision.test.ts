@@ -29,6 +29,18 @@ describe("decision.test", () => {
 		expect(serializeDecision(d)).toBe(text);
 	});
 
+	it("result keeps the given file name and raw status", () => {
+		const d = parseDecision("specs/decisions/notes.md", "---\nstatus: bogus\n---\n");
+		expect(d.file).toBe("specs/decisions/notes.md");
+		expect(d.statusRaw).toBe("bogus");
+	});
+
+	it("missing status gives empty statusRaw", () => {
+		const d = parseDecision("0005-m.md", "---\nspine: false\n---\n");
+		expect(d.statusRaw).toBe("");
+		expect(d.file).toBe("0005-m.md");
+	});
+
 	it("spine and capabilities read", () => {
 		const d = parseDecision("0010-y.md", "---\nstatus: accepted\nspine: true\ncapabilities: [a, b]\n---\n");
 		expect(d.number).toBe(10);
