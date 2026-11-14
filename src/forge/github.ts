@@ -41,6 +41,8 @@ export interface GitHubForgeOptions {
 	ghPath: string;
 	repo: { owner: string; repo: string };
 	exec?: ExecFn;
+	/** GitHub Enterprise host; when set, `--hostname <host>` is passed to `gh auth status` and every `gh api` call. */
+	hostname?: string;
 }
 
 export const defaultExec: ExecFn = (file, args, input) =>
@@ -130,6 +132,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	private readonly ghPath: string;
 	private readonly exec: ExecFn;
 	private readonly base: string;
+	private readonly hostArgs: string[];
 	private authenticated = false;
 	/** What each version this adapter handed out looked like, to name changed fields on conflict. */
 	private readonly snapshots = new SnapshotStore();
@@ -137,6 +140,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	constructor(opts: GitHubForgeOptions) {
 		this.ghPath = opts.ghPath;
 		this.exec = opts.exec ?? defaultExec;
+		this.hostArgs = opts.hostname ? ["--hostname", opts.hostname] : [];
 		this.base = `repos/${opts.repo.owner}/${opts.repo.repo}`;
 	}
 
@@ -388,7 +392,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	/** `gh auth status`, once per adapter after it has succeeded. */
 	private async ensureAuth(operation: string): Promise<void> {
 		if (this.authenticated) return;
-		const res = await this.run(["auth", "status"]);
+		const res = await this.run(["auth", "status", ...this.hostArgs]);
 		if (res.spawnError !== undefined) throw fail("unreachable", operation, `cannot run gh: ${res.spawnError}`);
 		if (res.code !== 0) {
 			const detail = res.stderr.trim() || res.stdout.trim();
@@ -401,7 +405,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	private async api<T = unknown>(operation: string, route: string, call: ApiCall = {}): Promise<T> {
 		await this.ensureAuth(operation);
 		const method = call.method ?? "GET";
-		const args = ["api", route, "--method", method];
+		const args = ["api", route, "--method", method, ...this.hostArgs];
 		if (call.paginate) args.push("--paginate", "--slurp");
 		const input = call.body === undefined ? undefined : JSON.stringify(call.body);
 		if (input !== undefined) args.push("--input", "-");

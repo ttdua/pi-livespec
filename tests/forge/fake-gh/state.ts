@@ -91,6 +91,8 @@ export interface FakeGhData {
 	permissions: Record<string, PermissionLevel>;
 	statuses: Record<string, StatusRec[]>;
 	calls: CallRec[];
+	/** argv of every fake `gh` invocation (auth checks included), in order. */
+	argvLog: string[][];
 }
 
 export function emptyData(repo: string, login: string): FakeGhData {
@@ -110,6 +112,7 @@ export function emptyData(repo: string, login: string): FakeGhData {
 		permissions: {},
 		statuses: {},
 		calls: [],
+		argvLog: [],
 	};
 }
 

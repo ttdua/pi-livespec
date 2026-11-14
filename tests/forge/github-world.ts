@@ -26,12 +26,17 @@ export class GitHubWorld implements ContractWorld {
 	readonly store: FakeGhStore;
 	private readonly dir: string;
 
-	constructor() {
+	constructor(opts: { hostname?: string } = {}) {
 		this.dir = mkdtempSync(join(tmpdir(), "fake-gh-"));
 		this.store = new FakeGhStore(join(this.dir, "state.json"));
 		this.store.init(emptyData(`${REPO.owner}/${REPO.repo}`, BOT_LOGIN));
 		const exec: ExecFn = (file, args, input) => defaultExecWithState(this.store.path, file, args, input);
-		this.forge = new GitHubForge({ ghPath: FAKE_GH_PATH, repo: REPO, exec });
+		this.forge = new GitHubForge({ ghPath: FAKE_GH_PATH, repo: REPO, exec, hostname: opts.hostname });
+	}
+
+	/** argv of every fake `gh` invocation, in order. */
+	argvLog(): string[][] {
+		return this.store.read().argvLog;
 	}
 
 	/** Calls the adapter has made through the fake `gh api`, in order. */

@@ -76,6 +76,26 @@ describe("detectForge", () => {
 		expect(probe.calls).toEqual([]);
 	});
 
+	it("builds the GitHub adapter with the origin host as hostname for a GHE host, and none for github.com", async () => {
+		const hostArgsOf = async (origin: string, config?: string): Promise<string[]> => {
+			const seen: string[][] = [];
+			const { deps } = baseDeps({ origin, config });
+			const gitExec = deps.exec;
+			deps.exec = async (file, args, input) => {
+				if (file === "git") return gitExec(file, args, input);
+				seen.push(args);
+				return { stdout: JSON.stringify({ login: "bot" }), stderr: "", code: 0 };
+			};
+			await (await detectForge(REPO, deps)).whoami();
+			return seen.flat();
+		};
+
+		const ghe = await hostArgsOf("git@ghe.example.com:acme/widgets.git", "githubHosts:\n  - ghe.example.com\n");
+		expect(ghe.filter((a) => a === "--hostname")).toHaveLength(2);
+		expect(ghe).toContain("ghe.example.com");
+		expect(await hostArgsOf("https://github.com/acme/widgets.git")).not.toContain("--hostname");
+	});
+
 	it("selects Gitea by config without probing", async () => {
 		const { deps, probe } = baseDeps({
 			origin: "git@gitea.example.org:acme/widgets.git",

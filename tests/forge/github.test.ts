@@ -37,6 +37,30 @@ describe("github adapter", () => {
 		expect(w.calls()).toEqual([]);
 	});
 
+	describe("hostname", () => {
+		it("passes --hostname to gh auth status and every gh api call when set", async () => {
+			const w = new GitHubWorld({ hostname: "ghe.example.com" });
+			worlds.push(w);
+			await w.forge.whoami();
+			await w.forge.listLabels();
+
+			const argv = w.argvLog();
+			expect(argv.length).toBeGreaterThanOrEqual(3);
+			expect(argv[0]).toEqual(["auth", "status", "--hostname", "ghe.example.com"]);
+			for (const call of argv.slice(1)) {
+				expect(call[0]).toBe("api");
+				expect(call.slice(call.indexOf("--hostname"), call.indexOf("--hostname") + 2)).toEqual(["--hostname", "ghe.example.com"]);
+			}
+		});
+
+		it("passes no --hostname when unset", async () => {
+			const w = make();
+			await w.forge.whoami();
+			expect(w.argvLog().length).toBeGreaterThanOrEqual(2);
+			expect(w.argvLog().flat()).not.toContain("--hostname");
+		});
+	});
+
 	it("whoami reads the login from gh api user", async () => {
 		const w = make();
 		expect(await w.forge.whoami()).toEqual({ login: BOT_LOGIN });

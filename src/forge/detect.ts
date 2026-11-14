@@ -77,7 +77,7 @@ export async function detectForge(repoRoot: string, deps: Partial<DetectDeps> = 
 		return giteaFor(config.giteaUrl ?? `https://${config.host}`, repo, resolved);
 	}
 	if (config.forge === "github" || remote.host === "github.com" || config.githubHosts.includes(remote.host)) {
-		return new GitHubForge({ ghPath: "gh", repo, exec: resolved.exec });
+		return new GitHubForge({ ghPath: "gh", repo, exec: resolved.exec, ...(remote.host === "github.com" ? {} : { hostname: remote.host }) });
 	}
 	if (config.forge === "gitea") {
 		return giteaFor(config.giteaUrl ?? remote.baseUrl, repo, resolved);

@@ -27,8 +27,11 @@
 | `LabelRepo` (internal) | new | `{ listLabels(): Promise<string[]>; createLabel(name: string): Promise<void> }`; `ensureLabels(repo, labels)`. Adapters in Tasks 4 and 5 implement it; the public `Forge` interface stays unchanged (internal deviation from Task 2, kept to avoid widening the public contract) | no |
 | Label constants | new | `LABEL_LIVESPEC="livespec"`, `phaseLabel(p)="livespec:phase/<p>"`, `LABEL_INITIATIVE`, `LABEL_PARKED` | yes |
 | `CachedForge` | new | `new CachedForge(inner: Forge, opts: {cacheRoot?: string; host; owner; repo}): Forge` | yes |
-| `detectForge` | new | `detectForge(repoRoot: string, deps?: {exec; fetch; env}): Promise<Forge>` | yes |
+| `detectForge` | new | `detectForge(repoRoot: string, deps?: {exec; fetch; env; readFile?; homedir?; platform?}): Promise<Forge>` | yes |
+| `GitHubForgeOptions` | new | `{ghPath; repo; exec?; hostname?: string}`; `hostname` set => `--hostname <host>` on `gh auth status` and every `gh api` | yes |
 | Cache file | new | `<cacheRoot>/<host>/<owner>/<repo>/<issue>.json` = `{issue; version; fetchedAt}` | no |
+
+> Additive: `detectForge` deps gained optional `readFile, homedir, platform`; `GitHubForgeOptions` gained optional `hostname` (GitHub Enterprise; `detectForge` passes the origin host when it is not github.com).
 
 ---
 

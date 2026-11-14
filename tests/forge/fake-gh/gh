@@ -41,7 +41,7 @@ function parseApiArgs(args) {
 		if (arg === "--method" || arg === "-X") opts.method = args[++i].toUpperCase();
 		else if (arg === "-f" || arg === "--raw-field") addField(opts.fields, args[++i], false);
 		else if (arg === "-F" || arg === "--field") addField(opts.fields, args[++i], true);
-		else if (arg === "-H" || arg === "--header") i++;
+		else if (arg === "-H" || arg === "--header" || arg === "--hostname") i++;
 		else if (arg === "--input") {
 			if (args[++i] !== "-") fail("fake gh: only --input - is supported");
 			opts.input = true;
@@ -54,8 +54,18 @@ function parseApiArgs(args) {
 	return opts;
 }
 
-function runAuthStatus(store) {
+function logArgv(data) {
+	data.argvLog = [...(data.argvLog ?? []), process.argv.slice(2)];
+}
+
+function runAuthStatus(store, args) {
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "--hostname") i++;
+		else fail(`fake gh: unknown flag ${args[i]}`);
+	}
 	const data = store.read();
+	logArgv(data);
+	store.write(data);
 	if (data.unreachable) fail(NETWORK_ERROR);
 	if (!data.authenticated) fail("You are not logged into any GitHub hosts. To log in, run: gh auth login");
 	process.stdout.write(`github.com\n  Logged in to github.com account ${data.login}\n`);
@@ -87,7 +97,11 @@ function runApi(store, args) {
 	if (opts.input) body = JSON.parse(readFileSync(0, "utf8"));
 
 	const data = store.read();
-	if (data.unreachable) fail(NETWORK_ERROR);
+	logArgv(data);
+	if (data.unreachable) {
+		store.write(data);
+		fail(NETWORK_ERROR);
+	}
 	data.calls.push({ method, route: opts.route, body: opts.input || method !== "GET" ? body : undefined });
 	let result;
 	try {
@@ -117,6 +131,6 @@ const statePath = process.env.FAKE_GH_STATE;
 if (!statePath) fail("fake gh: FAKE_GH_STATE is not set");
 const store = new FakeGhStore(statePath);
 const [command, ...rest] = process.argv.slice(2);
-if (command === "auth" && rest[0] === "status") runAuthStatus(store);
+if (command === "auth" && rest[0] === "status") runAuthStatus(store, rest.slice(1));
 else if (command === "api") runApi(store, rest);
 else fail(`fake gh: unsupported command ${command}`);
