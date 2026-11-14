@@ -1,0 +1,103 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { loadConfig } from "../src/config.ts";
+
+let root: string;
+let home: string;
+
+function put(base: string, rel: string, text: string): void {
+	const file = join(base, rel);
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, text);
+}
+const projectFile = (text: string) => put(root, ".pi/livespec/config.yaml", text);
+const userFile = (text: string) => put(home, ".pi/agent/livespec/config.yaml", text);
+
+beforeEach(() => {
+	root = mkdtempSync(join(tmpdir(), "ls-cfg-root-"));
+	home = mkdtempSync(join(tmpdir(), "ls-cfg-home-"));
+});
+afterEach(() => {
+	rmSync(root, { recursive: true, force: true });
+	rmSync(home, { recursive: true, force: true });
+});
+
+describe("loadConfig", () => {
+	test("Unknown key", async () => {
+		projectFile("forge: github\nintegrationBrnach: main\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.forge).toBe("github");
+		expect(warnings.some((w) => w.includes("integrationBrnach"))).toBe(true);
+	});
+
+	test("missing project file means not initialized", async () => {
+		const { project } = await loadConfig(root, home);
+		expect(project).toBeNull();
+	});
+
+	test("empty project file is initialized with defaults", async () => {
+		projectFile("");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false });
+		expect(warnings).toEqual([]);
+	});
+
+	test("reads all project keys", async () => {
+		projectFile(
+			"forge: gitea\nhost: g.example\ngithubHosts: [a.example]\ngiteaUrl: https://g.example\nintegrationBranch: dev\n",
+		);
+		const { project } = await loadConfig(root, home);
+		expect(project).toEqual({
+			forge: "gitea",
+			host: "g.example",
+			githubHosts: ["a.example"],
+			giteaUrl: "https://g.example",
+			integrationBranch: "dev",
+			agentSkillsChannelSet: false,
+		});
+	});
+
+	test("Default channel", async () => {
+		const { user } = await loadConfig(root, home);
+		expect(user.agentSkills.channel).toBe("auto");
+	});
+
+	test("user channel is read", async () => {
+		userFile("agentSkills:\n  channel: pinned\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.agentSkills.channel).toBe("pinned");
+		expect(warnings).toEqual([]);
+	});
+
+	test("invalid channel value is a warning and falls back to auto", async () => {
+		userFile("agentSkills:\n  channel: sometimes\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.agentSkills.channel).toBe("auto");
+		expect(warnings.some((w) => w.includes("sometimes"))).toBe(true);
+	});
+
+	test("project agentSkills.channel is flagged", async () => {
+		projectFile("agentSkills:\n  channel: notify\n");
+		const { project, user } = await loadConfig(root, home);
+		expect(project?.agentSkillsChannelSet).toBe(true);
+		expect(user.agentSkills.channel).toBe("auto");
+	});
+
+	test("invalid YAML warns with the file and uses defaults", async () => {
+		projectFile("forge: [unclosed\n");
+		userFile("agentSkills: {channel\n");
+		const { project, user, warnings } = await loadConfig(root, home);
+		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false });
+		expect(user.agentSkills.channel).toBe("auto");
+		expect(warnings.some((w) => w.includes(join(root, ".pi/livespec/config.yaml")))).toBe(true);
+		expect(warnings.some((w) => w.includes(join(home, ".pi/agent/livespec/config.yaml")))).toBe(true);
+	});
+
+	test("unknown user key warns", async () => {
+		userFile("bogus: 1\n");
+		const { warnings } = await loadConfig(root, home);
+		expect(warnings.some((w) => w.includes("bogus"))).toBe(true);
+	});
+});
