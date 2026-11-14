@@ -22,7 +22,7 @@
 | `Review` / `ReviewComment` / `CheckSummary` | new | `Review {author; state: "approved"\|"changes_requested"\|"commented"; body}`, `ReviewComment {path; line; body; author}`, `CheckSummary {state: "success"\|"failure"\|"pending"\|"none"; checks: {name; state; url?}[]}` | yes |
 | `WriteResult` | new | `{status:"written"; issue; check:"strict"\|"best-effort"} \| {status:"conflict"; current: Version; changed: string[]}` | yes |
 | `ForgeError` | new | `class ForgeError extends Error { code: "unreachable"\|"auth"\|"http"\|"readonly"\|"unsupported"; operation: string; status?: number }` | yes |
-| `Forge` | new | interface from issue #3 with `version` replacing the ETag; `updateIssueBody(n, body, expect: Version): Promise<WriteResult>`; `updateComment(id, body, expect: Version): Promise<WriteResult>` | yes |
+| `Forge` | new | interface from issue #3 with `version` replacing the ETag; `updateIssueBody(n, body, expect: Version): Promise<WriteResult>`; `updatePullRequest(n, patch: {title?; body?}, expect: Version): Promise<WriteResult>` (user decision: matches fail-closed spec; sketch had no `expect`); `updateComment(id, body, expect: Version): Promise<WriteResult>` | yes |
 | `registerKind` / marker API | new | `registerKind(name: string): void`; `writeMarked(kind, id, data): string`; `readMarkedComments(forge, issue): Promise<{comments: MarkedComment[]; warnings: string[]}>` | yes |
 | Label constants | new | `LABEL_LIVESPEC="livespec"`, `phaseLabel(p)="livespec:phase/<p>"`, `LABEL_INITIATIVE`, `LABEL_PARKED` | yes |
 | `CachedForge` | new | `new CachedForge(inner: Forge, opts: {cacheRoot?: string; host; owner; repo}): Forge` | yes |

@@ -123,7 +123,7 @@ export interface Forge {
 	getPullRequestFiles(pr: number): Promise<string[]>;
 	listReviews(pr: number): Promise<Review[]>;
 	createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest>;
-	updatePullRequest(n: number, p: { title?: string; body?: string }): Promise<void>;
+	updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult>;
 	listReviewComments(pr: number): Promise<ReviewComment[]>;
 	createReviewComment(pr: number, c: { path: string; line: number; body: string }): Promise<void>;
 
