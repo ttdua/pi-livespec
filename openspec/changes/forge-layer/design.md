@@ -26,7 +26,7 @@
 
 **Error classification.** 401 and 403 map to `auth`, except GitHub rate-limit 403 which is `http`. Only transport failures (spawn errors, connection, DNS and timeout messages, or a request past its timeout: 30 s per Gitea request, 60 s per `gh` run) are `unreachable`; any other failed `gh` run is `http`, so `CachedForge` does not enter read-only mode for it.
 
-**Comments are last-write-wins.** `updateComment` takes a `Version` (updated-at hash) and re-reads on both forges, best-effort, but the check that matters is ownership: each adapter's `updateComment` re-reads the comment and edits only one carrying the plugin marker and written by `whoami().login`, else throws `ForgeError`. `check` is `strict` only when the forge enforced the precondition itself (Gitea with `content_version`); GitHub is always `best-effort`.
+**Comments are last-write-wins.** `updateComment` takes a `Version` (updated-at hash) and re-reads on both forges, best-effort, but the check that matters is ownership: each adapter's `updateComment` re-reads the comment and edits only one carrying the plugin marker and written by `whoami().login`, else throws `ForgeError`. Comment edits always report `check: "best-effort"`; `strict` applies only to Gitea issue and pull request body edits sent with `content_version`.
 
 **Markers.** First line `<!-- livespec:{kind}:{id} -->`, then one fenced `yaml` block. Parsed with the existing `yaml` package. `readMarkedComments` filters by `whoami().login` and returns `{comments, warnings}`; foreign marked comments become warnings. `registerKind(name)` extends the core kind set; unknown kinds are rejected on write.
 
@@ -42,7 +42,8 @@
 - [Fake servers drift from real APIs] → manual smoke run per forge recorded in the change; probe (g) facts encoded in the fake.
 - [Gitea without `content_version` is best-effort] → `WriteResult<T>.check` makes it visible; no block.
 - [`gh` output format changes] → use `gh api` JSON only, never human-readable output.
-- [Large module] → split by responsibility: `types`, `errors`, `markers`, `labels`, `cache`, `github`, `gitea`, `detect`.
+- [Large module] → split by responsibility: `types`, `errors`, `mapping`, `markers`, `labels`, `snapshots`, `version`, `cache`, `github`, `gitea` (with `gitea-transport`, `gitea-dto`, `tea-config`), `detect`.
+- [Token scope] → GITEA_TOKEN is sent to the host of the detected remote, including plain http remotes; acceptable because the remote is the user's own, documented here.
 
 ## Open Questions
 

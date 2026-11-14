@@ -27,8 +27,11 @@
 | `LabelRepo` (internal) | new | `{ listLabels(): Promise<string[]>; createLabel(name: string): Promise<void> }`; `ensureLabels(repo, labels)`. Adapters in Tasks 4 and 5 implement it; the public `Forge` interface stays unchanged (internal deviation from Task 2, kept to avoid widening the public contract) | no |
 | Label constants | new | `LABEL_LIVESPEC="livespec"`, `phaseLabel(p)="livespec:phase/<p>"`, `LABEL_INITIATIVE`, `LABEL_PARKED` | yes |
 | `CachedForge` | new | `new CachedForge(inner: Forge, opts: {cacheRoot?: string; host; owner; repo}): Forge` | yes |
+| `CachedForge.isReadOnly()` | new | `isReadOnly(): boolean`; true after an `unreachable` failure until a later successful read | yes |
 | `detectForge` | new | `detectForge(repoRoot: string, deps?: {exec; fetch; env; readFile?; homedir?; platform?}): Promise<Forge>` | yes |
 | `GitHubForgeOptions` | new | `{ghPath; repo; exec?; hostname?: string}`; `hostname` set => `--hostname <host>` on `gh auth status` and every `gh api` | yes |
+| `ExecFn` / `ExecResult` | new | `ExecFn = (file: string, args: string[], input?: string) => Promise<ExecResult>`, resolves on any exit, never rejects; `ExecResult = {stdout; stderr; code: number \| null; spawnError?: string}`; the default kills a `gh` run after 60 s and reports it as `spawnError` | yes |
+| `GiteaOptions` | new | `{baseUrl; owner; repo; fetch?; env?; teaConfigPath?; homedir?; platform?; timeoutMs?: number}`; `homedir`/`platform` drive the default `tea` config lookup; `timeoutMs` (default 30 000) aborts one request, response body included | yes |
 | Cache file | new | `<cacheRoot>/<host>/<owner>/<repo>/<issue>.json` = `{issue; version; fetchedAt}` | no |
 
 > Additive: `detectForge` deps gained optional `readFile, homedir, platform`; `GitHubForgeOptions` gained optional `hostname` (GitHub Enterprise; `detectForge` passes the origin host when it is not github.com).
@@ -176,6 +179,7 @@ Files: Modify `docs/architecture.md`; Create `openspec/changes/forge-layer/smoke
 - Written comment shape / Round trip / Registered kind / Unknown kind → `tests/forge/markers.test.ts`
 - Foreign marked comment / Own marked comment / Plain comment → `markers.test.ts` and contract `foreign marker ignored`
 - Edit a foreign comment → contract `foreign comment edit refused`
+- Edit an unmarked own comment → contract `unmarked own comment edit refused`; `gitea.test.ts` `an unmarked own comment is refused with no PATCH sent`
 - Missing label is created / Existing label → `labels.test.ts` and contract `missing label created`
 - Read writes through / Cache deleted → `cache.test.ts`
 - Unreachable read / write / Not cached / HTTP error / Recovery → `cache.test.ts`

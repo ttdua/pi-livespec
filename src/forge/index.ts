@@ -19,7 +19,7 @@ export type {
 	WriteResult,
 } from "./types.ts";
 export { ForgeError, type ForgeErrorCode } from "./errors.ts";
-export { GitHubForge, type GitHubForgeOptions } from "./github.ts";
+export { GitHubForge, type ExecFn, type ExecResult, type GitHubForgeOptions } from "./github.ts";
 export { GiteaForge, type GiteaOptions } from "./gitea.ts";
 export { CachedForge, type CachedForgeOptions } from "./cache.ts";
 export { detectForge, type DetectDeps } from "./detect.ts";
