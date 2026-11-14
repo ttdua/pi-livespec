@@ -46,6 +46,11 @@ export function sectionText(body: string, name: string): string | undefined {
 	return inner.join("\n");
 }
 
+/**
+ * Replaces (or creates) the `## name` section. Lines outside the written region stay byte-identical
+ * (text and eol). The only exception is a single unterminated final line of the body (or the heading
+ * being written) when new lines must follow it: it keeps its text and gains the body's EOL.
+ */
 export function replaceSection(body: string, name: string, content: string): string {
 	const lines = splitLines(body);
 	const eol = eolOf(lines);
@@ -54,7 +59,8 @@ export function replaceSection(body: string, name: string, content: string): str
 		const last = span.end === lines.length;
 		const fresh = contentLines(content, eol, !last);
 		if (last) ensureTerminated(fresh, eol);
-		return joinLines([...lines.slice(0, span.start + 1), ...fresh, ...lines.slice(span.end)]);
+		const heading: Line = { text: lines[span.start]!.text, eol: lines[span.start]!.eol || eol };
+		return joinLines([...lines.slice(0, span.start), heading, ...fresh, ...lines.slice(span.end)]);
 	}
 	return joinLines(insertSection(lines, name, content, eol));
 }
@@ -74,6 +80,11 @@ function insertSection(lines: Line[], name: string, content: string, eol: "\n" |
 	return [...head, ...(needsGap ? [{ text: "", eol }] : []), ...block];
 }
 
+/**
+ * Sets `key: value` in the header (before the first H2). Other lines stay byte-identical; the only
+ * exception is an unterminated final line of the body that a new line must follow, which keeps its
+ * text and gains the body's EOL.
+ */
 export function setHeaderLine(body: string, key: string, value: string): string {
 	const lines = splitLines(body);
 	const eol = eolOf(lines);

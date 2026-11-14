@@ -52,3 +52,53 @@ describe("sections", () => {
 		expect(out.replace(/\r\n/g, "")).not.toContain("\n");
 	});
 });
+
+describe("sections: fix round 1", () => {
+	it("replaceSection terminates an unterminated heading before its content", () => {
+		expect(replaceSection("## Proposal", "Proposal", "P.")).toBe("## Proposal\nP.\n");
+		expect(replaceSection("## Proposal", "Proposal", "P.")).not.toContain("ProposalP.");
+	});
+
+	it("replaceSection terminates an unterminated heading with the body EOL", () => {
+		expect(replaceSection("## Proposal", "Proposal", "P.")).toBe("## Proposal\nP.\n");
+		expect(replaceSection("A\r\n## Proposal", "Proposal", "P.")).toBe("A\r\n## Proposal\r\nP.\r\n");
+	});
+
+	it("replaceSection keeps lines outside the written region identical as Line[]", () => {
+		const src = "Base: x\r\n\r\n## Proposal\r\nP.\r\n\r\n## Questions\r\nQ\r\n## Units\nU";
+		const out = replaceSection(src, "Proposal", "New.");
+		const a = splitLines(src);
+		const b = splitLines(out);
+		// prefix up to and including heading, suffix from "## Questions" on
+		expect(b.slice(0, 3)).toEqual(a.slice(0, 3));
+		expect(b.slice(-4)).toEqual(a.slice(-4));
+		expect(b.at(-1)).toEqual({ text: "U", eol: "" });
+	});
+
+	it("replaceSection appends after an unterminated final line, which only gains the body EOL", () => {
+		const out = replaceSection("Base: x\r\n\r\n## Proposal\r\nP.", "Design", "D.");
+		expect(splitLines(out)).toEqual([
+			{ text: "Base: x", eol: "\r\n" },
+			{ text: "", eol: "\r\n" },
+			{ text: "## Proposal", eol: "\r\n" },
+			{ text: "P.", eol: "\r\n" },
+			{ text: "", eol: "\r\n" },
+			{ text: "## Design", eol: "\r\n" },
+			{ text: "D.", eol: "\r\n" },
+		]);
+	});
+
+	it("setHeaderLine only terminates the unterminated final line when a new line must follow", () => {
+		expect(setHeaderLine("Base: x", "PR", "#1")).toBe("Base: x\nPR: #1\n");
+		expect(setHeaderLine("Base: x\r\nB: y\r\n\r\n## P\r\nz", "PR", "#1")).toBe(
+			"Base: x\r\nB: y\r\nPR: #1\r\n\r\n## P\r\nz",
+		);
+		expect(setHeaderLine("Base: x\nPR: old", "PR", "#2")).toBe("Base: x\nPR: #2");
+	});
+
+	it("replaceSection keeps CRLF endings when replacing an existing section", () => {
+		const src = "Base: x\r\n\r\n## Proposal\r\nP.\r\n\r\n## Questions\r\nQ\r\n";
+		const out = replaceSection(src, "Proposal", "N1\nN2");
+		expect(out).toBe("Base: x\r\n\r\n## Proposal\r\nN1\r\nN2\r\n\r\n## Questions\r\nQ\r\n");
+	});
+});
