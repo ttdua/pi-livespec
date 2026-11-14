@@ -38,10 +38,10 @@ Blocked by: 2, 3
 
 Blocked by: 4
 
-- [ ] 5.1 Add `src/commands/validate.ts`: read `specs/`, run checks, format results, exit status
-- [ ] 5.2 Add `src/tools/spec-validate.ts` and register it in `src/extension.ts`
-- [ ] 5.3 Dispatch `/livespec` subcommands in `src/extension.ts`; keep bare command printing the version; usage for unknown
-- [ ] 5.4 Update `tests/extension.test.ts` and add command tests on temp git repos
+- [x] 5.1 Add `src/commands/validate.ts`: read `specs/`, run checks, format results, exit status
+- [x] 5.2 Add `src/tools/spec-validate.ts` and register it in `src/extension.ts`
+- [x] 5.3 Dispatch `/livespec` subcommands in `src/extension.ts`; keep bare command printing the version; usage for unknown
+- [x] 5.4 Update `tests/extension.test.ts` and add command tests on temp git repos
 
 ## 6. Migrate command
 
