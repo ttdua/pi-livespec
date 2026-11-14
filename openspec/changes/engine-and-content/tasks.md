@@ -11,7 +11,7 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 Add `src/core/sections.ts` (`sectionText`, `replaceSection` with canonical order, `setHeaderLine`) with byte-preservation tests over `tests/fixtures/change-body.md`, `src/core/templates.ts` with `TEMPLATE_MARKER`, and `src/core/names.ts` with `isKebabName`
+- [x] 2.1 Add `src/core/sections.ts` (`sectionText`, `replaceSection` with canonical order, `setHeaderLine`) with byte-preservation tests over `tests/fixtures/change-body.md`, `src/core/templates.ts` with `TEMPLATE_MARKER`, and `src/core/names.ts` with `isKebabName`
 
 ## 3. Config files and git runner
 
