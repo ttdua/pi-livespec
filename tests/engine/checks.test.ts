@@ -126,7 +126,17 @@ describe("runChecks", () => {
 			{ root, git: NO_GIT },
 		);
 		expect(results).toEqual([
-			{ code: "spec-missing", severity: "error", file: "specs/rate-limit/spec.md", message: "specs/rate-limit/spec.md does not exist" },
+			{ check: "spec-format", code: "spec-missing", severity: "error", file: "specs/rate-limit/spec.md", message: "specs/rate-limit/spec.md does not exist" },
 		]);
+	});
+
+	test("results are tagged with the named check that produced them", async () => {
+		registerCheck("depends-merged", async () => [{ code: "dep-open", severity: "error", message: "Change #34 is not merged." }]);
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["depends-merged", "units-format", "not-registered"] } : p)) };
+		const state = stateFor("plan", { change: parseChange(withU2(FIXTURE_BODY)) });
+		const results = await runChecks(custom, state, { root: "/nowhere", git: NO_GIT });
+		expect(results[0]).toEqual({ check: "depends-merged", code: "dep-open", severity: "error", message: "Change #34 is not merged." });
+		expect(results.filter((r) => r.code === "units-format").every((r) => r.check === "units-format")).toBe(true);
+		expect(results.at(-1)).toEqual(expect.objectContaining({ check: "not-registered", code: "check-unregistered" }));
 	});
 });

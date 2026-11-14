@@ -3,9 +3,8 @@
 // a decision wins. The sentences are fixed copy for a stable card and tests.
 
 import type { Question, Unit } from "../core/change.ts";
-import type { Result } from "../core/result.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
-import type { ChangeState, NextStep, SectionName } from "./state-types.ts";
+import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
 type Decision = { next: string; advance?: string };
 
@@ -100,10 +99,10 @@ const missingOutput: Rule = ({ state, phase }) => {
 	return undefined;
 };
 
-/** Rule 5: the first check result with severity `error`; warnings never block. */
+/** Rule 5: the first check result with severity `error`, named by its check; warnings never block. */
 const failingCheck: Rule = ({ state }) => {
-	const failure: Result | undefined = state.checks.find((r) => r.severity === "error");
-	return failure ? { next: `Fix ${failure.code}: ${sentence(failure.message)}.` } : undefined;
+	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error");
+	return failure ? { next: `Fix ${failure.check}: ${sentence(failure.message)}.` } : undefined;
 };
 
 /** Rule 6: in a `per: unit` phase, the next ready unit, or the blocked units; no decision once every unit is done. */
@@ -115,12 +114,15 @@ const nextUnit: Rule = ({ units }) => {
 	return { next: `No unit is ready: ${waits}.` };
 };
 
-/** Rule 7, the fallback: the phase gate; a `gate: none` phase advances to its successor, the last phase has none. */
+/**
+ * Rule 7, the fallback. The last phase has no further phase whatever its gate; otherwise the gate
+ * decides, and a `gate: none` phase advances to its successor.
+ */
 function gate({ pack, phase }: RuleInput): Decision {
-	if (phase.gate === "human") return { next: `Ready for the ${phase.id} gate.` };
-	if (phase.gate === "self") return { next: `Checks pass; the ${phase.id} gate can pass.` };
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
+	if (phase.gate === "human") return { next: `Ready for the ${phase.id} gate.` };
+	if (phase.gate === "self") return { next: `Checks pass; the ${phase.id} gate can pass.` };
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 

@@ -4,6 +4,9 @@
 import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
 
+/** A check Result tagged with the registered name of the check that produced it. */
+export type CheckResult = Result & { check: string };
+
 export type SectionName = "Capabilities" | "Proposal" | "Design" | "Units";
 
 export type PhaseState = { kind: "ok"; id: string } | { kind: "missing" } | { kind: "ambiguous"; ids: string[] };
@@ -20,7 +23,7 @@ export type ChangeState = {
 	incomplete: string[];
 	/** `specsChanged` is undefined without `Base`, else whether `git diff <Base>..HEAD -- specs/` is non-empty. */
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
-	checks: Result[];
+	checks: CheckResult[];
 	stale: boolean;
 	readOnly: boolean;
 	warnings: string[];
@@ -31,7 +34,7 @@ export type NextStep = {
 	required: string[];
 	optional: string[];
 	redirects: string[];
-	checks: Result[];
+	checks: CheckResult[];
 	blockingQuestions: Question[];
 	counters: { name: string; value: number; cap?: number }[];
 	activeUnits: string[];

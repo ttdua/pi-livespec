@@ -1,10 +1,9 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
-import type { Result } from "../../src/core/result.ts";
 import { nextStep, successorOf } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, Phase } from "../../src/engine/pack-types.ts";
-import type { ChangeState } from "../../src/engine/state-types.ts";
+import type { ChangeState, CheckResult } from "../../src/engine/state-types.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
 /** Fixture with Q1 answered: no open blocking question. */
@@ -16,7 +15,14 @@ const NONE_READY = NO_QUESTION.replace("Depends: —", "Depends: U3").replace("-
 /** No Branch and no Base: the change is not started. */
 const NOT_STARTED = NO_QUESTION.replace(/^Base: .*\n/m, "").replace(/^Branch: .*\n/m, "");
 
-const SPEC_ERROR: Result = { code: "spec-no-requirements", severity: "error", file: "specs/rate-limit/spec.md", message: "Spec has no requirements" };
+const SPEC_ERROR: CheckResult = {
+	check: "spec-format",
+	code: "spec-no-requirements",
+	severity: "error",
+	file: "specs/rate-limit/spec.md",
+	message: "Spec has no requirements",
+};
+const WARNING: CheckResult = { check: "spec-format", code: "spec-normative", severity: "warning", message: "needs SHALL" };
 
 let pack: Pack;
 
@@ -137,15 +143,33 @@ describe("nextStep", () => {
 	});
 
 	test("failing check names the check and its first result", () => {
-		const warning: Result = { code: "spec-normative", severity: "warning", message: "needs SHALL" };
-		const step = nextStep(pack, state("define", NO_QUESTION, { checks: [warning, SPEC_ERROR] }));
-		expect(step.next).toBe("Fix spec-no-requirements: Spec has no requirements.");
-		expect(step.checks).toEqual([warning, SPEC_ERROR]);
+		const step = nextStep(pack, state("define", NO_QUESTION, { checks: [WARNING, SPEC_ERROR] }));
+		expect(step.next).toBe("Fix spec-format: Spec has no requirements.");
+		expect(step.checks).toEqual([WARNING, SPEC_ERROR]);
+	});
+
+	test("failing custom check is named by its registered name", () => {
+		const custom: CheckResult = { check: "depends-merged", code: "dep-open", severity: "error", message: "Change #34 is not merged." };
+		const step = nextStep(pack, state("plan", NO_QUESTION, { checks: [custom] }));
+		expect(step.next).toBe("Fix depends-merged: Change #34 is not merged.");
 	});
 
 	test("warnings alone do not block the gate", () => {
-		const warning: Result = { code: "spec-normative", severity: "warning", message: "needs SHALL" };
-		expect(nextStep(pack, state("define", NO_QUESTION, { checks: [warning] })).next).toBe("Ready for the define gate.");
+		expect(nextStep(pack, state("define", NO_QUESTION, { checks: [WARNING] })).next).toBe("Ready for the define gate.");
+	});
+
+	test("last phase with a human gate has no further phase", () => {
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "close" ? { ...p, gate: "human" as const } : p)) };
+		const step = nextStep(custom, state("close", ALL_DONE));
+		expect(step.next).toBe("The flow has no further phase.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("last phase with a self gate has no further phase", () => {
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "close" ? { ...p, gate: "self" as const } : p)) };
+		const step = nextStep(custom, state("close", ALL_DONE));
+		expect(step.next).toBe("The flow has no further phase.");
+		expect(step.advance).toBeUndefined();
 	});
 
 	test("Next unit", () => {

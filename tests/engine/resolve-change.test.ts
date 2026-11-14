@@ -81,6 +81,14 @@ describe("resolveChange", () => {
 		expect(resolved.open[1]).toEqual({ number: numbers[1], title: "change-2" });
 	});
 
+	test("Branch line on a non-livespec branch does not resolve", async () => {
+		const n = await change("odd", { branch: "main", phase: "build" });
+		expect(await resolveChange(world.forge, "main")).toEqual({
+			kind: "none",
+			open: [{ number: n, title: "odd", phase: "build" }],
+		});
+	});
+
 	test("livespec branch without a match lists open changes", async () => {
 		const n = await change("other", { phase: "plan" });
 		expect(await resolveChange(world.forge, "livespec/rate-limit")).toEqual({

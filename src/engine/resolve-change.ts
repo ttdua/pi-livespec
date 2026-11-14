@@ -44,18 +44,23 @@ function byBranchLine(candidates: Candidate[], branch: string): Issue[] {
 
 /** Only issues without a `Branch:` line: one that records another branch belongs to that branch. */
 function byTitle(candidates: Candidate[], branch: string): Issue[] {
-	if (!branch.startsWith(CHANGE_BRANCH_PREFIX)) return [];
 	const name = branch.slice(CHANGE_BRANCH_PREFIX.length);
 	return candidates.filter((c) => c.branch === undefined && c.issue.title === name).map((c) => c.issue);
 }
 
-/** Open changes are listed in the forge's search order, capped at OPEN_CHANGES_CAP. */
-export async function resolveChange(forge: Forge, branch: string): Promise<ResolvedChange> {
-	const open = await forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
+/** Resolves the change of a `livespec/<name>` branch: by `Branch:` line first, then by title. */
+function matchChangeBranch(open: Issue[], branch: string): ResolvedChange | undefined {
 	const candidates = open.map((issue) => ({ issue, branch: parseChange(issue.body).header.branch }));
 	const titleWarning = (n: number) => `Change #${n} matches ${branch} by title only: its Branch: line is not recorded.`;
-	return (
-		single(branch, byBranchLine(candidates, branch)) ??
-		single(branch, byTitle(candidates, branch), titleWarning) ?? { kind: "none", open: open.slice(0, OPEN_CHANGES_CAP).map(toOpenChange) }
-	);
+	return single(branch, byBranchLine(candidates, branch)) ?? single(branch, byTitle(candidates, branch), titleWarning);
+}
+
+/**
+ * Only a `livespec/<name>` branch resolves to a change. On any other branch, and when nothing matches,
+ * the open changes are listed in the forge's search order, capped at OPEN_CHANGES_CAP.
+ */
+export async function resolveChange(forge: Forge, branch: string): Promise<ResolvedChange> {
+	const open = await forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
+	const matched = branch.startsWith(CHANGE_BRANCH_PREFIX) ? matchChangeBranch(open, branch) : undefined;
+	return matched ?? { kind: "none", open: open.slice(0, OPEN_CHANGES_CAP).map(toOpenChange) };
 }

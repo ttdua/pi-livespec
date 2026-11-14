@@ -12,7 +12,7 @@ import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts
 import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { type CheckContext, type CheckFn, getCheck, registerCheck } from "./registry.ts";
-import type { ChangeState } from "./state-types.ts";
+import type { ChangeState, CheckResult } from "./state-types.ts";
 
 const SPECS_PATH = "specs/";
 
@@ -80,26 +80,26 @@ registerBuiltinChecks();
 
 /**
  * Runs the checks the active phase lists, in pack order, and concatenates their results.
- * No check runs without a single known phase. A listed name that is not registered is an error Result.
+ * Each result is tagged with the name of the check that produced it. No check runs without a single
+ * known phase. A listed name that is not registered is an error Result.
  */
 export async function runChecks(
 	pack: Pack,
 	state: Omit<ChangeState, "checks">,
 	ctx: { root: string; git: Git },
-): Promise<Result[]> {
+): Promise<CheckResult[]> {
 	if (state.phase.kind !== "ok") return [];
 	const phaseId = state.phase.id;
 	const phase = pack.phases.find((p) => p.id === phaseId);
 	if (!phase) return [];
 	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git };
-	const results: Result[] = [];
+	const results: CheckResult[] = [];
 	for (const name of phase.checks) {
 		const check = getCheck(name);
-		if (!check) {
-			results.push({ code: "check-unregistered", severity: "error", message: `Check ${name} is not registered` });
-			continue;
-		}
-		results.push(...(await check(checkCtx)));
+		const produced: Result[] = check
+			? await check(checkCtx)
+			: [{ code: "check-unregistered", severity: "error", message: `Check ${name} is not registered` }];
+		for (const result of produced) results.push({ check: name, ...result });
 	}
 	return results;
 }

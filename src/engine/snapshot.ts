@@ -44,24 +44,19 @@ function idsOfKind(marked: MarkedComment[], kind: string): string[] {
 	return marked.filter((m) => m.kind === kind).map((m) => m.id);
 }
 
-/**
- * Last login seen per forge instance. It is an identity memo, not change state: it only lets
- * cached comments be filtered while `whoami` is unreachable in read-only mode.
- */
-const lastLogin = new WeakMap<Forge, string>();
-
 function isOffline(error: unknown): boolean {
 	return error instanceof ForgeError && (error.code === "unreachable" || error.code === "readonly");
 }
 
-/** The current login; offline, the last known one, or undefined when none is known yet. */
+/**
+ * The login confirmed by `whoami` now, or undefined when the forge is unreachable. A login seen
+ * earlier is never reused: the account may have switched, and its state must not be counted.
+ */
 async function currentLogin(forge: Forge): Promise<string | undefined> {
 	try {
-		const { login } = await forge.whoami();
-		lastLogin.set(forge, login);
-		return login;
+		return (await forge.whoami()).login;
 	} catch (error) {
-		if (isOffline(error)) return lastLogin.get(forge);
+		if (isOffline(error)) return undefined;
 		throw error;
 	}
 }

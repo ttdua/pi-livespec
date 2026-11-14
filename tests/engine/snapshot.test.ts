@@ -7,6 +7,7 @@ import { CommentsCache } from "../../src/engine/comments-cache.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { readChangeSnapshot, type SnapshotDeps } from "../../src/engine/snapshot.ts";
 import { CachedForge } from "../../src/forge/cache.ts";
+import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
@@ -82,6 +83,31 @@ describe("readChangeSnapshot", () => {
 		const state = await readChangeSnapshot({ ...deps(fresh, () => fresh.isReadOnly()), comments }, n);
 		expect(state.stale).toBe(true);
 		expect(state.counters).toEqual({});
+		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
+	});
+
+	test("account switch then unreachable whoami does not reuse the previous login", async () => {
+		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "review_rounds", { value: 2 }));
+		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "U3", { reason: "r" }));
+		let whoamiFails = false;
+		const forge = new Proxy(world.forge, {
+			get(t, key, receiver) {
+				if (key === "whoami" && whoamiFails) {
+					return () => Promise.reject(new ForgeError({ code: "unreachable", operation: "whoami", message: "down" }));
+				}
+				const value = Reflect.get(t, key, receiver);
+				return typeof value === "function" ? value.bind(t) : value;
+			},
+		});
+		const d = deps(forge);
+		expect((await readChangeSnapshot(d, n)).counters).toEqual({ review_rounds: 2 });
+		// The account switches; whoami can no longer confirm who is logged in.
+		whoamiFails = true;
+		const state = await readChangeSnapshot(d, n);
+		expect(state.counters).toEqual({});
+		expect(state.incomplete).toEqual([]);
+		expect(state.stale).toBe(true);
 		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
 	});
 

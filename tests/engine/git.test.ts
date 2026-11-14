@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import type { ProjectConfig } from "../../src/config.ts";
 import { createGit, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
@@ -91,6 +92,28 @@ describe("createGit", () => {
 		await git.switchTo(start);
 		await git.deleteBranch("livespec/x");
 		expect(await git.branchExists("livespec/x")).toBe(false);
+	});
+
+	test("option-like Base is rejected by diff and not executed as an option", async () => {
+		const { root, git } = await committedRepo();
+		const target = `${root}/pwned`;
+		const failure = await git.diff(`--output=${target}`, "HEAD", "specs/").catch((e: unknown) => e);
+		expect(failure).toBeInstanceOf(GitError);
+		expect(existsSync(`${target}..HEAD`)).toBe(false);
+		expect(existsSync(target)).toBe(false);
+	});
+
+	test("option-like refs are not parsed as options by any ref-taking call", async () => {
+		const { root, git } = await committedRepo();
+		const evil = `--output=${root}/pwned`;
+		await expect(git.revParse(evil)).rejects.toBeInstanceOf(GitError);
+		await expect(git.switchCreate("x", evil)).rejects.toBeInstanceOf(GitError);
+		await expect(git.switchTo("--detach")).rejects.toBeInstanceOf(GitError);
+		await expect(git.deleteBranch("--all")).rejects.toBeInstanceOf(GitError);
+		await expect(git.fetch("--upload-pack=touch pwned", "HEAD")).rejects.toBeInstanceOf(GitError);
+		expect(await git.configGet("--list")).toBeUndefined();
+		expect(existsSync(`${root}/pwned`)).toBe(false);
+		expect(await git.branch()).toBe(currentBranch(root));
 	});
 
 	test("unexpected git failure throws GitError with stderr", async () => {

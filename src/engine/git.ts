@@ -55,13 +55,19 @@ async function text(run: Run, args: string[]): Promise<string> {
 	return ((await run(args)) ?? "").trim();
 }
 
+/**
+ * Separates options from operands. Refs, remotes, branch names and config keys can come from an issue
+ * (e.g. `Base:`), so every caller-supplied operand follows it and is never parsed as an option.
+ */
+const END_OF_OPTIONS = "--end-of-options";
+
 export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 	const run = runner(root, exec);
 	return {
 		branch: () => text(run, ["branch", "--show-current"]),
 		head: () => text(run, ["rev-parse", "HEAD"]),
 		isDirty: async () => (await text(run, ["status", "--porcelain"])) !== "",
-		diff: async (from, to, path) => (await run(["diff", `${from}..${to}`, "--", path])) ?? "",
+		diff: async (from, to, path) => (await run(["diff", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "",
 		originHead: async () => {
 			const ref = await run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], EXIT_NOT_SYMBOLIC);
 			if (ref === undefined) return undefined;
@@ -69,23 +75,23 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			return name.startsWith(ORIGIN_PREFIX) ? name.slice(ORIGIN_PREFIX.length) : name;
 		},
 		fetch: async (remote, ref) => {
-			await run(["fetch", "--quiet", remote, ref]);
+			await run(["fetch", "--quiet", END_OF_OPTIONS, remote, ref]);
 		},
-		revParse: (ref) => text(run, ["rev-parse", "--verify", "--end-of-options", ref]),
+		revParse: (ref) => text(run, ["rev-parse", "--verify", END_OF_OPTIONS, ref]),
 		switchCreate: async (name, at) => {
-			await run(["switch", "--quiet", "-c", name, at]);
+			await run(["switch", "--quiet", "-c", name, END_OF_OPTIONS, at]);
 		},
 		switchTo: async (name) => {
-			await run(["switch", "--quiet", name]);
+			await run(["switch", "--quiet", END_OF_OPTIONS, name]);
 		},
 		deleteBranch: async (name) => {
-			await run(["branch", "-D", name]);
+			await run(["branch", "-D", END_OF_OPTIONS, name]);
 		},
 		branchExists: async (name) =>
 			(await run(["show-ref", "--verify", "--quiet", `refs/heads/${name}`], EXIT_NOT_FOUND)) !== undefined,
-		configGet: async (key) => (await run(["config", "--get", key], EXIT_NOT_FOUND))?.trim(),
+		configGet: async (key) => (await run(["config", "--get", END_OF_OPTIONS, key], EXIT_NOT_FOUND))?.trim(),
 		configSet: async (key, value) => {
-			await run(["config", key, value]);
+			await run(["config", END_OF_OPTIONS, key, value]);
 		},
 	};
 }
