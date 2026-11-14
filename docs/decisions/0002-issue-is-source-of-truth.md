@@ -1,6 +1,6 @@
 # 0002: The forge issue is the source of truth for a change
 
-Status: Accepted (2026-11-13)
+Status: Accepted (2026-11-13), refined by [0007](0007-forge-concurrency-by-adapter.md)
 
 ## Context
 
