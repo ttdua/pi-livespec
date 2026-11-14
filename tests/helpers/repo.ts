@@ -25,3 +25,14 @@ export async function writeIn(root: string, rel: string, text: string): Promise<
 	await mkdir(dirname(full), { recursive: true });
 	await writeFile(full, text);
 }
+
+/** Stage everything and commit with a fixed identity. */
+export function commitAll(root: string, message = "init"): void {
+	execFileSync("git", ["add", "-A"], { cwd: root });
+	execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", message], { cwd: root });
+}
+
+/** `git status --porcelain` output lines. */
+export function gitStatus(root: string): string[] {
+	return execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
+}

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runValidateCommand } from "../src/commands/validate.ts";
 import extension from "../src/extension.ts";
 import { readVersion } from "../src/version.ts";
-import { makeRepo, writeIn } from "./helpers/repo.ts";
+import { commitAll, makeRepo, writeIn } from "./helpers/repo.ts";
 
 type Handler = (args: string, ctx: unknown) => Promise<void> | void;
 
@@ -93,6 +93,36 @@ describe("livespec extension", () => {
 		await writeIn(root, "specs/a/spec.md", `${NO_SCENARIO}\n#### Scenario: S\n- **WHEN** w\n- **THEN** t\n`);
 		const { commands, notify, ctx } = loadExtension(root);
 		await commands.get("livespec")!.handler("validate", ctx);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("migrate-openspec moves specs and reports", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "openspec/specs/a/spec.md", NO_SCENARIO);
+		commitAll(root);
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("migrate-openspec", ctx);
+		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toContain("specs/a/spec.md");
+		expect(readFileSync(join(root, "specs/a/spec.md"), "utf8")).toBe(NO_SCENARIO);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("migrate-openspec notifies error on conflict", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "openspec/specs/a/spec.md", NO_SCENARIO);
+		await writeIn(root, "specs/a/spec.md", "x");
+		commitAll(root);
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("migrate-openspec", ctx);
+		expect(notify).toHaveBeenCalledWith(expect.any(String), "error");
+		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toContain("refused");
+	});
+
+	it("migrate-openspec with nothing to migrate does not notify", async () => {
+		const root = await makeRepo();
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("migrate-openspec", ctx);
+		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toMatch(/nothing to migrate/i);
 		expect(notify).not.toHaveBeenCalled();
 	});
 
