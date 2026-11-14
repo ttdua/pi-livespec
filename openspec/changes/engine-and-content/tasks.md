@@ -24,13 +24,13 @@ Blocked by: none
 
 Blocked by: 1, 2, 3
 
-- [ ] 4.1 Add `src/engine/git.ts` over the Task 3 runner (branch, HEAD, dirty, `specs/` diff from Base, config keys, not-found exit mapping, integration branch resolution)
-- [ ] 4.2 Add `src/engine/comments-cache.ts` (raw comments keyed by issue `updatedAt`, 5-minute bound, invalidation on own write, login filtering on read), and register marker kind `skill-note`
-- [ ] 4.3 Add `src/engine/checks.ts` registering `spec-format`, `units-format`, `done-maps-scenarios`, `capabilities-match-diff`, plus `runChecks`
-- [ ] 4.4 Add `src/engine/snapshot.ts` (`readChangeSnapshot` → `ChangeState`, stale and `phase-ambiguous`)
-- [ ] 4.5 Add the pure `src/engine/next-step.ts` with the precedence rules, successor rule and table tests
-- [ ] 4.6 Add `src/engine/counters.ts` (read with caps, set in place) and `src/engine/advance.ts` (`advancePhase`, add-then-remove, idempotent retries)
-- [ ] 4.7 Add `src/engine/resolve-change.ts` (branch → issue, fallback by title, open change list)
+- [x] 4.1 Add `src/engine/git.ts` over the Task 3 runner (branch, HEAD, dirty, `specs/` diff from Base, config keys, not-found exit mapping, integration branch resolution)
+- [x] 4.2 Add `src/engine/comments-cache.ts` (raw comments keyed by issue `updatedAt`, 5-minute bound, invalidation on own write, login filtering on read), and register marker kind `skill-note`
+- [x] 4.3 Add `src/engine/checks.ts` registering `spec-format`, `units-format`, `done-maps-scenarios`, `capabilities-match-diff`, plus `runChecks`
+- [x] 4.4 Add `src/engine/snapshot.ts` (`readChangeSnapshot` → `ChangeState`, stale and `phase-ambiguous`)
+- [x] 4.5 Add the pure `src/engine/next-step.ts` with the precedence rules, successor rule and table tests
+- [x] 4.6 Add `src/engine/counters.ts` (read with caps, set in place) and `src/engine/advance.ts` (`advancePhase`, add-then-remove, idempotent retries)
+- [x] 4.7 Add `src/engine/resolve-change.ts` (branch → issue, fallback by title, open change list)
 
 ## 5. agent-skills content
 
