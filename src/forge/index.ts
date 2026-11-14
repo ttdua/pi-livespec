@@ -19,10 +19,10 @@ export type {
 	WriteResult,
 } from "./types.ts";
 export { ForgeError, type ForgeErrorCode } from "./errors.ts";
-export { GitHubForge } from "./github.ts";
-export { GiteaForge } from "./gitea.ts";
-export { CachedForge } from "./cache.ts";
-export { detectForge } from "./detect.ts";
+export { GitHubForge, type GitHubForgeOptions } from "./github.ts";
+export { GiteaForge, type GiteaOptions } from "./gitea.ts";
+export { CachedForge, type CachedForgeOptions } from "./cache.ts";
+export { detectForge, type DetectDeps } from "./detect.ts";
 export {
 	readMarkedComments,
 	registerKind,
