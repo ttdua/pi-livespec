@@ -47,6 +47,6 @@ Blocked by: 4
 
 Blocked by: 5
 
-- [ ] 6.1 Add `src/commands/migrate.ts`: collect only `openspec/specs/*/spec.md`, pre-check conflicts, `git mv` those files, report; touch nothing else
-- [ ] 6.2 Tests on temp git repos: move, only spec files moved (other files stay), conflict refusal, nothing to migrate
-- [ ] 6.3 Copy only the `spec.md` files of pi-superspec's `openspec/specs` into a scratch git repo, run migrate then validate; record warnings in the verify record
+- [x] 6.1 Add `src/commands/migrate.ts`: collect only `openspec/specs/*/spec.md`, pre-check conflicts, `git mv` those files, report; touch nothing else
+- [x] 6.2 Tests on temp git repos: move, only spec files moved (other files stay), conflict refusal, nothing to migrate
+- [x] 6.3 Copy only the `spec.md` files of pi-superspec's `openspec/specs` into a scratch git repo, run migrate then validate; record warnings in the verify record
