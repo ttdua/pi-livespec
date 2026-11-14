@@ -1,0 +1,122 @@
+#!/usr/bin/env node
+// Fake `gh` for adapter tests. State lives in the JSON file named by
+// $FAKE_GH_STATE. Supports `gh auth status` and
+// `gh api <route> [-X METHOD] [-f k=v] [-F k=v] [--input -] [--paginate] [--slurp]`.
+// Plain JavaScript: this file has no extension, so node would not strip types.
+import { readFileSync } from "node:fs";
+import { HttpError, handleApi } from "./api.ts";
+import { FakeGhStore } from "./state.ts";
+
+const NETWORK_ERROR = "error connecting to api.github.com";
+
+function fail(message, code = 1) {
+	process.stderr.write(`${message}\n`);
+	process.exit(code);
+}
+
+/** `-F` converts true/false/null/numbers; `-f` keeps the string. `key[]` builds an array. */
+function addField(body, raw, typed) {
+	const eq = raw.indexOf("=");
+	if (eq < 0) fail(`invalid field ${raw}`);
+	let key = raw.slice(0, eq);
+	let value = raw.slice(eq + 1);
+	if (typed) {
+		if (value === "true") value = true;
+		else if (value === "false") value = false;
+		else if (value === "null") value = null;
+		else if (value !== "" && !Number.isNaN(Number(value))) value = Number(value);
+	}
+	if (key.endsWith("[]")) {
+		key = key.slice(0, -2);
+		body[key] = [...(body[key] ?? []), value];
+	} else {
+		body[key] = value;
+	}
+}
+
+function parseApiArgs(args) {
+	const opts = { method: undefined, route: undefined, fields: {}, input: false, paginate: false, slurp: false };
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (arg === "--method" || arg === "-X") opts.method = args[++i].toUpperCase();
+		else if (arg === "-f" || arg === "--raw-field") addField(opts.fields, args[++i], false);
+		else if (arg === "-F" || arg === "--field") addField(opts.fields, args[++i], true);
+		else if (arg === "-H" || arg === "--header") i++;
+		else if (arg === "--input") {
+			if (args[++i] !== "-") fail("fake gh: only --input - is supported");
+			opts.input = true;
+		} else if (arg === "--paginate") opts.paginate = true;
+		else if (arg === "--slurp") opts.slurp = true;
+		else if (arg.startsWith("-")) fail(`fake gh: unknown flag ${arg}`);
+		else opts.route = arg;
+	}
+	if (!opts.route) fail("fake gh: missing route");
+	return opts;
+}
+
+function runAuthStatus(store) {
+	const data = store.read();
+	if (data.unreachable) fail(NETWORK_ERROR);
+	if (!data.authenticated) fail("You are not logged into any GitHub hosts. To log in, run: gh auth login");
+	process.stdout.write(`github.com\n  Logged in to github.com account ${data.login}\n`);
+}
+
+const PAGED_KEYS = ["check_runs", "statuses"];
+
+/** Slices one page out of a list response: a bare array, or an object whose list sits under a known key. Default 30 per page, as GitHub. */
+function pageOf(result, query, page) {
+	const perPage = Math.min(Number(query.get("per_page") ?? 30), 100);
+	const slice = (list) => list.slice((page - 1) * perPage, page * perPage);
+	if (Array.isArray(result)) return { value: slice(result), full: slice(result).length === perPage };
+	const key = result && PAGED_KEYS.find((k) => Array.isArray(result[k]));
+	if (!key) return { value: result, full: false };
+	const items = slice(result[key]);
+	return { value: { ...result, [key]: items }, full: items.length === perPage };
+}
+
+function runApi(store, args) {
+	const opts = parseApiArgs(args);
+	const method = opts.method ?? (Object.keys(opts.fields).length > 0 || opts.input ? "POST" : "GET");
+	const [path, queryString = ""] = opts.route.replace(/^\//, "").split("?");
+	const query = new URLSearchParams(queryString);
+	let body = opts.fields;
+	if (method === "GET") {
+		for (const [k, v] of Object.entries(opts.fields)) query.set(k, String(v));
+		body = {};
+	}
+	if (opts.input) body = JSON.parse(readFileSync(0, "utf8"));
+
+	const data = store.read();
+	if (data.unreachable) fail(NETWORK_ERROR);
+	data.calls.push({ method, route: opts.route, body: opts.input || method !== "GET" ? body : undefined });
+	let result;
+	try {
+		result = handleApi(data, { method, path, query, body });
+	} catch (error) {
+		store.write(data);
+		if (error instanceof HttpError) fail(`gh: ${error.message} (HTTP ${error.status})`);
+		throw error;
+	}
+	store.write(data);
+	if (result === undefined) return;
+	if (opts.paginate && opts.slurp) {
+		const pages = [];
+		for (let page = 1; ; page++) {
+			const { value, full } = pageOf(result, query, page);
+			pages.push(value);
+			if (!full) break;
+		}
+		process.stdout.write(`${JSON.stringify(pages)}\n`);
+		return;
+	}
+	const requested = Number(query.get("page") ?? 1);
+	process.stdout.write(`${JSON.stringify(pageOf(result, query, requested).value)}\n`);
+}
+
+const statePath = process.env.FAKE_GH_STATE;
+if (!statePath) fail("fake gh: FAKE_GH_STATE is not set");
+const store = new FakeGhStore(statePath);
+const [command, ...rest] = process.argv.slice(2);
+if (command === "auth" && rest[0] === "status") runAuthStatus(store);
+else if (command === "api") runApi(store, rest);
+else fail(`fake gh: unsupported command ${command}`);
