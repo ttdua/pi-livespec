@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add the registry module `src/engine/registry.ts` (`registerPackSchema`, `personasForPack`, `registerCheck`, `getCheck`, `checkNames`) with a test reset helper
-- [ ] 1.2 Add the hand-written pack schema walker `src/engine/pack-schema.ts` with file, line and column errors (types, enums, unknown keys, model and lane keys)
-- [ ] 1.3 Add the default pack `src/packs/agent-skills.yaml` and the canonical fixture `tests/fixtures/agent-skills.pack.json`, both transcribed from issue #4
-- [ ] 1.4 Add `src/engine/pack-load.ts`: load default plus `.pi/livespec/flow.yaml`, merge by phase id with origins, semantic checks (unique ids, requires, cycles, check names, outputs, excluded-skill warnings)
+- [x] 1.1 Add the registry module `src/engine/registry.ts` (`registerPackSchema`, `personasForPack`, `registerCheck`, `getCheck`, `checkNames`) with a test reset helper
+- [x] 1.2 Add the hand-written pack schema walker `src/engine/pack-schema.ts` with file, line and column errors (types, enums, unknown keys, model and lane keys)
+- [x] 1.3 Add the default pack `src/packs/agent-skills.yaml` and the canonical fixture `tests/fixtures/agent-skills.pack.json`, both transcribed from issue #4
+- [x] 1.4 Add `src/engine/pack-load.ts`: load default plus `.pi/livespec/flow.yaml`, merge by phase id with origins, semantic checks (unique ids, requires, cycles, check names, outputs, excluded-skill warnings)
 
 ## 2. Byte-preserving section helpers
 
