@@ -38,10 +38,14 @@ The core marker kinds SHALL be `receipt`, `gate`, `amendment`, `counter`, `decis
 - **THEN** it is not returned and no warning is raised
 
 ### Requirement: Own-marker comment edits
-The plugin SHALL edit a comment only when it carries a marker and was written by the current account.
+The plugin SHALL edit a comment only when it carries a marker and was written by the current account. `updateComment` of every adapter MUST enforce this by re-reading the comment before writing; stale versions stay last-write-wins.
 
 #### Scenario: Edit a foreign comment
 - **WHEN** an edit targets a comment written by another account
+- **THEN** it is refused with `ForgeError` and the comment is unchanged
+
+#### Scenario: Edit an unmarked own comment
+- **WHEN** an edit targets a comment of the current account that has no marker
 - **THEN** it is refused with `ForgeError` and the comment is unchanged
 
 ### Requirement: Labels

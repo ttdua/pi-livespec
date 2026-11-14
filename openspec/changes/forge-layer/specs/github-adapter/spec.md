@@ -20,7 +20,7 @@ The version of a GitHub issue or pull request SHALL combine `updated_at` and a h
 
 #### Scenario: Unchanged
 - **WHEN** nothing changed since the read
-- **THEN** the PATCH is issued and the result is `written` with `check: "strict"`
+- **THEN** the PATCH is issued and the result is `written` with `check: "best-effort"`, because GitHub has no server-side conditional write and the re-read compare is best-effort
 
 ### Requirement: GitHub operation coverage
 The GitHub adapter SHALL implement every `Forge` operation, including pull requests, reviews, review comments and check summaries, through `gh api` endpoints.
