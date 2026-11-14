@@ -11,7 +11,7 @@
 - **Branch**: `spec-core`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: `PENDING`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/13`
 
 ---
 
@@ -26,7 +26,7 @@ The worktree branch and the feature branch are both `spec-core`, so there was no
 
 ## PR comment
 
-- **PR comment status**: `PENDING`
+- **PR comment status**: `posted`
 
 ---
 
