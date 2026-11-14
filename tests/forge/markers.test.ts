@@ -35,6 +35,27 @@ describe("writeMarked", () => {
 	it("throws for an unregistered kind", () => {
 		expect(() => writeMarked("no-such-kind", "u1", {})).toThrow(/no-such-kind/);
 	});
+
+	it.each([
+		["colon in kind", "review:lane"],
+		["space in kind", "review lane"],
+		["newline in kind", "review\nlane"],
+	])("rejects a kind with %s", (_label, kind) => {
+		expect(() => registerKind(kind)).toThrow(/kind/);
+	});
+
+	it.each([
+		["colon in id", "u:1"],
+		["space in id", "u 1"],
+		["newline in id", "u\n1"],
+		["empty id", ""],
+	])("rejects an id with %s", (_label, id) => {
+		expect(() => writeMarked("receipt", id, {})).toThrow(/id/);
+	});
+
+	it("throws for data that cannot be serialized", () => {
+		expect(() => writeMarked("receipt", "u1", undefined)).toThrow(/serializ/);
+	});
 });
 
 describe("round trip", () => {
@@ -49,11 +70,39 @@ describe("round trip", () => {
 	});
 });
 
+describe("token round trip", () => {
+	it("keeps kind and id when a registered kind and a dotted id are written and parsed", () => {
+		registerKind("review-lane");
+		const parsed = parseMarked(writeMarked("review-lane", "r.1_a-b", { lane: "a" }));
+		expect(parsed).toEqual({ kind: "review-lane", id: "r.1_a-b", data: { lane: "a" } });
+	});
+});
+
 describe("registerKind", () => {
 	it("makes a new kind writable", () => {
 		registerKind("review-lane");
 		const body = writeMarked("review-lane", "r1", { lane: "a" });
 		expect(body.split("\n")[0]).toBe("<!-- livespec:review-lane:r1 -->");
+	});
+});
+
+describe("core kinds", () => {
+	const CORE = [
+		"receipt",
+		"gate",
+		"amendment",
+		"counter",
+		"decision",
+		"question",
+		"stale",
+		"incomplete",
+		"finding-summary",
+		"stuck",
+	];
+
+	it.each(CORE)("writes and parses back the %s kind", (kind) => {
+		const data = { kind, value: 1 };
+		expect(parseMarked(writeMarked(kind, "k1", data))).toEqual({ kind, id: "k1", data });
 	});
 });
 

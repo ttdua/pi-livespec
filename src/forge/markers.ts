@@ -35,20 +35,39 @@ const CORE_KINDS = [
 
 const kinds = new Set<string>(CORE_KINDS);
 
-const MARKER_LINE = /^<!-- livespec:([^:\s]+):(\S+) -->$/;
+/** Shared token rules: the writer validates against them and the parser only accepts them. */
+const KIND_PATTERN = "[a-z0-9-]+";
+const ID_PATTERN = "[A-Za-z0-9._-]+";
+const KIND_TOKEN = new RegExp(`^${KIND_PATTERN}$`);
+const ID_TOKEN = new RegExp(`^${ID_PATTERN}$`);
+
+const MARKER_LINE = new RegExp(`^<!-- livespec:(${KIND_PATTERN}):(${ID_PATTERN}) -->$`);
 const YAML_BLOCK = /^```yaml\n([\s\S]*?)^```\s*$/m;
 
-/** Adds a kind to the registry so `writeMarked` accepts it. */
+/** Adds a kind to the registry so `writeMarked` accepts it. Throws on a kind that cannot be written as a marker token. */
 export function registerKind(name: string): void {
+	if (!KIND_TOKEN.test(name)) {
+		throw new Error(`invalid marker kind "${name}": use only [a-z0-9-]`);
+	}
 	kinds.add(name);
 }
 
-/** Returns the comment body: marker line, then one fenced yaml block with `data`. Throws on unregistered kinds. */
+/**
+ * Returns the comment body: marker line, then one fenced yaml block with `data`.
+ * Throws on unregistered kinds, ids that cannot be parsed back, and data that cannot be serialized.
+ */
 export function writeMarked(kind: string, id: string, data: unknown): string {
 	if (!kinds.has(kind)) {
 		throw new Error(`unregistered marker kind "${kind}"; call registerKind first`);
 	}
-	return `<!-- livespec:${kind}:${id} -->\n\`\`\`yaml\n${stringify(data)}\`\`\``;
+	if (!ID_TOKEN.test(id)) {
+		throw new Error(`invalid marker id "${id}": use only [A-Za-z0-9._-]`);
+	}
+	const yaml = stringify(data);
+	if (typeof yaml !== "string") {
+		throw new Error(`cannot serialize marker data for ${kind}:${id} to yaml`);
+	}
+	return `<!-- livespec:${kind}:${id} -->\n\`\`\`yaml\n${yaml}\`\`\``;
 }
 
 /** Parses a comment body. Returns null when the body has no valid marker or yaml block. */
