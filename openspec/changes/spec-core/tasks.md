@@ -28,11 +28,11 @@ Blocked by: 1
 
 Blocked by: 2, 3
 
-- [ ] 4.1 Add `src/core/result.ts` and `validate-spec.ts` (spec and glossary checks)
-- [ ] 4.2 Add `validate-decisions.ts` (numbers, superseded, diff deletion)
-- [ ] 4.3 Add `validate-units.ts` (`units-format`, `done-maps-scenarios`)
-- [ ] 4.4 Add `capabilities-diff.ts` (`capabilitiesMatchDiff`)
-- [ ] 4.5 Tests for every check and scenario
+- [x] 4.1 Add `src/core/result.ts` and `validate-spec.ts` (spec and glossary checks)
+- [x] 4.2 Add `validate-decisions.ts` (numbers, superseded, diff deletion)
+- [x] 4.3 Add `validate-units.ts` (`units-format`, `done-maps-scenarios`)
+- [x] 4.4 Add `capabilities-diff.ts` (`capabilitiesMatchDiff`)
+- [x] 4.5 Tests for every check and scenario
 
 ## 5. Validate command, tool and dispatch
 
