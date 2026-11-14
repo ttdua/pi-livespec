@@ -285,6 +285,7 @@ export class FakeGitea {
 		this.route("POST", `${r}/issues/${id}/comments`, (c) =>
 			this.withIssue(c, (i) => created(this.commentJson(this.addComment(i.number, BOT_LOGIN, String(c.body.body ?? ""))))),
 		);
+		this.route("GET", `${r}/issues/comments/${id}`, (c) => this.withComment(Number(c.groups[0]), (x) => ok(this.commentJson(x))));
 		this.route("PATCH", `${r}/issues/comments/${id}`, (c) => this.patchComment(Number(c.groups[0]), c.body));
 
 		this.route("GET", `${r}/pulls`, (c) => ok(this.pageOf(this.searchPulls(c.query), c.query).map((p) => this.pullJson(p))));
@@ -368,9 +369,16 @@ export class FakeGitea {
 		return this.withContentVersion && typeof sent === "number" && sent !== current;
 	}
 
-	private patchComment(id: number, b: Record<string, unknown>): Reply {
+	private withComment(id: number, fn: (c: CommentRec) => Reply): Reply {
 		const comment = this.comments.get(id);
-		if (!comment) return notFound("comment");
+		return comment ? fn(comment) : notFound("comment");
+	}
+
+	private patchComment(id: number, b: Record<string, unknown>): Reply {
+		return this.withComment(id, (comment) => this.applyCommentPatch(comment, b));
+	}
+
+	private applyCommentPatch(comment: CommentRec, b: Record<string, unknown>): Reply {
 		comment.body = String(b.body ?? "");
 		comment.updatedAt = this.tick();
 		return ok(this.commentJson(comment));

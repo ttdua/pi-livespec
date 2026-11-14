@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { GiteaForge } from "../../src/forge/gitea.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 import { runContract } from "./contract.ts";
 import { FAKE_TOKEN } from "./fake-gitea.ts";
 import { GiteaWorld } from "./gitea-world.ts";
+import { OTHER_LOGIN } from "./world.ts";
 
 const spawned = vi.hoisted(() => ({ calls: vi.fn() }));
 vi.mock("node:child_process", () => ({
@@ -150,6 +152,45 @@ describe("gitea adapter", () => {
 			expect((await w.forge.updatePullRequest(n, { body: "mine" }, read.version)).status).toBe("conflict");
 		});
 	});
+	describe("comment edits are own-marker only", () => {
+		it("a marked comment by another account is refused with no PATCH sent", async () => {
+			const w = await world();
+			const n = await w.seedIssue();
+			await w.postComment(n, OTHER_LOGIN, writeMarked("decision", "d1", { choice: "x" }));
+			const [foreign] = await w.forge.listComments(n);
+			w.fake.calls.length = 0;
+
+			await expect(w.forge.updateComment(foreign.id, writeMarked("decision", "d1", { choice: "y" }), foreign.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
+
+			expect(w.fake.calls.some((c) => c.method === "PATCH")).toBe(false);
+		});
+
+		it("an unmarked own comment is refused with no PATCH sent", async () => {
+			const w = await world();
+			const n = await w.seedIssue();
+			const created = await w.forge.createComment(n, "plain remark");
+			w.fake.calls.length = 0;
+
+			await expect(w.forge.updateComment(created.id, "changed", created.version)).rejects.toBeInstanceOf(ForgeError);
+
+			expect(w.fake.calls.some((c) => c.method === "PATCH")).toBe(false);
+		});
+
+		it("a marked own comment is edited with one PATCH", async () => {
+			const w = await world();
+			const n = await w.seedIssue();
+			const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+			w.fake.calls.length = 0;
+			const edited = writeMarked("receipt", "u1", { v: 2 });
+
+			const result = await w.forge.updateComment(created.id, edited, created.version);
+
+			expect(result).toMatchObject({ status: "written", check: "best-effort", item: { body: edited } });
+			expect(w.fake.calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
+			expect(await w.commentBodyOf(created.id)).toBe(edited);
+		});
+	});
+
 	describe("pagination", () => {
 		it("getChecks reads every page of the commit status", async () => {
 			const w = await world();

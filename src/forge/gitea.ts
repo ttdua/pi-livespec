@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { ForgeError } from "./errors.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
+import { assertOwnMarkedComment } from "./markers.ts";
 import type {
 	Check,
 	CheckState,
@@ -295,8 +296,14 @@ export class GiteaForge implements Forge, LabelRepo {
 		return toComment(json);
 	}
 
-	/** Gitea comments carry no version, so the edit is last-write-wins and `expect` is not checked. */
+	/**
+	 * Only a marked comment written by the current account may be edited: the
+	 * comment is re-read and refused (no PATCH) otherwise. Gitea comments carry
+	 * no version, so the edit is last-write-wins and `expect` is not checked.
+	 */
 	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
+		const current = toComment(await this.http.object<CommentDto>("updateComment", "GET", `${this.repoPath}/issues/comments/${encodeURIComponent(id)}`));
+		await assertOwnMarkedComment(this, current);
 		const json = await this.http.object<CommentDto>("updateComment", "PATCH", `${this.repoPath}/issues/comments/${encodeURIComponent(id)}`, { body });
 		return { status: "written", item: toComment(json), check: "best-effort" };
 	}
