@@ -2,6 +2,7 @@
 // green against a backend that behaves per spec; adapters must match it.
 
 import { ForgeError } from "../../src/forge/errors.ts";
+import { parseMarked } from "../../src/forge/markers.ts";
 import type {
 	Check,
 	CheckState,
@@ -351,10 +352,17 @@ class MemoryForge implements Forge {
 		return commentView(this.s.addComment(n, BOT_LOGIN, body));
 	}
 
-	/** Comment edits are last-write-wins: `expect` is not enforced. */
+	/** Own-marker rule enforced here; otherwise last-write-wins: `expect` is not enforced. */
 	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
 		this.guard("updateComment");
 		const comment = this.s.comment(id);
+		if (!parseMarked(comment.body) || comment.author !== BOT_LOGIN) {
+			throw new ForgeError({
+				code: "unsupported",
+				operation: "updateComment",
+				message: `refusing to edit comment ${id}: not a marked comment written by ${BOT_LOGIN}`,
+			});
+		}
 		comment.body = body;
 		comment.rev += 1;
 		comment.updatedAt = this.s.tick();

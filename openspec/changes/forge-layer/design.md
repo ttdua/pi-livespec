@@ -24,7 +24,7 @@
 
 **Write result is a union, typed per entity, errors are thrown.** `WriteResult<T> = {status:"written", item: T, check:"strict"|"best-effort"} | {status:"conflict", current: Version, changed: string[]}`, with `T` = `Issue`, `Comment` or `PullRequest` per edit method (user decision). `written.item` is the entity after the write. Transport, auth and HTTP failures throw `ForgeError` with `code` in `unreachable | auth | http | readonly | unsupported`. Reason: a conflict is an expected outcome the engine handles; the rest are failures.
 
-**Comments are last-write-wins.** `updateComment` takes a `Version` (updated-at hash) and re-reads on both forges, best-effort, but the check that matters is ownership: the plugin edits only comments carrying its marker and account.
+**Comments are last-write-wins.** `updateComment` takes a `Version` (updated-at hash) and re-reads on both forges, best-effort, but the check that matters is ownership: each adapter's `updateComment` re-reads the comment and edits only one carrying the plugin marker and written by `whoami().login`, else throws `ForgeError`. `check` is `strict` only when the forge enforced the precondition itself (Gitea with `content_version`); GitHub is always `best-effort`.
 
 **Markers.** First line `<!-- livespec:{kind}:{id} -->`, then one fenced `yaml` block. Parsed with the existing `yaml` package. `readMarkedComments` filters by `whoami().login` and returns `{comments, warnings}`; foreign marked comments become warnings. `registerKind(name)` extends the core kind set; unknown kinds are rejected on write.
 
