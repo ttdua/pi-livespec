@@ -46,9 +46,9 @@ Blocked by: 1, 3
 
 Blocked by: 4, 5
 
-- [ ] 6.1 Add `/livespec init` in `src/commands/init.ts` with templates, the constraints template marker and idempotent reporting
-- [ ] 6.2 Add `/livespec doctor` in `src/commands/doctor.ts` with injected deps, `registerDoctorCheck` and each check from the spec
-- [ ] 6.3 Add `/livespec skills status | update | pin | unpin | rollback` in `src/commands/skills.ts`
+- [x] 6.1 Add `/livespec init` in `src/commands/init.ts` with templates, the constraints template marker and idempotent reporting
+- [x] 6.2 Add `/livespec doctor` in `src/commands/doctor.ts` with injected deps, `registerDoctorCheck` and each check from the spec
+- [x] 6.3 Add `/livespec skills status | update | pin | unpin | rollback` in `src/commands/skills.ts`
 
 ## 7. Context injection and resume
 
