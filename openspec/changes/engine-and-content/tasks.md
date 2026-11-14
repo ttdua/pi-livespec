@@ -17,8 +17,8 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 3.1 Add `src/config.ts` reading project `.pi/livespec/config.yaml` (forge keys, `integrationBranch`) and user `~/.pi/agent/livespec/config.yaml` (`agentSkills.channel`), with defaults and unknown-key warnings
-- [ ] 3.2 Add `src/engine/git-exec.ts`: a git runner with per-call `cwd` and `env`, shared by the engine and the content manager
+- [x] 3.1 Add `src/config.ts` reading project `.pi/livespec/config.yaml` (forge keys, `integrationBranch`) and user `~/.pi/agent/livespec/config.yaml` (`agentSkills.channel`), with defaults and unknown-key warnings
+- [x] 3.2 Add `src/engine/git-exec.ts`: a git runner with per-call `cwd` and `env`, shared by the engine and the content manager
 
 ## 4. Engine state, checks and next step
 
