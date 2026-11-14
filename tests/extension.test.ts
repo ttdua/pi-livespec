@@ -173,4 +173,28 @@ describe("livespec extension", () => {
 		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toMatch(/nothing to validate/i);
 		expect(notify).not.toHaveBeenCalled();
 	});
+
+	it("migrate-openspec reports partial failure with moved list and hint", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "openspec/specs/a/spec.md", NO_SCENARIO);
+		await writeIn(root, "openspec/specs/b/spec.md", NO_SCENARIO);
+		commitAll(root);
+		// Pre-existing read-only empty specs/b passes preflight, but git mv into it fails after a is moved.
+		const { chmodSync, mkdirSync } = await import("node:fs");
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		mkdirSync(join(root, "specs/b"), { recursive: true });
+		chmodSync(join(root, "specs/b"), 0o555);
+		try {
+			await commands.get("livespec")!.handler("migrate-openspec", ctx);
+		} finally {
+			chmodSync(join(root, "specs/b"), 0o755);
+		}
+		if (process.getuid?.() === 0) return;
+		const content = (sendMessage.mock.calls[0]![0] as { content: string }).content;
+		expect(content).toContain("- specs/a/spec.md");
+		expect(content).toContain("Failed: specs/b/spec.md");
+		expect(content).toContain("failed midway");
+		expect(content).toContain("Recovery:");
+		expect(notify).toHaveBeenCalledWith(expect.any(String), "error");
+	});
 });

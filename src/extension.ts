@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { formatMigrate, runMigrate } from "./commands/migrate.ts";
+import { MigrateError, formatMigrate, formatMigrateError, runMigrate } from "./commands/migrate.ts";
 import { runValidateCommand } from "./commands/validate.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
 import { readVersion } from "./version.ts";
@@ -19,8 +19,13 @@ export default function extension(pi: ExtensionAPI): void {
 		try {
 			const result = await runMigrate(ctx.cwd);
 			say("livespec-migrate", formatMigrate(result));
-			if (result.conflicts.length > 0) ctx.ui.notify("livespec migrate-openspec refused: targets exist", "error");
+			if (result.conflicts.length > 0) ctx.ui.notify("livespec migrate-openspec refused: conflicts found", "error");
 		} catch (error) {
+			if (error instanceof MigrateError) {
+				say("livespec-migrate", formatMigrateError(error));
+				ctx.ui.notify("livespec migrate-openspec failed midway; see the recovery hint", "error");
+				return;
+			}
 			const reason = error instanceof Error ? error.message : String(error);
 			say("livespec-migrate", `migrate-openspec failed: ${reason}`);
 			ctx.ui.notify("livespec migrate-openspec failed", "error");
