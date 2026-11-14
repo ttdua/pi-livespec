@@ -10,19 +10,19 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Add `src/core/spec.ts`: parse and serialize living spec (paths, purpose, requirements, scenarios)
-- [ ] 2.2 Add `src/core/decision.ts`, `glossary.ts`, `bare-work.ts` parsers and serializers
-- [ ] 2.3 Round-trip tests for each format, including CRLF and unknown sections
+- [x] 2.1 Add `src/core/spec.ts`: parse and serialize living spec (paths, purpose, requirements, scenarios)
+- [x] 2.2 Add `src/core/decision.ts`, `glossary.ts`, `bare-work.ts` parsers and serializers
+- [x] 2.3 Round-trip tests for each format, including CRLF and unknown sections
 
 ## 3. Change and initiative issue bodies
 
 Blocked by: 1
 
-- [ ] 3.1 Add `src/core/change.ts`: ownership lines, sections, questions, units, durable docs table
-- [ ] 3.2 Add `src/core/initiative.ts`: goal, capabilities, changes list
-- [ ] 3.3 Add `src/core/digest.ts`: `unitDigest`
-- [ ] 3.4 Add `src/core/tick.ts`: `tickUnit`, `untickUnit`, `tickChange`, `untickChange`
-- [ ] 3.5 Round-trip, digest and tick tests on the brief's example bodies
+- [x] 3.1 Add `src/core/change.ts`: ownership lines, sections, questions, units, durable docs table
+- [x] 3.2 Add `src/core/initiative.ts`: goal, capabilities, changes list
+- [x] 3.3 Add `src/core/digest.ts`: `unitDigest`
+- [x] 3.4 Add `src/core/tick.ts`: `tickUnit`, `untickUnit`, `tickChange`, `untickChange`
+- [x] 3.5 Round-trip, digest and tick tests on the brief's example bodies
 
 ## 4. Validators
 
