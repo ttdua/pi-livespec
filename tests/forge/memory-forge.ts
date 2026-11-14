@@ -162,6 +162,10 @@ export class MemoryWorld implements ContractWorld {
 		return this.state.pull(pr).reviewComments.map((c) => ({ ...c }));
 	}
 
+	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {
+		this.state.permissions.set(login, level);
+	}
+
 	async makeUnreachable(): Promise<void> {
 		this.state.unreachable = true;
 	}
@@ -178,6 +182,7 @@ class MemoryState {
 	readonly statuses = new Map<string, SeedStatus[]>();
 	readonly labels = new Set<string>();
 	readonly labelCreates = new Map<string, number>();
+	readonly permissions = new Map<string, "none" | "read" | "write" | "admin">();
 	/** Body/title/labels/state seen at each version, to name what changed on a stale write. */
 	readonly snapshots = new Map<string, ComparableIssue>();
 	unreachable = false;
@@ -269,9 +274,9 @@ class MemoryForge implements Forge {
 			.map((i) => this.view(i));
 	}
 
-	async getPermission(): Promise<"none" | "read" | "write" | "admin"> {
+	async getPermission(login: string): Promise<"none" | "read" | "write" | "admin"> {
 		this.guard("getPermission");
-		return "admin";
+		return this.s.permissions.get(login) ?? "none";
 	}
 
 	async createIssue(i: { title: string; body: string; labels: string[] }): Promise<Issue> {

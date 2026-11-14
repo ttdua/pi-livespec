@@ -80,6 +80,9 @@ export interface ContractWorld {
 	/** Review comments as the forge stores them, for asserting `createReviewComment`. */
 	reviewCommentsOf(pr: number): Promise<ReviewComment[]>;
 
+	/** Sets the repository permission the forge reports for `login`. */
+	setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void>;
+
 	/** Every later call through `forge` fails as if the network were down. */
 	makeUnreachable(): Promise<void>;
 	restore(): Promise<void>;

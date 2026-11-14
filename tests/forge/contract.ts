@@ -7,6 +7,12 @@ import { LABEL_LIVESPEC, phaseLabel } from "../../src/forge/labels.ts";
 import { assertOwnMarkedComment, readMarkedComments, writeMarked } from "../../src/forge/markers.ts";
 import { BOT_LOGIN, type ContractWorld, OTHER_LOGIN, type WorldFactory } from "./world.ts";
 
+/** Every entity read from or written through the adapter must carry a usable version. */
+function expectVersion(entity: { version: unknown }): void {
+	expect(typeof entity.version).toBe("string");
+	expect((entity.version as string).length).toBeGreaterThan(0);
+}
+
 /** Registers the contract tests for one backend under `describe(name)`. */
 export function runContract(name: string, makeWorld: WorldFactory): void {
 	describe(`forge contract: ${name}`, () => {
@@ -34,7 +40,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const n = await w.seedIssue({ title: "T", body: "B", labels: ["a"] });
 				const issue = await w.forge.getIssue(n);
-				expect(issue.version).toBeTruthy();
+				expectVersion(issue);
 				expect(issue).toMatchObject({ number: n, title: "T", body: "B", labels: ["a"], state: "open" });
 			});
 
@@ -42,7 +48,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const created = await w.forge.createIssue({ title: "New", body: "Body", labels: ["x"] });
 				expect(created).toMatchObject({ title: "New", body: "Body", labels: ["x"], state: "open" });
-				expect(created.version).toBeTruthy();
+				expectVersion(created);
 				expect(await w.bodyOf(created.number)).toBe("Body");
 			});
 
@@ -53,6 +59,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				await w.seedIssue({ title: "gamma" });
 
 				const open = await w.forge.searchIssues({ labels: ["livespec"] });
+				for (const i of open) expectVersion(i);
 				expect(open.map((i) => i.number)).toEqual([a]);
 
 				const all = await w.forge.searchIssues({ labels: ["livespec"], state: "all" });
@@ -75,6 +82,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const n = await w.seedIssue({ body: "original" });
 				const read = await w.forge.getIssue(n);
+				expectVersion(read);
 				await w.editBodyBehindBack(n, "edited elsewhere");
 
 				const result = await w.forge.updateIssueBody(n, "mine", read.version);
@@ -88,13 +96,14 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const n = await w.seedIssue({ body: "original" });
 				const read = await w.forge.getIssue(n);
+				expectVersion(read);
 
 				const result = await w.forge.updateIssueBody(n, "mine", read.version);
 
 				expect(result.status).toBe("written");
 				if (result.status === "written") {
 					expect(result.issue.body).toBe("mine");
-					expect(result.issue.version).toBeTruthy();
+					expectVersion(result.issue);
 					expect(result.issue.version).not.toBe(read.version);
 					expect(["strict", "best-effort"]).toContain(result.check);
 				}
@@ -104,8 +113,11 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("version from a write can be used for the next edit", async () => {
 				const w = await world();
 				const n = await w.seedIssue({ body: "v0" });
-				const first = await w.forge.updateIssueBody(n, "v1", (await w.forge.getIssue(n)).version);
+				const initial = await w.forge.getIssue(n);
+				expectVersion(initial);
+				const first = await w.forge.updateIssueBody(n, "v1", initial.version);
 				if (first.status !== "written") throw new Error("first write was not written");
+				expectVersion(first.issue);
 
 				const second = await w.forge.updateIssueBody(n, "v2", first.issue.version);
 
@@ -152,11 +164,14 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 			it("existing label applied without creating it again", async () => {
 				const w = await world();
-				const m = await w.seedIssue({ labels: ["livespec"] });
+				await w.seedIssue({ labels: ["livespec"] });
+				const second = await w.seedIssue();
+				expect(await w.hasLabel("livespec")).toBe(true);
+				expect((await w.forge.getIssue(second)).labels).not.toContain("livespec");
 
-				await w.forge.addLabels(m, ["livespec"]);
+				await w.forge.addLabels(second, ["livespec"]);
 
-				expect((await w.forge.getIssue(m)).labels).toContain("livespec");
+				expect((await w.forge.getIssue(second)).labels).toContain("livespec");
 				expect(await w.labelCreateCount("livespec")).toBe(0);
 			});
 		});
@@ -168,9 +183,10 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const created = await w.forge.createComment(n, "hello");
 				expect(created).toMatchObject({ author: BOT_LOGIN, body: "hello" });
 				expect(created.id).toBeTruthy();
-				expect(created.version).toBeTruthy();
+				expectVersion(created);
 
 				const listed = await w.forge.listComments(n);
+				for (const c of listed) expectVersion(c);
 				expect(listed.map((c) => c.id)).toEqual([created.id]);
 				expect(listed[0]).toMatchObject({ author: BOT_LOGIN, body: "hello" });
 
@@ -187,6 +203,22 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const listed = await w.forge.listComments(n);
 				expect(listed).toHaveLength(1);
 				expect(listed[0]).toMatchObject({ author: OTHER_LOGIN, body: "from other" });
+				expectVersion(listed[0]);
+			});
+
+			it("comment edits are last-write-wins even with a stale version", async () => {
+				const w = await world();
+				const n = await w.seedIssue();
+				const created = await w.forge.createComment(n, "first");
+				const original = created.version;
+
+				const one = await w.forge.updateComment(created.id, "second", original);
+				expect(one.status).toBe("written");
+
+				const two = await w.forge.updateComment(created.id, "third", original);
+
+				expect(two.status).toBe("written");
+				expect(await w.commentBodyOf(created.id)).toBe("third");
 			});
 		});
 
@@ -253,16 +285,19 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const created = await w.forge.createPullRequest({ head: "feat/a", base: "main", title: "Add A", body: "body A" });
 				expect(created).toMatchObject({ state: "open", merged: false, head: "feat/a", base: "main", title: "Add A", body: "body A" });
-				expect(created.version).toBeTruthy();
+				expectVersion(created);
 
 				const found = await w.forge.findOpenPullRequest("feat/a");
 				expect(found?.number).toBe(created.number);
+				expectVersion(found as { version: unknown });
 				expect(await w.forge.findOpenPullRequest("feat/none")).toBeNull();
 
 				const listed = await w.forge.listPullRequests({ state: "open", head: "feat/a" });
 				expect(listed.map((p) => p.number)).toEqual([created.number]);
+				for (const p of listed) expectVersion(p);
 
 				const got = await w.forge.getPullRequest(created.number);
+				expectVersion(got);
 				expect(got).toMatchObject({ head: "feat/a", base: "main", merged: false });
 
 				const result = await w.forge.updatePullRequest(created.number, { title: "Add A2", body: "new body" }, got.version);
@@ -272,6 +307,19 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect(after.version).not.toBe(got.version);
 			});
 
+			it("head filter returns only the matching pull request", async () => {
+				const w = await world();
+				const a = await w.seedPullRequest({ head: "feat/one" });
+				const b = await w.seedPullRequest({ head: "feat/two" });
+
+				expect((await w.forge.listPullRequests({ state: "open", head: "feat/one" })).map((p) => p.number)).toEqual([a]);
+				expect((await w.forge.listPullRequests({ state: "open", head: "feat/two" })).map((p) => p.number)).toEqual([b]);
+				expect((await w.forge.findOpenPullRequest("feat/one"))?.number).toBe(a);
+				expect((await w.forge.findOpenPullRequest("feat/two"))?.number).toBe(b);
+				expect(await w.forge.listPullRequests({ state: "open", head: "feat/unknown" })).toEqual([]);
+				expect(await w.forge.findOpenPullRequest("feat/unknown")).toBeNull();
+			});
+
 			it("listPullRequests filters by state", async () => {
 				const w = await world();
 				const open = await w.seedPullRequest({ head: "feat/open" });
@@ -279,6 +327,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const merged = await w.seedPullRequest({ head: "feat/merged", state: "closed", merged: true });
 
 				const openList = await w.forge.listPullRequests({ state: "open" });
+				for (const p of openList) expectVersion(p);
 				expect(openList.map((p) => p.number)).toEqual([open]);
 
 				const closedList = await w.forge.listPullRequests({ state: "closed" });
@@ -294,6 +343,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const w = await world();
 				const n = await w.seedPullRequest({ head: "feat/b", body: "original" });
 				const read = await w.forge.getPullRequest(n);
+				expectVersion(read);
 				await w.editPullRequestBodyBehindBack(n, "edited elsewhere");
 
 				const result = await w.forge.updatePullRequest(n, { body: "mine" }, read.version);
@@ -365,6 +415,19 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			});
 		});
 
+		describe("permissions", () => {
+			it("getPermission reports the level set on the forge", async () => {
+				const w = await world();
+				await w.setPermission("alice", "admin");
+				await w.setPermission("bob", "read");
+				await w.setPermission("eve", "none");
+
+				expect(await w.forge.getPermission("alice")).toBe("admin");
+				expect(await w.forge.getPermission("bob")).toBe("read");
+				expect(await w.forge.getPermission("eve")).toBe("none");
+			});
+		});
+
 		describe("failures", () => {
 			it("unreachable forge throws ForgeError naming the operation", async () => {
 				const w = await world();
@@ -378,7 +441,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				expect(error).toBeInstanceOf(ForgeError);
 				expect((error as ForgeError).code).toBe("unreachable");
-				expect((error as ForgeError).operation).toBeTruthy();
+				expect((error as ForgeError).operation).toBe("getIssue");
 			});
 
 			it("forge works again after restore", async () => {
