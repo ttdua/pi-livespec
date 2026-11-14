@@ -1,8 +1,9 @@
 // `livespec.lock`: the record of the active agent-skills commit, pin, install
 // history, skipped commits and last check time.
 
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { parse, stringify } from "yaml";
+import { uniqueTempPath } from "./temp-name.ts";
 
 export type Lock = {
 	source: string;
@@ -32,11 +33,16 @@ export async function readLock(path: string): Promise<Lock | undefined> {
 	return toLock(path, parseYaml(path, text));
 }
 
-/** Writes to a sibling temp file, then renames it over `path`. */
+/** Writes to a unique sibling temp file, then renames it over `path`. */
 export async function writeLock(path: string, lock: Lock): Promise<void> {
-	const tmp = `${path}.tmp`;
-	await writeFile(tmp, stringify(lock), "utf8");
-	await rename(tmp, path);
+	const tmp = uniqueTempPath(path);
+	try {
+		await writeFile(tmp, stringify(lock), "utf8");
+		await rename(tmp, path);
+	} catch (error) {
+		await rm(tmp, { force: true });
+		throw error;
+	}
 }
 
 function parseYaml(path: string, text: string): unknown {

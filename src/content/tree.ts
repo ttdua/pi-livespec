@@ -7,11 +7,11 @@ import type { Pack } from "../engine/pack-types.ts";
 import { type CompatFailure, checkCompat } from "./compat.ts";
 import type { Mirror } from "./mirror.ts";
 import type { ContentPaths } from "./paths.ts";
+import { uniqueTempPath } from "./temp-name.ts";
 
 export type TreeResult = { ok: true; tree: string } | { ok: false; failures: CompatFailure[] };
 
 const SHA_DIR = /^[0-9a-f]{40}$/;
-const CURRENT_TMP_SUFFIX = ".tmp";
 
 /**
  * Makes `<sha>/` hold a compatible tree. A kept tree is re-checked in place, because the pack may have changed;
@@ -39,12 +39,16 @@ export async function installTree(paths: ContentPaths, mirror: Mirror, sha: stri
 	}
 }
 
-/** Points `current` at `<sha>/` atomically: a relative link `current.tmp` renamed over `current`. */
+/** Points `current` at `<sha>/` atomically: a relative link at a unique `current.tmp-*` renamed over `current`. */
 export async function switchCurrent(paths: ContentPaths, sha: string): Promise<void> {
-	const tmp = `${paths.current}${CURRENT_TMP_SUFFIX}`;
-	await rm(tmp, { force: true });
+	const tmp = uniqueTempPath(paths.current);
 	await symlink(sha, tmp);
-	await rename(tmp, paths.current);
+	try {
+		await rename(tmp, paths.current);
+	} catch (error) {
+		await rm(tmp, { force: true });
+		throw error;
+	}
 }
 
 /** The real `<sha>/` path behind `current`; `undefined` when no clone is active. */

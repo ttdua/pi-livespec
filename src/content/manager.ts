@@ -10,6 +10,7 @@ import { type Lock, freshLock, readLock, withInstalled, withRolledBack, writeLoc
 import type { Mirror } from "./mirror.ts";
 import { packSkillNames } from "./pack-skills.ts";
 import type { ContentPaths } from "./paths.ts";
+import { type RootLockMode, type RootLockOptions, withRootLock } from "./root-lock.ts";
 import { type SkillChanges, diffSkills, skillDirNames } from "./skill-diff.ts";
 import { type TreeResult, hasTree, installTree, pruneTrees, readActiveTree, shaOfTree, switchCurrent } from "./tree.ts";
 import { decideUpgrade, upgradeGate, workInProgressReason } from "./upgrade.ts";
@@ -27,8 +28,10 @@ export type UpgradeOutcome =
 	| { kind: "skipped" | "refused" | "failed"; reason: string; failures?: CompatFailure[] }
 	| { kind: "notified"; sha: string };
 
-export type ContentManagerDeps = { paths: ContentPaths; mirror: Mirror; now: () => Date; source: string };
+/** `lock` tunes the cross-process root lock (timeouts); tests inject short ones. */
+export type ContentManagerDeps = { paths: ContentPaths; mirror: Mirror; now: () => Date; source: string; lock?: RootLockOptions };
 
+const BUSY = "agent-skills is busy: another session is changing it; try again later";
 const NOT_CLONED = "agent-skills is not cloned; run /livespec init";
 /** `rev-parse --verify --quiet` exits 1 when the ref names no commit. */
 const EXIT_UNKNOWN_REF = 1;
@@ -40,7 +43,57 @@ type Applied = { ok: true; sha: string; changed: SkillChanges } | { ok: false; r
 export class ContentManager {
 	constructor(private readonly d: ContentManagerDeps) {}
 
+	/** Fast path without the lock when `current` exists; otherwise the install runs under the root lock. */
 	async clone(pack: Pack): Promise<CloneResult> {
+		const active = await this.activeTree();
+		if (active !== undefined) return { kind: "exists", sha: shaOfTree(active) };
+		return this.locked("wait", { kind: "failed", reason: BUSY }, () => this.cloneLocked(pack));
+	}
+
+	/** Never waits: a held root lock means another session is already checking. */
+	autoCheck(pack: Pack, channel: Channel, wip: WorkInProgress): Promise<UpgradeOutcome> {
+		return this.locked("try", { kind: "skipped", reason: BUSY }, () => this.autoCheckLocked(pack, channel, wip));
+	}
+
+	/** Fetches and installs now, ignoring the 24-hour limit; refused while pinned or during work in progress. */
+	update(pack: Pack, wip: WorkInProgress): Promise<UpgradeOutcome> {
+		return this.locked("wait", { kind: "refused", reason: BUSY }, () => this.updateLocked(pack, wip));
+	}
+
+	/** Installs commit `ref` and records the pin; refused during work in progress. */
+	async pin(ref: string, pack: Pack, wip: WorkInProgress): Promise<UpgradeOutcome> {
+		if (wip.busy) return { kind: "refused", reason: workInProgressReason(wip) };
+		return this.locked("wait", { kind: "refused", reason: BUSY }, () => this.pinLocked(ref, pack));
+	}
+
+	/** Throws when the root lock stays busy, since the contract returns nothing to report it in. */
+	async unpin(): Promise<void> {
+		const r = await withRootLock(this.d.paths.root, "wait", () => this.unpinLocked(), this.d.lock);
+		if (!r.acquired) throw new Error(BUSY);
+	}
+
+	/** Switches back to the previous history entry and skips the abandoned commit. Allowed during work in progress. */
+	rollback(): Promise<UpgradeOutcome> {
+		return this.locked("wait", { kind: "refused", reason: BUSY }, () => this.rollbackLocked());
+	}
+
+	async status(channel: Channel): Promise<string> {
+		const lock = await readLock(this.d.paths.lock);
+		if (!lock) return `agent-skills: ${NOT_CLONED}`;
+		return [
+			`Active commit: ${lock.commit || "none"}`,
+			`Pinned: ${lock.pinned ?? "no"}`,
+			`Channel: ${channel}`,
+			`Last check: ${lock.checkedAt ?? "never"}`,
+			`Kept commits: ${lock.history.join(", ") || "none"}`,
+		].join("\n");
+	}
+
+	activeTree(): Promise<string | undefined> {
+		return readActiveTree(this.d.paths);
+	}
+
+	private async cloneLocked(pack: Pack): Promise<CloneResult> {
 		const active = await this.activeTree();
 		if (active !== undefined) return { kind: "exists", sha: shaOfTree(active) };
 		const fetched = await this.fetchHead(this.d.source, true);
@@ -51,7 +104,7 @@ export class ContentManager {
 		return applied.ok ? { kind: "installed", sha: fetched.head } : { kind: "failed", ...failure(applied) };
 	}
 
-	async autoCheck(pack: Pack, channel: Channel, wip: WorkInProgress): Promise<UpgradeOutcome> {
+	private async autoCheckLocked(pack: Pack, channel: Channel, wip: WorkInProgress): Promise<UpgradeOutcome> {
 		const lock = await readLock(this.d.paths.lock);
 		if (!lock) return { kind: "skipped", reason: NOT_CLONED };
 		const gate = upgradeGate({ channel, lock, now: this.d.now(), workInProgress: wip, manual: false });
@@ -74,8 +127,7 @@ export class ContentManager {
 		return { kind: "failed", ...failure(applied) };
 	}
 
-	/** Fetches and installs now, ignoring the 24-hour limit; refused while pinned or during work in progress. */
-	async update(pack: Pack, wip: WorkInProgress): Promise<UpgradeOutcome> {
+	private async updateLocked(pack: Pack, wip: WorkInProgress): Promise<UpgradeOutcome> {
 		const lock = await readLock(this.d.paths.lock);
 		if (!lock) return { kind: "refused", reason: NOT_CLONED };
 		const manual = { channel: "auto" as const, lock, now: this.d.now(), workInProgress: wip, manual: true };
@@ -88,9 +140,7 @@ export class ContentManager {
 		return this.manualInstall(lock, decision.sha, pack);
 	}
 
-	/** Installs commit `ref` and records the pin; refused during work in progress. */
-	async pin(ref: string, pack: Pack, wip: WorkInProgress): Promise<UpgradeOutcome> {
-		if (wip.busy) return { kind: "refused", reason: workInProgressReason(wip) };
+	private async pinLocked(ref: string, pack: Pack): Promise<UpgradeOutcome> {
 		const lock = await readLock(this.d.paths.lock);
 		if (!lock) return { kind: "refused", reason: NOT_CLONED };
 		let sha: string | undefined;
@@ -103,13 +153,12 @@ export class ContentManager {
 		return this.manualInstall(lock, sha, pack, sha);
 	}
 
-	async unpin(): Promise<void> {
+	private async unpinLocked(): Promise<void> {
 		const lock = await readLock(this.d.paths.lock);
 		if (lock && lock.pinned !== null) await writeLock(this.d.paths.lock, { ...lock, pinned: null });
 	}
 
-	/** Switches back to the previous history entry and skips the abandoned commit. Allowed during work in progress. */
-	async rollback(): Promise<UpgradeOutcome> {
+	private async rollbackLocked(): Promise<UpgradeOutcome> {
 		const lock = await readLock(this.d.paths.lock);
 		if (!lock) return { kind: "refused", reason: NOT_CLONED };
 		const at = lock.history.lastIndexOf(lock.commit);
@@ -126,20 +175,10 @@ export class ContentManager {
 		return { kind: "installed", sha: previous, changed };
 	}
 
-	async status(channel: Channel): Promise<string> {
-		const lock = await readLock(this.d.paths.lock);
-		if (!lock) return `agent-skills: ${NOT_CLONED}`;
-		return [
-			`Active commit: ${lock.commit || "none"}`,
-			`Pinned: ${lock.pinned ?? "no"}`,
-			`Channel: ${channel}`,
-			`Last check: ${lock.checkedAt ?? "never"}`,
-			`Kept commits: ${lock.history.join(", ") || "none"}`,
-		].join("\n");
-	}
-
-	activeTree(): Promise<string | undefined> {
-		return readActiveTree(this.d.paths);
+	/** Runs `fn` under the cross-process root lock; `busy` when the lock cannot be taken. Each `fn` re-reads the lock file. */
+	private async locked<T>(mode: RootLockMode, busy: T, fn: () => Promise<T>): Promise<T> {
+		const r = await withRootLock(this.d.paths.root, mode, fn, this.d.lock);
+		return r.acquired ? r.value : busy;
 	}
 
 	private async manualInstall(lock: Lock, sha: string, pack: Pack, pinned?: string): Promise<UpgradeOutcome> {

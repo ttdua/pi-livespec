@@ -1,10 +1,11 @@
-import { lstat, readFile, readdir, readlink, realpath, rm } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, readlink, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { readLock } from "../../src/content/lock.ts";
 import { ContentManager } from "../../src/content/manager.ts";
-import { createMirror } from "../../src/content/mirror.ts";
+import { type Mirror, createMirror } from "../../src/content/mirror.ts";
 import { type ContentPaths, contentPaths } from "../../src/content/paths.ts";
+import { LOCK_DIR, OWNER_FILE, STALE_LOCK_MS } from "../../src/content/root-lock.ts";
 import type { WorkInProgress } from "../../src/content/wip.ts";
 import { type GitExec, defaultGitExec } from "../../src/engine/git-exec.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
@@ -175,10 +176,12 @@ describe("automatic upgrade", () => {
 		expect(await currentSha()).toBe(first);
 	});
 
-	test("upgrade lists added and removed pack skills", async () => {
+	test("upgrade reports changes only for skills the pack names", async () => {
 		const { m } = await cloned();
+		const init = pack.init.skills[0];
+		if (!init) throw new Error("default pack has no init skill");
 		const narrowed: Pack = { ...pack, init: { skills: [] } };
-		await upstream.commit(CHANGED_INTERVIEW);
+		await upstream.commit({ ...CHANGED_INTERVIEW, [`skills/${init}/SKILL.md`]: skillFile(init, "Changed too.") });
 		advance(25);
 		const r = await m.autoCheck(narrowed, "auto", IDLE);
 		expect(r.kind).toBe("installed");
@@ -349,5 +352,108 @@ describe("skills commands", () => {
 
 	test("activeTree is undefined without a clone", async () => {
 		expect(await manager().activeTree()).toBeUndefined();
+	});
+});
+
+describe("root lock", () => {
+	const holdRootLock = async (acquiredAt: Date) => {
+		await mkdir(join(paths.root, LOCK_DIR), { recursive: true });
+		await writeFile(join(paths.root, LOCK_DIR, OWNER_FILE), JSON.stringify({ pid: 999_999, acquiredAt: acquiredAt.toISOString(), token: "other" }));
+	};
+	const shortWait = { timeoutMs: 150, retryMs: 20 };
+	const slowFetch = (inner: Mirror, delayMs: number): Mirror => ({
+		...inner,
+		fetch: async () => {
+			await new Promise((r) => setTimeout(r, delayMs));
+			return inner.fetch();
+		},
+	});
+
+	async function assertConsistent(): Promise<void> {
+		const l = await lock();
+		expect(await currentSha()).toBe(l.commit);
+		expect(new Set(l.history).size).toBe(l.history.length);
+		expect(l.history.at(-1)).toBe(l.commit);
+		const trees = (await readdir(paths.root)).filter((n) => /^[0-9a-f]{40}$/.test(n)).sort();
+		expect(trees).toEqual([...l.history].sort());
+		const leftovers = (await readdir(paths.root)).filter((n) => n.startsWith(".staging") || n.includes(".tmp") || n === LOCK_DIR);
+		expect(leftovers).toEqual([]);
+	}
+
+	test("concurrent first clones install once", async () => {
+		const results = await Promise.all([manager().clone(pack), manager().clone(pack)]);
+		expect(results.map((r) => r.kind).sort()).toEqual(["exists", "installed"]);
+		await assertConsistent();
+	});
+
+	test("a failing auto-check concurrent with an update keeps current and lock consistent", async () => {
+		await cloned();
+		const next = await upstream.commit(CHANGED_INTERVIEW);
+		advance(25);
+		const strict: Pack = { ...pack, init: { skills: [...pack.init.skills, "not-in-upstream"] } };
+		const slow = new ContentManager({ paths, mirror: slowFetch(createMirror(paths, recordingExec), 400), now: () => clock, source: upstream.url });
+		const auto = slow.autoCheck(strict, "auto", IDLE);
+		await new Promise((r) => setTimeout(r, 50));
+		const [a, u] = await Promise.all([auto, manager().update(pack, IDLE)]);
+		expect(a.kind).toBe("failed");
+		expect(u).toMatchObject({ kind: "installed", sha: next });
+		expect((await lock()).commit).toBe(next);
+		await assertConsistent();
+	});
+
+	test("concurrent updates leave one consistent install", async () => {
+		await cloned();
+		const next = await upstream.commit(CHANGED_INTERVIEW);
+		const results = await Promise.all([manager().update(pack, IDLE), manager().update(pack, IDLE), manager().update(pack, IDLE)]);
+		expect(results.filter((r) => r.kind === "installed")).toHaveLength(1);
+		expect((await lock()).commit).toBe(next);
+		await assertConsistent();
+	});
+
+	test("auto-check skips when the root lock is held", async () => {
+		const { first } = await cloned();
+		await upstream.commit(CHANGED_INTERVIEW);
+		advance(25);
+		await holdRootLock(new Date());
+		gitCalls = [];
+		const started = Date.now();
+		const r = await manager().autoCheck(pack, "auto", IDLE);
+		expect(r.kind).toBe("skipped");
+		if (r.kind === "skipped") expect(r.reason).toMatch(/busy/);
+		expect(Date.now() - started).toBeLessThan(1000);
+		expect(fetches()).toBe(0);
+		expect(await currentSha()).toBe(first);
+	});
+
+	test("a stale root lock is taken over", async () => {
+		await cloned();
+		const next = await upstream.commit(CHANGED_INTERVIEW);
+		advance(25);
+		await holdRootLock(new Date(Date.now() - STALE_LOCK_MS - 60_000));
+		expect(await manager().autoCheck(pack, "auto", IDLE)).toMatchObject({ kind: "installed", sha: next });
+		await assertConsistent();
+	});
+
+	test("manual commands report busy after the timeout", async () => {
+		const { first } = await cloned();
+		const before = await lock();
+		await holdRootLock(new Date());
+		const m = new ContentManager({ paths, mirror: createMirror(paths, recordingExec), now: () => clock, source: upstream.url, lock: shortWait });
+		for (const r of [await m.update(pack, IDLE), await m.pin(first, pack, IDLE), await m.rollback()]) {
+			expect(r.kind).toBe("refused");
+			if (r.kind === "refused") expect(r.reason).toMatch(/busy/);
+		}
+		await expect(m.unpin()).rejects.toThrow(/busy/);
+		expect(await lock()).toEqual(before);
+	});
+
+	test("clone reports busy after the timeout", async () => {
+		await mkdir(paths.root, { recursive: true });
+		await holdRootLock(new Date());
+		const m = new ContentManager({ paths, mirror: createMirror(paths, recordingExec), now: () => clock, source: upstream.url, lock: shortWait });
+		const r = await m.clone(pack);
+		expect(r.kind).toBe("failed");
+		if (r.kind === "failed") expect(r.reason).toMatch(/busy/);
+		await expect(lstat(paths.current)).rejects.toThrow();
 	});
 });
