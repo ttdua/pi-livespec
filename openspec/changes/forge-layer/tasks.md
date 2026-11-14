@@ -41,8 +41,8 @@ Blocked by: 3
 
 Blocked by: 1
 
-- [ ] 6.1 Implement `CachedForge` decorator and cache file layout in `src/forge/cache.ts`
-- [ ] 6.2 Implement read-only mode entry and exit rules and tests
+- [x] 6.1 Implement `CachedForge` decorator and cache file layout in `src/forge/cache.ts`
+- [x] 6.2 Implement read-only mode entry and exit rules and tests
 
 ## 7. Forge detection
 
