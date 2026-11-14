@@ -45,11 +45,18 @@ export async function runInit(root: string, d: InitDeps): Promise<InitReport> {
 	return report;
 }
 
-/** `wx` creates the file only when absent, so an existing file is never rewritten. */
+/**
+ * Creates the parent directories, then the file with `wx`, so an existing file is never rewritten.
+ * Only `EEXIST` from the exclusive write means "kept"; a parent failure (e.g. a file in the way) is a failure.
+ */
 async function writeIfMissing(root: string, rel: string, content: string): Promise<Outcome> {
 	const path = join(root, rel);
 	try {
 		await mkdir(dirname(path), { recursive: true });
+	} catch (error) {
+		return { reason: `cannot create the folder of ${rel}: ${messageOf(error)}` };
+	}
+	try {
 		await writeFile(path, content, { encoding: "utf8", flag: "wx" });
 		return "created";
 	} catch (error) {
@@ -58,12 +65,13 @@ async function writeIfMissing(root: string, rel: string, content: string): Promi
 	}
 }
 
-/** An existing `specs/decisions/` is kept as is; a new one gets a keep file so git tracks it. */
+/**
+ * `specs/decisions/` with its keep file so git tracks it. An existing folder still gets the keep file when it
+ * is missing, which finishes a partly failed run; the folder counts as kept only when the keep file was there.
+ */
 async function ensureDecisionsDir(root: string): Promise<Outcome> {
-	const dir = join(root, DECISIONS_DIR);
 	try {
-		if ((await stat(dir)).isDirectory()) return "kept";
-		return { reason: `${DECISIONS_DIR} exists and is not a directory` };
+		if (!(await stat(join(root, DECISIONS_DIR))).isDirectory()) return { reason: `${DECISIONS_DIR} exists and is not a directory` };
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { reason: messageOf(error) };
 	}

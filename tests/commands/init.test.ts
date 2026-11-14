@@ -1,4 +1,4 @@
-import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { runInit } from "../../src/commands/init.ts";
@@ -99,6 +99,31 @@ describe("runInit", () => {
 	test("Templates validate", async () => {
 		await runInit(root, deps());
 		expect(await runValidate(root)).toEqual([]);
+	});
+
+	test("rerun creates a missing .gitkeep in an existing decisions directory", async () => {
+		await mkdir(join(root, "specs", "decisions"), { recursive: true });
+		const report = await runInit(root, deps());
+		expect(report.created).toContain("specs/decisions/");
+		expect(report.kept).not.toContain("specs/decisions/");
+		expect(await readdir(join(root, "specs", "decisions"))).toEqual([".gitkeep"]);
+	});
+
+	test("existing .gitkeep is kept unchanged", async () => {
+		await mkdir(join(root, "specs", "decisions"), { recursive: true });
+		await writeFile(join(root, "specs", "decisions", ".gitkeep"), "user\n");
+		const report = await runInit(root, deps());
+		expect(report.kept).toContain("specs/decisions/");
+		expect(await readFile(join(root, "specs", "decisions", ".gitkeep"), "utf8")).toBe("user\n");
+	});
+
+	test("a parent path that is a file fails the target instead of keeping it", async () => {
+		await mkdir(join(root, ".pi"), { recursive: true });
+		await writeFile(join(root, ".pi", "livespec"), "not a directory\n");
+		const report = await runInit(root, deps());
+		expect(report.kept).not.toContain(".pi/livespec/config.yaml");
+		expect(report.failed.map((f) => f.path)).toContain(".pi/livespec/config.yaml");
+		expect(await readFile(join(root, ".pi", "livespec"), "utf8")).toBe("not a directory\n");
 	});
 
 	test("invalid pack still writes the files and fails the clone with the pack errors", async () => {
