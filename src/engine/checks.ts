@@ -9,7 +9,7 @@ import type { Result } from "../core/result.ts";
 import { parseSpec } from "../core/spec.ts";
 import { validateSpec } from "../core/validate-spec.ts";
 import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts";
-import type { Git } from "./git.ts";
+import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { type CheckContext, type CheckFn, getCheck, registerCheck } from "./registry.ts";
 import type { ChangeState } from "./state-types.ts";
@@ -49,11 +49,20 @@ const specFormat: CheckFn = async ({ root, change }) => {
 	return results;
 };
 
-/** `capabilities-match-diff`: the declared line against `git diff <Base>..HEAD -- specs/`. */
+/**
+ * `capabilities-match-diff`: the declared line against `git diff <Base>..HEAD -- specs/`.
+ * A Base git cannot diff from (e.g. not fetched) is an error Result, not a throw.
+ */
 const capabilitiesMatch: CheckFn = async ({ change, git }) => {
 	const base = change.header.base;
-	const diff = base === undefined ? "" : await git.diff(base, "HEAD", SPECS_PATH);
-	return capabilitiesMatchDiff(change, diff);
+	if (base === undefined) return capabilitiesMatchDiff(change, "");
+	try {
+		return capabilitiesMatchDiff(change, await git.diff(base, "HEAD", SPECS_PATH));
+	} catch (error) {
+		if (!(error instanceof GitError)) throw error;
+		const detail = error.stderr.trim() || error.message;
+		return [{ code: "capabilities-match-diff", severity: "error", section: "Capabilities", message: `cannot diff specs/ from Base ${base}: ${detail}` }];
+	}
 };
 
 const BUILTIN_CHECKS: Record<string, CheckFn> = {

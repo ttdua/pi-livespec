@@ -94,6 +94,17 @@ describe("runChecks", () => {
 		]);
 	});
 
+	test("capabilities-match-diff reports an unknown Base as an error result", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "README.md", "x\n");
+		commitAll(root);
+		const only = { ...pack, phases: pack.phases.map((p) => (p.id === "define" ? { ...p, checks: ["capabilities-match-diff"] } : p)) };
+		const results = await runChecks(only, stateFor("define"), { root, git: createGit(root) });
+		expect(results).toEqual([
+			expect.objectContaining({ code: "capabilities-match-diff", severity: "error", message: expect.stringContaining("cannot diff specs/ from Base 0123456789abcdef") }),
+		]);
+	});
+
 	test("spec-format validates declared capabilities only", async () => {
 		const root = await makeRepo();
 		await writeIn(root, "specs/rate-limit/spec.md", EMPTY_SPEC);
