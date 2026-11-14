@@ -93,6 +93,14 @@ export function parseMarked(body: string): { kind: string; id: string; data: unk
  */
 export async function readMarkedComments(forge: Forge, issue: number): Promise<MarkedReadResult> {
 	const [{ login }, comments] = await Promise.all([forge.whoami(), forge.listComments(issue)]);
+	return filterMarked(comments, login);
+}
+
+/**
+ * Keeps the marked comments written by `login`, in input order.
+ * Foreign marked comments become warnings; plain comments are ignored silently.
+ */
+export function filterMarked(comments: Comment[], login: string): MarkedReadResult {
 	const result: MarkedReadResult = { comments: [], warnings: [] };
 
 	for (const comment of comments) {
