@@ -75,6 +75,8 @@ export interface FakeGiteaOptions {
 	withContentVersion?: boolean;
 	owner?: string;
 	repo?: string;
+	/** Clamps `limit` like Gitea's `API.MAX_RESPONSE_ITEMS`. */
+	maxPageSize?: number;
 }
 
 interface Reply {
@@ -113,6 +115,7 @@ export class FakeGitea {
 		private readonly server: Server,
 		private readonly withContentVersion: boolean,
 		private readonly prefix: string,
+		private readonly maxPageSize = Number.POSITIVE_INFINITY,
 	) {
 		this.buildRoutes();
 		server.on("request", (req, res) => void this.serve(req, res));
@@ -120,7 +123,7 @@ export class FakeGitea {
 
 	static async start(opts: FakeGiteaOptions = {}): Promise<FakeGitea> {
 		const server = createServer();
-		const fake = new FakeGitea(server, opts.withContentVersion ?? true, `/api/v1/repos/${opts.owner ?? "o"}/${opts.repo ?? "r"}`);
+		const fake = new FakeGitea(server, opts.withContentVersion ?? true, `/api/v1/repos/${opts.owner ?? "o"}/${opts.repo ?? "r"}`, opts.maxPageSize);
 		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 		return fake;
 	}
@@ -170,6 +173,12 @@ export class FakeGitea {
 
 	seedComment(n: number, author: string, body: string): number {
 		return this.addComment(n, author, body).id;
+	}
+
+	editComment(id: number, body: string): void {
+		const comment = this.comment(id);
+		comment.body = body;
+		comment.updatedAt = this.tick();
 	}
 
 	commentBody(id: number): string {
@@ -470,7 +479,7 @@ export class FakeGitea {
 	// ---- helpers ----
 
 	private pageOf<T>(items: T[], q: URLSearchParams): T[] {
-		const limit = Number(q.get("limit") ?? 30);
+		const limit = Math.min(Number(q.get("limit") ?? 30), this.maxPageSize);
 		const page = Number(q.get("page") ?? 1);
 		return items.slice((page - 1) * limit, page * limit);
 	}

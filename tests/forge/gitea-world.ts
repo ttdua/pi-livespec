@@ -20,7 +20,7 @@ export class GiteaWorld implements ContractWorld {
 		readonly forge: Forge,
 	) {}
 
-	static async create(opts: { withContentVersion: boolean }): Promise<GiteaWorld> {
+	static async create(opts: { withContentVersion: boolean; maxPageSize?: number }): Promise<GiteaWorld> {
 		const fake = await FakeGitea.start(opts);
 		const forge = new GiteaForge({
 			baseUrl: fake.url,

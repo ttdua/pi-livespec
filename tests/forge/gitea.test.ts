@@ -1,6 +1,6 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { GiteaForge } from "../../src/forge/gitea.ts";
@@ -191,6 +191,21 @@ describe("gitea adapter", () => {
 		});
 	});
 
+	it("a marker removed behind the back after a read is refused with a fresh GET and no PATCH", async () => {
+		const w = await world();
+		const n = await w.seedIssue();
+		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+		const [read] = await w.forge.listComments(n);
+		w.fake.editComment(Number(created.id), "marker stripped");
+		w.fake.calls.length = 0;
+
+		await expect(w.forge.updateComment(read.id, writeMarked("receipt", "u1", { v: 2 }), read.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
+
+		expect(w.fake.calls.some((c) => c.method === "GET" && c.path.includes(`/issues/comments/${created.id}`))).toBe(true);
+		expect(w.fake.calls.some((c) => c.method === "PATCH")).toBe(false);
+		expect(await w.commentBodyOf(created.id)).toBe("marker stripped");
+	});
+
 	describe("pagination", () => {
 		it("getChecks reads every page of the commit status", async () => {
 			const w = await world();
@@ -219,6 +234,92 @@ describe("gitea adapter", () => {
 			w.fake.seedReview(pr, { author: "a", event: "COMMENT", body: "", comments });
 
 			expect(await w.forge.listReviewComments(pr)).toHaveLength(55);
+		});
+	});
+
+	describe("capped page size", () => {
+		it("getChecks keeps reading past a short page and sees a failure on page 2", async () => {
+			const w = await GiteaWorld.create({ withContentVersion: true, maxPageSize: 30 });
+			worlds.push(w);
+			for (let i = 0; i < 30; i++) await w.seedStatus("sha1", { name: `ok-${i}`, state: "success" });
+			await w.seedStatus("sha1", { name: "late", state: "failure" });
+
+			const summary = await w.forge.getChecks("sha1");
+
+			expect(summary.state).toBe("failure");
+			expect(summary.checks).toHaveLength(31);
+		});
+
+		it("list endpoints return every item", async () => {
+			const w = await GiteaWorld.create({ withContentVersion: true, maxPageSize: 30 });
+			worlds.push(w);
+			const n = await w.seedIssue();
+			for (let i = 0; i < 75; i++) await w.postComment(n, OTHER_LOGIN, `c${i}`);
+
+			expect(await w.forge.listComments(n)).toHaveLength(75);
+		});
+
+		it("an endpoint that ignores `page` terminates without duplicates", async () => {
+			const forge = new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				fetch: (async () => new Response(JSON.stringify([{ id: 1, body: "x" }]), { status: 200 })) as unknown as typeof fetch,
+			});
+			await expect(forge.listComments(1)).resolves.toHaveLength(1);
+		});
+	});
+
+	describe("default tea config lookup", () => {
+		async function layout(files: Record<string, string>): Promise<string> {
+			const home = await mkdtemp(join(tmpdir(), "home-"));
+			for (const [rel, text] of Object.entries(files)) {
+				await mkdir(dirname(join(home, rel)), { recursive: true });
+				await writeFile(join(home, rel), text);
+			}
+			return home;
+		}
+		const config = (url: string, token = FAKE_TOKEN) => `logins:\n  - name: l\n    url: ${url}\n    token: ${token}\n`;
+		async function whoami(w: GiteaWorld, extra: Partial<ConstructorParameters<typeof GiteaForge>[0]>): Promise<unknown> {
+			const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", ...extra });
+			return forge.whoami();
+		}
+
+		it("uses $XDG_CONFIG_HOME/tea/config.yml when set", async () => {
+			const w = await world();
+			const home = await layout({ "xdg/tea/config.yml": config(w.fake.url) });
+			await expect(whoami(w, { homedir: home, platform: "linux", env: { XDG_CONFIG_HOME: join(home, "xdg") } })).resolves.toMatchObject({ login: "livespec-bot" });
+		});
+
+		it("uses Library/Application Support on macOS", async () => {
+			const w = await world();
+			const home = await layout({ "Library/Application Support/tea/config.yml": config(w.fake.url) });
+			await expect(whoami(w, { homedir: home, platform: "darwin", env: {} })).resolves.toMatchObject({ login: "livespec-bot" });
+		});
+
+		it("uses ~/.config/tea on other platforms", async () => {
+			const w = await world();
+			const home = await layout({ ".config/tea/config.yml": config(w.fake.url) });
+			await expect(whoami(w, { homedir: home, platform: "linux", env: {} })).resolves.toMatchObject({ login: "livespec-bot" });
+		});
+
+		it("falls back to the legacy ~/.tea/tea.yml", async () => {
+			const w = await world();
+			const home = await layout({ ".tea/tea.yml": config(w.fake.url) });
+			await expect(whoami(w, { homedir: home, platform: "linux", env: {} })).resolves.toMatchObject({ login: "livespec-bot" });
+		});
+
+		it("a login for another host is an auth error", async () => {
+			const w = await world();
+			const home = await layout({ ".config/tea/config.yml": config("https://gitea.example.org") });
+			await expect(whoami(w, { homedir: home, platform: "linux", env: {} })).rejects.toMatchObject({ code: "auth", operation: "whoami" });
+		});
+
+		it("GITEA_TOKEN wins over the config", async () => {
+			const w = await world();
+			const home = await layout({ ".config/tea/config.yml": config(w.fake.url, "wrong") });
+			await expect(whoami(w, { homedir: home, platform: "linux", env: { GITEA_TOKEN: FAKE_TOKEN } })).resolves.toMatchObject({ login: "livespec-bot" });
 		});
 	});
 
@@ -255,6 +356,24 @@ describe("gitea adapter", () => {
 
 		it("an object endpoint that returns a non-object is an http error", async () => {
 			await expect(forgeWith(json("[]")).getIssue(1)).rejects.toMatchObject({ code: "http", operation: "getIssue" });
+		});
+
+		it("null or scalar list entries are http errors, not TypeErrors", async () => {
+			await expect(forgeWith(json("[null]")).listComments(1)).rejects.toMatchObject({ code: "http", status: 200, operation: "listComments" });
+			await expect(forgeWith(json("[1]")).searchIssues({})).rejects.toMatchObject({ code: "http", operation: "searchIssues" });
+			await expect(forgeWith(json('{"statuses":[null]}')).getChecks("sha")).rejects.toMatchObject({ code: "http", status: 200, operation: "getChecks" });
+			await expect(forgeWith(json('{"statuses":["x"]}')).getChecks("sha")).rejects.toMatchObject({ code: "http", operation: "getChecks" });
+		});
+
+		it("wrong-typed nested fields are http errors", async () => {
+			await expect(forgeWith(json('{"number":1,"user":"bob"}')).getIssue(1)).rejects.toMatchObject({ code: "http", operation: "getIssue" });
+			await expect(forgeWith(json('{"number":1,"labels":[null]}')).getIssue(1)).rejects.toMatchObject({ code: "http", operation: "getIssue" });
+			await expect(forgeWith(json('{"number":1,"head":{"ref":5}}')).getPullRequest(1)).rejects.toMatchObject({ code: "http", operation: "getPullRequest" });
+			await expect(forgeWith(json('[{"id":"x","user":[]}]')).listComments(1)).rejects.toMatchObject({ code: "http", operation: "listComments" });
+		});
+
+		it("statuses: null means no statuses", async () => {
+			await expect(forgeWith(json('{"state":"pending","statuses":null}')).getChecks("sha")).resolves.toMatchObject({ state: "none", checks: [] });
 		});
 
 		it("an empty body is fine where there is no payload", async () => {
