@@ -180,24 +180,26 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("create, list and edit a comment", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const created = await w.forge.createComment(n, "hello");
-				expect(created).toMatchObject({ author: BOT_LOGIN, body: "hello" });
+				const hello = writeMarked("receipt", "u1", { v: "hello" });
+				const created = await w.forge.createComment(n, hello);
+				expect(created).toMatchObject({ author: BOT_LOGIN, body: hello });
 				expect(created.id).toBeTruthy();
 				expectVersion(created);
 
 				const listed = await w.forge.listComments(n);
 				for (const c of listed) expectVersion(c);
 				expect(listed.map((c) => c.id)).toEqual([created.id]);
-				expect(listed[0]).toMatchObject({ author: BOT_LOGIN, body: "hello" });
+				expect(listed[0]).toMatchObject({ author: BOT_LOGIN, body: hello });
 
-				const result = await w.forge.updateComment(created.id, "edited", created.version);
+				const edited = writeMarked("receipt", "u1", { v: "edited" });
+				const result = await w.forge.updateComment(created.id, edited, created.version);
 				expect(result.status).toBe("written");
 				if (result.status === "written") {
-					expect(result.item.body).toBe("edited");
+					expect(result.item.body).toBe(edited);
 					expectVersion(result.item);
 				}
-				expect(await w.commentBodyOf(created.id)).toBe("edited");
-				expect((await w.forge.listComments(n))[0].body).toBe("edited");
+				expect(await w.commentBodyOf(created.id)).toBe(edited);
+				expect((await w.forge.listComments(n))[0].body).toBe(edited);
 			});
 
 			it("listComments includes comments from other accounts", async () => {
@@ -213,16 +215,17 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("comment edits are last-write-wins even with a stale version", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const created = await w.forge.createComment(n, "first");
+				const bodyOf = (v: string) => writeMarked("receipt", "u1", { v });
+				const created = await w.forge.createComment(n, bodyOf("first"));
 				const original = created.version;
 
-				const one = await w.forge.updateComment(created.id, "second", original);
+				const one = await w.forge.updateComment(created.id, bodyOf("second"), original);
 				expect(one.status).toBe("written");
 
-				const two = await w.forge.updateComment(created.id, "third", original);
+				const two = await w.forge.updateComment(created.id, bodyOf("third"), original);
 
 				expect(two.status).toBe("written");
-				expect(await w.commentBodyOf(created.id)).toBe("third");
+				expect(await w.commentBodyOf(created.id)).toBe(bodyOf("third"));
 			});
 		});
 
@@ -270,9 +273,20 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const id = await w.postComment(n, OTHER_LOGIN, body);
 				const [foreign] = await w.forge.listComments(n);
 
+				await expect(w.forge.updateComment(id, writeMarked("decision", "d1", { choice: "y" }), foreign.version)).rejects.toBeInstanceOf(ForgeError);
 				await expect(assertOwnMarkedComment(w.forge, foreign)).rejects.toBeInstanceOf(ForgeError);
 
 				expect(await w.commentBodyOf(id)).toBe(body);
+			});
+
+			it("unmarked own comment edit refused", async () => {
+				const w = await world();
+				const n = await w.seedIssue();
+				const created = await w.forge.createComment(n, "plain remark");
+
+				await expect(w.forge.updateComment(created.id, "changed", created.version)).rejects.toBeInstanceOf(ForgeError);
+
+				expect(await w.commentBodyOf(created.id)).toBe("plain remark");
 			});
 
 			it("own marked comment edit allowed", async () => {
