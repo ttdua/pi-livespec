@@ -1,8 +1,8 @@
 # Verification Report
 
 **Change**: `spec-core`
-**Verified at**: `2026-11-14 15:20`
-**Iteration**: `1`
+**Verified at**: `2026-11-14` (re-run after iteration 2)
+**Iteration**: `2`
 **Verifier**: `parent session (inline); evidence collected in this run, no verifier agent`
 
 ---
@@ -22,7 +22,7 @@ Change 'spec-core' is valid        (exit 0)
 
 - [x] Every box is ticked
 
-`openspec instructions apply` reports `{"total":23,"complete":23,"remaining":0}`; `grep -c '\- \[ \]' tasks.md` returns 0.
+`openspec instructions apply` reports `{"total":26,"complete":26,"remaining":0}`; `grep -c '\- \[ \]' tasks.md` returns 0.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -54,7 +54,7 @@ Change 'spec-core' is valid        (exit 0)
 | change-issue-format / Tick and untick units | ADDED | Pass | `src/core/tick.ts:42,45` |
 | change-issue-format / Tick and untick changes | ADDED | Pass | `src/core/tick.ts:48,51` |
 | spec-validation / Validation result | ADDED | Pass | `src/core/result.ts:1-8` |
-| spec-validation / Living spec checks | ADDED | Pass | `src/core/validate-spec.ts:13` |
+| spec-validation / Living spec checks | ADDED | Pass | `src/core/validate-spec.ts:13` (errors: scenario missing, duplicate name, paths glob, `spec-no-requirements` at `:24`; warnings: `spec-normative`, `spec-when-then`; GIVEN parsed in `src/core/spec.ts`) |
 | spec-validation / Glossary checks | ADDED | Pass | `src/core/validate-spec.ts:42` |
 | spec-validation / Decision checks | ADDED | Pass | `src/core/validate-decisions.ts:38,49` |
 | spec-validation / Unit format check | ADDED | Pass | `src/core/validate-units.ts:69` |
@@ -72,10 +72,10 @@ Change 'spec-core' is valid        (exit 0)
 - [x] Every scenario maps to a test
 - [x] The project test command was run fresh in this step
 
-**Test command**: `bun run test` (vitest run), run in the worktree at `9b5de35`
-**Result**: exit 0, 21 test files passed, 206 tests passed, 0 failed. `bun run typecheck` (`tsc --noEmit`): exit 0.
+**Test command**: `bun run test` (vitest run), run in the worktree at `6cd1bf5`
+**Result**: exit 0, 21 test files passed, 211 tests passed, 0 failed. `bun run typecheck` (`tsc --noEmit`): exit 0.
 
-A script that compares each `#### Scenario:` name in the five delta specs with the `it(...)` names under `tests/` found 76 scenarios and 0 without a test. Spot checks:
+A script that compares each `#### Scenario:` name in the five delta specs with the `it(...)` names under `tests/` found 79 scenarios and 0 without a test. Spot checks:
 
 | Scenario | Test |
 |---|---|
@@ -110,7 +110,13 @@ A script that compares each `#### Scenario:` name in the five delta specs with t
 
 - [x] Working tree is clean (`git status --porcelain` printed nothing)
 
-**Commit range**: `e44ed8e..9b5de35` (19 commits, including the apply receipt)
+**Commit range**: `e44ed8e..6cd1bf5`
+
+---
+
+## Iteration 2 note
+
+This re-run follows the user-approved alignment of spec check severities with OpenSpec (`1d2250f`). The earlier warning about the strictness of SHALL/MUST and WHEN/THEN no longer applies. Migrate then validate on the 22 pi-superspec `spec.md` files: 0 errors, 0 warnings (re-run in iteration 2). The other warnings and suggestions below stand.
 
 ---
 
