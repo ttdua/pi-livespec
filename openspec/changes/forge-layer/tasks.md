@@ -18,8 +18,8 @@ Blocked by: 1
 
 Blocked by: 1, 2
 
-- [ ] 3.1 Write `runContract(factory)` in `tests/forge/contract.ts` covering issues, labels, comments, PRs, reviews, checks, conflict, foreign marker and missing label scenarios
-- [ ] 3.2 Define the `ContractWorld` interface (mutate-behind-the-back hooks) that each fake implements
+- [x] 3.1 Write `runContract(factory)` in `tests/forge/contract.ts` covering issues, labels, comments, PRs, reviews, checks, conflict, foreign marker and missing label scenarios
+- [x] 3.2 Define the `ContractWorld` interface (mutate-behind-the-back hooks) that each fake implements
 
 ## 4. GitHub adapter
 
