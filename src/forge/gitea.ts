@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { homedir as osHomedir, platform as osPlatform } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { ForgeError } from "./errors.ts";
+import { ForgeError, isAuthStatus } from "./errors.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
 import { assertOwnMarkedComment } from "./markers.ts";
 import type {
@@ -24,7 +24,8 @@ import type {
 	Version,
 	WriteResult,
 } from "./types.ts";
-import { bodyVersion } from "./version.ts";
+import { type SnapshotKind, SnapshotStore } from "./snapshots.ts";
+import { bodyVersion, type ComparableIssue, changedFields } from "./version.ts";
 
 export interface GiteaOptions {
 	/** Server root, e.g. `https://gitea.example.org` (no `/api/v1`). */
@@ -38,7 +39,12 @@ export interface GiteaOptions {
 	/** Test seams for the default `tea` config lookup. */
 	homedir?: string;
 	platform?: NodeJS.Platform;
+	/** Limit for one HTTP request, response body included; default {@link DEFAULT_TIMEOUT_MS}. */
+	timeoutMs?: number;
 }
+
+/** Default limit for one Gitea HTTP request. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 const PAGE_SIZE = 50;
 /** Hard stop for a runaway paginator (a server that never returns an empty page). */
@@ -116,6 +122,7 @@ class GiteaTransport {
 
 	async call(operation: string, method: string, path: string, body?: unknown, accept: number[] = []): Promise<Reply> {
 		const token = await this.resolveToken(operation);
+		const signal = AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 		let response: Response;
 		try {
 			response = await this.fetchFn(`${this.opts.baseUrl.replace(/\/+$/, "")}/api/v1${path}`, {
@@ -126,6 +133,7 @@ class GiteaTransport {
 					...(body === undefined ? {} : { "content-type": "application/json" }),
 				},
 				body: body === undefined ? undefined : JSON.stringify(body),
+				signal,
 			});
 		} catch (error) {
 			throw new ForgeError({ code: "unreachable", operation, message: `${operation}: ${describe(error)}` });
@@ -142,7 +150,7 @@ class GiteaTransport {
 		if (accept.includes(response.status)) return { status: response.status, json: parsed };
 		const message = (parsed as { message?: unknown } | undefined)?.message;
 		const detail = typeof message === "string" ? message : text.slice(0, 200);
-		const code = response.status === 401 || response.status === 403 ? "auth" : "http";
+		const code = isAuthStatus(response.status) ? "auth" : "http";
 		throw new ForgeError({ code, operation, status: response.status, message: `${operation}: HTTP ${response.status} ${detail}`.trim() });
 	}
 
@@ -246,6 +254,8 @@ export class GiteaForge implements Forge, LabelRepo {
 	readonly kind = "gitea";
 	private readonly http: GiteaTransport;
 	private readonly repoPath: string;
+	/** What each version this adapter handed out looked like, to name changed fields on conflict. */
+	private readonly snapshots = new SnapshotStore();
 
 	constructor(opts: GiteaOptions) {
 		this.http = new GiteaTransport(opts);
@@ -268,7 +278,7 @@ export class GiteaForge implements Forge, LabelRepo {
 		if (q.labels?.length) params.set("labels", q.labels.join(","));
 		if (q.text) params.set("q", q.text);
 		const items = await this.http.list("searchIssues", `${this.repoPath}/issues?${params}`, isIssueDto);
-		return items.map(toIssue);
+		return items.map((json) => this.issueOf(json));
 	}
 
 	async getPermission(login: string): Promise<"none" | "read" | "write" | "admin"> {
@@ -279,7 +289,7 @@ export class GiteaForge implements Forge, LabelRepo {
 	async createIssue(i: { title: string; body: string; labels: string[] }): Promise<Issue> {
 		const json = await this.http.object("createIssue", "POST", `${this.repoPath}/issues`, isIssueDto, { title: i.title, body: i.body });
 		const number = Number(json.number);
-		if (i.labels.length === 0) return toIssue(json);
+		if (i.labels.length === 0) return this.issueOf(json);
 		await this.applyLabels("createIssue", number, i.labels);
 		return this.readIssue("createIssue", number);
 	}
@@ -287,11 +297,13 @@ export class GiteaForge implements Forge, LabelRepo {
 	async updateIssueBody(n: number, body: string, expect: Version): Promise<WriteResult<Issue>> {
 		return this.writeVersioned({
 			operation: "updateIssueBody",
+			kind: "issue",
+			n,
 			path: `${this.repoPath}/issues/${n}`,
 			patch: { body },
 			expect,
 			read: () => this.readIssue("updateIssueBody", n),
-			parse: toIssue,
+			parse: (json) => this.issueOf(json),
 			guard: isIssueDto,
 		});
 	}
@@ -364,7 +376,7 @@ export class GiteaForge implements Forge, LabelRepo {
 
 	async listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }, operation = "listPullRequests"): Promise<PullRequest[]> {
 		const items = await this.http.list(operation, `${this.repoPath}/pulls?state=${q.state}`, isPullDto);
-		return items.map(toPull).filter((p) => q.head === undefined || p.head === q.head);
+		return items.map((json) => this.pullOf(json)).filter((p) => q.head === undefined || p.head === q.head);
 	}
 
 	async getPullRequestFiles(pr: number): Promise<string[]> {
@@ -379,17 +391,19 @@ export class GiteaForge implements Forge, LabelRepo {
 
 	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
 		const json = await this.http.object("createPullRequest", "POST", `${this.repoPath}/pulls`, isPullDto, p);
-		return toPull(json);
+		return this.pullOf(json);
 	}
 
 	async updatePullRequest(n: number, p: { title?: string; body?: string }, expect: Version): Promise<WriteResult<PullRequest>> {
 		return this.writeVersioned({
 			operation: "updatePullRequest",
+			kind: "pull",
+			n,
 			path: `${this.repoPath}/pulls/${n}`,
 			patch: p,
 			expect,
 			read: () => this.readPull("updatePullRequest", n),
-			parse: toPull,
+			parse: (json) => this.pullOf(json),
 			guard: isPullDto,
 		});
 	}
@@ -444,11 +458,11 @@ export class GiteaForge implements Forge, LabelRepo {
 	// ---- shared steps ----
 
 	private async readIssue(operation: string, n: number): Promise<Issue> {
-		return toIssue(await this.http.object(operation, "GET", `${this.repoPath}/issues/${n}`, isIssueDto));
+		return this.issueOf(await this.http.object(operation, "GET", `${this.repoPath}/issues/${n}`, isIssueDto));
 	}
 
 	private async readPull(operation: string, n: number): Promise<PullRequest> {
-		return toPull(await this.http.object(operation, "GET", `${this.repoPath}/pulls/${n}`, isPullDto));
+		return this.pullOf(await this.http.object(operation, "GET", `${this.repoPath}/pulls/${n}`, isPullDto));
 	}
 
 	private async applyLabels(operation: string, n: number, labels: string[]): Promise<void> {
@@ -462,8 +476,10 @@ export class GiteaForge implements Forge, LabelRepo {
 	 * came from a server without `content_version`: re-read, compare, then
 	 * write (best-effort). The write is never refused for the server version.
 	 */
-	private async writeVersioned<T extends { version: Version }, D>(w: {
+	private async writeVersioned<T extends Issue | PullRequest, D>(w: {
 		operation: string;
+		kind: SnapshotKind;
+		n: number;
 		path: string;
 		patch: Record<string, unknown>;
 		expect: Version;
@@ -474,24 +490,48 @@ export class GiteaForge implements Forge, LabelRepo {
 		const strictVersion = contentVersionOf(w.expect);
 		if (strictVersion !== undefined) {
 			const reply = await this.http.call(w.operation, "PATCH", w.path, { ...w.patch, content_version: strictVersion }, [409]);
-			if (reply.status === 409) return this.conflict(w.read);
+			if (reply.status === 409) return this.conflict(w.kind, w.n, w.expect, await w.read());
 			return { status: "written", item: w.parse(this.http.asObject(w.operation, reply, w.guard)), check: "strict" };
 		}
 
 		const fresh = await w.read();
-		if (fresh.version !== w.expect) return { status: "conflict", current: fresh.version, changed: ["body"] };
+		if (fresh.version !== w.expect) return this.conflict(w.kind, w.n, w.expect, fresh);
 		const reply = await this.http.call(w.operation, "PATCH", w.path, w.patch);
 		return { status: "written", item: w.parse(this.http.asObject(w.operation, reply, w.guard)), check: "best-effort" };
 	}
 
-	/** A 409 says the stored body differs; a fresh read names the current version. */
-	private async conflict<T extends { version: Version }>(read: () => Promise<T>): Promise<WriteResult<T>> {
-		const fresh = await read();
-		return { status: "conflict", current: fresh.version, changed: ["body"] };
+	/**
+	 * Names the fields that differ between the snapshot of `expected` and the
+	 * fresh read. An unknown snapshot, or a version change with equal compared
+	 * fields, still conflicts and names `body`.
+	 */
+	private conflict<T extends Issue | PullRequest>(kind: SnapshotKind, n: number, expected: Version, fresh: T): WriteResult<T> {
+		const before = this.snapshots.recall(kind, n, expected);
+		const changed = before ? changedFields(before, comparableOf(fresh)) : [];
+		return { status: "conflict", current: fresh.version, changed: changed.length > 0 ? changed : ["body"] };
+	}
+
+	// ---- mapping with snapshots ----
+
+	private issueOf(json: IssueDto): Issue {
+		const issue = toIssue(json);
+		this.snapshots.remember("issue", issue.number, issue.version, comparableOf(issue));
+		return issue;
+	}
+
+	private pullOf(json: PullDto): PullRequest {
+		const pull = toPull(json);
+		this.snapshots.remember("pull", pull.number, pull.version, comparableOf(pull));
+		return pull;
 	}
 }
 
 // ---- mapping ----
+
+/** The compared fields of an issue or pull request; a pull request has no labels here, as in the GitHub adapter. */
+function comparableOf(item: Issue | PullRequest): ComparableIssue {
+	return { title: item.title, body: item.body, labels: "labels" in item ? item.labels : [], state: item.state };
+}
 
 function toVersion(json: IssueDto, body: string): Version {
 	if (typeof json.content_version === "number") return `${CONTENT_VERSION_PREFIX}${json.content_version}` as Version;

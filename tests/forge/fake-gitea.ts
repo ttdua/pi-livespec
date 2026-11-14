@@ -167,6 +167,13 @@ export class FakeGitea {
 		issue.updatedAt = this.tick();
 	}
 
+	editIssueTitle(n: number, title: string): void {
+		const issue = this.issue(n);
+		issue.title = title;
+		issue.cv += 1;
+		issue.updatedAt = this.tick();
+	}
+
 	issueBody(n: number): string {
 		return this.issue(n).body;
 	}

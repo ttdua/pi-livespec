@@ -3,7 +3,7 @@
 // PATCH (see design.md); such writes report `check: "best-effort"`.
 
 import { execFile } from "node:child_process";
-import { ForgeError, type ForgeErrorCode } from "./errors.ts";
+import { ForgeError, type ForgeErrorCode, isAuthStatus } from "./errors.ts";
 import { parseMarked } from "./markers.ts";
 import { ensureLabels, type LabelRepo } from "./labels.ts";
 import type {
@@ -45,18 +45,31 @@ export interface GitHubForgeOptions {
 	hostname?: string;
 }
 
-export const defaultExec: ExecFn = (file, args, input) =>
-	new Promise((resolve) => {
-		const child = execFile(file, args, { maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
-			if (error && typeof error.code !== "number") {
-				resolve({ stdout, stderr, code: null, spawnError: error.message });
-				return;
-			}
-			resolve({ stdout, stderr, code: error ? (error.code as number) : 0 });
+/** Default limit for one `gh` invocation. */
+export const DEFAULT_GH_TIMEOUT_MS = 60_000;
+
+/** Builds an ExecFn over `execFile`; a run longer than `timeoutMs` is killed and reported as a spawn error. */
+export function createExec(opts: { timeoutMs?: number } = {}): ExecFn {
+	const timeoutMs = opts.timeoutMs ?? DEFAULT_GH_TIMEOUT_MS;
+	return (file, args, input) =>
+		new Promise((resolve) => {
+			const child = execFile(file, args, { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs }, (error, stdout, stderr) => {
+				if (error?.killed) {
+					resolve({ stdout, stderr, code: null, spawnError: `timed out after ${timeoutMs} ms` });
+					return;
+				}
+				if (error && typeof error.code !== "number") {
+					resolve({ stdout, stderr, code: null, spawnError: error.message });
+					return;
+				}
+				resolve({ stdout, stderr, code: error ? (error.code as number) : 0 });
+			});
+			child.stdin?.on("error", () => {});
+			child.stdin?.end(input);
 		});
-		child.stdin?.on("error", () => {});
-		child.stdin?.end(input);
-	});
+}
+
+export const defaultExec: ExecFn = createExec();
 
 interface ApiCall {
 	method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -125,6 +138,8 @@ interface JsonStatus {
 }
 
 const HTTP_STATUS = /\(HTTP (\d{3})\)/;
+/** GitHub answers an exhausted rate limit with 403; that is not a credentials problem. */
+const RATE_LIMIT = /rate limit/i;
 
 export class GitHubForge implements Forge, LabelRepo {
 	readonly kind = "github" as const;
@@ -416,11 +431,17 @@ export class GitHubForge implements Forge, LabelRepo {
 		return parseResponse<T>(operation, res.stdout, call.paginate === true, call.pages === true);
 	}
 
+	/** Only transport failures are `unreachable`; anything else gh reports is `http` so a cache does not go read-only for it. */
 	private failedCall(operation: string, res: ExecResult): ForgeError {
 		const detail = res.stderr.trim() || res.stdout.trim();
 		const status = Number(HTTP_STATUS.exec(detail)?.[1]);
-		if (!status) return fail("unreachable", operation, `${operation}: GitHub is unreachable: ${detail}`);
-		if (status === 401) return fail("auth", operation, `${operation}: GitHub rejected the credentials: ${detail}`, status);
+		if (!status) {
+			if (looksLikeNetworkError(detail)) return fail("unreachable", operation, `${operation}: GitHub is unreachable: ${detail}`);
+			return fail("http", operation, `${operation}: gh failed: ${detail}`);
+		}
+		if (isAuthStatus(status) && !RATE_LIMIT.test(detail)) {
+			return fail("auth", operation, `${operation}: GitHub rejected the credentials: ${detail}`, status);
+		}
 		return fail("http", operation, `${operation}: ${detail}`, status);
 	}
 

@@ -1,7 +1,10 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Version } from "../../src/forge/types.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { GiteaForge } from "../../src/forge/gitea.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
@@ -80,6 +83,17 @@ describe("gitea adapter", () => {
 			expect(w.fake.calls).toEqual([]);
 		});
 
+		it("a forbidden token (403) is an auth error with its status", async () => {
+			const forge = new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				fetch: (async () => new Response(JSON.stringify({ message: "forbidden" }), { status: 403 })) as unknown as typeof fetch,
+			});
+			await expect(forge.whoami()).rejects.toMatchObject({ code: "auth", status: 403, operation: "whoami" });
+		});
+
 		it("a rejected token is an auth error with its status", async () => {
 			const w = await world();
 			const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: { GITEA_TOKEN: "bad" }, teaConfigPath: "/nonexistent" });
@@ -106,6 +120,39 @@ describe("gitea adapter", () => {
 			expect(await w.bodyOf(n)).toBe("edited elsewhere");
 			const patch = w.fake.calls.find((c) => c.method === "PATCH");
 			expect(patch?.body).toMatchObject({ body: "mine", content_version: 1 });
+		});
+
+		it("a 409 names title, not body, when only the title changed behind the back", async () => {
+			const w = await world();
+			const n = await w.seedIssue({ title: "old", body: "original" });
+			const read = await w.forge.getIssue(n);
+			w.fake.editIssueTitle(n, "renamed");
+
+			const result = await w.forge.updateIssueBody(n, "mine", read.version);
+
+			expect(result).toMatchObject({ status: "conflict", changed: ["title"] });
+		});
+
+		it("a 409 names title and body when both changed behind the back", async () => {
+			const w = await world();
+			const n = await w.seedIssue({ title: "old", body: "original" });
+			const read = await w.forge.getIssue(n);
+			w.fake.editIssueTitle(n, "renamed");
+			await w.editBodyBehindBack(n, "edited elsewhere");
+
+			const result = await w.forge.updateIssueBody(n, "mine", read.version);
+
+			expect(result).toMatchObject({ status: "conflict", changed: ["title", "body"] });
+		});
+
+		it("a 409 for a version this adapter never handed out falls back to body", async () => {
+			const w = await world();
+			const n = await w.seedIssue({ body: "original" });
+			w.fake.editIssueTitle(n, "renamed");
+
+			const result = await w.forge.updateIssueBody(n, "mine", "cv:1" as Version);
+
+			expect(result).toMatchObject({ status: "conflict", changed: ["body"] });
 		});
 
 		it("current version: written with strict check", async () => {
@@ -443,6 +490,39 @@ describe("gitea adapter", () => {
 			const w = await world();
 			const home = await layout({ ".config/tea/config.yml": config(w.fake.url, "wrong") });
 			await expect(whoami(w, { homedir: home, platform: "linux", env: { GITEA_TOKEN: FAKE_TOKEN } })).resolves.toMatchObject({ login: "livespec-bot" });
+		});
+	});
+
+	describe("timeouts", () => {
+		it("a request that never answers is aborted after timeoutMs and is unreachable", async () => {
+			let signal: AbortSignal | undefined;
+			const forge = new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				timeoutMs: 50,
+				fetch: ((_url: string, init?: RequestInit) => {
+					signal = init?.signal ?? undefined;
+					return new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(signal?.reason)));
+				}) as unknown as typeof fetch,
+			});
+
+			await expect(forge.getIssue(1)).rejects.toMatchObject({ code: "unreachable", operation: "getIssue" });
+			expect(signal?.aborted).toBe(true);
+		});
+
+		it("a server that stops answering is unreachable within timeoutMs", { timeout: 5000 }, async () => {
+			const hang = createServer(() => {});
+			await new Promise<void>((resolve) => hang.listen(0, "127.0.0.1", resolve));
+			try {
+				const url = `http://127.0.0.1:${(hang.address() as AddressInfo).port}`;
+				const forge = new GiteaForge({ baseUrl: url, owner: "o", repo: "r", env: { GITEA_TOKEN: FAKE_TOKEN }, timeoutMs: 100 });
+				await expect(forge.whoami()).rejects.toMatchObject({ code: "unreachable", operation: "whoami" });
+			} finally {
+				hang.closeAllConnections();
+				await new Promise<void>((resolve) => hang.close(() => resolve()));
+			}
 		});
 	});
 

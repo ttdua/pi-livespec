@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
-import { GitHubForge } from "../../src/forge/github.ts";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createExec, type ExecResult, GitHubForge } from "../../src/forge/github.ts";
 import { runContract } from "./contract.ts";
 import { tick } from "./fake-gh/state.ts";
 import { GitHubWorld } from "./github-world.ts";
@@ -277,6 +280,48 @@ describe("github adapter", () => {
 	it("a missing gh executable is unreachable", async () => {
 		const forge = new GitHubForge({ ghPath: "/nonexistent/gh", repo: { owner: "a", repo: "b" } });
 		await expect(forge.whoami()).rejects.toMatchObject({ code: "unreachable", operation: "whoami" });
+	});
+
+	describe("error classification", () => {
+		const AUTH_OK: ExecResult = { stdout: "", stderr: "", code: 0 };
+		/** A forge whose `gh api` calls fail with `stderr` and exit 1; `gh auth status` succeeds. */
+		const failingWith = (stderr: string): GitHubForge =>
+			new GitHubForge({
+				ghPath: "gh",
+				repo: { owner: "a", repo: "b" },
+				exec: async (_file, args) => (args[0] === "auth" ? AUTH_OK : { stdout: "", stderr, code: 1 }),
+			});
+
+		it("an internal gh failure without a network pattern is http, not unreachable", async () => {
+			await expect(failingWith("gh: unexpected end of JSON input").whoami()).rejects.toMatchObject({ code: "http", operation: "whoami" });
+		});
+
+		it("a network failure is unreachable", async () => {
+			await expect(failingWith("error connecting to api.github.com").whoami()).rejects.toMatchObject({ code: "unreachable" });
+			await expect(failingWith("dial tcp: lookup api.github.com: no such host").whoami()).rejects.toMatchObject({ code: "unreachable" });
+		});
+
+		it("401 and 403 are auth", async () => {
+			await expect(failingWith("gh: Bad credentials (HTTP 401)").whoami()).rejects.toMatchObject({ code: "auth", status: 401 });
+			await expect(failingWith("gh: Resource not accessible by integration (HTTP 403)").whoami()).rejects.toMatchObject({ code: "auth", status: 403 });
+		});
+
+		it("a rate-limit 403 stays http", async () => {
+			await expect(failingWith("gh: API rate limit exceeded for user ID 1. (HTTP 403)").whoami()).rejects.toMatchObject({ code: "http", status: 403 });
+		});
+
+		it("a gh call that never ends is aborted and unreachable", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "hang-gh-"));
+			const ghPath = join(dir, "gh");
+			writeFileSync(ghPath, "#!/bin/sh\nexec sleep 30\n");
+			chmodSync(ghPath, 0o755);
+			try {
+				const forge = new GitHubForge({ ghPath, repo: { owner: "a", repo: "b" }, exec: createExec({ timeoutMs: 100 }) });
+				await expect(forge.whoami()).rejects.toMatchObject({ code: "unreachable", operation: "whoami" });
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
 	});
 
 	it("a non-2xx answer throws http with the status", async () => {
