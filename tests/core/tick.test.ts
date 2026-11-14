@@ -25,6 +25,15 @@ describe("tick", () => {
 		expect(() => untickUnit(change, "U3")).toThrow(TickError);
 	});
 
+	it("malformed status is rejected by tick and untick", () => {
+		const doneWithPending = "## Units\n### U1 — a\n- [ ] done\n";
+		const pendingWithDone = "## Units\n### U1 — a\n- [x] pending\n";
+		expect(() => tickUnit(doneWithPending, "U1")).toThrow(TickError);
+		expect(() => untickUnit(pendingWithDone, "U1")).toThrow(TickError);
+		expect(() => untickUnit(doneWithPending, "U1")).toThrow(TickError);
+		expect(() => tickUnit(pendingWithDone, "U1")).toThrow(TickError);
+	});
+
 	it("unknown unit", () => {
 		expect(() => tickUnit(change, "U9")).toThrow(TickError);
 	});

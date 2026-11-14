@@ -24,6 +24,8 @@ export type Unit = {
 	done: boolean;
 	/** Index into `lines` of the status line, or -1 when absent. */
 	statusLine: number;
+	/** Raw text of the status line ("" when absent); may be malformed, the validator reports it. */
+	statusText: string;
 	/** Index of the `### U<n>` heading line. */
 	startLine: number;
 	/** Index of the last line of the block (inclusive, trailing blank lines excluded). */
@@ -50,7 +52,7 @@ export type Change = {
 
 
 const UNIT_HEADING = /^### (U\d+) — (.*)$/;
-const STATUS = /^- \[([ x])\] (pending|done)$/;
+const STATUS = /^- \[[ xX]\] \S.*$/;
 const FIELD = /^(Covers|Difficulty|Tags|Files|Done means|Scenarios|Depends|Verify|Kind):[ \t]*(.*?)\s*$/;
 const LABELLED = /^- \[([^\]\s][^\]]*)\]\s+(.*?)\s*$/;
 const QUESTION = /^- \[( |x)\] (Q\d+) \((blocking|non-blocking)\): (.*)$/;
@@ -125,13 +127,9 @@ function parseQuestion(text: string, line: number): Question | undefined {
 
 function parseUnit(lines: Line[], start: number, end: number): Unit {
 	const head = UNIT_HEADING.exec((lines[start] as Line).text);
-	let statusLine = -1;
-	for (let i = end; i > start; i--) {
-		if (STATUS.test((lines[i] as Line).text)) {
-			statusLine = i;
-			break;
-		}
-	}
+	// The status line is the block's last line; any other checkbox line is a list item.
+	const statusLine = STATUS.test((lines[end] as Line).text) ? end : -1;
+	const statusText = statusLine === -1 ? "" : (lines[statusLine] as Line).text;
 	const unit: Unit = {
 		id: head?.[1] as string,
 		title: (head?.[2] as string).trim(),
@@ -140,8 +138,9 @@ function parseUnit(lines: Line[], start: number, end: number): Unit {
 		doneMeans: [],
 		scenarios: [],
 		depends: [],
-		done: statusLine !== -1 && (lines[statusLine] as Line).text.startsWith("- [x]"),
+		done: statusText.startsWith("- [x]"),
 		statusLine,
+		statusText,
 		startLine: start,
 		endLine: end,
 		raw: {},

@@ -3,10 +3,37 @@ import { describe, expect, it } from "vitest";
 import { parseChange, serializeChange } from "../../src/core/change.ts";
 
 const fixture = readFileSync(new URL("../fixtures/change-body.md", import.meta.url), "utf8");
+const original = readFileSync(new URL("../fixtures/change-body-original.md", import.meta.url), "utf8");
 
 describe("change", () => {
 	it("example body round trip", () => {
-		expect(serializeChange(parseChange(fixture))).toBe(fixture);
+		expect(serializeChange(parseChange(original))).toBe(original);
+		const u = parseChange(original).units.find((x) => x.id === "U3");
+		expect(u).toMatchObject({
+			title: "Rate limit per IP",
+			covers: ["rate-limit/Requirement: Per-IP cap"],
+			difficulty: "medium",
+			tags: ["security", "api"],
+			files: ["src/middleware/ratelimit.ts", "test/ratelimit.test.ts"],
+			depends: ["U1"],
+			verify: "npm test -- ratelimit",
+			done: false,
+			statusText: "- [ ] pending",
+		});
+		expect(u?.doneMeans).toEqual([{ label: "cap", text: "the 101st request within 60 s from one IP gets 429" }]);
+		expect(u?.scenarios).toEqual([{ label: "cap", ref: "test/ratelimit.test.ts › rejects 101st request" }]);
+	});
+
+	it("a done-means item is not mistaken for the status line", () => {
+		const c = parseChange("## Units\n### U1 — a\nDone means:\n- [x] shipped\nVerify: `npm test`\n");
+		expect(c.units[0]).toMatchObject({ statusLine: -1, statusText: "" });
+		expect(c.units[0]?.doneMeans).toEqual([{ label: "x", text: "shipped" }]);
+	});
+
+	it("keeps malformed status lines tolerant, with raw text exposed", () => {
+		const c = parseChange("## Units\n### U1 — a\n- [ ] done\n\n### U2 — b\n- [x] pending\n");
+		expect(c.units[0]).toMatchObject({ statusLine: 2, done: false, statusText: "- [ ] done" });
+		expect(c.units[1]).toMatchObject({ statusLine: 5, done: true, statusText: "- [x] pending" });
 	});
 
 	it("round trips CRLF, empty and unterminated last unit", () => {

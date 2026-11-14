@@ -15,13 +15,18 @@ function replaceLine(lines: Line[], index: number, text: string): string {
 	return joinLines(out);
 }
 
+const PENDING = "- [ ] pending";
+const DONE = "- [x] done";
+
 function flipUnit(body: string, id: string, from: "pending" | "done"): string {
 	const change = parseChange(body);
 	const unit = change.units.find((u) => u.id === id);
 	if (!unit) throw new TickError(`unit ${id} not found`);
 	if (unit.statusLine === -1) throw new TickError(`unit ${id} has no status line`);
-	if (unit.done !== (from === "done")) throw new TickError(`unit ${id} is already ${from === "done" ? "pending" : "done"}`);
-	return replaceLine(change.lines, unit.statusLine, from === "pending" ? "- [x] done" : "- [ ] pending");
+	const [expected, next] = from === "pending" ? [PENDING, DONE] : [DONE, PENDING];
+	if (unit.statusText === next) throw new TickError(`unit ${id} is already ${from === "pending" ? "done" : "pending"}`);
+	if (unit.statusText !== expected) throw new TickError(`unit ${id} status line is malformed: ${unit.statusText}`);
+	return replaceLine(change.lines, unit.statusLine, next);
 }
 
 function flipChange(body: string, n: number, checked: boolean): string {
