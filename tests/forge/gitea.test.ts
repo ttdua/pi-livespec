@@ -150,4 +150,75 @@ describe("gitea adapter", () => {
 			expect((await w.forge.updatePullRequest(n, { body: "mine" }, read.version)).status).toBe("conflict");
 		});
 	});
+	describe("pagination", () => {
+		it("getChecks reads every page of the commit status", async () => {
+			const w = await world();
+			for (let i = 0; i < 50; i++) await w.seedStatus("sha1", { name: `ok-${i}`, state: "success" });
+			await w.seedStatus("sha1", { name: "late", state: "failure" });
+
+			const summary = await w.forge.getChecks("sha1");
+
+			expect(summary.state).toBe("failure");
+			expect(summary.checks).toHaveLength(51);
+			expect(summary.checks.map((c) => c.name)).toContain("late");
+		});
+
+		it("listReviews reads every page", async () => {
+			const w = await world();
+			const pr = await w.seedPullRequest({ head: "feat/x" });
+			for (let i = 0; i < 55; i++) await w.seedReview(pr, { author: "a", state: "commented", body: `r${i}` });
+
+			expect(await w.forge.listReviews(pr)).toHaveLength(55);
+		});
+
+		it("a review with 50 or more comments terminates and returns all of them", { timeout: 5000 }, async () => {
+			const w = await world();
+			const pr = await w.seedPullRequest({ head: "feat/x" });
+			const comments = Array.from({ length: 55 }, (_, i) => ({ path: "a.ts", line: i + 1, body: `c${i}` }));
+			w.fake.seedReview(pr, { author: "a", event: "COMMENT", body: "", comments });
+
+			expect(await w.forge.listReviewComments(pr)).toHaveLength(55);
+		});
+	});
+
+	describe("response bodies fail closed", () => {
+		function forgeWith(respond: () => Promise<Response>): GiteaForge {
+			return new GiteaForge({
+				baseUrl: "http://gitea.invalid",
+				owner: "o",
+				repo: "r",
+				env: { GITEA_TOKEN: FAKE_TOKEN },
+				fetch: (async () => respond()) as unknown as typeof fetch,
+			});
+		}
+		const unreadable = async () => {
+			const response = new Response("{}", { status: 200 });
+			response.text = () => Promise.reject(new Error("socket hang up"));
+			return response;
+		};
+		const json = (text: string, status = 200) => async () => new Response(status === 204 ? null : text, { status });
+
+		it("an unreadable body is unreachable and names the operation", async () => {
+			await expect(forgeWith(unreadable).getIssue(1)).rejects.toMatchObject({ code: "unreachable", operation: "getIssue" });
+			await expect(forgeWith(unreadable).listComments(1)).rejects.toMatchObject({ code: "unreachable", operation: "listComments" });
+		});
+
+		it("malformed JSON on success is an http error with status", async () => {
+			await expect(forgeWith(json("{oops")).getIssue(1)).rejects.toMatchObject({ code: "http", status: 200, operation: "getIssue" });
+		});
+
+		it("a list endpoint that does not return an array is an http error", async () => {
+			await expect(forgeWith(json('{"message":"x"}')).listComments(1)).rejects.toMatchObject({ code: "http", operation: "listComments" });
+			await expect(forgeWith(json("")).searchIssues({})).rejects.toMatchObject({ code: "http", operation: "searchIssues" });
+		});
+
+		it("an object endpoint that returns a non-object is an http error", async () => {
+			await expect(forgeWith(json("[]")).getIssue(1)).rejects.toMatchObject({ code: "http", operation: "getIssue" });
+		});
+
+		it("an empty body is fine where there is no payload", async () => {
+			const forge = forgeWith(json("", 204));
+			await expect(forge.closeIssue(1)).resolves.toBeUndefined();
+		});
+	});
 });

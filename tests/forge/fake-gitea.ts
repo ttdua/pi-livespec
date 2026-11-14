@@ -214,8 +214,9 @@ export class FakeGitea {
 		return this.pull(n).body;
 	}
 
-	seedReview(n: number, r: { author: string; event: ReviewEvent; body: string }): void {
-		this.addReview(this.pull(n), r.author, r.event, r.body, []);
+	seedReview(n: number, r: { author: string; event: ReviewEvent; body: string; comments?: { path: string; line: number; body: string }[] }): void {
+		const inline = (r.comments ?? []).map((c) => ({ path: c.path, position: c.line, body: c.body, author: r.author }));
+		this.addReview(this.pull(n), r.author, r.event, r.body, inline);
 	}
 
 	reviewComments(n: number): { path: string; line: number; body: string; author: string }[] {
@@ -293,8 +294,9 @@ export class FakeGitea {
 		this.route("GET", `${r}/pulls/${id}`, (c) => this.withPull(c, (p) => ok(this.pullJson(p))));
 		this.route("PATCH", `${r}/pulls/${id}`, (c) => this.withPull(c, (p) => this.patchPull(p, c.body)));
 		this.route("GET", `${r}/pulls/${id}/files`, (c) => this.withPull(c, (p) => ok(this.pageOf(p.files, c.query).map((filename) => ({ filename })))));
-		this.route("GET", `${r}/pulls/${id}/reviews`, (c) => this.withPull(c, (p) => ok(p.reviews.map((x) => this.reviewJson(x)))));
+		this.route("GET", `${r}/pulls/${id}/reviews`, (c) => this.withPull(c, (p) => ok(this.pageOf(p.reviews, c.query).map((x) => this.reviewJson(x)))));
 		this.route("POST", `${r}/pulls/${id}/reviews`, (c) => this.withPull(c, (p) => this.postReview(p, c.body)));
+		// Real Gitea does not paginate a review's comments: always the full list.
 		this.route("GET", `${r}/pulls/${id}/reviews/${id}/comments`, (c) =>
 			this.withPull(c, (p) => {
 				const review = p.reviews.find((x) => x.id === Number(c.groups[1]));
@@ -302,7 +304,7 @@ export class FakeGitea {
 			}),
 		);
 
-		this.route("GET", `${r}/commits/([^/]+)/status`, (c) => ok(this.combinedStatus(decodeURIComponent(c.groups[0]))));
+		this.route("GET", `${r}/commits/([^/]+)/status`, (c) => ok(this.combinedStatus(decodeURIComponent(c.groups[0]), c.query)));
 		this.route("GET", `${r}/collaborators/([^/]+)/permission`, (c) => ok({ permission: this.permissions.get(decodeURIComponent(c.groups[0])) ?? "none" }));
 	}
 
@@ -411,12 +413,12 @@ export class FakeGitea {
 		return review;
 	}
 
-	private combinedStatus(ref: string): { state: string; statuses: unknown[] } {
+	private combinedStatus(ref: string, q: URLSearchParams): { state: string; statuses: unknown[] } {
 		const latest = new Map<string, StatusRec>();
 		for (const s of this.statuses.get(ref) ?? []) latest.set(s.context, s);
 		const all = [...latest.values()];
 		const state = all.length === 0 ? "pending" : all.some((s) => s.status === "failure") ? "failure" : all.some((s) => s.status === "pending") ? "pending" : "success";
-		return { state, statuses: all.map((s) => ({ context: s.context, status: s.status, target_url: s.url ?? "" })) };
+		return { state, statuses: this.pageOf(all, q).map((s) => ({ context: s.context, status: s.status, target_url: s.url ?? "" })) };
 	}
 
 	// ---- json shapes ----

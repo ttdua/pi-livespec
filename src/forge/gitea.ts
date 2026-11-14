@@ -40,11 +40,61 @@ const PAGE_SIZE = 50;
 const DEFAULT_LABEL_COLOR = "ededed";
 const CONTENT_VERSION_PREFIX = "cv:";
 
-type Json = Record<string, any>;
+// Minimal DTOs: only the fields the mapping reads. Everything else stays `unknown`.
+interface UserDto {
+	login?: string;
+}
+interface LabelDto {
+	id?: number;
+	name?: string;
+}
+interface IssueDto {
+	number?: number;
+	title?: string;
+	body?: string;
+	state?: string;
+	user?: UserDto;
+	updated_at?: string;
+	content_version?: number;
+	labels?: LabelDto[];
+}
+interface PullDto extends IssueDto {
+	merged?: boolean;
+	merged_at?: string | null;
+	head?: { ref?: string };
+	base?: { ref?: string };
+}
+interface CommentDto {
+	id?: number;
+	body?: string;
+	user?: UserDto;
+	created_at?: string;
+	updated_at?: string;
+}
+interface ReviewDto {
+	id?: number;
+	state?: string;
+	body?: string;
+	user?: UserDto;
+}
+interface ReviewCommentDto {
+	path?: string;
+	line?: number;
+	position?: number;
+	body?: string;
+	user?: UserDto;
+}
+interface StatusDto {
+	context?: string;
+	status?: string;
+	target_url?: string;
+}
+type Json = Record<string, unknown>;
 
 interface Reply {
 	status: number;
-	json: any;
+	/** Parsed body; `undefined` when the body was empty. */
+	json: unknown;
 }
 
 /** Authenticated JSON transport. Maps failures to ForgeError; callers pass `accept` for statuses they handle themselves. */
@@ -74,25 +124,49 @@ class GiteaTransport {
 		} catch (error) {
 			throw new ForgeError({ code: "unreachable", operation, message: `${operation}: ${describe(error)}` });
 		}
-		const text = await response.text().catch(() => "");
-		const json = parseJson(text);
-		if (response.ok || accept.includes(response.status)) return { status: response.status, json };
+		let text: string;
+		try {
+			text = await response.text();
+		} catch (error) {
+			throw new ForgeError({ code: "unreachable", operation, message: `${operation}: reading the response failed: ${describe(error)}` });
+		}
+		if (response.ok) return { status: response.status, json: parseSuccessBody(operation, response.status, text) };
 
-		const detail = typeof json?.message === "string" ? json.message : text.slice(0, 200);
+		const parsed = parseLenient(text);
+		if (accept.includes(response.status)) return { status: response.status, json: parsed };
+		const message = (parsed as { message?: unknown } | undefined)?.message;
+		const detail = typeof message === "string" ? message : text.slice(0, 200);
 		const code = response.status === 401 || response.status === 403 ? "auth" : "http";
 		throw new ForgeError({ code, operation, status: response.status, message: `${operation}: HTTP ${response.status} ${detail}`.trim() });
 	}
 
-	/** Reads every page of a list endpoint. */
-	async list(operation: string, path: string): Promise<Json[]> {
-		const all: Json[] = [];
+	/** A call whose successful body must be a JSON object. */
+	async object<T>(operation: string, method: string, path: string, body?: unknown): Promise<T> {
+		const reply = await this.call(operation, method, path, body);
+		return this.asObject<T>(operation, reply);
+	}
+
+	asObject<T>(operation: string, reply: Reply): T {
+		if (isObject(reply.json)) return reply.json as T;
+		throw shapeError(operation, reply.status, "a JSON object");
+	}
+
+	/** Reads every page of a paginated list endpoint. */
+	async list<T>(operation: string, path: string): Promise<T[]> {
+		const all: T[] = [];
 		const sep = path.includes("?") ? "&" : "?";
 		for (let page = 1; ; page++) {
-			const { json } = await this.call(operation, "GET", `${path}${sep}limit=${PAGE_SIZE}&page=${page}`);
-			const items = Array.isArray(json) ? (json as Json[]) : [];
+			const items = await this.getArray<T>(operation, `${path}${sep}limit=${PAGE_SIZE}&page=${page}`);
 			all.push(...items);
 			if (items.length < PAGE_SIZE) return all;
 		}
+	}
+
+	/** A single GET of an unpaginated list endpoint. */
+	async getArray<T>(operation: string, path: string): Promise<T[]> {
+		const reply = await this.call(operation, "GET", path);
+		if (!Array.isArray(reply.json)) throw shapeError(operation, reply.status, "a JSON array");
+		return reply.json as T[];
 	}
 
 	private async resolveToken(operation: string): Promise<string> {
@@ -136,8 +210,8 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async whoami(): Promise<{ login: string }> {
-		const { json } = await this.http.call("whoami", "GET", "/user");
-		return { login: String(json.login) };
+		const user = await this.http.object<UserDto>("whoami", "GET", "/user");
+		return { login: String(user.login) };
 	}
 
 	// ---- issues ----
@@ -150,17 +224,17 @@ export class GiteaForge implements Forge, LabelRepo {
 		const params = new URLSearchParams({ type: "issues", state: q.state ?? "open" });
 		if (q.labels?.length) params.set("labels", q.labels.join(","));
 		if (q.text) params.set("q", q.text);
-		const items = await this.http.list("searchIssues", `${this.repoPath}/issues?${params}`);
+		const items = await this.http.list<IssueDto>("searchIssues", `${this.repoPath}/issues?${params}`);
 		return items.map(toIssue);
 	}
 
 	async getPermission(login: string): Promise<"none" | "read" | "write" | "admin"> {
-		const { json } = await this.http.call("getPermission", "GET", `${this.repoPath}/collaborators/${encodeURIComponent(login)}/permission`);
+		const json = await this.http.object<{ permission?: unknown }>("getPermission", "GET", `${this.repoPath}/collaborators/${encodeURIComponent(login)}/permission`);
 		return toPermission(json.permission);
 	}
 
 	async createIssue(i: { title: string; body: string; labels: string[] }): Promise<Issue> {
-		const { json } = await this.http.call("createIssue", "POST", `${this.repoPath}/issues`, { title: i.title, body: i.body });
+		const json = await this.http.object<IssueDto>("createIssue", "POST", `${this.repoPath}/issues`, { title: i.title, body: i.body });
 		const number = Number(json.number);
 		if (i.labels.length === 0) return toIssue(json);
 		await this.applyLabels("createIssue", number, i.labels);
@@ -193,15 +267,15 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async removeLabels(n: number, labels: string[]): Promise<void> {
-		const { json } = await this.http.call("removeLabels", "GET", `${this.repoPath}/issues/${n}`);
-		const ids = (json.labels as Json[] | undefined ?? []).filter((l) => labels.includes(String(l.name))).map((l) => Number(l.id));
+		const issue = await this.http.object<IssueDto>("removeLabels", "GET", `${this.repoPath}/issues/${n}`);
+		const ids = (issue.labels ?? []).filter((l) => labels.includes(String(l.name))).map((l) => Number(l.id));
 		for (const id of ids) {
 			await this.http.call("removeLabels", "DELETE", `${this.repoPath}/issues/${n}/labels/${id}`);
 		}
 	}
 
 	async listLabels(): Promise<string[]> {
-		const items = await this.http.list("addLabels", `${this.repoPath}/labels`);
+		const items = await this.http.list<LabelDto>("addLabels", `${this.repoPath}/labels`);
 		return items.map((l) => String(l.name));
 	}
 
@@ -212,18 +286,18 @@ export class GiteaForge implements Forge, LabelRepo {
 	// ---- comments ----
 
 	async listComments(n: number): Promise<Comment[]> {
-		const items = await this.http.list("listComments", `${this.repoPath}/issues/${n}/comments`);
+		const items = await this.http.list<CommentDto>("listComments", `${this.repoPath}/issues/${n}/comments`);
 		return items.map(toComment);
 	}
 
 	async createComment(n: number, body: string): Promise<Comment> {
-		const { json } = await this.http.call("createComment", "POST", `${this.repoPath}/issues/${n}/comments`, { body });
+		const json = await this.http.object<CommentDto>("createComment", "POST", `${this.repoPath}/issues/${n}/comments`, { body });
 		return toComment(json);
 	}
 
 	/** Gitea comments carry no version, so the edit is last-write-wins and `expect` is not checked. */
 	async updateComment(id: string, body: string, _expect: Version): Promise<WriteResult<Comment>> {
-		const { json } = await this.http.call("updateComment", "PATCH", `${this.repoPath}/issues/comments/${encodeURIComponent(id)}`, { body });
+		const json = await this.http.object<CommentDto>("updateComment", "PATCH", `${this.repoPath}/issues/comments/${encodeURIComponent(id)}`, { body });
 		return { status: "written", item: toComment(json), check: "best-effort" };
 	}
 
@@ -239,22 +313,22 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async listPullRequests(q: { state: "open" | "closed" | "all"; head?: string }, operation = "listPullRequests"): Promise<PullRequest[]> {
-		const items = await this.http.list(operation, `${this.repoPath}/pulls?state=${q.state}`);
+		const items = await this.http.list<PullDto>(operation, `${this.repoPath}/pulls?state=${q.state}`);
 		return items.map(toPull).filter((p) => q.head === undefined || p.head === q.head);
 	}
 
 	async getPullRequestFiles(pr: number): Promise<string[]> {
-		const items = await this.http.list("getPullRequestFiles", `${this.repoPath}/pulls/${pr}/files`);
+		const items = await this.http.list<{ filename?: string }>("getPullRequestFiles", `${this.repoPath}/pulls/${pr}/files`);
 		return items.map((f) => String(f.filename));
 	}
 
 	async listReviews(pr: number): Promise<Review[]> {
-		const items = await this.http.list("listReviews", `${this.repoPath}/pulls/${pr}/reviews`);
+		const items = await this.http.list<ReviewDto>("listReviews", `${this.repoPath}/pulls/${pr}/reviews`);
 		return items.map((r) => ({ author: String(r.user?.login ?? ""), state: toReviewState(r.state), body: String(r.body ?? "") }));
 	}
 
 	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
-		const { json } = await this.http.call("createPullRequest", "POST", `${this.repoPath}/pulls`, p);
+		const json = await this.http.object<PullDto>("createPullRequest", "POST", `${this.repoPath}/pulls`, p);
 		return toPull(json);
 	}
 
@@ -270,10 +344,11 @@ export class GiteaForge implements Forge, LabelRepo {
 	}
 
 	async listReviewComments(pr: number): Promise<ReviewComment[]> {
-		const reviews = await this.http.list("listReviewComments", `${this.repoPath}/pulls/${pr}/reviews`);
+		const reviews = await this.http.list<ReviewDto>("listReviewComments", `${this.repoPath}/pulls/${pr}/reviews`);
 		const result: ReviewComment[] = [];
 		for (const review of reviews) {
-			const items = await this.http.list("listReviewComments", `${this.repoPath}/pulls/${pr}/reviews/${review.id}/comments`);
+			// Not paginated by Gitea: one GET returns them all.
+			const items = await this.http.getArray<ReviewCommentDto>("listReviewComments", `${this.repoPath}/pulls/${pr}/reviews/${review.id}/comments`);
 			for (const c of items) {
 				result.push({ path: String(c.path), line: Number(c.line ?? c.position ?? 0), body: String(c.body), author: String(c.user?.login ?? "") });
 			}
@@ -292,8 +367,8 @@ export class GiteaForge implements Forge, LabelRepo {
 	// ---- checks ----
 
 	async getChecks(ref: string): Promise<CheckSummary> {
-		const { json } = await this.http.call("getChecks", "GET", `${this.repoPath}/commits/${encodeURIComponent(ref)}/status`);
-		const checks: Check[] = ((json.statuses as Json[] | undefined) ?? []).map((s) => ({
+		const statuses = await this.statusPages(ref);
+		const checks: Check[] = statuses.map((s) => ({
 			name: String(s.context),
 			state: toCheckState(s.status),
 			...(s.target_url ? { url: String(s.target_url) } : {}),
@@ -301,16 +376,27 @@ export class GiteaForge implements Forge, LabelRepo {
 		return { state: overallState(checks), checks };
 	}
 
+	/** The combined status is an object whose `statuses` is paginated; read pages until one comes back short. */
+	private async statusPages(ref: string): Promise<StatusDto[]> {
+		const path = `${this.repoPath}/commits/${encodeURIComponent(ref)}/status`;
+		const all: StatusDto[] = [];
+		for (let page = 1; ; page++) {
+			const combined = await this.http.object<{ statuses?: unknown }>("getChecks", "GET", `${path}?limit=${PAGE_SIZE}&page=${page}`);
+			const statuses = combined.statuses ?? [];
+			if (!Array.isArray(statuses)) throw shapeError("getChecks", 200, "a statuses array");
+			all.push(...(statuses as StatusDto[]));
+			if (statuses.length < PAGE_SIZE) return all;
+		}
+	}
+
 	// ---- shared steps ----
 
 	private async readIssue(operation: string, n: number): Promise<Issue> {
-		const { json } = await this.http.call(operation, "GET", `${this.repoPath}/issues/${n}`);
-		return toIssue(json);
+		return toIssue(await this.http.object<IssueDto>(operation, "GET", `${this.repoPath}/issues/${n}`));
 	}
 
 	private async readPull(operation: string, n: number): Promise<PullRequest> {
-		const { json } = await this.http.call(operation, "GET", `${this.repoPath}/pulls/${n}`);
-		return toPull(json);
+		return toPull(await this.http.object<PullDto>(operation, "GET", `${this.repoPath}/pulls/${n}`));
 	}
 
 	private async applyLabels(operation: string, n: number, labels: string[]): Promise<void> {
@@ -327,22 +413,22 @@ export class GiteaForge implements Forge, LabelRepo {
 	private async writeVersioned<T extends { version: Version }>(w: {
 		operation: string;
 		path: string;
-		patch: Json;
+		patch: Record<string, unknown>;
 		expect: Version;
 		read: () => Promise<T>;
-		parse: (json: Json) => T;
+		parse: (json: never) => T;
 	}): Promise<WriteResult<T>> {
 		const strictVersion = contentVersionOf(w.expect);
 		if (strictVersion !== undefined) {
 			const reply = await this.http.call(w.operation, "PATCH", w.path, { ...w.patch, content_version: strictVersion }, [409]);
 			if (reply.status === 409) return this.conflict(w.read);
-			return { status: "written", item: w.parse(reply.json), check: "strict" };
+			return { status: "written", item: w.parse(this.http.asObject(w.operation, reply)), check: "strict" };
 		}
 
 		const fresh = await w.read();
 		if (fresh.version !== w.expect) return { status: "conflict", current: fresh.version, changed: ["body"] };
 		const reply = await this.http.call(w.operation, "PATCH", w.path, w.patch);
-		return { status: "written", item: w.parse(reply.json), check: "best-effort" };
+		return { status: "written", item: w.parse(this.http.asObject(w.operation, reply)), check: "best-effort" };
 	}
 
 	/** A 409 says the stored body differs; a fresh read names the current version. */
@@ -354,7 +440,7 @@ export class GiteaForge implements Forge, LabelRepo {
 
 // ---- mapping ----
 
-function toVersion(json: Json, body: string): Version {
+function toVersion(json: IssueDto, body: string): Version {
 	if (typeof json.content_version === "number") return `${CONTENT_VERSION_PREFIX}${json.content_version}` as Version;
 	return bodyVersion(String(json.updated_at ?? ""), body, "rc");
 }
@@ -365,13 +451,13 @@ function contentVersionOf(version: Version): number | undefined {
 	return Number.isInteger(n) ? n : undefined;
 }
 
-function toIssue(json: Json): Issue {
+function toIssue(json: IssueDto): Issue {
 	const body = String(json.body ?? "");
 	return {
 		number: Number(json.number),
 		title: String(json.title ?? ""),
 		body,
-		labels: ((json.labels as Json[] | undefined) ?? []).map((l) => String(l.name)),
+		labels: (json.labels ?? []).map((l) => String(l.name)),
 		state: json.state === "closed" ? "closed" : "open",
 		author: String(json.user?.login ?? ""),
 		updatedAt: String(json.updated_at ?? ""),
@@ -379,7 +465,7 @@ function toIssue(json: Json): Issue {
 	};
 }
 
-function toComment(json: Json): Comment {
+function toComment(json: CommentDto): Comment {
 	const body = String(json.body ?? "");
 	return {
 		id: String(json.id),
@@ -391,7 +477,7 @@ function toComment(json: Json): Comment {
 	};
 }
 
-function toPull(json: Json): PullRequest {
+function toPull(json: PullDto): PullRequest {
 	const body = String(json.body ?? "");
 	return {
 		number: Number(json.number),
@@ -433,13 +519,30 @@ function overallState(checks: Check[]): CheckState {
 
 // ---- small helpers ----
 
-function parseJson(text: string): any {
+function parseLenient(text: string): unknown {
+	try {
+		return text ? JSON.parse(text) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** An empty body is `undefined` (no payload); malformed JSON on a success status is an error. */
+function parseSuccessBody(operation: string, status: number, text: string): unknown {
 	if (!text) return undefined;
 	try {
 		return JSON.parse(text);
 	} catch {
-		return undefined;
+		throw new ForgeError({ code: "http", operation, status, message: `${operation}: HTTP ${status} response is not valid JSON` });
 	}
+}
+
+function isObject(value: unknown): value is Json {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function shapeError(operation: string, status: number, expected: string): ForgeError {
+	return new ForgeError({ code: "http", operation, status, message: `${operation}: HTTP ${status} response is not ${expected}` });
 }
 
 function hostOf(url: string): string | undefined {
