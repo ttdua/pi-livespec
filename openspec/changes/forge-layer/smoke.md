@@ -54,6 +54,15 @@ The real server sends `content_version`, so the fallback path was exercised by h
 | Body edit with the current version | `written`, `check: best-effort` |
 | Body edit with a stale version | `conflict`, `changed: body` |
 
+### Re-check after the response-field guards (second scratch repo, deleted afterwards)
+
+| Step | Result |
+|---|---|
+| Raw combined status of an empty commit | `state: pending`, `statuses: null`, `total_count: 0` |
+| `getChecks` on it | `none`, no checks (the `null` is accepted) |
+| `getChecks` after posting a `failure` status | `failure`, one check `ci/a` |
+| `getPermission` for the token's own account | `admin` |
+
 ## Findings
 
 - No adapter defect was found. The one failure during the run was in the throwaway script (it passed an `Issue` where `readMarkedComments` takes the issue number); the script was fixed and the run repeated from a clean state.
@@ -62,5 +71,4 @@ The real server sends `content_version`, so the fallback path was exercised by h
 ## Not covered
 
 - GitHub Enterprise (`--hostname`) was only tested against the fake `gh`.
-- Gitea checks from commit statuses were read on an empty status set; statuses with failures are covered by the loopback contract suite only.
 - GitHub token scopes beyond what `gh` already had were not varied.
