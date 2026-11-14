@@ -1,27 +1,26 @@
-/** Returns an error message for an unbalanced `{`/`[` (or stray `}`), else null. */
+type Compiled = { ok: true; regex: RegExp } | { ok: false; error: string };
+
+class GlobSyntaxError extends SyntaxError {}
+
+/** Returns an error message for an invalid glob, else null. */
 export function validateGlob(pattern: string): string | null {
-	let braces = 0;
-	for (let i = 0; i < pattern.length; i++) {
-		const c = pattern[i];
-		if (c === "\\") {
-			i++;
-		} else if (c === "[") {
-			const end = classEnd(pattern, i);
-			if (end === -1) return `unclosed "[" at position ${i}`;
-			i = end;
-		} else if (c === "{") {
-			braces++;
-		} else if (c === "}") {
-			if (braces === 0) return `unmatched "}" at position ${i}`;
-			braces--;
-		}
-	}
-	return braces > 0 ? 'unclosed "{"' : null;
+	const compiled = compileGlob(pattern);
+	return compiled.ok ? null : compiled.error;
 }
 
+/** Returns false for an invalid pattern; never throws on pattern input. */
 export function matchGlob(pattern: string, path: string): boolean {
-	if (validateGlob(pattern) !== null) return false;
-	return new RegExp(`^${translate(pattern)}$`).test(path);
+	const compiled = compileGlob(pattern);
+	return compiled.ok && compiled.regex.test(path);
+}
+
+function compileGlob(pattern: string): Compiled {
+	try {
+		return { ok: true, regex: new RegExp(`^${translate(pattern)}$`) };
+	} catch (err) {
+		if (err instanceof SyntaxError) return { ok: false, error: err.message };
+		throw err;
+	}
 }
 
 function classEnd(p: string, open: number): number {
@@ -32,10 +31,31 @@ function classEnd(p: string, open: number): number {
 	return -1;
 }
 
+function checkRanges(body: string, open: number): void {
+	let j = 0;
+	while (j < body.length) {
+		if (body[j + 1] === "-" && j + 2 < body.length) {
+			if (body.charCodeAt(j) > body.charCodeAt(j + 2)) {
+				throw new GlobSyntaxError(
+					`out-of-order range "${body[j]}-${body[j + 2]}" in "[" at position ${open}`,
+				);
+			}
+			j += 3;
+		} else {
+			j++;
+		}
+	}
+}
+
 function escapeChar(c: string): string {
 	return /[.*+?^${}()|[\]\\/]/.test(c) ? `\\${c}` : c;
 }
 
+/**
+ * Translates a glob into regex source. Throws GlobSyntaxError on invalid input.
+ * Character classes are guarded by `(?!/)` so they never match a separator,
+ * including negated classes and ranges spanning `/`.
+ */
 function translate(p: string): string {
 	let out = "";
 	let depth = 0;
@@ -57,18 +77,21 @@ function translate(p: string): string {
 			out += "[^/]";
 		} else if (c === "[") {
 			const end = classEnd(p, i);
+			if (end === -1) throw new GlobSyntaxError(`unclosed "[" at position ${i}`);
 			let body = p.slice(i + 1, end);
 			let neg = "";
 			if (body[0] === "!" || body[0] === "^") {
 				neg = "^";
 				body = body.slice(1);
 			}
-			out += `[${neg}${body.replace(/\\/g, "\\\\")}]`;
+			checkRanges(body, i);
+			out += `(?!/)[${neg}${body.replace(/\\/g, "\\\\")}]`;
 			i = end;
 		} else if (c === "{") {
 			depth++;
 			out += "(?:";
 		} else if (c === "}") {
+			if (depth === 0) throw new GlobSyntaxError(`unmatched "}" at position ${i}`);
 			depth--;
 			out += ")";
 		} else if (c === "," && depth > 0) {
@@ -80,5 +103,6 @@ function translate(p: string): string {
 			out += escapeChar(c);
 		}
 	}
+	if (depth > 0) throw new GlobSyntaxError('unclosed "{"');
 	return out;
 }

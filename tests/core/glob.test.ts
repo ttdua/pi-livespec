@@ -35,6 +35,22 @@ describe("glob", () => {
 		expect(matchGlob("a(b)+", "a(b)+")).toBe(true);
 	});
 
+	it("negated character class does not match separator", () => {
+		expect(matchGlob("src/[!a]*.ts", "src//nested.ts")).toBe(false);
+		expect(matchGlob("src/[!a]*.ts", "src/b.ts")).toBe(true);
+		expect(matchGlob("src/[^a]*.ts", "src//nested.ts")).toBe(false);
+	});
+
+	it("positive character class does not match separator", () => {
+		expect(matchGlob("src/[/]x.ts", "src//x.ts")).toBe(false);
+	});
+
+	it("out-of-order range is reported as invalid and never throws", () => {
+		expect(validateGlob("src/[z-a].ts")).toMatch(/range/i);
+		expect(() => matchGlob("src/[z-a].ts", "src/z.ts")).not.toThrow();
+		expect(matchGlob("src/[z-a].ts", "src/z.ts")).toBe(false);
+	});
+
 	it("invalid glob detected", () => {
 		expect(validateGlob("src/{a,b")).toMatch(/\{/);
 		expect(validateGlob("src/[ab")).toMatch(/\[/);
