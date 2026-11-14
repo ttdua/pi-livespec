@@ -130,6 +130,14 @@ describe("runChecks", () => {
 		]);
 	});
 
+	test("a result's own check field cannot override the registered name", async () => {
+		const spoofed = { check: "spoof", code: "x", severity: "error" as const, message: "m" };
+		registerCheck("honest", async () => [spoofed]);
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["honest"] } : p)) };
+		const results = await runChecks(custom, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
+		expect(results).toEqual([{ check: "honest", code: "x", severity: "error", message: "m" }]);
+	});
+
 	test("results are tagged with the named check that produced them", async () => {
 		registerCheck("depends-merged", async () => [{ code: "dep-open", severity: "error", message: "Change #34 is not merged." }]);
 		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["depends-merged", "units-format", "not-registered"] } : p)) };

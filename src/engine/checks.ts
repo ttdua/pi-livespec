@@ -99,7 +99,8 @@ export async function runChecks(
 		const produced: Result[] = check
 			? await check(checkCtx)
 			: [{ code: "check-unregistered", severity: "error", message: `Check ${name} is not registered` }];
-		for (const result of produced) results.push({ check: name, ...result });
+		// The registered name is applied last, so a result cannot claim another check's name.
+		for (const result of produced) results.push({ ...result, check: name });
 	}
 	return results;
 }
