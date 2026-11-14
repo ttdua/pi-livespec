@@ -40,6 +40,30 @@ describe("spec", () => {
 		expect(sc?.then).toEqual(["the response status is 429"]);
 	});
 
+	it("given bullets parsed", () => {
+		const text = [
+			"## Requirements",
+			"### Requirement: R",
+			"It SHALL x.",
+			"",
+			"#### Scenario: s",
+			"- **GIVEN** a cache",
+			"* **GIVEN** a user",
+			"- **WHEN** a",
+			"- **THEN** b",
+			"",
+			"```",
+			"- **GIVEN** fenced",
+			"```",
+			"",
+		].join("\n");
+		const spec = parseSpec(text, "x");
+		const sc = spec.requirements[0]?.scenarios[0];
+		expect(sc?.given).toEqual(["a cache", "a user"]);
+		expect(sc?.when).toEqual(["a"]);
+		expect(serializeSpec(spec)).toBe(text);
+	});
+
 	it("paths read from front matter", () => {
 		expect(parseSpec(fixture, "rate-limit").paths).toEqual([
 			"src/middleware/ratelimit.ts",

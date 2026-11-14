@@ -14,7 +14,7 @@ describe("validate-spec.test", () => {
 		expect(r).toHaveLength(1);
 		expect(r[0]).toMatchObject({
 			code: "spec-normative",
-			severity: "error",
+			severity: "warning",
 			file: "specs/rate-limit/spec.md",
 			line: 5,
 		});
@@ -44,12 +44,27 @@ describe("validate-spec.test", () => {
 	it("scenario missing THEN", () => {
 		const r = run(body("### Requirement: A\nIt SHALL do.\n\n#### Scenario: s\n- **WHEN** a\n"));
 		expect(r.map((x) => x.code)).toEqual(["spec-when-then"]);
+		expect(r[0]?.severity).toBe("warning");
 		expect(r[0]?.line).toBe(8);
 	});
 
-	it("scenario missing WHEN", () => {
+	it("scenario missing trigger", () => {
 		const r = run(body("### Requirement: A\nIt SHALL do.\n\n#### Scenario: s\n- **THEN** a\n"));
 		expect(r.map((x) => x.code)).toEqual(["spec-when-then"]);
+		expect(r[0]?.severity).toBe("warning");
+		expect(r[0]?.message).toContain("WHEN or GIVEN");
+	});
+
+	it("given accepted as trigger", () => {
+		const r = run(body("### Requirement: A\nIt SHALL do.\n\n#### Scenario: s\n- **GIVEN** a\n- **THEN** b\n"));
+		expect(r).toEqual([]);
+	});
+
+	it("spec without requirements", () => {
+		const r = run("# x\n\n## Purpose\nSomething.\n");
+		expect(r.map((x) => x.code)).toEqual(["spec-no-requirements"]);
+		expect(r[0]).toMatchObject({ severity: "error", file: "specs/rate-limit/spec.md" });
+		expect(r[0]?.message).toContain("no requirements");
 	});
 
 	it("duplicate requirement name", () => {

@@ -1,7 +1,7 @@
 import { parseFrontmatter } from "./frontmatter.ts";
 import { type Line, joinLines, splitLines } from "./lines.ts";
 
-export type Scenario = { name: string; line: number; when: string[]; then: string[] };
+export type Scenario = { name: string; line: number; given: string[]; when: string[]; then: string[] };
 export type Requirement = { name: string; text: string; line: number; scenarios: Scenario[] };
 export type Spec = {
 	capability: string;
@@ -14,6 +14,7 @@ export type Spec = {
 const H2 = /^## (.*)$/;
 const REQUIREMENT = /^### Requirement:\s*(.*?)\s*$/;
 const SCENARIO = /^#### Scenario:\s*(.*?)\s*$/;
+const GIVEN = /^\s*[-*]\s+\*\*GIVEN\*\*\s*(.*?)\s*$/;
 const WHEN = /^\s*[-*]\s+\*\*WHEN\*\*\s*(.*?)\s*$/;
 const THEN = /^\s*[-*]\s+\*\*THEN\*\*\s*(.*?)\s*$/;
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -82,14 +83,16 @@ export function parseSpec(text: string, capability: string): Spec {
 		if (!req) continue;
 		const s = SCENARIO.exec(t);
 		if (s) {
-			scenario = { name: s[1] ?? "", line: i + 1, when: [], then: [] };
+			scenario = { name: s[1] ?? "", line: i + 1, given: [], when: [], then: [] };
 			req.scenarios.push(scenario);
 			continue;
 		}
 		if (scenario) {
+			const g = GIVEN.exec(t);
 			const w = WHEN.exec(t);
 			const th = THEN.exec(t);
-			if (w) scenario.when.push(w[1] ?? "");
+			if (g) scenario.given.push(g[1] ?? "");
+			else if (w) scenario.when.push(w[1] ?? "");
 			else if (th) scenario.then.push(th[1] ?? "");
 		} else {
 			bodies[bodies.length - 1]?.push(t);

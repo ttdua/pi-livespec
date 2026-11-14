@@ -136,6 +136,21 @@ describe("validate error boundaries", () => {
 });
 
 describe("runValidateCommand", () => {
+	it("warnings alone exit 0 and are printed", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "specs/rate-limit/spec.md", GOOD.replace("SHALL limit", "limits"));
+		const out = await runValidateCommand(root);
+		expect(out.results.map((r) => r.code)).toEqual(["spec-normative"]);
+		expect(out.exitCode).toBe(0);
+		expect(out.message).toContain("warning spec-normative");
+	});
+
+	it("missing scenario still exits 1", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "specs/rate-limit/spec.md", BAD);
+		expect((await runValidateCommand(root)).exitCode).toBe(1);
+	});
+
 	it("exitCode 0 for clean repository", async () => {
 		const root = await makeRepo();
 		await writeIn(root, "specs/rate-limit/spec.md", GOOD);
