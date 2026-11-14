@@ -25,17 +25,17 @@ Blocked by: 1, 2
 
 Blocked by: 3
 
-- [ ] 4.1 Build a fake `gh` executable and state in `tests/forge/fake-gh/`
-- [ ] 4.2 Implement `GitHubForge` in `src/forge/github.ts` (auth, whoami, issues, labels, comments, PRs, reviews, checks)
-- [ ] 4.3 Implement the re-read and compare body write; wire `runContract` for GitHub
+- [x] 4.1 Build a fake `gh` executable and state in `tests/forge/fake-gh/`
+- [x] 4.2 Implement `GitHubForge` in `src/forge/github.ts` (auth, whoami, issues, labels, comments, PRs, reviews, checks)
+- [x] 4.3 Implement the re-read and compare body write; wire `runContract` for GitHub
 
 ## 5. Gitea adapter
 
 Blocked by: 3
 
-- [ ] 5.1 Build a loopback fake Gitea server in `tests/forge/fake-gitea.ts` with `content_version` on and off modes
-- [ ] 5.2 Implement `GiteaForge` in `src/forge/gitea.ts` (token lookup, REST calls, operations)
-- [ ] 5.3 Implement `content_version` writes with 409 mapping and the re-read fallback; wire `runContract` for Gitea
+- [x] 5.1 Build a loopback fake Gitea server in `tests/forge/fake-gitea.ts` with `content_version` on and off modes
+- [x] 5.2 Implement `GiteaForge` in `src/forge/gitea.ts` (token lookup, REST calls, operations)
+- [x] 5.3 Implement `content_version` writes with 409 mapping and the re-read fallback; wire `runContract` for Gitea
 
 ## 6. Cache and read-only mode
 
@@ -48,8 +48,8 @@ Blocked by: 1
 
 Blocked by: 4, 5
 
-- [ ] 7.1 Implement `detectForge` in `src/forge/detect.ts` and the public export in `src/forge/index.ts`
-- [ ] 7.2 Tests for GitHub host, Enterprise host, config Gitea, probe and unknown host
+- [x] 7.1 Implement `detectForge` in `src/forge/detect.ts` and the public export in `src/forge/index.ts`
+- [x] 7.2 Tests for GitHub host, Enterprise host, config Gitea, probe and unknown host
 
 ## 8. Docs and smoke run
 
