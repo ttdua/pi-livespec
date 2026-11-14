@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `src/core/lines.ts`: split text into lines keeping terminators; join back byte-exact
-- [ ] 1.2 Add `src/core/frontmatter.ts`: split leading `---` block, parse body with `yaml`, keep raw text
-- [ ] 1.3 Add `src/core/glob.ts`: `matchGlob` and `validateGlob`, with tests
+- [x] 1.1 Add `src/core/lines.ts`: split text into lines keeping terminators; join back byte-exact
+- [x] 1.2 Add `src/core/frontmatter.ts`: split leading `---` block, parse body with `yaml`, keep raw text
+- [x] 1.3 Add `src/core/glob.ts`: `matchGlob` and `validateGlob`, with tests
 
 ## 2. Durable file formats
 
