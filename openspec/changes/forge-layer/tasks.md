@@ -2,17 +2,17 @@
 
 Blocked by: none
 
-- [ ] 1.1 Define `Forge`, `Issue`, `Comment`, `PullRequest`, `Review`, `ReviewComment`, `CheckSummary`, `Version`, `WriteResult` in `src/forge/types.ts`
-- [ ] 1.2 Add `ForgeError` with codes `unreachable | auth | http | readonly | unsupported` in `src/forge/errors.ts`
-- [ ] 1.3 Add `bodyVersion(updatedAt, body)` hashing and `changedFields(a, b)` in `src/forge/version.ts`
+- [x] 1.1 Define `Forge`, `Issue`, `Comment`, `PullRequest`, `Review`, `ReviewComment`, `CheckSummary`, `Version`, `WriteResult` in `src/forge/types.ts`
+- [x] 1.2 Add `ForgeError` with codes `unreachable | auth | http | readonly | unsupported` in `src/forge/errors.ts`
+- [x] 1.3 Add `bodyVersion(updatedAt, body)` hashing and `changedFields(a, b)` in `src/forge/version.ts`
 
 ## 2. Markers and labels
 
 Blocked by: 1
 
-- [ ] 2.1 Implement marker write/parse and `registerKind` in `src/forge/markers.ts`
-- [ ] 2.2 Implement `readMarkedComments` with account filtering and warnings
-- [ ] 2.3 Add label constants and `ensureLabels` helper in `src/forge/labels.ts`
+- [x] 2.1 Implement marker write/parse and `registerKind` in `src/forge/markers.ts`
+- [x] 2.2 Implement `readMarkedComments` with account filtering and warnings
+- [x] 2.3 Add label constants and `ensureLabels` helper in `src/forge/labels.ts`
 
 ## 3. Contract suite harness
 
