@@ -63,6 +63,15 @@ async function readDoc(file: string, warnings: string[]): Promise<ReadResult> {
 	return { exists: true, doc: value as Doc };
 }
 
+/** Formats an untrusted YAML value for a warning without calling its methods. */
+function describeValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return `${value}`;
+	if (Array.isArray(value)) return "a list";
+	if (value !== null && typeof value === "object") return "a mapping";
+	return "null";
+}
+
 function warnUnknownKeys(file: string, doc: Doc, known: string[], warnings: string[]): void {
 	for (const key of Object.keys(doc)) {
 		if (!known.includes(key)) warnings.push(`${file}: unknown key "${key}"`);
@@ -102,7 +111,7 @@ function readChannel(file: string, doc: Doc, warnings: string[]): { set: boolean
 		return { set: true, channel: entry.channel as Channel };
 	}
 	warnings.push(
-		`${file}: invalid agentSkills.channel "${String(entry.channel)}" (expected auto, notify or pinned); using ${DEFAULT_CHANNEL}`,
+		`${file}: invalid agentSkills.channel "${describeValue(entry.channel)}" (expected auto, notify or pinned); using ${DEFAULT_CHANNEL}`,
 	);
 	return { set: true };
 }
@@ -111,7 +120,7 @@ function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig
 	warnUnknownKeys(file, doc, PROJECT_KEYS, warnings);
 	const project: ProjectConfig = { githubHosts: stringList(file, doc, "githubHosts", warnings), agentSkillsChannelSet: false };
 	if (typeof doc.forge === "string" && FORGES.includes(doc.forge)) project.forge = doc.forge as "github" | "gitea";
-	else if (doc.forge !== undefined) warnings.push(`${file}: invalid forge "${String(doc.forge)}" (expected github or gitea); ignored`);
+	else if (doc.forge !== undefined) warnings.push(`${file}: invalid forge "${describeValue(doc.forge)}" (expected github or gitea); ignored`);
 	const host = optionalString(file, doc, "host", warnings);
 	if (host !== undefined) project.host = host;
 	const giteaUrl = optionalString(file, doc, "giteaUrl", warnings);

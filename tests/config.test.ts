@@ -78,6 +78,20 @@ describe("loadConfig", () => {
 		expect(warnings.some((w) => w.includes("sometimes"))).toBe(true);
 	});
 
+	test("channel value with an own toString key is a warning, not a throw", async () => {
+		userFile("agentSkills: { channel: { toString: invalid } }\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.agentSkills.channel).toBe("auto");
+		expect(warnings.some((w) => w.includes("agentSkills.channel"))).toBe(true);
+	});
+
+	test("forge value with an own toString key is a warning, not a throw", async () => {
+		projectFile("forge: { toString: invalid }\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.forge).toBeUndefined();
+		expect(warnings.some((w) => w.includes("forge"))).toBe(true);
+	});
+
 	test("project agentSkills.channel is flagged", async () => {
 		projectFile("agentSkills:\n  channel: notify\n");
 		const { project, user } = await loadConfig(root, home);
