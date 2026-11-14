@@ -21,6 +21,7 @@ import type {
 	Version,
 	WriteResult,
 } from "./types.ts";
+import { type SnapshotKind, SnapshotStore } from "./snapshots.ts";
 import { bodyVersion, type ComparableIssue, changedFields } from "./version.ts";
 
 export interface ExecResult {
@@ -121,12 +122,6 @@ interface JsonStatus {
 	target_url: string | null;
 }
 
-type SnapshotKind = "issue" | "pull";
-
-function snapshotKey(kind: SnapshotKind, n: number, version: Version): string {
-	return `${kind}#${n}@${version}`;
-}
-
 const HTTP_STATUS = /\(HTTP (\d{3})\)/;
 
 export class GitHubForge implements Forge, LabelRepo {
@@ -137,7 +132,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	private readonly base: string;
 	private authenticated = false;
 	/** What each version this adapter handed out looked like, to name changed fields on conflict. */
-	private readonly snapshots = new Map<string, ComparableIssue>();
+	private readonly snapshots = new SnapshotStore();
 
 	constructor(opts: GitHubForgeOptions) {
 		this.ghPath = opts.ghPath;
@@ -354,7 +349,7 @@ export class GitHubForge implements Forge, LabelRepo {
 			updatedAt: raw.updated_at,
 			version: bodyVersion(raw.updated_at, body, "gh"),
 		};
-		this.snapshots.set(snapshotKey("issue", issue.number, issue.version), { ...issue, labels: [...issue.labels] });
+		this.snapshots.remember("issue", issue.number, issue.version, issue);
 		return issue;
 	}
 
@@ -371,7 +366,7 @@ export class GitHubForge implements Forge, LabelRepo {
 			version: bodyVersion(raw.updated_at, body, "gh"),
 		};
 		if (raw.merged_at) pull.mergedAt = raw.merged_at;
-		this.snapshots.set(snapshotKey("pull", pull.number, pull.version), { title: pull.title, body, labels: [], state: pull.state });
+		this.snapshots.remember("pull", pull.number, pull.version, { title: pull.title, body, labels: [], state: pull.state });
 		return pull;
 	}
 
@@ -382,7 +377,7 @@ export class GitHubForge implements Forge, LabelRepo {
 		current: Version,
 		now: ComparableIssue,
 	): { status: "conflict"; current: Version; changed: string[] } {
-		const before = this.snapshots.get(snapshotKey(kind, n, expected));
+		const before = this.snapshots.recall(kind, n, expected);
 		const changed = before ? changedFields(before, now) : [];
 		// A version mismatch with equal compared fields still means the item moved on.
 		return { status: "conflict", current, changed: changed.length > 0 ? changed : ["body"] };

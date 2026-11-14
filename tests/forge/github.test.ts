@@ -3,6 +3,7 @@ import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { GitHubForge } from "../../src/forge/github.ts";
 import { runContract } from "./contract.ts";
+import { tick } from "./fake-gh/state.ts";
 import { GitHubWorld } from "./github-world.ts";
 import { BOT_LOGIN } from "./world.ts";
 
@@ -97,12 +98,13 @@ describe("github adapter", () => {
 		}
 	});
 
-	it("getChecks sees a failure on the 101st check", async () => {
+	it("getChecks sees a failure on the 101st commit status (per_page boundary)", async () => {
 		const w = make();
-		for (let i = 0; i < 101; i++) await w.seedStatus("sha2", { name: `c${i}`, state: i === 100 ? "failure" : "success" });
+		// seedStatus alternates endpoints, so 201 entries put 101 on the statuses endpoint.
+		for (let i = 0; i < 201; i++) await w.seedStatus("sha2", { name: `c${i}`, state: i === 200 ? "failure" : "success" });
 		const summary = await w.forge.getChecks("sha2");
 		expect(summary.state).toBe("failure");
-		expect(summary.checks).toHaveLength(101);
+		expect(summary.checks).toHaveLength(201);
 	});
 
 	it("conflict changed fields are scoped per issue even with equal timestamp and body", async () => {
@@ -119,6 +121,124 @@ describe("github adapter", () => {
 		const result = await w.forge.updateIssueBody(a, "mine", readA.version);
 
 		expect(result).toMatchObject({ status: "conflict", changed: ["body"] });
+	});
+
+	it("an evicted snapshot still conflicts by version, falls back to body and issues no PATCH", async () => {
+		const w = make();
+		const a = await w.seedIssue({ title: "A", body: "original" });
+		const read = await w.forge.getIssue(a);
+		for (let i = 0; i < 300; i++) await w.seedIssue({ labels: ["bulk"], body: `b${i}` });
+		expect(await w.forge.searchIssues({ labels: ["bulk"] })).toHaveLength(300);
+		w.store.update((d) => {
+			d.issues[String(a)].title = "A2";
+			d.issues[String(a)].body = "edited";
+		});
+
+		const result = await w.forge.updateIssueBody(a, "mine", read.version);
+
+		expect(result).toMatchObject({ status: "conflict", changed: ["body"] });
+		expect(w.calls().filter((c) => c.method === "PATCH")).toEqual([]);
+	});
+
+	it("a recent snapshot still names the changed fields after many other reads", async () => {
+		const w = make();
+		const a = await w.seedIssue({ title: "A", body: "original" });
+		for (let i = 0; i < 20; i++) await w.seedIssue({ labels: ["bulk"] });
+		await w.forge.searchIssues({ labels: ["bulk"] });
+		const read = await w.forge.getIssue(a);
+		w.store.update((d) => {
+			d.issues[String(a)].title = "A2";
+			d.issues[String(a)].updatedAt = tick(d);
+		});
+		const result = await w.forge.updateIssueBody(a, "mine", read.version);
+		expect(result).toMatchObject({ status: "conflict", changed: ["title"] });
+	});
+
+	it("an issue and a pull request with the same number do not share snapshots", async () => {
+		const w = make();
+		const n = await w.seedIssue({ title: "T1", body: "same" });
+		const p = await w.seedPullRequest({ head: "feat/x", title: "T2", body: "same" });
+		w.store.update((d) => {
+			const pull = d.pulls[String(p)];
+			delete d.pulls[String(p)];
+			pull.number = n;
+			pull.updatedAt = d.issues[String(n)].updatedAt;
+			d.pulls[String(n)] = pull;
+		});
+		const issue = await w.forge.getIssue(n);
+		const pull = await w.forge.getPullRequest(n);
+		expect(pull.version).toBe(issue.version);
+		w.store.update((d) => {
+			d.issues[String(n)].title = "T2";
+			d.issues[String(n)].body = "edited";
+		});
+
+		const result = await w.forge.updateIssueBody(n, "mine", issue.version);
+
+		expect(result).toMatchObject({ status: "conflict", changed: ["title", "body"] });
+	});
+
+	it("mutating a returned entity does not corrupt conflict field naming", async () => {
+		const w = make();
+		const n = await w.seedIssue({ title: "T", body: "b", labels: ["a"] });
+		const read = await w.forge.getIssue(n);
+		read.title = "T2";
+		read.body = "b2";
+		read.labels.splice(0, 1, "z");
+		w.store.update((d) => {
+			const issue = d.issues[String(n)];
+			issue.title = "T2";
+			issue.body = "b2";
+			issue.labels = ["z"];
+			issue.updatedAt = tick(d);
+			d.labels.push("z");
+		});
+
+		const result = await w.forge.updateIssueBody(n, "mine", read.version);
+
+		expect(result).toMatchObject({ status: "conflict", changed: ["title", "body", "labels"] });
+	});
+
+	it("the login is not cached: a changed login is re-checked before the next comment edit", async () => {
+		const w = make();
+		const n = await w.seedIssue();
+		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+		await w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 2 }), created.version);
+		await w.forge.whoami();
+		w.store.update((d) => {
+			d.login = "someone-else";
+		});
+		w.store.update((d) => {
+			d.calls = [];
+		});
+
+		await expect(w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 3 }), created.version)).rejects.toBeInstanceOf(ForgeError);
+		expect(w.calls().filter((c) => c.method === "PATCH")).toEqual([]);
+	});
+
+	it("a comment that lost its marker after the caller read it is refused without a PATCH", async () => {
+		const w = make();
+		const n = await w.seedIssue();
+		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+		const [read] = await w.forge.listComments(n);
+		w.store.update((d) => {
+			d.comments[created.id].body = "plain text now";
+		});
+
+		await expect(w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 2 }), read.version)).rejects.toBeInstanceOf(ForgeError);
+		expect(w.calls().filter((c) => c.method === "PATCH")).toEqual([]);
+		expect(await w.commentBodyOf(created.id)).toBe("plain text now");
+	});
+
+	it("a successful pull request body write reports check best-effort", async () => {
+		const w = make();
+		const n = await w.seedPullRequest({ head: "feat/x", body: "original" });
+		const read = await w.forge.getPullRequest(n);
+
+		const result = await w.forge.updatePullRequest(n, { body: "mine" }, read.version);
+
+		expect(result).toMatchObject({ status: "written", check: "best-effort" });
+		expect(w.calls().filter((c) => c.method === "PATCH")).toHaveLength(1);
 	});
 
 	it("a failed ownership check issues no PATCH", async () => {
