@@ -58,9 +58,9 @@ Blocked by: 3, 4, 5
 
 Blocked by: 5, 6
 
-- [ ] 7.1 Extend `tests/hooks/fake-pi.ts` `fakeCtx` with scripted `confirm` and `input`, and `tests/tools/helpers.ts` with a UI option
-- [ ] 7.2 Add `spec_gate` in `src/tools/spec-gate.ts`: self gates, human gates through the chain with the review payload, `waive` options, and gate comments with `locked` and `agent_skills`; no answer parameters
-- [ ] 7.3 Register `spec_gate` through the polling wrapper
+- [x] 7.1 Extend `tests/hooks/fake-pi.ts` `fakeCtx` with scripted `confirm` and `input`, and `tests/tools/helpers.ts` with a UI option
+- [x] 7.2 Add `spec_gate` in `src/tools/spec-gate.ts`: self gates, human gates through the chain with the review payload, `waive` options, and gate comments with `locked` and `agent_skills`; no answer parameters
+- [x] 7.3 Register `spec_gate` through the polling wrapper
 
 ## 8. Unit planning and amendments
 
