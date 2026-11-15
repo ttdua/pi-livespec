@@ -108,8 +108,28 @@ describe("forge adapter", () => {
 		const early = comment("9", "alice", "/livespec approve", "2025-12-31T23:59:00.000Z");
 		const out = matchThread([gate], [early], writers("alice"), [early, posted(gate, 0)]);
 		expect(out.matches).toEqual([]);
-		// Before the earliest pending request: ignored silently, so old threads are not re-warned every poll.
-		expect(out.warnings).toEqual([]);
+		expect(out.warnings).toEqual([`ignored /livespec comment 9 by alice: it was created before the request ${gate.id}`]);
+	});
+
+	test("a command before an older closed request is not warned", async () => {
+		const { world, n, approver } = await setup();
+		await world.setPermission("alice", "write");
+		await world.postComment(n, "alice", "/livespec changes too early");
+		const define = approval({ subject: "gate:define" });
+		await approver.request(define);
+		await world.postComment(n, "alice", "/livespec approve");
+		const polled = await approver.poll(define.record.id);
+		if (polled.status !== "answered") throw new Error("not answered");
+		await world.postComment(n, BOT_LOGIN, answerComment(define.record.id, { request: define.record, answer: polled, verdict: "valid" }));
+		const late = await world.postComment(n, "alice", "/livespec approve");
+		await approver.request(approval({ subject: "gate:plan", now: new Date(NOW.getTime() + 5000) }));
+
+		const all = await world.forge.listComments(n);
+		const marked = filterMarked(all, BOT_LOGIN).comments;
+		const out = matchCommands(readRequests(marked).pending, all, writers("alice"), { marked });
+		expect(out.matches).toEqual([]);
+		// Only the command after the closed define request is warned; the historical ones stay silent.
+		expect(out.warnings).toEqual([expect.stringContaining(`ignored /livespec comment ${late} by alice: it was created before the request`)]);
 	});
 
 	test("command between two pending requests, before its target, is warned", () => {

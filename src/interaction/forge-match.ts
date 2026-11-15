@@ -191,13 +191,18 @@ function capped(warnings: string[]): string[] {
 }
 
 /**
- * The index of the earliest pending request's own comment: commands at or before it are never warned, the
- * same window `commandAuthors` reads permissions for, so old commands are not re-warned on every poll.
- * -1 (warn every command) when a pending request's comment is not in the thread.
+ * Where warnings start: after the comment that closed the latest closed request (its answer or result)
+ * that precedes the earliest pending request, or the thread start when none does. A command after that
+ * point (for example one posted just before the pending request) is warned; commands before an already
+ * closed request are history and stay silent, so they are not re-warned on every poll. -1 warns every
+ * command, also when a pending request's comment is not in the thread.
  */
 function warnAfterOf(placed: Placed[], pendingIds: ReadonlySet<string>): number {
 	const found = placed.filter((p) => pendingIds.has(p.request.id)).map((p) => p.at);
-	return found.length === pendingIds.size && found.length > 0 && !found.includes(-1) ? Math.min(...found) : -1;
+	if (found.length !== pendingIds.size || found.length === 0 || found.includes(-1)) return -1;
+	const earliest = Math.min(...found);
+	const closedBefore = placed.map((p) => p.closedAt).filter((i) => i < earliest);
+	return closedBefore.length === 0 ? -1 : Math.max(...closedBefore);
 }
 
 /** Requests open at `index`: posted before the comment and not closed before it. */
@@ -285,8 +290,8 @@ function consumedIds(placed: Placed[]): Set<string> {
  * Warnings: a command is warned for its target (unparsable, no or ambiguous target, created before its
  * request, already answered) before its author's permission is checked, so a target warning wins. A
  * command whose target is not pending any more (an applying or completed request, including any `set` or
- * `class`) is skipped silently. Only commands after the earliest pending request are warned (the window
- * `commandAuthors` reads permissions for), and the list is capped at five lines plus "+k more".
+ * `class`) is skipped silently. Only commands after the latest request closed before the earliest pending
+ * one are warned (see `warnAfterOf`), and the list is capped at five lines plus "+k more".
  */
 export function matchCommands(
 	pending: PendingRequest[],
