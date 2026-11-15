@@ -3,7 +3,20 @@ version: 1
 content: agent-skills
 limits: { max_units: 8, max_capabilities: 3 }
 loops: { unit_attempts: 3, unit_rebuilds: 2, review_rounds: 3, change_iterations: 5, discovered_deps: 2 }
-decisions: {}          # filled by LS-05
+decisions:
+  tags:
+    mode: rule
+    paths:
+      security: ["**/auth/**", "**/middleware/**"]
+      migration: ["**/migrations/**"]
+      ui: ["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.vue", "**/*.svelte"]
+      api: ["**/api/**", "**/routes/**"]
+    keywords:
+      security: [auth, token, password, session, permission, secret]
+      migration: [migration, schema]
+      perf: [performance, latency, throughput, cache]
+      api: [endpoint, public api]
+  difficulty: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
