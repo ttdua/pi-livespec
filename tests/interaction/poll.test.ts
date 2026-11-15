@@ -169,6 +169,15 @@ describe("pollApprovals", () => {
 		expect(h.session.card.state.counters.change_iterations).toBe(1);
 	});
 
+	test("warnings are reset when the card is not a change", async () => {
+		const h = await toolHarness({ branch: "scratch" });
+		await h.session.refresh();
+		expect(h.session.card.kind).not.toBe("change");
+		h.session.commandWarnings = ["ignored /livespec comment 1 by bob: stale"];
+		await pollApprovals(h.session);
+		expect(h.session.commandWarnings).toEqual([]);
+	});
+
 	test("ignored commands become card warnings", async () => {
 		const h = await stuckPending();
 		await h.world.setPermission("bob", "read");

@@ -109,7 +109,7 @@ async function pollOnce(session: Session): Promise<void> {
 	try {
 		const target = pollTarget(session);
 		if (!target) {
-			if (session.card.kind === "change") session.commandWarnings = [];
+			session.commandWarnings = [];
 			return;
 		}
 		await pollChange(target);
