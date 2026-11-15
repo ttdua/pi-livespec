@@ -112,6 +112,14 @@ describe("override merge", () => {
 	});
 
 	test("Decisions merge through the rule", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  tags:\n    mode: rule\n    keywords:\n      perf: [p99]\n");
+		const decisions = okPack(r).decisions;
+		const tags = decisions.tags as TagsConfig;
+		expect(tags.keywords.perf).toEqual(["performance", "latency", "throughput", "cache", "p99"]);
+		expect(decisions.difficulty).toEqual((fixture as { decisions: { difficulty: unknown } }).decisions.difficulty);
+	});
+
+	test("tags path override adds globs per tag", async () => {
 		const r = await load('extends: agent-skills\ndecisions:\n  tags:\n    mode: rule\n    paths:\n      security: ["**/crypto/**"]\n      infra: ["ops/**"]\n');
 		const tags = okPack(r).decisions.tags as TagsConfig;
 		expect(tags.mode).toBe("rule");
@@ -120,6 +128,14 @@ describe("override merge", () => {
 		expect(tags.paths.ui).toEqual(["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.vue", "**/*.svelte"]);
 		expect(tags.keywords.api).toEqual(["endpoint", "public api"]);
 		expect(okPack(r).decisions.difficulty).toEqual({ mode: "rule" });
+	});
+
+	test("tag named after an Object prototype key merges and loads", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  tags:\n    mode: rule\n    keywords:\n      constructor: [cache]\n      toString: [latency]\n");
+		const tags = okPack(r).decisions.tags as TagsConfig;
+		expect(tags.keywords.constructor).toEqual(["cache"]);
+		expect(tags.keywords.toString).toEqual(["latency"]);
+		expect(tags.keywords.perf).toEqual(["performance", "latency", "throughput", "cache"]);
 	});
 
 	test("override of a decision point without mode is an error", async () => {

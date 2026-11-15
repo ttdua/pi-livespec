@@ -24,10 +24,28 @@ const BLOCK_MARKER = /^<!-- livespec:decision:([A-Za-z0-9._-]+) -->$/;
 const FENCE_OPEN = "```yaml";
 const FENCE_CLOSE = /^```\s*$/;
 
+const isString = (v: unknown): v is string => typeof v === "string";
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const has = (o: object, key: string): boolean => Object.hasOwn(o, key);
+
+/** Checks the optional fields' types when present. */
+function optionalFieldsValid(r: Record<string, unknown>): boolean {
+	if (has(r, "digest") && !isString(r.digest)) return false;
+	if (has(r, "facts_hash") && !isString(r.facts_hash)) return false;
+	if (has(r, "request") && !isString(r.request)) return false;
+	if (has(r, "agent_additions") && !(Array.isArray(r.agent_additions) && r.agent_additions.every(isString))) return false;
+	if (has(r, "overridden_by")) {
+		const o = r.overridden_by;
+		if (!isObject(o) || !isString(o.by) || !isString(o.at) || !has(o, "from")) return false;
+	}
+	return true;
+}
+
+/** A decision record: required fields present (`outcome` may be any value, including falsy), optional fields well-typed. */
 function isRecord(v: unknown): v is DecisionRecord {
-	if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
-	const r = v as Record<string, unknown>;
-	return typeof r.point === "string" && typeof r.subject === "string" && (r.source === "rule" || r.source === "human") && typeof r.reason === "string";
+	if (!isObject(v)) return false;
+	const required = isString(v.point) && isString(v.subject) && (v.source === "rule" || v.source === "human") && isString(v.reason) && has(v, "outcome");
+	return required && optionalFieldsValid(v);
 }
 
 /** Replaces `facts` with `facts_hash` (sha256 hex of its yaml) when that yaml exceeds 2,000 characters. */

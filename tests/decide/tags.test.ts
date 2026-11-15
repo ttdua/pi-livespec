@@ -68,6 +68,20 @@ describe("tags rule", () => {
 	});
 });
 
+describe("tags prototype keys", () => {
+	test("a tag named after an Object prototype key is matched only through own entries", () => {
+		const config = JSON.parse('{"mode":"rule","paths":{},"keywords":{"constructor":["cache"]}}') as TagsConfig;
+		expect(run({ title: "Cache it" }, config).outcome).toEqual(["constructor"]);
+		expect(run({ title: "Nothing" }, config).outcome).toEqual([]);
+	});
+
+	test("merge of a constructor tag keeps own lists only", () => {
+		const merged = tagsSchema.merge?.(CONFIG, { keywords: { constructor: ["cache"] } }) as TagsConfig;
+		expect(merged.keywords.constructor).toEqual(["cache"]);
+		expect(Object.keys(merged.keywords)).toEqual(["security", "migration", "perf", "api", "constructor"]);
+	});
+});
+
 describe("tags merge", () => {
 	test("Override adds globs", () => {
 		const merged = tagsSchema.merge?.(CONFIG, { paths: { security: ["**/crypto/**", "**/auth/**"], infra: ["ops/**"] } }) as TagsConfig;

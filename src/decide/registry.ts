@@ -88,7 +88,7 @@ export function mergeDecisions(base: unknown, over: unknown): Record<string, unk
 	const o = isRaw(over) ? over : {};
 	const merged: Record<string, unknown> = { ...b };
 	for (const [point, value] of Object.entries(o)) {
-		if (!(point in b)) {
+		if (!Object.hasOwn(b, point)) {
 			merged[point] = value;
 			continue;
 		}

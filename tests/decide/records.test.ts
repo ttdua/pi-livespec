@@ -72,6 +72,44 @@ describe("decision records", () => {
 		expect(map.get("difficulty.U3")).toEqual(other);
 	});
 
+	test("a record without outcome does not replace the latest valid record", () => {
+		const { outcome: _o, ...noOutcome } = TAGS_U3;
+		const map = latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", noOutcome)]);
+		expect(map.get("tags.U1")).toEqual(TAGS_U3);
+	});
+
+	test("falsy outcomes are valid records", () => {
+		for (const outcome of [false, 0, null, ""]) {
+			const record = { ...TAGS_U3, outcome };
+			expect(latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", record)]).get("tags.U1")).toEqual(record);
+		}
+	});
+
+	test("records with mistyped optional fields are skipped", () => {
+		const bad: unknown[] = [
+			{ ...TAGS_U3, digest: 1 },
+			{ ...TAGS_U3, facts_hash: 2 },
+			{ ...TAGS_U3, agent_additions: "api" },
+			{ ...TAGS_U3, agent_additions: [1] },
+			{ ...TAGS_U3, overridden_by: "alice" },
+			{ ...TAGS_U3, overridden_by: { by: "alice" } },
+			{ ...TAGS_U3, request: 3 },
+		];
+		for (const data of bad) {
+			expect(latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", data)]).get("tags.U1")).toEqual(TAGS_U3);
+		}
+		const ok = { ...TAGS_U3, overridden_by: { by: "alice", at: "t", from: ["security"] }, request: "r1" };
+		expect(latestDecisions([marked("tags.U1", ok)]).get("tags.U1")).toEqual(ok);
+	});
+
+	test("PR blocks without outcome or with mistyped fields are ignored", () => {
+		const good: DecisionRecord = { point: "lane", subject: "pr-1", source: "rule", outcome: false, reason: "r" };
+		const noOutcome = "<!-- livespec:decision:lane -->\n```yaml\npoint: lane\nsubject: pr-1\nsource: rule\nreason: r\n```";
+		const badAdditions = "<!-- livespec:decision:lane -->\n```yaml\npoint: lane\nsubject: pr-1\nsource: rule\noutcome: x\nreason: r\nagent_additions: api\n```";
+		const body = `${noOutcome}\n\n${badAdditions}\n\n${formatDecisionBlock("lane", good)}\n`;
+		expect(parseDecisionBlocks(body)).toEqual([good]);
+	});
+
 	test("malformed decision data is skipped", () => {
 		const map = latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", "garbage")]);
 		expect(map.get("tags.U1")).toEqual(TAGS_U3);
