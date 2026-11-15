@@ -27,6 +27,12 @@ export function resumeBody(base: string): string {
 
 export const allDone = (body: string): string => body.replace("- [ ] pending", "- [x] done");
 
+/** The origin URL is only parsed; git refuses http(s) in the repo, so nothing can reach the network. */
+export function blockNetwork(root: string): void {
+	execFileSync("git", ["config", "protocol.https.allow", "never"], { cwd: root });
+	execFileSync("git", ["config", "protocol.http.allow", "never"], { cwd: root });
+}
+
 export type Deferred<T> = { promise: Promise<T>; resolve(v: T): void };
 
 export function deferred<T>(): Deferred<T> {
@@ -106,6 +112,7 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 	commitAll(root);
 	execFileSync("git", ["branch", "-M", "main"], { cwd: root });
 	execFileSync("git", ["remote", "add", "origin", ORIGIN], { cwd: root });
+	blockNetwork(root);
 	if (o.branch) execFileSync("git", ["switch", "-q", "-c", o.branch], { cwd: root });
 	const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 	const world = new MemoryWorld();

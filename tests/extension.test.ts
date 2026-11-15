@@ -116,6 +116,25 @@ describe("livespec extension", () => {
 		);
 	});
 
+	it("handler resolves when sendMessage throws", async () => {
+		const { commands, sendMessage, ctx } = loadExtension();
+		sendMessage.mockImplementation(() => {
+			throw new Error("transport closed");
+		});
+		await expect(commands.get("livespec")!.handler("", ctx)).resolves.toBeUndefined();
+	});
+
+	it("handler resolves when notify throws", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "specs/a/spec.md", NO_SCENARIO);
+		const { commands, notify, ctx } = loadExtension(root);
+		notify.mockImplementation(() => {
+			throw new Error("ui gone");
+		});
+		await expect(commands.get("livespec")!.handler("validate", ctx)).resolves.toBeUndefined();
+		expect(notify).toHaveBeenCalled();
+	});
+
 	it("next without a livespec session says to run init", async () => {
 		const root = await makeRepo();
 		const { commands, sendMessage, ctx } = loadExtension(root);

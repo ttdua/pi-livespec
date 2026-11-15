@@ -54,17 +54,41 @@ function splitArgs(args: string): { sub: string; rest: string } {
 	return { sub, rest: trimmed.slice(sub.length).trim() };
 }
 
+/** Best effort: the UI may be gone (pi shutting down); a notice then has nowhere to go. */
+function safeNotify(ctx: ExtensionCommandContext, message: string): void {
+	try {
+		ctx.ui.notify(message, "error");
+	} catch {
+		// Nothing else can report it.
+	}
+}
+
+/** Shows the reply; a failed send falls back to a notice. Never throws. */
+function deliver(pi: ExtensionAPI, ctx: ExtensionCommandContext, out: Reply): void {
+	try {
+		pi.sendMessage({ customType: out.customType, content: out.content, display: true });
+	} catch (error) {
+		safeNotify(ctx, `livespec could not show its reply: ${messageOf(error)}`);
+	}
+	if (out.error !== undefined) safeNotify(ctx, out.error);
+}
+
+/** Parse, route and deliver inside one boundary, so the command never rejects into pi. */
+async function handleCommand(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<void> {
+	try {
+		const { sub, rest } = splitArgs(args);
+		deliver(pi, ctx, await reply(sub, rest, ctx, env));
+	} catch (error) {
+		safeNotify(ctx, `livespec failed: ${messageOf(error)}`);
+	}
+}
+
 /** `deps` replaces the real home, forge detection or content manager, for tests. */
 export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> = {}): void {
 	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
 	pi.registerCommand("livespec", {
 		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, skills",
-		handler: async (args, ctx) => {
-			const { sub, rest } = splitArgs(args);
-			const out = await reply(sub, rest, ctx, env);
-			pi.sendMessage({ customType: out.customType, content: out.content, display: true });
-			if (out.error !== undefined) ctx.ui.notify(out.error, "error");
-		},
+		handler: (args, ctx) => handleCommand(pi, args, ctx, env),
 	});
 	registerSpecValidate(pi);
 	registerChangeTools(pi);

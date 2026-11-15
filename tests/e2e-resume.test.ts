@@ -2,7 +2,7 @@
 // and a pre-installed agent-skills tree. A new session opened mid-change shows
 // the correct next step on the resume card and on the phase card.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ import { getSession, setSession } from "../src/hooks/session-store.ts";
 import { defaultPack, validTreeFiles, writeTree } from "./content/helpers.ts";
 import { MemoryWorld } from "./forge/memory-forge.ts";
 import { FakePi, fakeCtx } from "./hooks/fake-pi.ts";
-import { BUILD_LABELS, CHANGE_BRANCH, ORIGIN, cardText, promptEvent, resumeBody } from "./hooks/helpers.ts";
+import { BUILD_LABELS, CHANGE_BRANCH, ORIGIN, blockNetwork, cardText, promptEvent, resumeBody } from "./hooks/helpers.ts";
 import { FIXTURE_BODY } from "./helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "./helpers/repo.ts";
 
@@ -53,6 +53,7 @@ async function changeRepo(): Promise<{ root: string; head: string }> {
 	commitAll(root);
 	execFileSync("git", ["branch", "-M", "main"], { cwd: root });
 	execFileSync("git", ["remote", "add", "origin", ORIGIN], { cwd: root });
+	blockNetwork(root);
 	execFileSync("git", ["switch", "-q", "-c", CHANGE_BRANCH], { cwd: root });
 	const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 	return { root, head };
@@ -88,6 +89,13 @@ describe("resume through the extension", () => {
 		const skills = (await r.pi.fire("resources_discover", { type: "resources_discover" }, r.ctx)) as { skillPaths: string[] };
 		expect(skills.skillPaths.length).toBeGreaterThan(0);
 		for (const path of skills.skillPaths) expect(path).toContain(TREE_SHA);
+	});
+
+	test("the change repo cannot reach its origin", async () => {
+		const { root } = await changeRepo();
+		const r = spawnSync("git", ["fetch", "origin"], { cwd: root, encoding: "utf8", timeout: 10_000 });
+		expect(r.status).not.toBe(0);
+		expect(r.stderr).toMatch(/transport 'https' not allowed/);
 	});
 
 	test("unanswered blocking question wins on resume", async () => {
