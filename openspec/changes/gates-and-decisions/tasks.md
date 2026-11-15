@@ -12,18 +12,18 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 Add `src/interaction/approver.ts`: the contract types (`Approver` with `request` and `poll`, the `answered`, `pending` and `deferred` results, question answer text, overrides), and register marker kinds `request` and `answer`
-- [ ] 2.2 Add `src/interaction/commands.ts`: pure `parseCommand` over the comment's first line, for `approve`, `changes`, `dismiss`, `choose`, `answer` (with `--changes` and `--class`), `class` and `set`
-- [ ] 2.3 Add `interaction.adapter` to project and user config in `src/config.ts` (warnings for non-lists and unknown names, default `[in-session]`), plus `adapterChain(config)`
-- [ ] 2.4 Add `src/interaction/in-session.ts`: dialogs through an injected `ApproverUI`, availability from `hasUI`, cancel read as `dismissed`, question flow with "answer later" returning `deferred`, override prompts
-- [ ] 2.5 Add `src/interaction/chain.ts` `runChain(chain, adapters, request)`: tries adapters in order, skips unavailable ones, moves on after `deferred` once the caller's `onDeferred` hook has rewritten the question as non-blocking, and refuses with a message naming `interaction.adapter`
+- [x] 2.1 Add `src/interaction/approver.ts`: the contract types (`Approver` with `request` and `poll`, the `answered`, `pending` and `deferred` results, question answer text, overrides), and register marker kinds `request` and `answer`
+- [x] 2.2 Add `src/interaction/commands.ts`: pure `parseCommand` over the comment's first line, for `approve`, `changes`, `dismiss`, `choose`, `answer` (with `--changes` and `--class`), `class` and `set`
+- [x] 2.3 Add `interaction.adapter` to project and user config in `src/config.ts` (warnings for non-lists and unknown names, default `[in-session]`), plus `adapterChain(config)`
+- [x] 2.4 Add `src/interaction/in-session.ts`: dialogs through an injected `ApproverUI`, availability from `hasUI`, cancel read as `dismissed`, question flow with "answer later" returning `deferred`, override prompts
+- [x] 2.5 Add `src/interaction/chain.ts` `runChain(chain, adapters, request)`: tries adapters in order, skips unavailable ones, moves on after `deferred` once the caller's `onDeferred` hook has rewritten the question as non-blocking, and refuses with a message naming `interaction.adapter`
 
 ## 3. Byte-preserving body helpers
 
 Blocked by: none
 
-- [ ] 3.1 Add `src/core/unit-blocks.ts`: `renderUnit`, `replaceUnitBlock`, `insertUnitBlock`, `removeUnitBlock` and `setUnitField`, all keeping every other line and its EOL
-- [ ] 3.2 Add `src/core/question-lines.ts`: `appendQuestion`, `answerQuestion` and `reclassifyQuestion`, all keeping every other line and its EOL
+- [x] 3.1 Add `src/core/unit-blocks.ts`: `renderUnit`, `replaceUnitBlock`, `insertUnitBlock`, `removeUnitBlock` and `setUnitField`, all keeping every other line and its EOL
+- [x] 3.2 Add `src/core/question-lines.ts`: `appendQuestion`, `answerQuestion` and `reclassifyQuestion`, all keeping every other line and its EOL
 
 ## 4. Change-state facts, classification check and gate evaluation
 
