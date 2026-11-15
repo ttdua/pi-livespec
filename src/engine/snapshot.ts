@@ -32,7 +32,7 @@ export function phaseFromLabels(labels: string[]): PhaseState {
 }
 
 /** `Capabilities` counts when the line declares at least one capability; H2 sections when non-empty. */
-function sectionPresence(body: string, change: Change): Record<SectionName, boolean> {
+export function sectionPresence(body: string, change: Change): Record<SectionName, boolean> {
 	const caps = change.header.capabilities;
 	const presence: Record<SectionName, boolean> = {
 		Capabilities: caps !== undefined && caps.new.length + caps.modified.length > 0,
@@ -97,10 +97,10 @@ async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): 
 	};
 }
 
-type GitFacts = { git: ChangeState["git"]; warnings: string[] };
+export type GitFacts = { git: ChangeState["git"]; warnings: string[] };
 
 /** `specsChanged` is undefined without `Base`, and also (with a warning) when git cannot diff from it. */
-async function readGitFacts(git: Git, base: string | undefined): Promise<GitFacts> {
+export async function readGitFacts(git: Git, base: string | undefined): Promise<GitFacts> {
 	const [branch, head, dirty] = await Promise.all([git.branch(), git.head(), git.isDirty()]);
 	const warnings: string[] = [];
 	let specsChanged: boolean | undefined;
