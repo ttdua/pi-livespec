@@ -52,6 +52,7 @@ async function validateGate(ctx: CompletionCtx, req: RequestRecord, issue: Issue
 function validateAmend(req: RequestRecord, issue: Issue): Verdict {
 	const s = req.snapshot as AmendSnapshot;
 	const unit = parseChange(issue.body).units.find((u) => u.id === s.unit);
+	if (s.action === "add" && unit) return superseded(`${s.unit} is already in the body`);
 	if (s.action !== "add") {
 		if (!unit) return superseded(`${s.unit} is no longer in the body`);
 		if (s.oldDigest !== undefined && unitDigest(unit) !== s.oldDigest) return superseded(`${s.unit} changed since the request`);

@@ -268,6 +268,20 @@ describe("completion engine", () => {
 		expect(Object.keys(deriveLocks(parseChange(body), marked).locked ?? {})).toEqual(["U1", "U3"]);
 	});
 
+	test("Unit id taken while the add was pending", async () => {
+		const f = await fixture("build");
+		await seedLock(f);
+		const before = await f.world.bodyOf(f.n);
+		const lines = renderUnit({ id: "U4", title: "Burst", covers: [REQUIREMENT], difficulty: "low", tags: [], files: ["src/b.ts"], done_means: [{ label: "b", text: "burst" }], scenarios: [{ label: "b", ref: "test/ratelimit.test.ts › rejects 101st request" }], depends: [], verify: "npm test" });
+		const record = await prepare(f, "gate", "amend:1", { action: "add", unit: "U4", lines, records: [] });
+		const other = renderUnit({ id: "U4", title: "Other", covers: [REQUIREMENT], difficulty: "low", tags: [], files: ["src/o.ts"], done_means: [{ label: "o", text: "other" }], scenarios: [{ label: "o", ref: "test/ratelimit.test.ts › rejects 101st request" }], depends: [], verify: "npm test" });
+		await f.world.editBodyBehindBack(f.n, amendedBody(before, { action: "add", unit: "U4", lines: other, records: [] }));
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.result).toContain("U4 is already in the body");
+		const units = parseChange(await f.world.bodyOf(f.n)).units;
+		expect(units.find((u) => u.id === "U4")?.title).toBe("Other");
+	});
+
 	test("Answer sends the change back", async () => {
 		const f = await fixture("build", (b) => u3Done(q1Open(b)));
 		await seedLock(f);
