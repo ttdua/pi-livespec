@@ -125,10 +125,21 @@ async function askOverrideField(
 
 type GateAction = { action: "approve" } | { action: "changes" } | { action: "dismiss" } | { action: "option"; id: string };
 
-/** Gate and amendment requests: approve, request changes, dismiss, or one of the request's options (e.g. `waive`). */
+/** Failing waivable checks of a gate request; a plain approve cannot pass them, only `waive`. */
+function failingWaivable(r: ApprovalRequest): string[] {
+	if (r.kind !== "gate") return [];
+	const list = (r.record.snapshot as { failingWaivable?: unknown }).failingWaivable;
+	return Array.isArray(list) ? list.map(String) : [];
+}
+
+/**
+ * Gate and amendment requests: approve, request changes, dismiss, or one of the request's options (e.g.
+ * `waive`). Plain approve is not offered while waivable checks fail.
+ */
 async function gateFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Cancelled> {
+	const approve: MenuEntry<GateAction>[] = failingWaivable(r).length > 0 ? [] : [["approve", { action: "approve" }]];
 	const selected = await choose<GateAction>(ui, r.summary, [
-		["approve", { action: "approve" }],
+		...approve,
 		["request changes", { action: "changes" }],
 		["dismiss", { action: "dismiss" }],
 		...optionEntries<GateAction>(r.options ?? [], (o) => ({ action: "option", id: o.id })),

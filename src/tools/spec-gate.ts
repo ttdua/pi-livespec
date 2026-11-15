@@ -37,7 +37,12 @@ const NEW_STUCK_HINT = "An earlier stuck answer that chose no option does not li
 /** How the target's gate passes: by its checks alone, or through a human. */
 export type GatePlan = { mode: "self" | "human"; isPhase: boolean; failingWaivable: string[]; options: RequestOption[] };
 
-/** Plans a gate that `gateRefusal` let through; a self gate never passes with a failing check, waivable or not. */
+/**
+ * Plans a gate that `gateRefusal` let through; a self gate never passes with a failing check, waivable or
+ * not. A human gate offers `waive` first, then a named gate's own options. A named gate's option choice is
+ * not a waive: a named gate with failing waivable checks passes only through `waive`, so the human cannot
+ * pick one of its options and waive in the same answer.
+ */
 export function planGate(state: ChangeState, pack: Pack, target: string): GatePlan | { refused: string } {
 	const resolved = resolveGateTarget(state, pack, target);
 	if (!resolved) return { refused: `${target} is not a gate.` };

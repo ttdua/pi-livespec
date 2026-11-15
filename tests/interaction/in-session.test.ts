@@ -129,6 +129,15 @@ describe("in-session approver", () => {
 		expect(result).toMatchObject({ outcome: "approved", choice: "waive" });
 	});
 
+	test("failing waivable checks remove plain approve", async () => {
+		const ui = scriptedUI(["Waive failing checks [waive]", "No notes"]);
+		const base = gateRequest({ options: [{ id: "waive", label: "Waive failing checks" }] });
+		const request = { ...base, record: { ...base.record, snapshot: { target: "define", digests: {}, failingWaivable: ["size-limits"] } } };
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(ui.calls[0]).toMatchObject({ options: ["request changes", "dismiss", "Waive failing checks [waive]"] });
+		expect(result).toMatchObject({ outcome: "approved", choice: "waive" });
+	});
+
 	test("question answer goes into answer, and the requirement choice into changesRequirement", async () => {
 		const ui = scriptedUI(["answer now", "use per-user limits", "rate-limit/Requirement: Per-IP cap"]);
 		const result = await createInSessionApprover(ui, login).request(questionRequest());

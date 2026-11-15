@@ -202,9 +202,19 @@ const missingOutput: Rule = ({ state, phase }) => {
 	return undefined;
 };
 
-/** Rule 9: the first check result with severity `error`, named by its check; warnings never block. */
-const failingCheck: Rule = ({ state }) => {
-	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error");
+/** Checks the valid approved gate result of `phase` waived; a superseded or unapproved result waives nothing. */
+function waivedChecks(state: ChangeState, phase: Phase): Set<string> {
+	const result = state.lock.gates[phase.id];
+	return new Set(validApproval(result) ? (result?.waivers ?? []) : []);
+}
+
+/**
+ * Rule 9: the first check result with severity `error`, named by its check; warnings never block, and
+ * neither do checks the phase's valid approved gate waived.
+ */
+const failingCheck: Rule = ({ state, phase }) => {
+	const waived = waivedChecks(state, phase);
+	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error" && !waived.has(r.check));
 	return failure ? { next: `Fix ${failure.check}: ${sentence(failure.message)}.` } : undefined;
 };
 

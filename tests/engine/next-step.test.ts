@@ -296,7 +296,7 @@ function staleComment(id: string, units: string[]): MarkedComment {
 	return { commentId: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
 }
 
-const gateResult = (outcome: GateResult["outcome"], superseded = false): GateResult => ({ outcome, superseded, at: "t" });
+const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = []): GateResult => ({ outcome, superseded, at: "t", waivers });
 
 describe("nextStep approvals, locks and stuck reports", () => {
 	test("Pending gate request", () => {
@@ -334,6 +334,17 @@ describe("nextStep approvals, locks and stuck reports", () => {
 		const step = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ locked: undefined, gates: { define: gateResult("approved_with_notes") } }) }));
 		expect(step.next).toBe("The define gate is approved: move to plan.");
 		expect(step.advance).toBe("plan");
+	});
+
+	test("waived failing check does not block the advance", () => {
+		const sizeLimits = [{ check: "size-limits", code: "size-limits", severity: "error" as const, message: "U3 touches too many files" }];
+		const waived = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", false, ["size-limits"]) } }) }));
+		expect(waived.next).toBe("The plan gate is approved: move to build.");
+		expect(waived.advance).toBe("build");
+		const superseded = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", true, ["size-limits"]) } }) }));
+		expect(superseded.next).toBe("Fix size-limits: U3 touches too many files.");
+		const notWaived = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved") } }) }));
+		expect(notWaived.next).toBe("Fix size-limits: U3 touches too many files.");
 	});
 
 	test("changes requested asks to revise", () => {

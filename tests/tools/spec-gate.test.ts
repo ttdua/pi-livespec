@@ -204,6 +204,7 @@ describe("spec_gate", () => {
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
 		expect(gate.superseded).toBeUndefined();
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
 
 	test("Approve without waiving", async () => {
