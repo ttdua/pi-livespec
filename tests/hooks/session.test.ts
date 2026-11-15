@@ -1,3 +1,4 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
@@ -189,9 +190,19 @@ describe("session_start", () => {
 });
 
 describe("resume entry renderer", () => {
-	test("wraps long lines to the viewport width", async () => {
-		const { wrapLines } = await import("../../src/hooks/resume-entry.ts");
-		expect(wrapLines("abcdef\n\nxy", 4)).toEqual(["abcd", "ef", "", "xy"]);
-		expect(wrapLines("ab", 0)).toEqual(["a", "b"]);
+	test("rendered lines fit the viewport for CJK, emoji and tabs", async () => {
+		const { FakePi } = await import("./fake-pi.ts");
+		const { registerResumeRenderer } = await import("../../src/hooks/resume-entry.ts");
+		const pi = new FakePi();
+		registerResumeRenderer(pi.api as never);
+		const text = "livespec · #7 <untrusted>速率限制每个客户端的请求数量</untrusted>\n🚀🚀🚀🚀🚀🚀🚀 emoji\n\tindented\twith\ttabs and more words";
+		const render = pi.entryRenderers.get("livespec-resume")?.({ type: "custom", customType: "livespec-resume", data: { text } }, { expanded: false }, {}) as {
+			render(width: number): string[];
+		};
+		for (const width of [10, 40]) {
+			const lines = render.render(width);
+			expect(lines.length).toBeGreaterThan(1);
+			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+		}
 	});
 });
