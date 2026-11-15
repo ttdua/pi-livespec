@@ -1,46 +1,97 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { MigrateError, formatMigrate, formatMigrateError, runMigrate } from "./commands/migrate.ts";
-import { runValidateCommand } from "./commands/validate.ts";
+import { type CommandEnv } from "./commands/deps.ts";
+import { messageOf } from "./core/messages.ts";
+import {
+	type Reply,
+	doctorReply,
+	initReply,
+	migrateReply,
+	nextReply,
+	skillsReply,
+	validateReply,
+} from "./commands/subcommands.ts";
+import { registerContextHooks } from "./hooks/context.ts";
+import { type SessionDeps, defaultSessionDeps, registerSessionHooks } from "./hooks/session.ts";
+import { registerChangeTools } from "./tools/change-tools.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
 import { readVersion } from "./version.ts";
 
-const USAGE = "Usage: /livespec [validate | migrate-openspec]";
+const USAGE = "Usage: /livespec [validate | migrate-openspec | init | doctor | next | skills <status|update|pin <sha>|unpin|rollback>]";
 
-export default function extension(pi: ExtensionAPI): void {
-	const say = (customType: string, content: string) => pi.sendMessage({ customType, content, display: true });
+function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> | Reply {
+	switch (sub) {
+		case "":
+			return { customType: "livespec-version", content: `pi-livespec ${readVersion()}` };
+		case "validate":
+			return validateReply(ctx);
+		case "migrate-openspec":
+			return migrateReply(ctx);
+		case "init":
+			return initReply(ctx, env);
+		case "doctor":
+			return doctorReply(ctx, env);
+		case "next":
+			return nextReply(ctx);
+		case "skills":
+			return skillsReply(rest, ctx, env);
+		default:
+			return { customType: "livespec-usage", content: USAGE };
+	}
+}
 
-	const validate = async (ctx: ExtensionCommandContext) => {
-		const { message, exitCode } = await runValidateCommand(ctx.cwd);
-		say("livespec-validate", message);
-		if (exitCode === 1) ctx.ui.notify("livespec validate found errors", "error");
-	};
+/** A subcommand that throws still answers, with the reason, instead of failing inside pi. */
+async function reply(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> {
+	try {
+		return await route(sub, rest, ctx, env);
+	} catch (error) {
+		return { customType: "livespec-error", content: `/livespec ${sub} failed: ${messageOf(error)}`, error: `livespec ${sub} failed` };
+	}
+}
 
-	const migrate = async (ctx: ExtensionCommandContext) => {
-		try {
-			const result = await runMigrate(ctx.cwd);
-			say("livespec-migrate", formatMigrate(result));
-			if (result.conflicts.length > 0) ctx.ui.notify("livespec migrate-openspec refused: conflicts found", "error");
-		} catch (error) {
-			if (error instanceof MigrateError) {
-				say("livespec-migrate", formatMigrateError(error));
-				ctx.ui.notify("livespec migrate-openspec failed midway; see the recovery hint", "error");
-				return;
-			}
-			const reason = error instanceof Error ? error.message : String(error);
-			say("livespec-migrate", `migrate-openspec failed: ${reason}`);
-			ctx.ui.notify("livespec migrate-openspec failed", "error");
-		}
-	};
+function splitArgs(args: string): { sub: string; rest: string } {
+	const trimmed = args.trim();
+	const sub = trimmed.split(/\s+/)[0] ?? "";
+	return { sub, rest: trimmed.slice(sub.length).trim() };
+}
 
+/** Best effort: the UI may be gone (pi shutting down); a notice then has nowhere to go. */
+function safeNotify(ctx: ExtensionCommandContext, message: string): void {
+	try {
+		ctx.ui.notify(message, "error");
+	} catch {
+		// Nothing else can report it.
+	}
+}
+
+/** Shows the reply; a failed send falls back to a notice. Never throws. */
+function deliver(pi: ExtensionAPI, ctx: ExtensionCommandContext, out: Reply): void {
+	try {
+		pi.sendMessage({ customType: out.customType, content: out.content, display: true });
+	} catch (error) {
+		safeNotify(ctx, `livespec could not show its reply: ${messageOf(error)}`);
+	}
+	if (out.error !== undefined) safeNotify(ctx, out.error);
+}
+
+/** Parse, route and deliver inside one boundary, so the command never rejects into pi. */
+async function handleCommand(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<void> {
+	try {
+		const { sub, rest } = splitArgs(args);
+		deliver(pi, ctx, await reply(sub, rest, ctx, env));
+	} catch (error) {
+		safeNotify(ctx, `livespec failed: ${messageOf(error)}`);
+	}
+}
+
+/** `deps` replaces the real home, forge detection or content manager, for tests. */
+export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> = {}): void {
+	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
 	pi.registerCommand("livespec", {
-		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec",
-		handler: async (args, ctx) => {
-			const sub = args.trim().split(/\s+/)[0] ?? "";
-			if (sub === "") return say("livespec-version", `pi-livespec ${readVersion()}`);
-			if (sub === "validate") return validate(ctx);
-			if (sub === "migrate-openspec") return migrate(ctx);
-			return say("livespec-usage", USAGE);
-		},
+		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, skills",
+		handler: (args, ctx) => handleCommand(pi, args, ctx, env),
 	});
 	registerSpecValidate(pi);
+	registerChangeTools(pi);
+	registerSessionHooks(pi, env);
+	registerContextHooks(pi);
 }
