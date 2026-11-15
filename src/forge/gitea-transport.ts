@@ -116,7 +116,7 @@ export class GiteaTransport {
 
 	private async resolveToken(operation: string): Promise<string> {
 		if (this.token) return this.token;
-		const token = await findGiteaToken({ ...this.opts, env: this.env });
+		const token = await this.lookupToken(operation);
 		if (!token) {
 			throw new ForgeError({
 				code: "auth",
@@ -126,6 +126,16 @@ export class GiteaTransport {
 		}
 		this.token = token;
 		return token;
+	}
+
+	/** `findGiteaToken` (named `login` included), with its auth errors re-attributed to `operation`. */
+	private async lookupToken(operation: string): Promise<string | undefined> {
+		try {
+			return await findGiteaToken({ ...this.opts, env: this.env });
+		} catch (error) {
+			if (!(error instanceof ForgeError)) throw error;
+			throw new ForgeError({ code: error.code, operation, status: error.status, message: `${operation}: ${error.message}` });
+		}
 	}
 }
 

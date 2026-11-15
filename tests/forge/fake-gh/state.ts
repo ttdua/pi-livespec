@@ -71,11 +71,27 @@ export interface CallRec {
 	body?: unknown;
 }
 
+/** A `gh` account known to the fake; a request carrying its token acts as it. */
+export interface AccountRec {
+	login: string;
+	token: string;
+	/** Write access to the served repo, as `GET repos/{o}/{r}` reports in `permissions.push`. */
+	push: boolean;
+}
+
+/** Token variables one fake `gh` invocation saw in its environment; an empty value counts as unset. */
+export interface TokenEnvRec {
+	GH_TOKEN?: string;
+	GH_ENTERPRISE_TOKEN?: string;
+}
+
 export interface FakeGhData {
 	/** `owner/repo` the fake serves; any other repo route answers 404. */
 	repo: string;
-	/** Login `gh api user` reports and author of everything the adapter writes. */
+	/** Login of the active `gh` account: acts for requests that carry no token. */
 	login: string;
+	/** Accounts `gh auth status --json hosts` lists and whose tokens the fake accepts. */
+	accounts: AccountRec[];
 	authenticated: boolean;
 	unreachable: boolean;
 	clock: number;
@@ -93,12 +109,15 @@ export interface FakeGhData {
 	calls: CallRec[];
 	/** argv of every fake `gh` invocation (auth checks included), in order. */
 	argvLog: string[][];
+	/** Token env of every fake `gh` invocation, aligned with `argvLog`. */
+	envLog: TokenEnvRec[];
 }
 
 export function emptyData(repo: string, login: string): FakeGhData {
 	return {
 		repo,
 		login,
+		accounts: [],
 		authenticated: true,
 		unreachable: false,
 		clock: 0,
@@ -113,6 +132,7 @@ export function emptyData(repo: string, login: string): FakeGhData {
 		statuses: {},
 		calls: [],
 		argvLog: [],
+		envLog: [],
 	};
 }
 

@@ -50,6 +50,8 @@ export interface GiteaOptions {
 	env?: Record<string, string | undefined>;
 	/** Path of the `tea` config; when omitted, tea's own lookup order is followed. */
 	teaConfigPath?: string;
+	/** Name of the `tea` login whose token to use when `GITEA_TOKEN` is unset. */
+	login?: string;
 	/** Test seams for the default `tea` config lookup. */
 	homedir?: string;
 	platform?: NodeJS.Platform;

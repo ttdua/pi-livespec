@@ -33,8 +33,11 @@ export interface ExecResult {
 	spawnError?: string;
 }
 
-/** Runs a program. Resolves also on non-zero exit; never rejects. */
-export type ExecFn = (file: string, args: string[], input?: string) => Promise<ExecResult>;
+/**
+ * Runs a program. Resolves also on non-zero exit; never rejects. `env` is
+ * merged over `process.env` for that run only.
+ */
+export type ExecFn = (file: string, args: string[], input?: string, env?: Record<string, string>) => Promise<ExecResult>;
 
 export interface GitHubForgeOptions {
 	/** Path of the `gh` executable. */
@@ -43,7 +46,21 @@ export interface GitHubForgeOptions {
 	exec?: ExecFn;
 	/** GitHub Enterprise host; when set, `--hostname <host>` is passed to `gh auth status` and every `gh api` call. */
 	hostname?: string;
+	/** Account token; every `gh` call carries it in `tokenEnvVar(hostname)`, never on argv. */
+	token?: string;
 }
+
+/** The environment variable `gh` reads a token from for `hostname`. */
+export function tokenEnvVar(hostname: string | undefined): "GH_TOKEN" | "GH_ENTERPRISE_TOKEN" {
+	if (hostname === undefined) return "GH_TOKEN";
+	const host = hostname.replace(PORT_SUFFIX, "").toLowerCase();
+	return host === GITHUB_HOST || host.endsWith(GHE_CLOUD_SUFFIX) ? "GH_TOKEN" : "GH_ENTERPRISE_TOKEN";
+}
+
+const GITHUB_HOST = "github.com";
+/** GitHub Enterprise Cloud with data residency; `gh` reads `GH_TOKEN` for it. */
+const GHE_CLOUD_SUFFIX = ".ghe.com";
+const PORT_SUFFIX = /:\d+$/;
 
 /** Default limit for one `gh` invocation. */
 export const DEFAULT_GH_TIMEOUT_MS = 60_000;
@@ -51,9 +68,10 @@ export const DEFAULT_GH_TIMEOUT_MS = 60_000;
 /** Builds an ExecFn over `execFile`; a run longer than `timeoutMs` is killed and reported as a spawn error. */
 export function createExec(opts: { timeoutMs?: number } = {}): ExecFn {
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_GH_TIMEOUT_MS;
-	return (file, args, input) =>
+	return (file, args, input, env) =>
 		new Promise((resolve) => {
-			const child = execFile(file, args, { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs }, (error, stdout, stderr) => {
+			const options = { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs, ...(env ? { env: { ...process.env, ...env } } : {}) };
+			const child = execFile(file, args, options, (error, stdout, stderr) => {
 				if (error?.killed) {
 					resolve({ stdout, stderr, code: null, spawnError: `timed out after ${timeoutMs} ms` });
 					return;
@@ -149,6 +167,8 @@ export class GitHubForge implements Forge, LabelRepo {
 	private readonly owner: string;
 	private readonly base: string;
 	private readonly hostArgs: string[];
+	/** Token env added to every `gh` call; `undefined` leaves `gh` on its active account. */
+	private readonly tokenEnv?: Record<string, string>;
 	private authenticated = false;
 	/** What each version this adapter handed out looked like, to name changed fields on conflict. */
 	private readonly snapshots = new SnapshotStore();
@@ -157,6 +177,7 @@ export class GitHubForge implements Forge, LabelRepo {
 		this.ghPath = opts.ghPath;
 		this.exec = opts.exec ?? defaultExec;
 		this.hostArgs = opts.hostname ? ["--hostname", opts.hostname] : [];
+		if (opts.token) this.tokenEnv = { [tokenEnvVar(opts.hostname)]: opts.token };
 		this.owner = opts.repo.owner;
 		this.base = `repos/${opts.repo.owner}/${opts.repo.repo}`;
 	}
@@ -426,7 +447,7 @@ export class GitHubForge implements Forge, LabelRepo {
 	}
 
 	private run(args: string[], input?: string): Promise<ExecResult> {
-		return this.exec(this.ghPath, args, input);
+		return this.exec(this.ghPath, args, input, this.tokenEnv);
 	}
 }
 
