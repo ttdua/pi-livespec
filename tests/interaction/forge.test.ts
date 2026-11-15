@@ -224,6 +224,28 @@ describe("forge adapter", () => {
 		expect(out.warnings).toEqual([expect.stringContaining(`already answered by ${first}`)]);
 	});
 
+	test("a writer's command answered before the earliest pending request is warned as already answered", async () => {
+		const { world, n, approver } = await setup();
+		const define = approval({ subject: "gate:define" });
+		await approver.request(define);
+		await world.setPermission("alice", "write");
+		await world.setPermission("bob", "write");
+		const first = await world.postComment(n, "alice", "/livespec approve");
+		const late = await world.postComment(n, "bob", "/livespec approve");
+		const polled = await approver.poll(define.record.id);
+		if (polled.status !== "answered") throw new Error("not answered");
+		await world.postComment(n, BOT_LOGIN, answerComment(define.record.id, { request: define.record, answer: polled, verdict: "valid" }));
+		await approver.request(approval({ subject: "gate:plan", now: new Date(NOW.getTime() + 5000) }));
+
+		const all = await world.forge.listComments(n);
+		const marked = filterMarked(all, BOT_LOGIN).comments;
+		const pendingNow = readRequests(marked).pending;
+		const { perms } = await readPermissions(world.forge, commandAuthors(all, pendingNow));
+		const out = matchCommands(pendingNow, all, perms, { marked });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([`ignored /livespec comment ${late} by bob: gate:define was already answered by ${first}`]);
+	});
+
 	test("command authors are read only after the earliest pending request", async () => {
 		const { world, n, approver } = await setup();
 		await world.postComment(n, "carol", "/livespec approve");

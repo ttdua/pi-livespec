@@ -236,15 +236,20 @@ function apply(ctx: Ctx, comment: Comment, request: PendingRequest, command: Com
 	if (ctx.pendingIds.has(request.id)) ctx.result.matches.push({ request, answer: withOverrides(ctx, request, answer) });
 }
 
+/**
+ * The target is resolved before the permission check: only a command that would act on a pending request
+ * needs its author's permission, and `perms` covers only authors after the earliest pending request.
+ */
 function matchOne(ctx: Ctx, comment: Comment, index: number): void {
 	const parsed = parseCommand(comment.body);
 	if (parsed === undefined || ctx.consumed.has(comment.id)) return;
 	if ("error" in parsed) return warn(ctx, comment, `cannot be parsed (${parsed.error})`);
-	if (!WRITERS.has(ctx.perms.get(comment.author) ?? "none")) return warn(ctx, comment, "its author lacks write access");
 	const target = targetOf(openAt(ctx, comment, index), parsed);
 	if ("warning" in target) return warn(ctx, comment, beforeRequest(ctx, parsed, index) ?? target.warning);
 	const first = parsed.verb === "set" || parsed.verb === "class" ? undefined : answeredBy(ctx, target.request);
 	if (first !== undefined) return warn(ctx, comment, `${target.request.subject} was already answered by ${first}`);
+	if (!ctx.pendingIds.has(target.request.id)) return;
+	if (!WRITERS.has(ctx.perms.get(comment.author) ?? "none")) return warn(ctx, comment, "its author lacks write access");
 	apply(ctx, comment, target.request, parsed);
 }
 
