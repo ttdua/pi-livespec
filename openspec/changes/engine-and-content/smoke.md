@@ -85,9 +85,33 @@ A payload dump (`before_provider_request`) shows that the request bodies are as 
 
 The break is in how this route caches. It appears to reuse only a prefix that ends where an earlier request ended, and that point is always the previous card, which the next request no longer contains. Probe (c) did not measure this route. **Fail** under the pass rule, from turn 2 on.
 
+### gpt-6-luna and cx/gpt-6-luna (8 calls, two runs each)
+
+These runs were added at the user's request. Same setup, same prompt. The card text was byte-identical on every turn.
+
+| Turn | `gpt-6-luna` control r1 / r2 | `gpt-6-luna` livespec r1 / r2 | `cx/gpt-6-luna` control r1 / r2 | `cx/gpt-6-luna` livespec r1 / r2 |
+|---|---|---|---|---|
+| 1 | 3507/0 · 2227/1280 | 4224/0 · 2176/2048 | 2227/1280 · 2227/1280 | 2176/2048 · 2176/2048 |
+| 2 | 2263/1280 · 2135/1408 | 2340/1920 · 2212/2048 | 2135/1408 · 2135/1408 | 2340/1920 · 2213/2048 |
+| 3 | 2171/1408 · 2171/1408 | 4296/0 · 2120/2176 | 2171/1408 · 2171/1408 | 2248/2048 · 2250/2048 |
+| 4 | 2207/1408 · 3615/0 | 2284/2048 · 2156/2176 | 2207/1408 · 2207/1408 | 2284/2048 · 2415/1920 |
+| 5 | 2243/1408 · 2115/1536 | 2320/2048 · 2192/2176 | 2243/1408 · 2115/1536 | 2192/2176 · 2324/2048 |
+| 6 | 2151/1536 · 2279/1408 | 2228/2176 · 2228/2176 | 2151/1536 · 2151/1536 | 2228/2176 · 2233/2176 |
+| 7 | 2187/1536 · 2187/1536 | 2264/2176 · 2136/2304 | 2187/1536 · 2187/1536 | 4440/0 · 2270/2176 |
+| 8 | 2223/1536 · 2223/1536 | 2300/2176 · 2172/2304 | 2223/1536 · 2223/1536 | 2556/1920 · 2307/2176 |
+| 9 | 2259/1536 · 2259/1536 | 2336/2176 · 2208/2304 | 2259/1536 · 2131/1664 | 2592/1920 · 2600/1920 |
+
+These routes cache in 128-token blocks.
+
+- **Cache reads:** from turn 2 on, every hooked turn reads at least as much as the control turn of the same run, and usually 512–768 tokens more, which is the cached routing note.
+- **Full misses:** each hooked run has at most one (`gpt-6-luna` r1 turn 3, `cx/gpt-6-luna` r1 turn 7). The control runs have them too (`gpt-6-luna` r2 turn 4), and the second hooked run of each route has none. So they are isolated and do not count under the pass rule.
+- **Uncached input:** it stays flat at about 2100–2600 tokens. It does not grow with the conversation, unlike `cmc/gpt-5.6-luna`.
+
+**Pass** on both routes.
+
 ## Verdict
 
-- **Pass:** `cmc/claude-haiku-5-5` and `cx/gpt-5.6-luna`.
-- **Fail:** `cmc/gpt-5.6-luna`. The phase card stops cache growth after the first user message, so uncached input grows linearly with the conversation. That is the anti-goal named in the project brief.
+- **Pass:** `cmc/claude-haiku-5-5`, `cx/gpt-5.6-luna`, `gpt-6-luna`, `cx/gpt-6-luna`.
+- **Fail:** `cmc/gpt-5.6-luna`. The phase card stops cache growth after the first user message, so uncached input grows linearly with the conversation. That is the anti-goal named in the project brief. This is limited to that route so far, since `gpt-6-luna` on the same router passes.
 
 The decision on how to handle this is recorded in `apply.md` (Contract deviations / follow-ups) once taken.
