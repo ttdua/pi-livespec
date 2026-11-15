@@ -64,10 +64,10 @@ Blocked by: 4, 5
 
 Blocked by: 4, 7
 
-- [ ] 8.1 Add `spec_status`, `spec_next` and `/livespec next` sharing one formatter
-- [ ] 8.2 Add `skill_note`
-- [ ] 8.3 Add `spec_write` with validation, version check and read-only refusal
-- [ ] 8.4 Add `change_new` (exact initial body) and `change_start` (fetch, branch, `livespecBase` config, Base, rollback only on conflict, re-read on unknown outcome, reconciliation, no push)
+- [x] 8.1 Add `spec_status`, `spec_next` and `/livespec next` sharing one formatter
+- [x] 8.2 Add `skill_note`
+- [x] 8.3 Add `spec_write` with validation, version check and read-only refusal
+- [x] 8.4 Add `change_new` (exact initial body) and `change_start` (fetch, branch, `livespecBase` config, Base, rollback only on conflict, re-read on unknown outcome, reconciliation, no push)
 
 ## 9. Extension wiring, docs and smoke
 
