@@ -167,6 +167,25 @@ describe("forge adapter", () => {
 		expect(out.warnings[0]).toContain("choose waive");
 	});
 
+	test("set on an amendment applies only to the amended unit", () => {
+		const amend = pending("amend:1", { snapshot: { action: "edit", unit: "U2", records: [] } });
+		const thread = [
+			comment("9", "alice", "/livespec set U1 difficulty high", LATER),
+			comment("10", "alice", "/livespec set U2 difficulty low", LATER),
+			comment("11", "alice", "/livespec approve", LATER),
+		];
+		const out = matchThread([amend], thread, writers("alice"));
+		expect(out.matches[0]?.answer.overrides).toEqual([{ unit: "U2", difficulty: "low" }]);
+		expect(out.warnings).toEqual([expect.stringContaining("U1 is not in amend:1")]);
+	});
+
+	test("set on a drop amendment is ignored with a warning", () => {
+		const amend = pending("amend:1", { snapshot: { action: "drop", unit: "U2", records: [] } });
+		const out = matchThread([amend], [comment("9", "alice", "/livespec set U2 tags a", LATER), comment("10", "alice", "/livespec approve", LATER)], writers("alice"));
+		expect(out.matches[0]?.answer.overrides).toBeUndefined();
+		expect(out.warnings).toEqual([expect.stringContaining("U2 is not in amend:1")]);
+	});
+
 	test("getPermission is called once per author", async () => {
 		const { world, n } = await setup();
 		const calls: string[] = [];

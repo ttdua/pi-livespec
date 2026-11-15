@@ -219,6 +219,16 @@ function answeredBy(ctx: Ctx, request: PendingRequest): string | undefined {
 	return closer ? (closer.answerCommentId ?? closer.commentId) : undefined;
 }
 
+/**
+ * Whether `set` may override `unit` on `request`: an amendment only its own unit, and nothing for a drop
+ * (the units `amendRequest` marks overridable); the plan gate any unit.
+ */
+function overridable(request: PendingRequest, unit: string): boolean {
+	if (!request.subject.startsWith("amend:")) return true;
+	const s = request.data.snapshot as { action?: unknown; unit?: unknown };
+	return s.action !== "drop" && s.unit === unit;
+}
+
 function recordSet(ctx: Ctx, request: PendingRequest, command: Extract<Command, { verb: "set" }>): void {
 	const byUnit = ctx.overrides.get(request.id) ?? new Map<string, Override>();
 	const current = byUnit.get(command.unit) ?? { unit: command.unit };
@@ -232,7 +242,10 @@ function withOverrides(ctx: Ctx, request: PendingRequest, answer: Answered): Ans
 }
 
 function apply(ctx: Ctx, comment: Comment, index: number, request: PendingRequest, command: Command): void {
-	if (command.verb === "set") return recordSet(ctx, request, command);
+	if (command.verb === "set") {
+		if (!overridable(request, command.unit)) return warn(ctx, comment, index, `${command.unit} is not in ${request.subject}, so it cannot be set`);
+		return recordSet(ctx, request, command);
+	}
 	if (command.verb === "class") {
 		ctx.result.classes.push({ question: command.question, class: command.class });
 		return;
