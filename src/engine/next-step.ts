@@ -3,7 +3,7 @@
 // a decision wins. The sentences are fixed copy for a stable card and tests.
 
 import type { Question, Unit } from "../core/change.ts";
-import type { AdapterName } from "../interaction/approver.ts";
+import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
@@ -86,11 +86,18 @@ function countersWithCaps(pack: Pack, counters: Record<string, number>): NextSte
  * A question request blocks only while its question is blocking in the body (design D4), so a
  * reclassification takes effect at once; other requests keep their stored mode.
  */
-function effectiveMode(state: ChangeState, subject: string, stored: string): string {
-	if (!subject.startsWith(QUESTION_SUBJECT)) return stored;
-	const question = state.change.questions.find((q) => q.id === subject.slice(QUESTION_SUBJECT.length));
-	if (!question) return stored;
-	return question.kind === "blocking" ? "blocking" : "async";
+function effectiveMode(state: ChangeState, subject: string, stored: unknown): RequestMode {
+	const question = subject.startsWith(QUESTION_SUBJECT)
+		? state.change.questions.find((q) => q.id === subject.slice(QUESTION_SUBJECT.length))
+		: undefined;
+	if (question) return question.kind === "blocking" ? "blocking" : "async";
+	// Comment data is untyped at runtime: anything but `async` waits for the human.
+	return stored === "async" ? "async" : "blocking";
+}
+
+/** The adapter recorded in an answer, or `forge` when the comment data names no known adapter. */
+function knownAdapter(name: unknown): AdapterName {
+	return ADAPTER_NAMES.find((a) => a === name) ?? FORGE_ADAPTER;
 }
 
 /** Pending requests (always forge: in-session answers never leave one), then applying ones, in comment order. */
@@ -106,7 +113,7 @@ function openRequests(state: ChangeState): OpenRequest[] {
 		id: r.id,
 		subject: r.subject,
 		mode: effectiveMode(state, r.subject, r.record.request.mode),
-		adapter: r.record.answer.adapter,
+		adapter: knownAdapter(r.record.answer.adapter),
 		applying: true,
 	}));
 	return [...pending, ...applying];
@@ -210,17 +217,22 @@ const nextUnit: Rule = ({ units }) => {
 	return { next: `No unit is ready: ${waits}.` };
 };
 
+/** The sentence of a `self` or `human` gate with no gate result yet. */
+function gateReady(phase: Phase): string {
+	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
+}
+
 /**
- * A human gate, from the valid gate result of the phase (design D2): a superseded latest result
- * never falls back to an older one, and only an approved valid result advances, never at `ship`.
+ * A `self` or `human` gate, from the valid gate result of the phase (design D2): a superseded latest
+ * result never falls back to an older one, and only an approved valid result advances, never at `ship`.
  */
-function humanGate(phase: Phase, successor: string, result: GateResult | undefined): Decision {
+function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined): Decision {
 	const id = phase.id;
 	if (validApproval(result)) {
 		if (id === SHIP_PHASE) return { next: "The ship gate is approved: the change is ready to ship." };
 		return { next: `The ${id} gate is approved: move to ${successor}.`, advance: successor };
 	}
-	if (result === undefined) return { next: `Ready for the ${id} gate.` };
+	if (result === undefined) return { next: gateReady(phase) };
 	if (result.superseded) return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
 	if (result.outcome === "changes_requested") return { next: `The ${id} gate requested changes: revise, then request the gate again.` };
 	return { next: `The ${id} gate was dismissed: ask the human how to proceed.` };
@@ -233,8 +245,7 @@ function humanGate(phase: Phase, successor: string, result: GateResult | undefin
 function gate({ pack, state, phase }: RuleInput): Decision {
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
-	if (phase.gate === "human") return humanGate(phase, successor, state.lock.gates[phase.id]);
-	if (phase.gate === "self") return { next: `Checks pass; the ${phase.id} gate can pass.` };
+	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id]);
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 
