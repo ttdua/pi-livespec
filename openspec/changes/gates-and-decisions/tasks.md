@@ -29,12 +29,12 @@ Blocked by: none
 
 Blocked by: 1, 2
 
-- [ ] 4.1 Add `src/interaction/requests.ts`: `prepareRequest` (the durable request envelope with a per-subject snapshot), write `request` and `answer` comments, and derive the pending, applying and completed requests from own marked comments (pure)
-- [ ] 4.2 Add `src/engine/locks.ts` (pure): the lock from the plan gate plus amendments, frozen units, stale units and phases, the valid gate result per phase, and `gateDigest`
-- [ ] 4.3 Add `src/engine/iterations.ts` (pure): `change_iterations` from `after_plan` stale comments, and the cap-blocking predicate with stuck answers
-- [ ] 4.4 Extend `ChangeState` and `readChangeSnapshot` with `marked`, requests, lock, iterations and command warnings, and make `readCounters` ignore a `change_iterations` counter comment
-- [ ] 4.5 Add `registerCheck(name, fn, { waivable })`, `CheckContext.marked`, and the `unit-classification` check, and add `unit-classification` to `plan.checks` in the pack and the fixture
-- [ ] 4.6 Add `Git.diffStat` and `diffNames`; add `src/engine/gates.ts` (`registerGate`, the pure `gateRefusal`, `registerGatePayload`) and `src/engine/gate-payload.ts` (`collectReviewFacts`, I/O, and the pure `gatePayload` for define, plan and ship)
+- [x] 4.1 Add `src/interaction/requests.ts`: `prepareRequest` (the durable request envelope with a per-subject snapshot), write `request` and `answer` comments, and derive the pending, applying and completed requests from own marked comments (pure)
+- [x] 4.2 Add `src/engine/locks.ts` (pure): the lock from the plan gate plus amendments, frozen units, stale units and phases, the valid gate result per phase, and `gateDigest`
+- [x] 4.3 Add `src/engine/iterations.ts` (pure): `change_iterations` from `after_plan` stale comments, and the cap-blocking predicate with stuck answers
+- [x] 4.4 Extend `ChangeState` and `readChangeSnapshot` with `marked`, requests, lock, iterations and command warnings, and make `readCounters` ignore a `change_iterations` counter comment
+- [x] 4.5 Add `registerCheck(name, fn, { waivable })`, `CheckContext.marked`, and the `unit-classification` check, and add `unit-classification` to `plan.checks` in the pack and the fixture
+- [x] 4.6 Add `Git.diffStat` and `diffNames`; add `src/engine/gates.ts` (`registerGate`, the pure `gateRefusal`, `registerGatePayload`) and `src/engine/gate-payload.ts` (`collectReviewFacts`, I/O, and the pure `gatePayload` for define, plan and ship)
 
 ## 5. Next step and phase card
 
