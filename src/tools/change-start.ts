@@ -15,7 +15,8 @@ import { messageOf } from "../commands/messages.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Issue } from "../forge/types.ts";
-import { afterForgeWrite, prepareWrite, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { untrusted } from "../hooks/phase-card.ts";
+import { afterForgeWrite, prepareWrite, requireWritable, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 
 export type ChangeStartParams = { issue: number };
 /** Set in full on success; empty on a refusal or failure. */
@@ -49,9 +50,25 @@ function issueRefusal(issue: Issue): string | undefined {
 	return undefined;
 }
 
+const STALE_ISSUE =
+	"The issue could only be read from the cache (the forge is in read-only mode), so change_start makes no branch. Retry once the forge is reachable.";
+
+/**
+ * The validation read may fall back to a stale cached issue and switch the forge to read-only mode, so
+ * the forge is checked again right after it, before any other git command.
+ */
+function forgeRefusal(w: WriteContext, issue: Issue): string | undefined {
+	const writable = requireWritable(w.session);
+	if (!writable.ok) return writable.message;
+	return issue.stale ? STALE_ISSUE : undefined;
+}
+
 /** Every refusal of change_start; it runs only read-only git commands. */
-async function validateStart(git: Git, forge: CachedForge, n: number): Promise<StartPlan> {
-	const issue = await forge.getIssue(n);
+async function validateStart(w: WriteContext, n: number): Promise<StartPlan> {
+	const git = w.session.git;
+	const issue = await w.forge.getIssue(n);
+	const offline = forgeRefusal(w, issue);
+	if (offline) return { kind: "refused", message: offline };
 	const bad = issueRefusal(issue);
 	if (bad) return { kind: "refused", message: bad };
 	if (await git.isDirty()) return { kind: "refused", message: "The working tree has uncommitted changes; commit or stash them, then rerun change_start." };
@@ -65,7 +82,7 @@ async function validateStart(git: Git, forge: CachedForge, n: number): Promise<S
 		return { kind: "reconcile", start, base };
 	}
 	const recorded = parseChange(issue.body).header.branch;
-	if (recorded !== undefined) return { kind: "refused", message: `#${n} already records Branch: ${recorded}; switch to that branch instead.` };
+	if (recorded !== undefined) return { kind: "refused", message: `#${n} already records Branch: ${untrusted(recorded)}; switch to that branch instead.` };
 	return { kind: "create", start };
 }
 
@@ -167,7 +184,7 @@ async function reconcileStart(w: WriteContext, start: Started, base: string): Pr
 	const header = parseChange(start.issue.body).header;
 	if (header.branch !== undefined && (header.branch !== start.branch || header.base !== base)) {
 		return refuse(
-			`#${n} records Branch: ${header.branch} and Base: ${header.base ?? "(none)"}, but the local ${start.branch} has ${livespecBaseKey(start.branch)} = ${base}. Nothing was changed; the branch is kept. Fix the issue or the branch, then rerun.`,
+			`#${n} records Branch: ${untrusted(header.branch)} and Base: ${header.base === undefined ? "(none)" : untrusted(header.base)}, but the local ${start.branch} has ${livespecBaseKey(start.branch)} = ${base}. Nothing was changed; the branch is kept. Fix the issue or the branch, then rerun.`,
 		);
 	}
 	await w.session.git.switchTo(start.branch);
@@ -199,7 +216,7 @@ async function createStart(w: WriteContext, start: Started): Promise<Result> {
 export async function runChangeStart(p: ChangeStartParams): Promise<Result> {
 	const w = await prepareWrite();
 	if (!w.ok) return refuse(w.message);
-	const plan = await validateStart(w.session.git, w.forge, p.issue);
+	const plan = await validateStart(w, p.issue);
 	if (plan.kind === "refused") return refuse(plan.message);
 	if (plan.kind === "reconcile") return reconcileStart(w, plan.start, plan.base);
 	return createStart(w, plan.start);

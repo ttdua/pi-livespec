@@ -79,14 +79,19 @@ export function applyWrite(body: string, w: PlannedWrite): string {
 
 // --- postconditions ----------------------------------------------------------
 
-/** Equal text and EOL, except that an unterminated final expected line may have gained an EOL. */
 function sameLines(expected: Line[], actual: Line[]): boolean {
-	if (expected.length !== actual.length) return false;
-	return expected.every((e, i) => {
-		const a = actual[i] as Line;
-		const lastUnterminated = i === expected.length - 1 && e.eol === "";
-		return e.text === a.text && (e.eol === a.eol || lastUnterminated);
-	});
+	return expected.length === actual.length && expected.every((e, i) => e.text === actual[i]!.text && e.eol === actual[i]!.eol);
+}
+
+/** The EOL `replaceSection` and `setHeaderLine` give new lines: that of the body's first line, else `\n`. */
+function bodyEol(lines: Line[]): "\n" | "\r\n" {
+	return lines[0]?.eol === "\r\n" ? "\r\n" : "\n";
+}
+
+/** `lines` with an unterminated final line given `eol`: the one outside change the helpers may make. */
+function terminated(lines: Line[], eol: "\n" | "\r\n"): Line[] {
+	const last = lines[lines.length - 1];
+	return last && last.eol === "" ? [...lines.slice(0, -1), { text: last.text, eol }] : lines;
 }
 
 function sectionSpan(lines: Line[], name: string): { start: number; end: number } | undefined {
@@ -101,21 +106,31 @@ function withoutSpan(lines: Line[], span: { start: number; end: number }): Line[
 	return [...lines.slice(0, span.start), ...lines.slice(span.end)];
 }
 
-/** A section appended at the end of the body may be preceded by one new blank separator line. */
-function dropAppendGap(outside: Line[], span: { start: number; end: number }, total: number, expectedLength: number): Line[] {
-	const appended = span.end === total && span.start > 0 && outside.length === expectedLength + 1;
-	return appended && outside[span.start - 1]!.text.trim() === "" ? [...outside.slice(0, span.start - 1), ...outside.slice(span.start)] : outside;
+/**
+ * What the lines before a section appended at the end of the body must be: the old body, its
+ * unterminated final line given the body EOL, and the one blank separator `replaceSection` emits
+ * when that line is not blank.
+ */
+function appendedHead(old: Line[]): Line[] {
+	const eol = bodyEol(old);
+	const head = terminated(old, eol);
+	const needsGap = head.length > 0 && head[head.length - 1]!.text.trim() !== "";
+	return needsGap ? [...head, { text: "", eol }] : head;
 }
 
+/**
+ * Every line outside the written section is byte-identical. The only allowed changes are those of a
+ * section appended at the end of the body (see `appendedHead`).
+ */
 function bodyOutsideUnchanged(before: string, after: string, section: string): boolean {
 	const old = splitLines(before);
 	const fresh = splitLines(after);
 	const span = sectionSpan(fresh, section);
 	if (!span) return false;
 	const oldSpan = sectionSpan(old, section);
-	const expected = oldSpan ? withoutSpan(old, oldSpan) : old;
-	const outside = dropAppendGap(withoutSpan(fresh, span), span, fresh.length, expected.length);
-	return sameLines(expected, outside);
+	if (oldSpan) return sameLines(withoutSpan(old, oldSpan), withoutSpan(fresh, span));
+	if (span.end === fresh.length) return sameLines(appendedHead(old), fresh.slice(0, span.start));
+	return sameLines(old, withoutSpan(fresh, span));
 }
 
 function headerIndex(lines: Line[], key: string): number {
@@ -124,14 +139,20 @@ function headerIndex(lines: Line[], key: string): number {
 	return lines.slice(0, end).findIndex((l) => l.text.startsWith(`${key}:`));
 }
 
+/**
+ * Every line other than the `key:` line is byte-identical. A new line inserted after the unterminated
+ * final line of the body is the one exception: that line gains the body EOL.
+ */
 function headerOutsideUnchanged(before: string, after: string, key: string): boolean {
 	const old = splitLines(before);
 	const fresh = splitLines(after);
 	const at = headerIndex(fresh, key);
 	if (at === -1) return false;
+	const outside = [...fresh.slice(0, at), ...fresh.slice(at + 1)];
 	const oldAt = headerIndex(old, key);
-	const expected = oldAt === -1 ? old : [...old.slice(0, oldAt), ...old.slice(oldAt + 1)];
-	return sameLines(expected, [...fresh.slice(0, at), ...fresh.slice(at + 1)]);
+	if (oldAt !== -1) return sameLines([...old.slice(0, oldAt), ...old.slice(oldAt + 1)], outside);
+	const expected = at === old.length ? terminated(old, bodyEol(old)) : old;
+	return sameLines(expected, outside);
 }
 
 function sameCapabilities(a: Capabilities | undefined, b: Capabilities): boolean {

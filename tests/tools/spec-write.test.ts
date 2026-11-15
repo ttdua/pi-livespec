@@ -6,6 +6,7 @@ import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { CHANGE_BRANCH, cardText, resumeBody } from "../hooks/helpers.ts";
+import { planWrite, postconditionFailure, type PlannedWrite } from "../../src/tools/spec-write-rules.ts";
 import { cleanupDirs, textOf, toolHarness } from "./helpers.ts";
 
 afterEach(async () => {
@@ -62,7 +63,7 @@ describe("spec_write", () => {
 		expect(lines.slice(questionsAt)).toEqual(old.slice(oldQuestionsAt));
 	});
 
-	test("a section is appended when no later section exists", async () => {
+	test("unterminated final line gains one EOL when a section is appended", async () => {
 		const h = await defineChange(() => "Capabilities: new [], modified []\nProduct impact: —");
 		const out = await h.call("spec_write", { section: "Proposal", content: PROPOSAL });
 		expect(out.isError).toBe(false);
@@ -176,5 +177,43 @@ describe("spec_write", () => {
 		const out = await h.call("spec_write", { section: "Proposal", content: PROPOSAL });
 		expect(out.isError).toBe(false);
 		expect(await cardText(h.pi, h.ctx)).not.toContain("Write Proposal with spec_write.");
+	});
+});
+
+function planned(section: string, content: string): PlannedWrite {
+	const plan = planWrite(section, content);
+	if (!plan.ok) throw new Error(plan.message);
+	return plan.write;
+}
+
+describe("spec_write postconditions", () => {
+	const UNTERMINATED = "Product impact: —\n\n## Proposal\nOld.\n\n## Design\nD.\n\n## Durable docs\n| a | b |";
+
+	test("another outside-line change is refused", () => {
+		const before = resumeBody("f".repeat(40));
+		const w = planned("Proposal", PROPOSAL);
+		const good = before.replace("Limit each client IP.", PROPOSAL);
+		expect(postconditionFailure(before, good, w)).toBeUndefined();
+		expect(postconditionFailure(before, good.replace("Sliding window counter in memory.", "Tampered."), w)).toContain("outside");
+		expect(postconditionFailure(before, good.replace("Initiative: #12\n", "Initiative: #12\r\n"), w)).toContain("outside");
+		expect(postconditionFailure(before, good.replace("## Questions\n", "\n## Questions\n"), w)).toContain("outside");
+	});
+
+	test("the final line may not gain an EOL when nothing is appended after it", () => {
+		const w = planned("Proposal", PROPOSAL);
+		const good = UNTERMINATED.replace("Old.", PROPOSAL);
+		expect(postconditionFailure(UNTERMINATED, good, w)).toBeUndefined();
+		expect(postconditionFailure(UNTERMINATED, `${good}\n`, w)).toContain("outside");
+		const header = planned("Product impact", "users see 429");
+		const headerGood = UNTERMINATED.replace("Product impact: —", "Product impact: users see 429");
+		expect(postconditionFailure(UNTERMINATED, headerGood, header)).toBeUndefined();
+		expect(postconditionFailure(UNTERMINATED, `${headerGood}\n`, header)).toContain("Product impact");
+	});
+
+	test("an appended section may add only the one separator replaceSection emits", () => {
+		const before = "Capabilities: new [], modified []\n\n";
+		const w = planned("Proposal", PROPOSAL);
+		expect(postconditionFailure(before, `${before}## Proposal\n${PROPOSAL}\n`, w)).toBeUndefined();
+		expect(postconditionFailure(before, `${before}\n## Proposal\n${PROPOSAL}\n`, w)).toContain("outside");
 	});
 });

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../src/config.ts";
 import { CommentsCache } from "../../src/engine/comments-cache.ts";
+import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import { CachedForge } from "../../src/forge/cache.ts";
@@ -34,6 +35,8 @@ export type ToolHarness = {
 	ctx: ReturnType<typeof fakeCtx>;
 	call(tool: string, params?: unknown): Promise<ToolOut>;
 	git(...args: string[]): string;
+	/** Every git command the session ran, in order (args only). */
+	gitCalls: string[][];
 };
 
 export type ToolHarnessOptions = {
@@ -77,7 +80,12 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 	const world = new MemoryWorld();
 	const cacheRoot = join(home, "cache");
 	const forge = new CachedForge(o.forge ? o.forge(world) : world.forge, { cacheRoot, host: "git.example.test", owner: "acme", repo: "shop" });
-	const session = new Session(root, createGit(root));
+	const gitCalls: string[][] = [];
+	const recording: GitExec = (args, opts) => {
+		gitCalls.push(args);
+		return defaultGitExec(args, opts);
+	};
+	const session = new Session(root, createGit(root, recording));
 	session.config = await loadConfig(root, home);
 	session.pack = await loadPack(root);
 	session.forge = forge;
@@ -92,7 +100,7 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 		if (!t) throw new Error(`tool ${tool} is not registered`);
 		return (await t.execute("call-1", params, undefined, undefined, ctx)) as ToolOut;
 	};
-	return { root, origin, head, world, forge, session, pi, ctx, call, git };
+	return { root, origin, head, world, forge, session, pi, ctx, call, git, gitCalls };
 }
 
 export const textOf = (out: ToolOut): string => out.content.map((c) => c.text).join("\n");
