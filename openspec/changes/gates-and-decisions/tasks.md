@@ -40,9 +40,9 @@ Blocked by: 1, 2
 
 Blocked by: 4
 
-- [ ] 5.1 Extend `nextStep` precedence: stuck report, pending or applying blocking request, cap blocking, blocking question, frozen or stale units in lock scope, then the existing rules
-- [ ] 5.2 Derive the gate sentence and `advance` from the valid gate result (`changes_requested`, `dismissed`, superseded, ship approved, no advance at ship)
-- [ ] 5.3 Add the `approvals` card section: pending requests with their adapter, frozen and stale units, the open stuck report, and ignored-command warnings wrapped as untrusted
+- [x] 5.1 Extend `nextStep` precedence: stuck report, pending or applying blocking request, cap blocking, blocking question, frozen or stale units in lock scope, then the existing rules
+- [x] 5.2 Derive the gate sentence and `advance` from the valid gate result (`changes_requested`, `dismissed`, superseded, ship approved, no advance at ship)
+- [x] 5.3 Add the `approvals` card section: pending requests with their adapter, frozen and stale units, the open stuck report, and ignored-command warnings wrapped as untrusted
 
 ## 6. Completion engine, forge adapter, polling and doctor
 
