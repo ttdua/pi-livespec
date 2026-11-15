@@ -9,6 +9,10 @@ export interface Git {
 	head(): Promise<string>;
 	isDirty(): Promise<boolean>;
 	diff(from: string, to: string, path: string): Promise<string>;
+	/** `git diff --stat <from>..<to> -- <path>`. */
+	diffStat(from: string, to: string, path: string): Promise<string>;
+	/** `git diff --name-only <from>..<to> -- <path>`, one path per entry. */
+	diffNames(from: string, to: string, path: string): Promise<string[]>;
 	/** Default branch of `origin` (e.g. `main`, without the remote prefix), or undefined when `origin/HEAD` is not set. */
 	originHead(): Promise<string | undefined>;
 	fetch(remote: string, ref: string): Promise<void>;
@@ -68,6 +72,9 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		head: () => text(run, ["rev-parse", "HEAD"]),
 		isDirty: async () => (await text(run, ["status", "--porcelain"])) !== "",
 		diff: async (from, to, path) => (await run(["diff", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "",
+		diffStat: async (from, to, path) => (await run(["diff", "--stat", END_OF_OPTIONS, `${from}..${to}`, "--", path]))?.trimEnd() ?? "",
+		diffNames: async (from, to, path) =>
+			((await run(["diff", "--name-only", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "").split("\n").filter((l) => l !== ""),
 		originHead: async () => {
 			const ref = await run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], EXIT_NOT_SYMBOLIC);
 			if (ref === undefined) return undefined;

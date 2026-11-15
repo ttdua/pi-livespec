@@ -5,6 +5,8 @@ import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
 
 export const COUNTER_KIND = "counter";
+/** Derived from own `stale` comments (src/engine/iterations.ts); a counter comment for it is ignored. */
+const DERIVED_COUNTERS = new Set(["change_iterations"]);
 
 function counterValue(data: unknown): number | undefined {
 	if (typeof data !== "object" || data === null) return undefined;
@@ -12,11 +14,14 @@ function counterValue(data: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-/** Counter values by id from own marked comments; malformed data is skipped. The last comment for an id wins. */
+/**
+ * Counter values by id from own marked comments; malformed data and derived counters are skipped.
+ * The last comment for an id wins.
+ */
 export function readCounters(marked: MarkedComment[]): Record<string, number> {
 	const counters: Record<string, number> = {};
 	for (const m of marked) {
-		if (m.kind !== COUNTER_KIND) continue;
+		if (m.kind !== COUNTER_KIND || DERIVED_COUNTERS.has(m.id)) continue;
 		const value = counterValue(m.data);
 		if (value !== undefined) counters[m.id] = value;
 	}

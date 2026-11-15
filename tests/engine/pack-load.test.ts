@@ -38,7 +38,7 @@ function phase(r: LoadedPack, id: string) {
 beforeEach(() => {
 	resetRegistryForTests();
 	registerBuiltinRules();
-	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff"]) {
+	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification"]) {
 		registerCheck(name, async () => []);
 	}
 });

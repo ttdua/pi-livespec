@@ -3,6 +3,10 @@
 
 import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
+import type { MarkedComment } from "../forge/markers.ts";
+import type { RequestsState } from "../interaction/requests.ts";
+import type { IterationState } from "./iterations.ts";
+import type { LockState } from "./locks.ts";
 
 /** A check Result tagged with the registered name of the check that produced it. */
 export type CheckResult = Result & { check: string };
@@ -27,6 +31,13 @@ export type ChangeState = {
 	stale: boolean;
 	readOnly: boolean;
 	warnings: string[];
+	/** Own marked comments of the issue, in comment order. */
+	marked: MarkedComment[];
+	requests: RequestsState;
+	lock: LockState;
+	iterations: IterationState;
+	/** Warnings from the last approval poll about ignored command comments. */
+	commandWarnings: string[];
 };
 
 export type NextStep = {

@@ -2,6 +2,7 @@
 // stuck report, rule `ask`) reaches a human through an `Approver`. Answers come
 // only from the human through an adapter, never from a tool parameter.
 
+import type { DecisionRecord } from "../decide/records.ts";
 import { registerKind } from "../forge/markers.ts";
 
 /** Ordered list of the adapter names `interaction.adapter` accepts. */
@@ -35,8 +36,7 @@ export interface AmendSnapshot {
 	oldDigest?: string;
 	oldDone?: boolean;
 	lines?: string[];
-	/** `DecisionRecord[]` (src/decide/records.ts); narrowed once that module is merged. */
-	records: unknown[];
+	records: DecisionRecord[];
 }
 
 export interface QuestionSnapshot {

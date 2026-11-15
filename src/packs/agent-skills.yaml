@@ -39,7 +39,7 @@ phases:
     skills: { required: [planning-and-task-breakdown] }
     outputs: [issue#Units]
     redirects: ["No tasks/plan.md or tasks/todo.md; units live in the change issue"]
-    checks: [units-format, done-maps-scenarios]
+    checks: [units-format, done-maps-scenarios, unit-classification]
     gate: human
   - id: build
     requires: [plan]

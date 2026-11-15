@@ -130,3 +130,22 @@ describe("createGit", () => {
 function currentBranch(root: string): string {
 	return git(root, "branch", "--show-current");
 }
+
+describe("diff over specs", () => {
+	test("diffStat diffNames over specs", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "specs/rate-limit/spec.md", "# rate-limit\n");
+		await writeIn(root, "specs/auth/spec.md", "# auth\n");
+		await writeIn(root, "src/x.ts", "x\n");
+		commitAll(root, "specs");
+		expect(await git.diffNames(base, "HEAD", "specs/")).toEqual(["specs/auth/spec.md", "specs/rate-limit/spec.md"]);
+		const stat = await git.diffStat(base, "HEAD", "specs/");
+		expect(stat).toContain("specs/rate-limit/spec.md | 1 +");
+		expect(stat).toContain("2 files changed, 2 insertions(+)");
+		expect(stat).not.toContain("src/x.ts");
+		expect(await git.diffNames("HEAD", "HEAD", "specs/")).toEqual([]);
+		expect(await git.diffStat("HEAD", "HEAD", "specs/")).toBe("");
+		await expect(git.diffNames("0".repeat(40), "HEAD", "specs/")).rejects.toBeInstanceOf(GitError);
+	});
+});

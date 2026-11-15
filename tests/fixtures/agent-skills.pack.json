@@ -138,7 +138,8 @@
 			],
 			"checks": [
 				"units-format",
-				"done-maps-scenarios"
+				"done-maps-scenarios",
+				"unit-classification"
 			],
 			"gate": "human",
 			"subagents": []

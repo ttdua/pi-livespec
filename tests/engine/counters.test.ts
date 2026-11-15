@@ -43,6 +43,11 @@ describe("readCounters", () => {
 		]);
 		expect(counters).toEqual({ review_rounds: 2, "unit_attempts.U3": 1 });
 	});
+
+	test("change_iterations counter comment is ignored", () => {
+		const counters = readCounters([marked("counter", "change_iterations", { value: 3 }), marked("counter", "review_rounds", { value: 1 })]);
+		expect(counters).toEqual({ review_rounds: 1 });
+	});
 });
 
 describe("setCounter", () => {

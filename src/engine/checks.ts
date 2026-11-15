@@ -14,6 +14,7 @@ import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { type CheckContext, type CheckFn, getCheck, registerCheck } from "./registry.ts";
 import type { ChangeState, CheckResult } from "./state-types.ts";
+import { unitClassification } from "./unit-classification.ts";
 
 const SPECS_PATH = "specs/";
 
@@ -71,6 +72,7 @@ const BUILTIN_CHECKS: Record<string, CheckFn> = {
 	"units-format": async ({ change }) => validateUnits(change),
 	"done-maps-scenarios": async ({ change }) => checkDoneMapsScenarios(change),
 	"capabilities-match-diff": capabilitiesMatch,
+	"unit-classification": unitClassification,
 };
 
 export function registerBuiltinChecks(): void {
@@ -104,7 +106,7 @@ export async function runChecks(
 	const phaseId = state.phase.id;
 	const phase = pack.phases.find((p) => p.id === phaseId);
 	if (!phase) return [];
-	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git };
+	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked };
 	const results: CheckResult[] = [];
 	for (const name of phase.checks) {
 		const produced = await runOne(name, checkCtx);

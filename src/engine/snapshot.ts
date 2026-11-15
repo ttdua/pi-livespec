@@ -8,12 +8,16 @@ import { isOffline } from "../forge/errors.ts";
 import { phaseLabel } from "../forge/labels.ts";
 import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import { readRequests } from "../interaction/requests.ts";
 import type { CommentsCache } from "./comments-cache.ts";
 import { readCounters } from "./counters.ts";
 import { type Git, GitError } from "./git.ts";
+import { deriveIterations } from "./iterations.ts";
+import { deriveLocks } from "./locks.ts";
 import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 
-export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache };
+/** `iterationCap` is the pack's `loops.change_iterations`; without it the cap never blocks. */
+export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; iterationCap?: number };
 
 const PHASE_PREFIX = phaseLabel("");
 const BODY_SECTIONS = ["Proposal", "Design", "Units"] as const;
@@ -44,7 +48,6 @@ function idsOfKind(marked: MarkedComment[], kind: string): string[] {
 	return marked.filter((m) => m.kind === kind).map((m) => m.id);
 }
 
-
 /**
  * The login confirmed by `whoami` now, or undefined when the forge is unreachable. A login seen
  * earlier is never reused: the account may have switched, and its state must not be counted.
@@ -58,18 +61,37 @@ async function currentLogin(forge: Forge): Promise<string | undefined> {
 	}
 }
 
-type CommentFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete"> & { stale: boolean; warnings: string[] };
+type CommentFacts = Pick<
+	ChangeState,
+	"counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations"
+> & { stale: boolean; warnings: string[] };
 
 const UNKNOWN_LOGIN_WARNING = "the forge is unreachable and the current login is unknown: own marked comments are not read";
 
-async function readCommentFacts(d: SnapshotDeps, issue: Issue): Promise<CommentFacts> {
+/** Pure: every fact derived from the own marked comments and the parsed body. */
+export function deriveCommentFacts(
+	marked: MarkedComment[],
+	change: Change,
+	iterationCap: number | undefined,
+): Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations"> {
+	const iterations = deriveIterations(marked, iterationCap);
+	return {
+		counters: { ...readCounters(marked), ...(iterations.count > 0 ? { change_iterations: iterations.count } : {}) },
+		skillNotes: idsOfKind(marked, "skill-note"),
+		incomplete: idsOfKind(marked, "incomplete"),
+		marked,
+		requests: readRequests(marked),
+		lock: deriveLocks(change, marked),
+		iterations,
+	};
+}
+
+async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): Promise<CommentFacts> {
 	const read = await d.comments.list(d.forge, issue);
 	const login = await currentLogin(d.forge);
 	const own = login === undefined ? { comments: [], warnings: [UNKNOWN_LOGIN_WARNING] } : filterMarked(read.comments, login);
 	return {
-		counters: readCounters(own.comments),
-		skillNotes: idsOfKind(own.comments, "skill-note"),
-		incomplete: idsOfKind(own.comments, "incomplete"),
+		...deriveCommentFacts(own.comments, change, d.iterationCap),
 		stale: read.stale || login === undefined,
 		warnings: own.warnings,
 	};
@@ -96,7 +118,7 @@ async function readGitFacts(git: Git, base: string | undefined): Promise<GitFact
 export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Omit<ChangeState, "checks">> {
 	const issue = await d.forge.getIssue(n);
 	const change = parseChange(issue.body);
-	const comments = await readCommentFacts(d, issue);
+	const comments = await readCommentFacts(d, issue, change);
 	const git = await readGitFacts(d.git, change.header.base);
 	return {
 		issue: { number: issue.number, title: issue.title, labels: [...issue.labels] },
@@ -110,5 +132,10 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		stale: issue.stale === true || comments.stale,
 		readOnly: d.isReadOnly(),
 		warnings: [...comments.warnings, ...git.warnings],
+		marked: comments.marked,
+		requests: comments.requests,
+		lock: comments.lock,
+		iterations: comments.iterations,
+		commandWarnings: [],
 	};
 }
