@@ -129,7 +129,8 @@ describe("secret handling", () => {
 		// The tokens did travel, through the environment only.
 		expect(fakeGh.envLog.map((e) => e.GH_TOKEN)).toContain(TOKEN);
 		expect(fakeGh.envLog.map((e) => e.GH_TOKEN)).toContain(NAICOI.token);
-	});
+		// Many real fake-`gh` subprocesses: 2.5–4.5 s alone, above the 5 s default under full-suite load.
+	}, 60_000);
 
 	test("No token in output on failure", async () => {
 		for (const fault of ["candidate-check", "whoami", "mutation"] as const) {

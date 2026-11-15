@@ -300,7 +300,8 @@ describe("no write before the identity is confirmed", () => {
 				}) as Forge,
 		});
 		const started = h.start();
-		await vi.waitFor(() => expect(h.detectCalls.length).toBe(1));
+		// Detection follows account resolution, which runs fake-`gh` subprocesses: allow for a loaded machine.
+		await vi.waitFor(() => expect(h.detectCalls.length).toBe(1), { timeout: 10_000 });
 		await new Promise((r) => setTimeout(r, 50));
 
 		const during = await h.call("change_new", { name: "rate-limit" });

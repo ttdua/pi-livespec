@@ -47,6 +47,10 @@
 - **Baseline status at finish**: `passing`.
   - Step 2, worktree: `bun run test` exited 0 with 1154/1154 passing.
   - Step 5, merged result on `spec/forge-accounts`: `bun run typecheck` was clean, and `bun run test` exited 0 with 1154/1154 passing.
+  - **Before the push:** the pre-push run failed on two timing-bound tests, each of which passes alone. This is verify WARNING 1.
+    - `tests/accounts/secrets.test.ts` › "No token in arguments" hit the 5 s default; alone it takes 2.5–4.5 s. It now has a 60 s timeout, like its sibling test.
+    - `tests/hooks/session-account.test.ts` › "a write while whoami is pending…" hit the 1 s default of `vi.waitFor`. It now waits up to 10 s.
+    - The fix touches tests only, with no behaviour change, so the code review gate was not reopened. After the fix, 5 consecutive full runs passed 1154/1154 and the typecheck was clean.
 
 ---
 
