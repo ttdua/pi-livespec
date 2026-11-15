@@ -13,7 +13,8 @@ import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "./complete.ts";
-import { type ClassChange, commandAuthors, matchCommands, readPermissions } from "./forge-match.ts";
+import { type ClassChange, matchCommands } from "./forge-match.ts";
+import { commandAuthors, readPermissions } from "./forge-permissions.ts";
 import { readRequests } from "./requests.ts";
 
 const STEP = "poll";

@@ -3,12 +3,9 @@
 // posted before it and not yet answered at that point count, so a command that
 // is ignored once (for example as ambiguous) stays ignored in every later poll.
 
-import { parseMarked } from "../forge/markers.ts";
 import type { MarkedComment } from "../forge/markers.ts";
-import type { Comment, Forge } from "../forge/types.ts";
-import { messageOf } from "../core/messages.ts";
+import type { Comment } from "../forge/types.ts";
 import type { Answered, Override, QuestionClass } from "./approver.ts";
-import { REQUEST_KIND } from "./approver.ts";
 import { type Command, parseCommand } from "./commands.ts";
 import { allRequests, type Closer, closers, type PendingRequest } from "./requests.ts";
 
@@ -24,14 +21,12 @@ export type MatchResult = { matches: CommandMatch[]; classes: ClassChange[]; war
 
 export type MatchOptions = {
 	/**
-	 * The own marked comments of the thread. With them every request (pending, applying or completed)
-	 * and the comment that closed it is known, so targets are computed per command position. Without
-	 * them only `pending` is known and nothing counts as answered before this pass.
+	 * The own marked comments of the thread. They give every request (pending, applying or completed)
+	 * and the comment that closed it, so targets are computed per command position.
 	 */
-	marked?: MarkedComment[];
+	marked: MarkedComment[];
 };
 
-const PREFIX = "/livespec ";
 const WRITERS = new Set<Permission>(["write", "admin"]);
 const GATE_LIKE = ["gate:", "amend:"];
 const CHOICE_LIKE = ["stuck:", "decide:"];
@@ -39,7 +34,7 @@ const WAIVE = "waive";
 
 const hasPrefix = (subject: string, prefixes: string[]): boolean => prefixes.some((p) => subject.startsWith(p));
 const isGateLike = (r: PendingRequest): boolean => hasPrefix(r.subject, GATE_LIKE);
-export const isChoiceLike = (r: PendingRequest): boolean => hasPrefix(r.subject, CHOICE_LIKE);
+const isChoiceLike = (r: PendingRequest): boolean => hasPrefix(r.subject, CHOICE_LIKE);
 
 // --- positions -----------------------------------------------------------------------
 
@@ -50,17 +45,8 @@ function indexById(comments: Comment[]): Map<string, number> {
 	return new Map(comments.map((c, i) => [c.id, i]));
 }
 
-/** Position of the request's own comment in `comments`, or -1 when it is not there. */
-function requestIndex(comments: Comment[], id: string): number {
-	return comments.findIndex((c) => {
-		const m = parseMarked(c.body);
-		return m?.kind === REQUEST_KIND && m.id === id;
-	});
-}
-
-function place(comments: Comment[], pending: PendingRequest[], marked: MarkedComment[] | undefined): Placed[] {
+function place(comments: Comment[], marked: MarkedComment[]): Placed[] {
 	const index = indexById(comments);
-	if (marked === undefined) return pending.map((request) => ({ request, at: requestIndex(comments, request.id), closedAt: Number.POSITIVE_INFINITY }));
 	const closed = closers(marked);
 	return allRequests(marked).map(({ commentId, ...request }) => {
 		const closer = closed.get(request.id);
@@ -266,9 +252,9 @@ export function matchCommands(
 	pending: PendingRequest[],
 	comments: Comment[],
 	perms: ReadonlyMap<string, Permission>,
-	opts: MatchOptions = {},
+	opts: MatchOptions,
 ): MatchResult {
-	const placed = place(comments, pending, opts.marked);
+	const placed = place(comments, opts.marked);
 	const ctx: Ctx = {
 		placed,
 		pendingIds: new Set(pending.map((p) => p.id)),
@@ -280,29 +266,4 @@ export function matchCommands(
 	};
 	comments.forEach((comment, index) => matchOne(ctx, comment, index));
 	return ctx.result;
-}
-
-// --- permissions ---------------------------------------------------------------------
-
-/** Authors of `/livespec ` comments after the earliest pending request, each once, in order. */
-export function commandAuthors(comments: Comment[], pending: PendingRequest[]): string[] {
-	const found = pending.map((p) => requestIndex(comments, p.id)).filter((i) => i !== -1);
-	const from = found.length === pending.length && found.length > 0 ? Math.min(...found) : -1;
-	return [...new Set(comments.filter((c, i) => i > from && c.body.startsWith(PREFIX)).map((c) => c.author))];
-}
-
-export type Permissions = { perms: Map<string, Permission>; warnings: string[] };
-
-/** `getPermission` once per author; a failed lookup counts as no access (fail closed) with a warning. */
-export async function readPermissions(forge: Pick<Forge, "getPermission">, authors: string[]): Promise<Permissions> {
-	const out: Permissions = { perms: new Map(), warnings: [] };
-	for (const author of authors) {
-		try {
-			out.perms.set(author, await forge.getPermission(author));
-		} catch (error) {
-			out.perms.set(author, "none");
-			out.warnings.push(`cannot read the permission of ${author} (${messageOf(error)}); their /livespec comments count as without write access`);
-		}
-	}
-	return out;
 }

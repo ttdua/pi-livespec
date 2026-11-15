@@ -4,7 +4,7 @@ import type { Comment, Forge } from "../../src/forge/types.ts";
 import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
-import { answerComment, type PendingRequest, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 
@@ -54,6 +54,16 @@ function pending(subject: string, extra: Partial<PendingRequest["data"]> = {}, k
 const LATER = "2026-01-01T00:01:00.000Z";
 const writers = (...logins: string[]): Map<string, Permission> => new Map(logins.map((l) => [l, "write" as Permission]));
 
+/** The own request comment of `r`, posted when the request was made. */
+function posted(r: PendingRequest, i: number): Comment {
+	return comment(`r${i}`, BOT_LOGIN, requestComment(r.id, r.data, "instructions"), r.createdAt);
+}
+
+/** Matches `thread` (request comments then commands, unless given in another order) with its own marked comments. */
+function matchThread(pending: PendingRequest[], commands: Comment[], perms: ReadonlyMap<string, Permission>, thread = [...pending.map(posted), ...commands]) {
+	return matchCommands(pending, thread, perms, { marked: filterMarked(thread, BOT_LOGIN).comments });
+}
+
 describe("forge adapter", () => {
 	test("Pending gate request", async () => {
 		const { world, n, approver } = await setup();
@@ -87,14 +97,16 @@ describe("forge adapter", () => {
 	});
 
 	test("Command without write access ignored", () => {
-		const out = matchCommands([pending("gate:define")], [comment("9", "bob", "/livespec approve", LATER)], new Map([["bob", "read"]]));
+		const out = matchThread([pending("gate:define")], [comment("9", "bob", "/livespec approve", LATER)], new Map([["bob", "read"]]));
 		expect(out.matches).toEqual([]);
 		expect(out.warnings).toHaveLength(1);
 		expect(out.warnings[0]).toContain("lacks write access");
 	});
 
 	test("Command before the request ignored", () => {
-		const out = matchCommands([pending("gate:define")], [comment("9", "alice", "/livespec approve", "2025-12-31T23:59:00.000Z")], writers("alice"));
+		const gate = pending("gate:define");
+		const early = comment("9", "alice", "/livespec approve", "2025-12-31T23:59:00.000Z");
+		const out = matchThread([gate], [early], writers("alice"), [early, posted(gate, 0)]);
 		expect(out.matches).toEqual([]);
 		expect(out.warnings[0]).toContain("created before the request");
 	});
@@ -102,7 +114,7 @@ describe("forge adapter", () => {
 	test("Answer that changes a requirement", () => {
 		const q = pending("question:Q2", { snapshot: { id: "Q2", text: "limits?", requirements: [] } }, "question");
 		const body = "/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap";
-		const out = matchCommands([q], [comment("9", "alice", body, LATER)], writers("alice"));
+		const out = matchThread([q], [comment("9", "alice", body, LATER)], writers("alice"));
 		expect(out.matches).toHaveLength(1);
 		expect(out.matches[0]?.answer).toMatchObject({ answer: "use per-user limits", changesRequirement: "rate-limit/Requirement: Per-IP cap" });
 	});
@@ -113,26 +125,26 @@ describe("forge adapter", () => {
 		const gate = pending("gate:plan");
 		const approve = [comment("9", "alice", "/livespec approve", LATER)];
 
-		const one = matchCommands([stuck, question, gate], approve, writers("alice"));
+		const one = matchThread([stuck, question, gate], approve, writers("alice"));
 		expect(one.matches.map((m) => m.request.subject)).toEqual(["gate:plan"]);
 		expect(one.warnings).toEqual([]);
 
 		const amend = pending("amend:1");
-		const two = matchCommands([stuck, question, gate, amend], approve, writers("alice"));
+		const two = matchThread([stuck, question, gate, amend], approve, writers("alice"));
 		expect(two.matches).toEqual([]);
 		expect(two.warnings[0]).toContain("ambiguous between gate:plan, amend:1");
 
-		const none = matchCommands([stuck, question], approve, writers("alice"));
+		const none = matchThread([stuck, question], approve, writers("alice"));
 		expect(none.matches).toEqual([]);
 		expect(none.warnings[0]).toContain("approve cannot answer stuck:S1");
 	});
 
 	test("approve with failing waivable checks is ignored with a waive hint", () => {
 		const gate = pending("gate:plan", { options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", digests: {}, failingWaivable: ["size-limits"] } });
-		const out = matchCommands([gate], [comment("9", "alice", "/livespec approve", LATER)], writers("alice"));
+		const out = matchThread([gate], [comment("9", "alice", "/livespec approve", LATER)], writers("alice"));
 		expect(out.matches).toEqual([]);
 		expect(out.warnings[0]).toContain("choose waive");
-		const waived = matchCommands([gate], [comment("10", "alice", "/livespec choose waive", LATER)], writers("alice"));
+		const waived = matchThread([gate], [comment("10", "alice", "/livespec choose waive", LATER)], writers("alice"));
 		expect(waived.matches[0]?.answer).toMatchObject({ outcome: "approved", choice: "waive" });
 	});
 
@@ -201,7 +213,7 @@ describe("forge adapter", () => {
 
 	test("a command after its target was answered in the same pass is warned", () => {
 		const gate = pending("gate:define");
-		const out = matchCommands([gate], [comment("9", "alice", "/livespec approve", LATER), comment("10", "bob", "/livespec changes no", LATER)], writers("alice", "bob"));
+		const out = matchThread([gate], [comment("9", "alice", "/livespec approve", LATER), comment("10", "bob", "/livespec changes no", LATER)], writers("alice", "bob"));
 		expect(out.matches).toHaveLength(1);
 		expect(out.warnings).toEqual([expect.stringContaining("already answered by 9")]);
 	});
@@ -267,7 +279,7 @@ describe("forge adapter", () => {
 		expect(read.perms.get("alice")).toBe("write");
 		expect(read.warnings).toEqual([expect.stringContaining("eve")]);
 		const gate = pending("gate:define");
-		const out = matchCommands([gate], [comment("9", "eve", "/livespec changes x", LATER), comment("10", "alice", "/livespec approve", LATER)], read.perms);
+		const out = matchThread([gate], [comment("9", "eve", "/livespec changes x", LATER), comment("10", "alice", "/livespec approve", LATER)], read.perms);
 		expect(out.matches[0]?.answer).toMatchObject({ by: "alice", outcome: "approved" });
 	});
 

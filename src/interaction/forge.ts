@@ -6,20 +6,19 @@ import { filterMarked, readMarkedComments } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
 import type { Answered, ApprovalRequest, Approver } from "./approver.ts";
 import { ANSWER_KIND } from "./approver.ts";
-import { commandAuthors, matchCommands, readPermissions } from "./forge-match.ts";
+import { matchCommands } from "./forge-match.ts";
+import { commandAuthors, readPermissions } from "./forge-permissions.ts";
 import { readRequests, type RequestsState, requestComment } from "./requests.ts";
 
 export {
 	type ClassChange,
 	type CommandMatch,
-	commandAuthors,
 	type MatchOptions,
 	type MatchResult,
 	matchCommands,
 	type Permission,
-	type Permissions,
-	readPermissions,
 } from "./forge-match.ts";
+export { commandAuthors, type Permissions, readPermissions } from "./forge-permissions.ts";
 
 /** Thrown by `request` when a request for the same subject is already pending or applying. */
 export class DuplicateRequestError extends Error {
