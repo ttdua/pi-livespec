@@ -43,6 +43,6 @@ Blocked by: 4
 
 Blocked by: 5
 
-- [ ] 6.1 Update `docs/architecture.md` (forge accounts per clone) and the forge-related lines of the README if any
-- [ ] 6.2 Manual check on this machine: a real session in a clone of `ttdua/pi-livespec` selects `ttdua` automatically while `naicoi92` is the active `gh` account; record it in `openspec/changes/forge-accounts/smoke.md`
-- [ ] 6.3 Run `bun run typecheck` and `bun run test`
+- [x] 6.1 Update `docs/architecture.md` (forge accounts per clone) and the forge-related lines of the README if any
+- [x] 6.2 Manual check on this machine: a real session in a clone of `ttdua/pi-livespec` selects `ttdua` automatically while `naicoi92` is the active `gh` account; record it in `openspec/changes/forge-accounts/smoke.md`
+- [x] 6.3 Run `bun run typecheck` and `bun run test`
