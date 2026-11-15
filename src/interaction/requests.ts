@@ -115,19 +115,42 @@ function answers(marked: MarkedComment[]): Map<string, AnswerData> {
 	return found;
 }
 
+/** Every own request comment, whatever its state, in comment order, with the comment id it lives in. */
+export function allRequests(marked: MarkedComment[]): (PendingRequest & { commentId: string })[] {
+	const out: (PendingRequest & { commentId: string })[] = [];
+	for (const m of marked) {
+		const data = m.kind === REQUEST_KIND ? asRequestRecord(m) : undefined;
+		if (data) out.push({ id: m.id, subject: data.subject, kind: data.kind, mode: data.mode, createdAt: createdAtOf(m.id), data, commentId: m.commentId });
+	}
+	return out;
+}
+
 /** Pending and applying requests, in comment order; completed requests are dropped. */
 export function readRequests(marked: MarkedComment[]): RequestsState {
 	const completed = completedIds(marked);
 	const answered = answers(marked);
-	const pending: PendingRequest[] = [];
-	for (const m of marked) {
-		const data = m.kind === REQUEST_KIND ? asRequestRecord(m) : undefined;
-		if (!data || answered.has(m.id) || completed.has(m.id)) continue;
-		pending.push({ id: m.id, subject: data.subject, kind: data.kind, mode: data.mode, createdAt: createdAtOf(m.id), data });
-	}
+	const pending: PendingRequest[] = allRequests(marked)
+		.filter((r) => !answered.has(r.id) && !completed.has(r.id))
+		.map(({ commentId: _commentId, ...r }) => r);
 	const applying: AppliedAnswer[] = [];
 	for (const [id, record] of answered) {
 		if (!completed.has(id)) applying.push({ id, subject: record.request.subject, record });
 	}
 	return { pending, applying };
+}
+
+/** The first own comment that closes a request: its `answer` comment, else its result comment. */
+export type Closer = { commentId: string; answerCommentId?: string };
+
+/** The closer of every answered or completed request, keyed by request id. */
+export function closers(marked: MarkedComment[]): Map<string, Closer> {
+	const out = new Map<string, Closer>();
+	for (const m of marked) {
+		if (!isObject(m.data)) continue;
+		const id = m.kind === ANSWER_KIND ? m.id : RESULT_KINDS.has(m.kind) && typeof m.data.request === "string" ? m.data.request : undefined;
+		if (id === undefined || out.has(id)) continue;
+		const answer = m.kind === ANSWER_KIND && isObject(m.data.answer) && isObject(m.data.answer.answerComment) ? m.data.answer.answerComment.id : undefined;
+		out.set(id, typeof answer === "string" ? { commentId: m.commentId, answerCommentId: answer } : { commentId: m.commentId });
+	}
+	return out;
 }

@@ -3,8 +3,8 @@ import { filterMarked, parseMarked } from "../../src/forge/markers.ts";
 import type { Comment, Forge } from "../../src/forge/types.ts";
 import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
-import { createForgeApprover, DuplicateRequestError, matchCommands, type Permission } from "../../src/interaction/forge.ts";
-import { type PendingRequest, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
+import { answerComment, type PendingRequest, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 
@@ -178,5 +178,86 @@ describe("forge adapter", () => {
 		expect({ ...(parsed?.data as object), id: parsed?.id }).toEqual(r.record);
 		expect(posted?.body).toContain("/livespec choose <option-id> [notes]");
 		expect(posted?.body).toContain("Review gate:plan");
+	});
+
+	test("an ambiguous command stays ignored after one of its targets is answered", async () => {
+		const { world, n, approver } = await setup();
+		const plan = approval({ subject: "gate:plan" });
+		const amend = approval({ subject: "amend:1", now: new Date(NOW.getTime() + 1000) });
+		await approver.request(plan);
+		await approver.request(amend);
+		await world.setPermission("alice", "write");
+		await world.postComment(n, "alice", "/livespec approve");
+		const answered = { status: "answered" as const, outcome: "approved" as const, notes: "", by: "alice", at: "t", adapter: "in-session" as const };
+		await world.postComment(n, BOT_LOGIN, answerComment(amend.record.id, { request: amend.record, answer: answered, verdict: "valid" }));
+
+		const all = await world.forge.listComments(n);
+		const marked = filterMarked(all, BOT_LOGIN).comments;
+		const out = matchCommands(readRequests(marked).pending, all, writers("alice"), { marked });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings[0]).toContain("ambiguous between gate:plan, amend:1");
+		expect(await approver.poll(plan.record.id)).toEqual({ status: "pending" });
+	});
+
+	test("a command after its target was answered in the same pass is warned", () => {
+		const gate = pending("gate:define");
+		const out = matchCommands([gate], [comment("9", "alice", "/livespec approve", LATER), comment("10", "bob", "/livespec changes no", LATER)], writers("alice", "bob"));
+		expect(out.matches).toHaveLength(1);
+		expect(out.warnings).toEqual([expect.stringContaining("already answered by 9")]);
+	});
+
+	test("a command for a request answered by an earlier poll is warned", async () => {
+		const { world, n, approver } = await setup();
+		const r = approval({ subject: "gate:define" });
+		await approver.request(r);
+		await world.setPermission("alice", "write");
+		await world.setPermission("bob", "write");
+		const first = await world.postComment(n, "alice", "/livespec approve");
+		await world.postComment(n, "bob", "/livespec changes no");
+		const polled = await approver.poll(r.record.id);
+		if (polled.status !== "answered") throw new Error("not answered");
+		await world.postComment(n, BOT_LOGIN, answerComment(r.record.id, { request: r.record, answer: polled, verdict: "valid" }));
+		const all = await world.forge.listComments(n);
+		const marked = filterMarked(all, BOT_LOGIN).comments;
+		const out = matchCommands(readRequests(marked).pending, all, writers("alice", "bob"), { marked });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([expect.stringContaining(`already answered by ${first}`)]);
+	});
+
+	test("command authors are read only after the earliest pending request", async () => {
+		const { world, n, approver } = await setup();
+		await world.postComment(n, "carol", "/livespec approve");
+		const r = approval({ subject: "gate:define" });
+		await approver.request(r);
+		await world.postComment(n, "alice", "/livespec approve");
+		const all = await world.forge.listComments(n);
+		const marked = filterMarked(all, BOT_LOGIN).comments;
+		expect(commandAuthors(all, readRequests(marked).pending)).toEqual(["alice"]);
+	});
+
+	test("a failing permission lookup counts as no access and spares other authors", async () => {
+		const failing = { getPermission: async (login: string): Promise<Permission> => {
+			if (login === "eve") throw new Error("boom");
+			return "write";
+		} };
+		const read = await readPermissions(failing, ["eve", "alice"]);
+		expect(read.perms.get("eve")).toBe("none");
+		expect(read.perms.get("alice")).toBe("write");
+		expect(read.warnings).toEqual([expect.stringContaining("eve")]);
+		const gate = pending("gate:define");
+		const out = matchCommands([gate], [comment("9", "eve", "/livespec changes x", LATER), comment("10", "alice", "/livespec approve", LATER)], read.perms);
+		expect(out.matches[0]?.answer).toMatchObject({ by: "alice", outcome: "approved" });
+	});
+
+	test("Duplicate request refused while the subject is applying", async () => {
+		const { world, n, approver } = await setup();
+		const first = approval({ subject: "gate:plan" });
+		await approver.request(first);
+		const answered = { status: "answered" as const, outcome: "approved" as const, notes: "", by: "alice", at: "t", adapter: "in-session" as const };
+		await world.postComment(n, BOT_LOGIN, answerComment(first.record.id, { request: first.record, answer: answered, verdict: "valid" }));
+		const before = (await world.forge.listComments(n)).length;
+		const second = approval({ subject: "gate:plan", now: new Date(NOW.getTime() + 5000) });
+		await expect(approver.request(second)).rejects.toThrow(first.record.id);
+		expect((await world.forge.listComments(n)).length).toBe(before);
 	});
 });

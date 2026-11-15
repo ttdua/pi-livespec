@@ -13,7 +13,7 @@ import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "./complete.ts";
-import { type ClassChange, commandAuthors, consumedCommands, matchCommands, readPermissions } from "./forge.ts";
+import { type ClassChange, commandAuthors, matchCommands, readPermissions } from "./forge-match.ts";
 import { readRequests } from "./requests.ts";
 
 const STEP = "poll";
@@ -70,8 +70,8 @@ async function answerPending(t: Target): Promise<string[]> {
 	const { comments, marked } = await readFresh(t);
 	const pending = readRequests(marked).pending;
 	if (pending.length === 0) return [];
-	const perms = await readPermissions(t.forge, commandAuthors(comments));
-	const result = matchCommands(pending, comments, perms, { consumed: consumedCommands(marked) });
+	const { perms, warnings } = await readPermissions(t.forge, commandAuthors(comments, pending));
+	const result = matchCommands(pending, comments, perms, { marked });
 	await applyClasses(t, result.classes);
 	let current = marked;
 	for (const match of result.matches) {
@@ -82,7 +82,7 @@ async function answerPending(t: Target): Promise<string[]> {
 		}
 		current = (await readFresh(t)).marked;
 	}
-	return result.warnings;
+	return [...warnings, ...result.warnings];
 }
 
 async function pollChange(t: Target): Promise<void> {
