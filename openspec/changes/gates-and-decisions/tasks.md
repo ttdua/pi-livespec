@@ -66,10 +66,10 @@ Blocked by: 5, 6
 
 Blocked by: 7
 
-- [ ] 8.1 Add `Git.merge`, `mergeAbort` and `isAncestor` in `src/engine/git.ts`
-- [ ] 8.2 Add `src/tools/classify-units.ts`, which runs both rules per unit and builds the records
-- [ ] 8.3 Add `plan_units` (`src/tools/plan-units.ts` plus `plan-units-steps.ts`): refusals, base repair, classify, validate, merge or abort, records, version-checked write, config update after the write, and an unknown-outcome re-read of `Base` and Units
-- [ ] 8.4 Add `unit_amend` (edit, `--add`, `--drop`): whole-plan validation, refusing to drop a depended-on unit, and a light gate request with only the affected units
+- [x] 8.1 Add `Git.merge`, `mergeAbort` and `isAncestor` in `src/engine/git.ts`
+- [x] 8.2 Add `src/tools/classify-units.ts`, which runs both rules per unit and builds the records
+- [x] 8.3 Add `plan_units` (`src/tools/plan-units.ts` plus `plan-units-steps.ts`): refusals, base repair, classify, validate, merge or abort, records, version-checked write, config update after the write, and an unknown-outcome re-read of `Base` and Units
+- [x] 8.4 Add `unit_amend` (edit, `--add`, `--drop`): whole-plan validation, refusing to drop a depended-on unit, and a light gate request with only the affected units
 
 ## 9. Questions and stuck tools
 
