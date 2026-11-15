@@ -8,10 +8,12 @@ type Handler = (event: unknown, ctx: unknown) => unknown;
 
 export type SentMessage = { customType: string; content: string; display: boolean };
 
+export type SelectFn = (title: string, options: string[]) => Promise<string | undefined>;
+
 export type FakeCtx = {
 	cwd: string;
 	hasUI: boolean;
-	ui: { notify: ReturnType<typeof vi.fn> };
+	ui: { notify: ReturnType<typeof vi.fn>; select: ReturnType<typeof vi.fn<SelectFn>> };
 	isProjectTrusted: () => boolean;
 };
 
@@ -59,6 +61,8 @@ export class FakePi {
 	}
 }
 
-export function fakeCtx(cwd: string, trusted = true): FakeCtx {
-	return { cwd, hasUI: false, ui: { notify: vi.fn() }, isProjectTrusted: () => trusted };
+/** A ctx without UI by default; `ui.select` answers through `select`, or cancels when none is given. */
+export function fakeCtx(cwd: string, trusted = true, ui: { hasUI?: boolean; select?: SelectFn } = {}): FakeCtx {
+	const select = vi.fn<SelectFn>(ui.select ?? (async () => undefined));
+	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select }, isProjectTrusted: () => trusted };
 }

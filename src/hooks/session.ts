@@ -20,18 +20,33 @@ import { defaultGitExec } from "../engine/git-exec.ts";
 import { createGit, type Git } from "../engine/git.ts";
 import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
+import { defaultAccountEnv } from "../accounts/env.ts";
+import { redactTokens } from "../accounts/redact.ts";
+import { type AccountUI, chooseAccount, envTokenVar, type ResolvedAccount, resolveAccount } from "../accounts/resolve.ts";
+import type { AccountEnv } from "../accounts/types.ts";
 import { CachedForge } from "../forge/cache.ts";
-import { detectForge, parseRemote } from "../forge/detect.ts";
-import { buildCardInput } from "./card-input.ts";
+import { type DetectDeps, detectForge, type ForgeTarget, resolveForgeTarget } from "../forge/detect.ts";
+import { ForgeError } from "../forge/errors.ts";
+import { RedactingForge } from "../forge/redact.ts";
+import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
 import { setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
 
-export type SessionDeps = { home: string; detect: typeof detectForge; content: (home: string) => ContentManager; now: () => Date };
+export type SessionDeps = {
+	home: string;
+	detect: typeof detectForge;
+	content: (home: string) => ContentManager;
+	now: () => Date;
+	/** Every account I/O (gh, git config, access check, tea config). */
+	accounts: AccountEnv;
+};
 
 export const AGENT_SKILLS_SOURCE = "https://github.com/addyosmani/agent-skills.git";
 const NOT_CONNECTED = "the forge is not connected yet";
+const NOT_BOUND = "the session has not started";
+const SWITCH_COMMAND = "/livespec account <name>";
 const RELOAD_HINT = "The new skills apply after /reload or in the next session.";
 const INIT_HINT = "This project does not use livespec yet. Run /livespec init to set it up.";
 const MIGRATE_HINT = "This project has an openspec/ folder. Run /livespec migrate-openspec, then /livespec init.";
@@ -50,6 +65,7 @@ export function defaultSessionDeps(): SessionDeps {
 			return new ContentManager({ paths, mirror: createMirror(paths, defaultGitExec), now: () => new Date(), source: AGENT_SKILLS_SOURCE });
 		},
 		now: () => new Date(),
+		accounts: defaultAccountEnv(),
 	};
 }
 
@@ -69,7 +85,16 @@ export class Session {
 	readonly skillReads = new SkillReads();
 	/** Errors each step caught; the session keeps working without the failed part. */
 	readonly errors: string[] = [];
+	/** The forge endpoint of `origin`, shared by account resolution and the adapter. */
+	target?: ForgeTarget;
+	/** The last account resolution of this session. */
+	account?: ResolvedAccount;
+	/** Why every forge mutation is refused; independent of the read-only mode, lifted only by a new resolution. */
+	accountBlock?: string;
+	/** The one-time line announcing a stored choice; cleared by `firstCardShown()`. */
+	accountNotice?: string;
 	private first = true;
+	private link?: SessionLink;
 
 	constructor(
 		readonly cwd: string,
@@ -90,10 +115,45 @@ export class Session {
 		return message;
 	}
 
-	/** The first card the model sees points at specs/product.md; later ones do not. Called by the `context` hook. */
+	/**
+	 * The first card the model sees points at specs/product.md and carries the account notice; later
+	 * ones do not. The cached card drops the notice line and keeps the block. Called by the `context` hook.
+	 */
 	firstCardShown(): void {
 		this.first = false;
-		this.card = { ...this.card, first: false };
+		this.accountNotice = undefined;
+		this.card = { ...this.card, first: false, account: cardAccount(this) };
+	}
+
+	/** Connects later calls of `reconnect` to the deps and UI of session start. */
+	bind(link: SessionLink): void {
+		this.link = link;
+	}
+
+	/** Re-runs target, account resolution, adapter and identity steps, then rebuilds the card. Never throws. */
+	async reconnect(): Promise<void> {
+		await this.connect();
+	}
+
+	/** Connects with `chosen` when given (an explicit switch already resolved it), else runs the selection. */
+	private async connect(chosen?: ResolvedAccount): Promise<void> {
+		if (!this.link) {
+			this.record("account", NOT_BOUND);
+			return;
+		}
+		await connectForge(this, this.link, chosen);
+		await this.refresh();
+	}
+
+	/** `/livespec account <name>`: stores `name` when it can push, then reconnects with that resolution. Never throws. */
+	async switchAccount(name: string): Promise<{ ok: boolean; message: string }> {
+		const target = this.target;
+		if (!this.link || !target) return { ok: false, message: `${NOT_CONNECTED}: ${this.forgeError ?? NOT_BOUND}` };
+		const chosen = await chooseAccount(target, this.cwd, name, this.link.deps.accounts);
+		if (!chosen.ok) return chosen;
+		await this.connect(chosen.resolved);
+		if (this.accountBlock !== undefined) return { ok: false, message: this.accountBlock };
+		return { ok: true, message: chosen.resolved.notice ?? `livespec uses \`${name}\` for this repository` };
 	}
 
 	get isFirstCard(): boolean {
@@ -118,7 +178,7 @@ async function resolveAndSnapshot(session: Session): Promise<void> {
 		session.card = await buildCardInput({ session, first: session.isFirstCard });
 	} catch (error) {
 		const message = session.record("refresh", error);
-		session.card = { ...cardBasics(session.card), kind: "forge-unavailable", message };
+		session.card = { ...cardBasics(session.card), account: cardAccount(session), kind: "forge-unavailable", message };
 	}
 }
 
@@ -130,6 +190,7 @@ function cardBasics(card: CardInput): Pick<CardInput, "first" | "constraintsTemp
 async function applyAdvance(session: Session): Promise<boolean> {
 	const card = session.card;
 	const forge = session.forge;
+	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
 	try {
 		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack);
@@ -166,23 +227,123 @@ async function loadSessionBasics(session: Session, d: SessionDeps, content: Cont
 	}
 }
 
-async function originRemote(root: string): Promise<{ host: string; owner: string; repo: string }> {
-	const r = await defaultGitExec(["remote", "get-url", "origin"], { cwd: root });
-	const remote = r.code === 0 ? parseRemote(r.stdout) : null;
-	if (!remote) throw new Error(`cannot parse the origin remote of ${root}`);
-	return remote;
+/** What `reconnect` needs from session start: the deps and the UI that may ask the question. */
+export type SessionLink = { deps: SessionDeps; ui: AccountUI };
+
+/** Detection reads through the account seam, so target, resolution and adapter see one environment. */
+function detectDepsOf(env: AccountEnv): Partial<DetectDeps> {
+	return { exec: env.exec, fetch: env.fetch, env: env.env, teaLookup: env.teaLookup };
 }
 
-async function connectForge(session: Session, d: SessionDeps): Promise<void> {
+/** Clears the previous connection and account state, so a reconnect starts from nothing. */
+function resetConnection(session: Session): void {
+	session.forge = undefined;
+	session.comments = undefined;
+	session.forgeError = undefined;
+	session.target = undefined;
+	session.account = undefined;
+	session.accountBlock = undefined;
+	session.accountNotice = undefined;
+}
+
+/** Target, account, adapter, identity: each step records its own failure; the forge stays usable for reads. */
+async function connectForge(session: Session, link: SessionLink, chosen?: ResolvedAccount): Promise<void> {
+	resetConnection(session);
+	const target = await targetFor(session, link.deps);
+	if (!target) return;
+	const resolved = chosen ? adoptAccount(session, chosen) : await resolveSessionAccount(session, target, link);
+	if (!(await connectWithAccount(session, target, resolved, link.deps))) return;
+	await confirmIdentity(session, resolved);
+}
+
+async function targetFor(session: Session, d: SessionDeps): Promise<ForgeTarget | undefined> {
 	try {
-		const inner = await d.detect(session.cwd);
-		const { host, owner, repo } = await originRemote(session.cwd);
-		const cacheRoot = join(d.home, ".pi", "agent", "livespec", "cache");
-		session.forge = new CachedForge(inner, { cacheRoot, host, owner, repo });
-		session.comments = new CommentsCache({ dir: join(cacheRoot, host, owner, repo), now: () => d.now().getTime() });
+		session.target = await resolveForgeTarget(session.cwd, detectDepsOf(d.accounts));
+		return session.target;
 	} catch (error) {
 		session.forgeError = session.record("forge", error);
+		return undefined;
 	}
+}
+
+/** Runs the selection; a refusal becomes the block. `resolveAccount` never rejects, but a bug must not reach pi. */
+async function resolveSessionAccount(session: Session, target: ForgeTarget, link: SessionLink): Promise<ResolvedAccount | undefined> {
+	try {
+		return adoptAccount(session, await resolveAccount(target, session.cwd, link.ui, link.deps.accounts));
+	} catch (error) {
+		session.accountBlock = session.record("account", error);
+		return undefined;
+	}
+}
+
+function adoptAccount(session: Session, resolved: ResolvedAccount): ResolvedAccount {
+	session.account = resolved;
+	session.accountBlock = resolved.block;
+	session.accountNotice = resolved.notice;
+	return resolved;
+}
+
+/**
+ * The account handed to detection: the chosen candidate, or for GitHub the environment token (passed
+ * explicitly, so the adapter uses the token the selection saw; the name is only read by Gitea). A Gitea
+ * environment token reaches the adapter through `env.GITEA_TOKEN`.
+ */
+function detectAccount(target: ForgeTarget, resolved: ResolvedAccount | undefined): DetectDeps["account"] {
+	if (resolved?.account !== undefined) return { name: resolved.account, token: resolved.token };
+	if (resolved?.source === "env" && target.kind === "github") return { name: envTokenVar(target), token: resolved.token };
+	return undefined;
+}
+
+/** Builds the adapter once with the account, wrapped `RedactingForge` → `CachedForge`. True when connected. */
+async function connectWithAccount(session: Session, target: ForgeTarget, resolved: ResolvedAccount | undefined, d: SessionDeps): Promise<boolean> {
+	try {
+		const account = detectAccount(target, resolved);
+		const inner = await d.detect(session.cwd, { ...detectDepsOf(d.accounts), ...(account ? { account } : {}) });
+		const tokens = resolved?.token ? [resolved.token] : [];
+		const { host, owner, repo } = target;
+		const cacheRoot = join(d.home, ".pi", "agent", "livespec", "cache");
+		session.forge = new CachedForge(new RedactingForge(inner, () => tokens), { cacheRoot, host, owner, repo });
+		session.comments = new CommentsCache({ dir: join(cacheRoot, host, owner, repo), now: () => d.now().getTime() });
+		return true;
+	} catch (error) {
+		session.forgeError = session.record("forge", redactTokens(messageOf(error), resolved?.token ? [resolved.token] : []));
+		return false;
+	}
+}
+
+/**
+ * `whoami` must equal the chosen candidate's user; for the environment token, a successful `whoami`
+ * is the identity. A mismatch or a failure sets the block. Without an account (refused) nothing runs.
+ */
+async function confirmIdentity(session: Session, resolved: ResolvedAccount | undefined): Promise<void> {
+	const forge = session.forge;
+	if (!forge || !resolved || resolved.block !== undefined) return;
+	try {
+		const { login } = await forge.whoami();
+		if (resolved.source === "env") {
+			session.account = { ...resolved, user: login };
+			return;
+		}
+		if (login !== resolved.user) session.accountBlock = mismatchMessage(resolved, login);
+	} catch (error) {
+		session.record("account", error);
+		session.accountBlock = identityFailure(session, resolved, error);
+	}
+}
+
+function mismatchMessage(resolved: ResolvedAccount, login: string): string {
+	return `the forge identifies the account ${resolved.account} as ${login}, but it was chosen as ${resolved.user}; writes are refused. Fix the login, then run ${SWITCH_COMMAND}.`;
+}
+
+function identityFailure(session: Session, resolved: ResolvedAccount, error: unknown): string {
+	const reason = messageOf(error);
+	if (resolved.source === "env" && session.target) {
+		const variable = envTokenVar(session.target);
+		const rejected = error instanceof ForgeError && error.code === "auth";
+		const what = rejected ? "was rejected by the forge" : "could not be confirmed";
+		return `the environment token in ${variable} ${what} (${reason}); writes are refused until ${variable} holds a valid token.`;
+	}
+	return `the identity of ${resolved.account} could not be confirmed (${reason}); writes are refused until it is confirmed: start a new session or run ${SWITCH_COMMAND}.`;
 }
 
 function safeNotify(ctx: ExtensionContext, message: string, type: "info" | "warning"): void {
@@ -233,6 +394,11 @@ function kickOffUpgrade(session: Session, content: ContentManager, ctx: Extensio
 	session.upgrade = runUpgrade(session, content, ctx);
 }
 
+/** The question channel of `ctx.ui`; only offered when pi has an interactive UI. */
+function accountUI(ctx: ExtensionContext): AccountUI {
+	return { hasUI: ctx.hasUI, select: (title, options) => ctx.ui.select(title, options) };
+}
+
 /** One notice for an uninitialized project; nothing runs and no file changes. */
 async function suggestInit(session: Session, ctx: ExtensionContext): Promise<void> {
 	const hasOpenSpec = await stat(join(session.cwd, OPENSPEC_DIR)).then(
@@ -248,8 +414,9 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	const content = d.content(d.home);
 	await loadSessionBasics(session, d, content);
 	if (!session.initialized) return suggestInit(session, ctx);
-	await connectForge(session, d);
-	await session.refresh();
+	session.bind({ deps: d, ui: accountUI(ctx) });
+	await session.reconnect();
+	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
 	kickOffUpgrade(session, content, ctx);
 }
