@@ -23,6 +23,12 @@ export interface Git {
 	branchExists(name: string): Promise<boolean>;
 	configGet(key: string): Promise<string | undefined>;
 	configSet(key: string, value: string): Promise<void>;
+	/** `git merge --no-edit --no-ff -- <ref>`; `conflict` when it stops with unmerged paths (the merge is left in progress). */
+	merge(ref: string): Promise<"ok" | "conflict">;
+	/** `git merge --abort`: restores the tree and HEAD from before a conflicted merge. */
+	mergeAbort(): Promise<void>;
+	/** `git merge-base --is-ancestor <a> <b>`. */
+	isAncestor(a: string, b: string): Promise<boolean>;
 }
 
 export class GitError extends Error {
@@ -40,6 +46,10 @@ export class GitError extends Error {
 const EXIT_NOT_SYMBOLIC = 128;
 /** `config --get` and `show-ref --verify --quiet` exit 1 when the key or ref is missing. */
 const EXIT_NOT_FOUND = 1;
+/** `merge` exits 1 when it stops, e.g. on a conflict. */
+const EXIT_MERGE_STOPPED = 1;
+/** `merge-base --is-ancestor` exits 1 when the first commit is not an ancestor of the second. */
+const EXIT_NOT_ANCESTOR = 1;
 const ORIGIN_PREFIX = "origin/";
 
 type Run = (args: string[], notFoundCode?: number) => Promise<string | undefined>;
@@ -100,6 +110,16 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		configSet: async (key, value) => {
 			await run(["config", END_OF_OPTIONS, key, value]);
 		},
+		merge: async (ref) => {
+			const args = ["merge", "--no-edit", "--no-ff", "--", ref];
+			if ((await run(args, EXIT_MERGE_STOPPED)) !== undefined) return "ok";
+			if ((await text(run, ["diff", "--name-only", "--diff-filter=U"])) !== "") return "conflict";
+			throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
+		},
+		mergeAbort: async () => {
+			await run(["merge", "--abort"]);
+		},
+		isAncestor: async (a, b) => (await run(["merge-base", "--is-ancestor", END_OF_OPTIONS, a, b], EXIT_NOT_ANCESTOR)) !== undefined,
 	};
 }
 

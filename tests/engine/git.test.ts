@@ -149,3 +149,48 @@ describe("diff over specs", () => {
 		await expect(git.diffNames("0".repeat(40), "HEAD", "specs/")).rejects.toBeInstanceOf(GitError);
 	});
 });
+
+describe("merge", () => {
+	/** A repo with `main` and a `side` branch that both changed README.md, or only `side` when `conflict` is false. */
+	async function divergent(conflict: boolean): Promise<{ root: string; git: Git; side: string }> {
+		const { root } = await committedRepo();
+		const start = currentBranch(root);
+		execFileSync("git", ["switch", "-q", "-c", "side"], { cwd: root });
+		await writeIn(root, conflict ? "README.md" : "side.txt", "side\n");
+		commitAll(root, "side");
+		const side = await createGit(root).head();
+		execFileSync("git", ["switch", "-q", start], { cwd: root });
+		await writeIn(root, "README.md", "main\n");
+		commitAll(root, "main");
+		execFileSync("git", ["config", "user.name", "t"], { cwd: root });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+		return { root, git: createGit(root), side };
+	}
+
+	test("merge reports conflict and mergeAbort restores the tree", async () => {
+		const { root, git } = await divergent(true);
+		const head = await git.head();
+		expect(await git.merge("side")).toBe("conflict");
+		await git.mergeAbort();
+		expect(await git.head()).toBe(head);
+		expect(await git.isDirty()).toBe(false);
+		expect(existsSync(`${root}/.git/MERGE_HEAD`)).toBe(false);
+	});
+
+	test("merge without a conflict makes a merge commit", async () => {
+		const { git, side } = await divergent(false);
+		const head = await git.head();
+		expect(await git.merge("side")).toBe("ok");
+		expect(await git.head()).not.toBe(head);
+		expect(await git.isAncestor(side, "HEAD")).toBe(true);
+		expect(await git.isAncestor(head, "HEAD")).toBe(true);
+	});
+
+	test("isAncestor", async () => {
+		const { git, side } = await divergent(false);
+		const head = await git.head();
+		expect(await git.isAncestor(side, head)).toBe(false);
+		expect(await git.isAncestor(head, head)).toBe(true);
+		await expect(git.isAncestor("0".repeat(40), head)).rejects.toBeInstanceOf(GitError);
+	});
+});
