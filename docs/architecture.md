@@ -75,7 +75,7 @@ specs/
 ~/.pi/agent/livespec/agent-skills/
 ├── mirror.git/       # bare mirror of the upstream repository
 ├── <sha>/            # checked-out trees, immutable; the last 5 are kept for rollback
-├── current           # symlink (junction on Windows) to the active <sha>/
+├── current           # symlink to the active <sha>/; Windows is not supported in v1
 ├── livespec.lock     # YAML: source, commit, pinned, history, skipped, checkedAt
 └── .lock/            # root lock: cross-process mutex held while the clone changes
 ```
