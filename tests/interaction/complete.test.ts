@@ -402,6 +402,49 @@ describe("completion engine", () => {
 		expect(out.result).not.toContain("ev<il");
 	});
 
+	test("completion result carries the human's notes, wrapped as untrusted (in-session)", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		const out = await completeAnswer(await ctxOf(f), record, answer({ outcome: "changes_requested", notes: "tighten <the> cap" }));
+		expect(out.result).toContain(`Notes: ${untrusted("tighten <the> cap")}`);
+		expect(out.result).not.toContain("tighten <the> cap");
+	});
+
+	test("completion result carries the human's notes, wrapped as untrusted (forge)", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		const polled = await forgeAnswer(f, record, "/livespec changes cover IPv6 too");
+		const out = await completeAnswer(await ctxOf(f), record, polled);
+		expect(out.result).toContain(`Notes: ${untrusted("cover IPv6 too")}`);
+	});
+
+	test("completion result of a stuck answer carries its notes", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options, recommended: "A" }));
+		const record = await prepare(f, "stuck", "stuck:S1", { id: "S1" }, options);
+		const polled = await forgeAnswer(f, record, "/livespec choose B split U3 first");
+		const out = await completeAnswer(await ctxOf(f), record, polled);
+		expect(out.result).toContain(`Notes: ${untrusted("split U3 first")}`);
+	});
+
+	test("completion result of a question carries the answer and the changed requirement", async () => {
+		const f = await fixture("build", (b) => u3Done(q1Open(b)));
+		await seedLock(f);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
+		const out = await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For", changesRequirement: REQUIREMENT }));
+		expect(out.result).toContain(`Answer: ${untrusted("X-Forwarded-For")}`);
+		expect(out.result).toContain(`Changes requirement: ${untrusted(REQUIREMENT)}`);
+	});
+
+	test("completion result of a forge question answer carries the answer", async () => {
+		const f = await fixture("define", q1Open);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
+		const polled = await forgeAnswer(f, record, "/livespec answer Q1 use X-Real-IP");
+		const out = await completeAnswer(await ctxOf(f), record, polled);
+		expect(out.result).toContain(`Answer: ${untrusted("use X-Real-IP")}`);
+	});
+
 	const STEPS: [name: string, failsOn: (op: string, args: unknown[]) => boolean][] = [
 		["body write", (op) => op === "updateIssueBody"],
 		["stale comment", commentOfKind("stale")],

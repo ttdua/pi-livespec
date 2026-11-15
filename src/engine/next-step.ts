@@ -227,6 +227,11 @@ const nextUnit: Rule = ({ units }) => {
 	return { next: `No unit is ready: ${waits}.` };
 };
 
+/** Appends the human's notes; `next` is wrapped as untrusted where it is shown, so they are not wrapped here. */
+function withNotes(text: string, notes: string): string {
+	return notes === "" ? text : `${text} Notes: ${notes}`;
+}
+
 /** The sentence of a `self` or `human` gate with no gate result yet. */
 function gateReady(phase: Phase): string {
 	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
@@ -244,8 +249,8 @@ function gateResultDecision(phase: Phase, successor: string, result: GateResult 
 	}
 	if (result === undefined) return { next: gateReady(phase) };
 	if (result.superseded) return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
-	if (result.outcome === "changes_requested") return { next: `The ${id} gate requested changes: revise, then request the gate again.` };
-	return { next: `The ${id} gate was dismissed: ask the human how to proceed.` };
+	if (result.outcome === "changes_requested") return { next: withNotes(`The ${id} gate requested changes: revise, then request the gate again.`, result.notes) };
+	return { next: withNotes(`The ${id} gate was dismissed: ask the human how to proceed.`, result.notes) };
 }
 
 /**

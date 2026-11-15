@@ -2,7 +2,7 @@
 // `/livespec next`), the change state of `spec_status`, and the open-changes
 // list. Forge text is wrapped as untrusted, like on the phase card.
 
-import type { Unit } from "../core/change.ts";
+import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
@@ -69,8 +69,13 @@ function unitText(u: Unit): string {
 	return `${u.id} — ${untrusted(u.title)}: ${u.done ? "done" : "pending"}`;
 }
 
+function questionText(q: Question): string {
+	const answer = q.answer === undefined ? "" : ` — answer: ${untrusted(q.answer)}`;
+	return `${q.id} (${q.kind}, ${q.checked ? "answered" : "open"}): ${untrusted(q.text)}${answer}`;
+}
+
 function stateLines(state: ChangeState): string[] {
-	const questions = state.change.questions.map((q) => `${q.id} (${q.kind}, ${q.checked ? "answered" : "open"}): ${untrusted(q.text)}`);
+	const questions = state.change.questions.map(questionText);
 	const checks = state.checks.map((c) => `${c.severity} ${c.check}: ${untrusted(c.message)}`);
 	const counters = Object.keys(state.counters)
 		.sort()

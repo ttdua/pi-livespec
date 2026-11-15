@@ -301,6 +301,22 @@ describe("spec_gate", () => {
 		expect(textOf(out)).toContain("The define gate requested changes: revise, then request the gate again.");
 	});
 
+	test("changes requested on the forge show the human's notes in the next step", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.call("spec_gate", { target: "define" });
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec changes cover <IPv6> too");
+		const out = await h.call("spec_next");
+		expect(textOf(out)).toContain("The define gate requested changes: revise, then request the gate again. Notes: cover &lt;IPv6> too");
+		expect(textOf(out)).not.toContain("cover <IPv6>");
+	});
+
+	test("in-session changes requested show the notes in the tool result", async () => {
+		const h = await change("define", { ui: human("request changes", "tighten the cap") });
+		const out = await h.call("spec_gate", { target: "define" });
+		expect(textOf(out)).toContain(`Notes: <untrusted>tighten the cap</untrusted>`);
+	});
+
 	test("Dismissed", async () => {
 		const h = await change("plan", { ui: human("dismiss") });
 		await seedClassification(h);

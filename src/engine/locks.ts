@@ -11,9 +11,10 @@ import type { Outcome } from "../interaction/approver.ts";
 /**
  * The valid gate result of a phase: its latest own gate comment newer than the latest `stale` listing it.
  * A superseded latest result is kept as-is (so callers can say "request again") and never replaced by an
- * older result; use `validApproval` to ask whether it approves.
+ * older result; use `validApproval` to ask whether it approves. `notes` is the human's text (forge text: wrap
+ * it as untrusted where it is shown on its own).
  */
-export type GateResult = { outcome: Outcome; superseded: boolean; at: string; waivers: string[] };
+export type GateResult = { outcome: Outcome; superseded: boolean; at: string; waivers: string[]; notes: string };
 
 export type LockState = {
 	locked: Record<string, string> | undefined;
@@ -23,7 +24,7 @@ export type LockState = {
 	gates: Record<string, GateResult | undefined>;
 };
 
-type GateData = { name: string; outcome: Outcome; superseded: boolean; at: string; waivers: string[]; locked?: Record<string, string> };
+type GateData = GateResult & { name: string; locked?: Record<string, string> };
 type AmendData = { action: "edit" | "add" | "drop"; unit: string; digest?: string; approved: boolean };
 type StaleData = { phases: string[]; units: string[] };
 
@@ -59,7 +60,8 @@ function gateData(d: unknown): GateData | undefined {
 	const name = typeof d.phase === "string" ? d.phase : typeof d.gate === "string" ? d.gate : undefined;
 	if (name === undefined) return undefined;
 	const waivers = isStringList(d.waivers) ? [...d.waivers] : [];
-	const data: GateData = { name, outcome: d.outcome as Outcome, superseded: d.superseded === true, at: typeof d.at === "string" ? d.at : "", waivers };
+	const notes = typeof d.notes === "string" ? d.notes : "";
+	const data: GateData = { name, outcome: d.outcome as Outcome, superseded: d.superseded === true, at: typeof d.at === "string" ? d.at : "", waivers, notes };
 	const locked = stringRecord(d.locked);
 	if (locked) data.locked = locked;
 	return data;
@@ -67,7 +69,7 @@ function gateData(d: unknown): GateData | undefined {
 
 function amendData(d: unknown): AmendData | undefined {
 	if (!isObject(d) || typeof d.action !== "string" || !ACTIONS.has(d.action) || typeof d.unit !== "string") return undefined;
-	const approved = typeof d.outcome === "string" && OUTCOMES.has(d.outcome) && validApproval({ outcome: d.outcome as Outcome, superseded: d.superseded === true, at: "", waivers: [] });
+	const approved = typeof d.outcome === "string" && OUTCOMES.has(d.outcome) && validApproval({ outcome: d.outcome as Outcome, superseded: d.superseded === true, at: "", waivers: [], notes: "" });
 	const data: AmendData = { action: d.action as AmendData["action"], unit: d.unit, approved };
 	if (typeof d.new === "string") data.digest = d.new;
 	return data;
@@ -162,7 +164,8 @@ function validGatesOf(facts: Fact[]): Record<string, GateResult | undefined> {
 	const stales = stalesOf(facts);
 	for (const g of gatesOf(facts)) {
 		if (stales.some((s) => s.at > g.at && s.data.phases.includes(g.data.name))) continue;
-		results[g.data.name] = { outcome: g.data.outcome, superseded: g.data.superseded, at: g.data.at, waivers: g.data.waivers };
+		const { outcome, superseded, at, waivers, notes } = g.data;
+		results[g.data.name] = { outcome, superseded, at, waivers, notes };
 	}
 	return results;
 }

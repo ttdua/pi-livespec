@@ -129,11 +129,18 @@ describe("deriveLocks", () => {
 		expect(lock.gates.define).toBeUndefined();
 		expect(lock.stalePhases).toEqual(["define", ...LATER]);
 		const again = deriveLocks(change, [gate("define", "approved"), stale("Q3", ["define", ...LATER], []), gate("define", "changes_requested")]);
-		expect(again.gates.define).toEqual({ outcome: "changes_requested", superseded: false, at: expect.any(String), waivers: [] });
+		expect(again.gates.define).toEqual({ outcome: "changes_requested", superseded: false, at: expect.any(String), waivers: [], notes: "" });
 		expect(again.stalePhases).toEqual(["define", ...LATER]);
 		const approved = deriveLocks(change, [stale("Q3", ["define"], []), gate("define", "approved_with_notes", { at: "2026-11-15T11:00:00Z" })]);
-		expect(approved.gates.define).toEqual({ outcome: "approved_with_notes", superseded: false, at: "2026-11-15T11:00:00Z", waivers: [] });
+		expect(approved.gates.define).toEqual({ outcome: "approved_with_notes", superseded: false, at: "2026-11-15T11:00:00Z", waivers: [], notes: "" });
 		expect(approved.stalePhases).toEqual([]);
+	});
+
+	test("valid gate result carries the human's notes", () => {
+		const lock = deriveLocks(parseChange(BODY), [gate("define", "changes_requested", { notes: "tighten the cap" })]);
+		expect(lock.gates.define?.notes).toBe("tighten the cap");
+		const bad = deriveLocks(parseChange(BODY), [gate("define", "dismissed", { notes: 42 })]);
+		expect(bad.gates.define?.notes).toBe("");
 	});
 
 	test("valid gate result carries its waivers", () => {
@@ -150,11 +157,11 @@ describe("deriveLocks", () => {
 			gate("define", "changes_requested", { at: "2026-11-15T10:00:00Z", superseded: true }),
 		]);
 		expect(validApproval(lock.gates.define)).toBe(false);
-		expect(lock.gates.define).toEqual({ outcome: "changes_requested", superseded: true, at: "2026-11-15T10:00:00Z", waivers: [] });
+		expect(lock.gates.define).toEqual({ outcome: "changes_requested", superseded: true, at: "2026-11-15T10:00:00Z", waivers: [], notes: "" });
 		const approvedButSuperseded = deriveLocks(change, [gate("define", "approved"), gate("define", "approved", { superseded: true })]);
 		expect(validApproval(approvedButSuperseded.gates.define)).toBe(false);
-		expect(validApproval({ outcome: "approved_with_notes", superseded: false, at: "t", waivers: [] })).toBe(true);
-		expect(validApproval({ outcome: "dismissed", superseded: false, at: "t", waivers: [] })).toBe(false);
+		expect(validApproval({ outcome: "approved_with_notes", superseded: false, at: "t", waivers: [], notes: "" })).toBe(true);
+		expect(validApproval({ outcome: "dismissed", superseded: false, at: "t", waivers: [], notes: "" })).toBe(false);
 		expect(validApproval(undefined)).toBe(false);
 		const superseded = deriveLocks(parseChange(BODY), [planGate(digests(change)), planGate({ U1: "x" }, { superseded: true })]);
 		expect(superseded.locked).toEqual(digests(change));

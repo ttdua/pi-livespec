@@ -296,7 +296,7 @@ function staleComment(id: string, units: string[]): MarkedComment {
 	return { commentId: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
 }
 
-const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = []): GateResult => ({ outcome, superseded, at: "t", waivers });
+const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes });
 
 describe("nextStep approvals, locks and stuck reports", () => {
 	test("Pending gate request", () => {
@@ -351,6 +351,13 @@ describe("nextStep approvals, locks and stuck reports", () => {
 		const step = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ locked: undefined, gates: { define: gateResult("changes_requested") } }) }));
 		expect(step.next).toBe("The define gate requested changes: revise, then request the gate again.");
 		expect(step.advance).toBeUndefined();
+	});
+
+	test("changes requested and dismissed results carry the human's notes", () => {
+		const changes = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ locked: undefined, gates: { define: gateResult("changes_requested", false, [], "tighten the cap") } }) }));
+		expect(changes.next).toBe("The define gate requested changes: revise, then request the gate again. Notes: tighten the cap");
+		const dismissed = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ locked: undefined, gates: { define: gateResult("dismissed", false, [], "not now") } }) }));
+		expect(dismissed.next).toBe("The define gate was dismissed: ask the human how to proceed. Notes: not now");
 	});
 
 	test("superseded result asks to request again", () => {
