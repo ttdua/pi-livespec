@@ -108,7 +108,18 @@ describe("forge adapter", () => {
 		const early = comment("9", "alice", "/livespec approve", "2025-12-31T23:59:00.000Z");
 		const out = matchThread([gate], [early], writers("alice"), [early, posted(gate, 0)]);
 		expect(out.matches).toEqual([]);
-		expect(out.warnings[0]).toContain("created before the request");
+		// Before the earliest pending request: ignored silently, so old threads are not re-warned every poll.
+		expect(out.warnings).toEqual([]);
+	});
+
+	test("command between two pending requests, before its target, is warned", () => {
+		const question = pending("question:Q3", { mode: "async", snapshot: { id: "Q3", text: "x", requirements: [] } }, "question");
+		const gate = { ...pending("gate:define"), id: "gate-define.later" };
+		gate.data = { ...gate.data, id: gate.id };
+		const early = comment("9", "alice", "/livespec approve", LATER);
+		const out = matchThread([question, gate], [early], writers("alice"), [posted(question, 0), early, posted(gate, 1)]);
+		expect(out.matches).toEqual([]);
+		expect(out.warnings[0]).toContain("created before the request gate-define.later");
 	});
 
 	test("Answer that changes a requirement", () => {
@@ -244,7 +255,7 @@ describe("forge adapter", () => {
 		expect(out.warnings).toEqual([expect.stringContaining(`already answered by ${first}`)]);
 	});
 
-	test("a writer's command answered before the earliest pending request is warned as already answered", async () => {
+	test("a command before the earliest pending request is not warned again", async () => {
 		const { world, n, approver } = await setup();
 		const define = approval({ subject: "gate:define" });
 		await approver.request(define);
@@ -263,7 +274,18 @@ describe("forge adapter", () => {
 		const { perms } = await readPermissions(world.forge, commandAuthors(all, pendingNow));
 		const out = matchCommands(pendingNow, all, perms, { marked });
 		expect(out.matches).toEqual([]);
-		expect(out.warnings).toEqual([`ignored /livespec comment ${late} by bob: gate:define was already answered by ${first}`]);
+		// Outside the window the poll reads (after the earliest pending request), so it is not re-warned on every poll.
+		expect(out.warnings).toEqual([]);
+		expect([first, late]).toHaveLength(2);
+	});
+
+	test("command warnings are capped at five lines plus a count of the rest", () => {
+		const gate = pending("gate:define");
+		const bad = Array.from({ length: 8 }, (_, i) => comment(`${10 + i}`, "bob", "/livespec approve", LATER));
+		const out = matchThread([gate], bad, new Map([["bob", "read"]]));
+		expect(out.warnings).toHaveLength(6);
+		expect(out.warnings.slice(0, 5).every((w) => w.includes("lacks write access"))).toBe(true);
+		expect(out.warnings[5]).toBe("+3 more ignored /livespec comments");
 	});
 
 	test("command authors are read only after the earliest pending request", async () => {

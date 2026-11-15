@@ -29,6 +29,8 @@ export type MatchOptions = {
 };
 
 const WRITERS = new Set<Permission>(["write", "admin"]);
+/** Warning lines kept per pass; the rest are counted in one "+k more" line. */
+const MAX_WARNINGS = 5;
 const GATE_LIKE = ["gate:", "amend:"];
 const CHOICE_LIKE = ["stuck:", "decide:"];
 
@@ -164,6 +166,8 @@ function commandAnswer(request: PendingRequest, command: Command, comment: Comme
 
 type Ctx = {
 	placed: Placed[];
+	/** Comments at or before this index are matched for state but never warned (see `warnFrom`). */
+	warnAfter: number;
 	pendingIds: ReadonlySet<string>;
 	perms: ReadonlyMap<string, Permission>;
 	/** Command comments recorded answers used; they are skipped silently. */
@@ -172,10 +176,28 @@ type Ctx = {
 	answered: Map<string, string>;
 	overrides: Map<string, Map<string, Override>>;
 	result: MatchResult;
+	/** Every warning of the pass, before the cap. */
+	warnings: string[];
 };
 
-function warn(ctx: Ctx, comment: Comment, reason: string): void {
-	ctx.result.warnings.push(`ignored /livespec comment ${comment.id} by ${comment.author}: ${reason}`);
+function warn(ctx: Ctx, comment: Comment, index: number, reason: string): void {
+	if (index > ctx.warnAfter) ctx.warnings.push(`ignored /livespec comment ${comment.id} by ${comment.author}: ${reason}`);
+}
+
+/** The first `MAX_WARNINGS` warnings, then one line counting the rest. */
+function capped(warnings: string[]): string[] {
+	if (warnings.length <= MAX_WARNINGS) return warnings;
+	return [...warnings.slice(0, MAX_WARNINGS), `+${warnings.length - MAX_WARNINGS} more ignored /livespec comments`];
+}
+
+/**
+ * The index of the earliest pending request's own comment: commands at or before it are never warned, the
+ * same window `commandAuthors` reads permissions for, so old commands are not re-warned on every poll.
+ * -1 (warn every command) when a pending request's comment is not in the thread.
+ */
+function warnAfterOf(placed: Placed[], pendingIds: ReadonlySet<string>): number {
+	const found = placed.filter((p) => pendingIds.has(p.request.id)).map((p) => p.at);
+	return found.length === pendingIds.size && found.length > 0 && !found.includes(-1) ? Math.min(...found) : -1;
 }
 
 /** Requests open at `index`: posted before the comment and not closed before it. */
@@ -209,14 +231,14 @@ function withOverrides(ctx: Ctx, request: PendingRequest, answer: Answered): Ans
 	return overrides && overrides.size > 0 ? { ...answer, overrides: [...overrides.values()] } : answer;
 }
 
-function apply(ctx: Ctx, comment: Comment, request: PendingRequest, command: Command): void {
+function apply(ctx: Ctx, comment: Comment, index: number, request: PendingRequest, command: Command): void {
 	if (command.verb === "set") return recordSet(ctx, request, command);
 	if (command.verb === "class") {
 		ctx.result.classes.push({ question: command.question, class: command.class });
 		return;
 	}
 	const answer = decisionAnswer(request, command, comment);
-	if (typeof answer === "string") return warn(ctx, comment, answer);
+	if (typeof answer === "string") return warn(ctx, comment, index, answer);
 	ctx.answered.set(request.id, comment.id);
 	if (ctx.pendingIds.has(request.id)) ctx.result.matches.push({ request, answer: withOverrides(ctx, request, answer) });
 }
@@ -228,14 +250,14 @@ function apply(ctx: Ctx, comment: Comment, request: PendingRequest, command: Com
 function matchOne(ctx: Ctx, comment: Comment, index: number): void {
 	const parsed = parseCommand(comment.body);
 	if (parsed === undefined || ctx.consumed.has(comment.id)) return;
-	if ("error" in parsed) return warn(ctx, comment, `cannot be parsed (${parsed.error})`);
+	if ("error" in parsed) return warn(ctx, comment, index, `cannot be parsed (${parsed.error})`);
 	const target = targetOf(openAt(ctx, comment, index), parsed);
-	if ("warning" in target) return warn(ctx, comment, beforeRequest(ctx, parsed, index) ?? target.warning);
+	if ("warning" in target) return warn(ctx, comment, index, beforeRequest(ctx, parsed, index) ?? target.warning);
 	const first = parsed.verb === "set" || parsed.verb === "class" ? undefined : answeredBy(ctx, target.request);
-	if (first !== undefined) return warn(ctx, comment, `${target.request.subject} was already answered by ${first}`);
+	if (first !== undefined) return warn(ctx, comment, index, `${target.request.subject} was already answered by ${first}`);
 	if (!ctx.pendingIds.has(target.request.id)) return;
-	if (!WRITERS.has(ctx.perms.get(comment.author) ?? "none")) return warn(ctx, comment, "its author lacks write access");
-	apply(ctx, comment, target.request, parsed);
+	if (!WRITERS.has(ctx.perms.get(comment.author) ?? "none")) return warn(ctx, comment, index, "its author lacks write access");
+	apply(ctx, comment, index, target.request, parsed);
 }
 
 function consumedIds(placed: Placed[]): Set<string> {
@@ -246,6 +268,12 @@ function consumedIds(placed: Placed[]): Set<string> {
  * Matches plain command comments to requests (design D4), in comment order. Each command targets the
  * requests open at its position; the first valid answer per request wins and later ones are warned.
  * Only answers to `pending` requests are returned. `perms` holds `getPermission` per author.
+ *
+ * Warnings: a command is warned for its target (unparsable, no or ambiguous target, created before its
+ * request, already answered) before its author's permission is checked, so a target warning wins. A
+ * command whose target is not pending any more (an applying or completed request, including any `set` or
+ * `class`) is skipped silently. Only commands after the earliest pending request are warned (the window
+ * `commandAuthors` reads permissions for), and the list is capped at five lines plus "+k more".
  */
 export function matchCommands(
 	pending: PendingRequest[],
@@ -254,15 +282,19 @@ export function matchCommands(
 	opts: MatchOptions,
 ): MatchResult {
 	const placed = place(comments, opts.marked);
+	const pendingIds = new Set(pending.map((p) => p.id));
 	const ctx: Ctx = {
 		placed,
-		pendingIds: new Set(pending.map((p) => p.id)),
+		warnAfter: warnAfterOf(placed, pendingIds),
+		pendingIds,
 		perms,
 		consumed: consumedIds(placed),
 		answered: new Map(),
 		overrides: new Map(),
 		result: { matches: [], classes: [], warnings: [] },
+		warnings: [],
 	};
 	comments.forEach((comment, index) => matchOne(ctx, comment, index));
+	ctx.result.warnings = capped(ctx.warnings);
 	return ctx.result;
 }
