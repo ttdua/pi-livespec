@@ -45,6 +45,7 @@ const UNITS_SENTENCE = "Write Units (the plan_units tool arrives with LS-05).";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
 const SHIP_PHASE = "ship";
 const QUESTION_SUBJECT = "question:";
+const STUCK_SUBJECT = "stuck:";
 const FORGE_ADAPTER: AdapterName = "forge";
 const ADAPTER_PLACE: Record<AdapterName, string> = { forge: "on the forge", "in-session": "in session" };
 
@@ -150,10 +151,15 @@ const notStarted: Rule = ({ state, phase }) => {
 	return { next: `Run change_start #${state.issue.number} to create the change branch.` };
 };
 
-/** Rule 3: an unanswered stuck report. */
-const openStuck: Rule = ({ state }) => {
+/**
+ * Rule 3: an unanswered stuck report. Without a pending or applying request for it (the send failed or
+ * the request was lost), nobody is asked: the agent must send it again.
+ */
+const openStuck: Rule = ({ state, requests }) => {
 	const id = state.iterations.stuckOpen;
-	return id ? { next: `Wait for the human's choice on stuck report ${id}.` } : undefined;
+	if (!id) return undefined;
+	if (!requests.some((r) => r.subject === `${STUCK_SUBJECT}${id}`)) return { next: `Stuck report ${id} has no pending request: send it again with spec_stuck.` };
+	return { next: `Wait for the human's choice on stuck report ${id}.` };
 };
 
 /** Rule 4: a pending blocking request, or any answered request whose effects are not yet applied. */

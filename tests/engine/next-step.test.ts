@@ -307,8 +307,16 @@ describe("nextStep approvals, locks and stuck reports", () => {
 	});
 
 	test("Stuck report first", () => {
-		const step = nextStep(pack, state("define", FIXTURE_BODY, { iterations: iterations({ stuckOpen: "S1" }) }));
+		const step = nextStep(pack, state("define", FIXTURE_BODY, { iterations: iterations({ stuckOpen: "S1" }), requests: requests([request("stuck:S1", "stuck", "blocking")]) }));
 		expect(step.next).toBe("Wait for the human's choice on stuck report S1.");
+		expect(step.stuckOpen).toBe("S1");
+		const answered = nextStep(pack, state("define", FIXTURE_BODY, { iterations: iterations({ stuckOpen: "S1" }), requests: requests([], [applying("stuck:S1", "stuck")]) }));
+		expect(answered.next).toBe("Wait for the human's choice on stuck report S1.");
+	});
+
+	test("an unanswered stuck report with no request asks to send it again", () => {
+		const step = nextStep(pack, state("define", FIXTURE_BODY, { iterations: iterations({ stuckOpen: "S1" }) }));
+		expect(step.next).toBe("Stuck report S1 has no pending request: send it again with spec_stuck.");
 		expect(step.stuckOpen).toBe("S1");
 	});
 

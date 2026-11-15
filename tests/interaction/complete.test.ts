@@ -351,7 +351,7 @@ describe("completion engine", () => {
 		const f = await fixture("build");
 		const options = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
 		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options, recommended: "A" }));
-		expect((await stateOf(f)).step.next).toContain("stuck report S1");
+		expect((await stateOf(f)).step.next).toBe("Stuck report S1 has no pending request: send it again with spec_stuck.");
 		const record = await prepare(f, "stuck", "stuck:S1", { id: "S1" }, options);
 		const polled = await forgeAnswer(f, record, "/livespec choose B");
 		await completeAnswer(await ctxOf(f), record, polled);
