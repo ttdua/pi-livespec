@@ -10,10 +10,14 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │              decisions, glossary · unit digest · byte-preserving tick             │
 │ engine/      flow pack loader and schema · change snapshot · next step · checks   │
 │              · phase advance · loop counters · comments cache · git reads         │
-│ decide/      decision seam, rules and decision records                            │
+│              · gates (registerGate, refusals) · locks, frozen, stale · iterations │
+│ decide/      decide() seam · registerRule · rules: tags, difficulty · decision    │
+│              records (issue comment, PR-body block) · override records            │
 │ forge/       Forge interface · GitHub adapter (gh) · Gitea adapter (REST)         │
 │              · cache with version · comment markers · read-only mode              │
-│ interaction/ Approver interface and adapters (gates, questions, stuck reports)    │
+│ interaction/ Approver contract · adapters: in-session (dialogs), forge (request   │
+│              comments) · adapter chain · /livespec command parser and matching    │
+│              · requests · polling · completion, one handler per subject kind      │
 │ tools/       spec_status · spec_next · spec_validate · spec_write · spec_gate ·   │
 │              spec_question · spec_stuck · plan_units · unit_amend · unit_start ·  │
 │              unit_finish · change_new · change_start · change_split ·             │
@@ -106,6 +110,38 @@ define ──gate──► plan ──gate──► build ──► review ─�
 - `shape` comes first. It clarifies the intent and may split the work into an initiative of several changes.
 - The **small-fix lane** skips the ceremony: on a `fix/<slug>` branch it edits code, tests and the living spec directly, with no issue, and ships one pull request. A post-check moves the work into a full change when the fix turns out not to be small.
 - Every loop has a cap. Reaching a cap stops the work and sends a stuck report to the human.
+
+## Gates and decisions
+
+Every human decision (a phase or named gate, a unit amendment, a question, a stuck report, a rule that asks) follows one lifecycle, and its whole state lives on the change issue as own marked comments. No tool takes an outcome, choice, answer, `Difficulty` or `Tags` parameter, so the agent can only ask, never answer.
+
+**Request → answer → result.**
+
+- **Request.** The forge adapter writes a `request` comment with the subject (`gate:<phase|name>`, `amend:<n>`, `question:Q<n>`, `stuck:S<n>`, `decide:<point>.<subject>`), the mode, the options, `head_sha` and a snapshot of what the human sees. Only one request per subject may be pending.
+- **Answer.** An `answer` comment records the full request, the human's answer and the validation verdict (`valid` or `superseded`). Validation runs once, before the answer is written: a gate checks that HEAD, the gate digest and the refusal conditions are unchanged; an amendment checks the affected units' digests and the resulting plan. The in-session adapter writes the `answer` comment directly, with no `request`.
+- **Result.** Completion applies the effects in a fixed order, each skipped when already applied (body edit, `stale` or `decision` comments, phase move), and writes the result comment (`gate`, `amendment`, `question`, `stuck` or `decision`) last. A crash leaves the request *applying*, and the next poll or livespec tool finishes it. Completion is one handler per subject kind.
+- **Derived advance.** A phase moves when its *valid gate result* (the latest own `gate` comment newer than the latest `stale` comment listing the phase, not superseded) is approved; `ship` never advances. A failed label move retries on every refresh. A gate result carries `waivers`: the waivable checks the human waived with `/livespec choose waive`, so an approved waived gate advances even though those checks still fail.
+
+**Adapter chain.** `interaction.adapter` lists `in-session` and `forge` in order; project config wins over user config, and the default is `[in-session]`. The chain skips an adapter that is unavailable (in-session without a UI; forge unconnected, read-only or blocked by the account) and refuses, naming the config key, when none is left. The in-session adapter asks through pi dialogs; a cancelled dialog is `dismissed`. `/livespec doctor` names the list, its source and the adapter that would answer now.
+
+**Forge commands and polling.** A writer answers a forge request with a plain comment whose first line is a command: `/livespec approve [notes]`, `changes <notes>`, `dismiss [notes]`, `choose <option> [notes]`, `answer Q<n> <text> [--changes <capability>/Requirement: <name>] [--class …]`, `class Q<n> …`, or `set U<n> difficulty|tags …` (an override applied only if the pending plan or amendment gate is approved). Polling runs at session start, at `/livespec next` and before every livespec tool; it is single-flight per session, so parallel tool calls share one run. It finishes applying requests first, then matches commands:
+
+- Only authors with `write` or `admin` count; permission is read once per author per poll and fails closed.
+- A command targets by **position in the thread**: only requests posted before it and still open at that point count. A command ignored once (ambiguous, too early, `approve` while waivable checks fail) therefore stays ignored, and the card shows the reason.
+- `approve`, `changes` and `choose` target the single pending gate or amendment, else the single pending stuck or decide request.
+- Edits after completion are ignored; the result records the answering comment's id, author and `updatedAt`.
+
+**Lock and amendments.** The approved plan gate stores the digest of every unit (`locked`). Later approved amendments (edit, add, drop) update that map in comment order. A unit whose current digest differs from the lock is *frozen*, for example after a web edit; ticking a status line does not freeze. Frozen units block the plan gate and the build work until `unit_amend` gets the change approved. A drop of a unit that another unit depends on is refused.
+
+**Cascade and `change_iterations`.** An answer that names a changed requirement runs a cascade: one body write (the answer line, plus unticking every done unit whose `Covers` holds that requirement), a `stale` comment listing `define` and every later phase and those units, then a move back to define. The `stale` comment sets `after_plan` only when the cascade actually moved the change back from past define after an approved plan gate. `change_iterations` is derived, never stored: it is the number of own `stale` comments with `after_plan: true`, so a retried completion cannot count twice. When it reaches `loops.change_iterations`, the next step asks for `spec_stuck` and every gate refuses, until a stuck answer is dated after the latest increment. A `dismissed` stuck answer does not lift the cap; only a choice does.
+
+**Decisions.** `decide(point, facts)` runs the registered rule (`tags`, `difficulty`), which returns an outcome or asks the human. Every outcome is posted as a `decision` record keyed by point and subject with the unit digest; the `unit-classification` check compares the body with the latest record, so a tag removed from the body is caught. The agent can only add tags through `extra_tags`, which the record lists as `agent_additions`.
+
+**Known gaps.** LS-06 closes the first two.
+
+- **Same-login command comments.** Commands from the plugin's own login are accepted, because the person running pi and the plugin account are usually the same login. Until LS-06's guard on direct forge writes (`gh`, `tea` and raw API calls in bash), the agent could post `/livespec approve` itself. The `gate` result records the answering comment's id and author for audit.
+- **Pack overrides that lower a gate.** `.pi/livespec/flow.yaml` can still set `define`, `plan` or `ship` to `gate: self`, and the agent can edit that file. LS-06 adds a guard that blocks agent writes to `.pi/livespec/`.
+- **Cross-session polling.** Polling is single-flight within one session only. Two sessions or machines polling the same issue at once are not coordinated; each completion step is idempotent against the state it reads, but concurrent writers are not serialized.
 
 ## Forge accounts
 
