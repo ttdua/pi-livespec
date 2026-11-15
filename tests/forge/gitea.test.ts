@@ -130,6 +130,7 @@ describe("gitea adapter", () => {
 				expect((error as ForgeError).message).toContain("gitea.example.org");
 				expect((error as ForgeError).message).toContain("/livespec account");
 				expect((error as ForgeError).message).not.toContain(FAKE_TOKEN);
+				expect((error as ForgeError).message).not.toContain("admin-token");
 				expect(w.fake.calls).toEqual([]);
 			});
 

@@ -194,14 +194,14 @@ export class GitHubWorld implements ContractWorld {
 	}
 }
 
-/** Runs the fake with FAKE_GH_STATE set, without touching the test process environment. */
+/**
+ * Ambient token variables blanked for every fake `gh` run, so a real token of
+ * the machine never decides identity or lands in the state file. The fake
+ * treats an empty value as unset.
+ */
+const BLANK_TOKEN_ENV = { GH_TOKEN: "", GH_ENTERPRISE_TOKEN: "" };
+
+/** Runs the fake with FAKE_GH_STATE and the per-call env in its own environment; `process.env` is never mutated. */
 function defaultExecWithState(statePath: string, file: string, args: string[], input?: string, env?: Record<string, string>) {
-	const previous = process.env.FAKE_GH_STATE;
-	process.env.FAKE_GH_STATE = statePath;
-	try {
-		return defaultExec(file, args, input, env);
-	} finally {
-		if (previous === undefined) delete process.env.FAKE_GH_STATE;
-		else process.env.FAKE_GH_STATE = previous;
-	}
+	return defaultExec(file, args, input, { ...BLANK_TOKEN_ENV, FAKE_GH_STATE: statePath, ...env });
 }

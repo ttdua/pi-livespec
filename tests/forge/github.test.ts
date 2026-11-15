@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createExec, type ExecFn, type ExecResult, GitHubForge, tokenEnvVar } from "../../src/forge/github.ts";
@@ -406,6 +406,28 @@ describe("github adapter with an account token", () => {
 		for (const arg of w.argvLog().flat()) {
 			expect(arg).not.toContain("evil.example.org");
 			expect(arg).not.toContain("\n");
+		}
+	});
+
+	it("ambient gh token variables never reach the fake gh", async () => {
+		const AMBIENT = "ambient-sentinel";
+		const saved = { GH_TOKEN: process.env.GH_TOKEN, GH_ENTERPRISE_TOKEN: process.env.GH_ENTERPRISE_TOKEN };
+		process.env.GH_TOKEN = `${AMBIENT}-gh`;
+		process.env.GH_ENTERPRISE_TOKEN = `${AMBIENT}-ghe`;
+		try {
+			const w = new GitHubWorld();
+			worlds.push(w);
+
+			expect(await w.forge.whoami()).toEqual({ login: BOT_LOGIN });
+			await w.forge.createIssue({ title: "t", body: "b", labels: [] });
+
+			expect(readFileSync(w.store.path, "utf8")).not.toContain(AMBIENT);
+			for (const env of w.envLog()) expect(env).toEqual({});
+		} finally {
+			for (const [name, value] of Object.entries(saved)) {
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
 		}
 	});
 

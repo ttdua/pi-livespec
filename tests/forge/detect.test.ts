@@ -383,6 +383,18 @@ describe("resolveForgeTarget", () => {
 		expect(probe.calls).toEqual([]);
 	});
 
+	it("tea SSH host matches with the port ignored on both sides", async () => {
+		const teaConfigPath = await teaConfig(
+			"logins:\n  - name: gitea.example.org\n    url: https://gitea.example.org\n    token: tok\n    ssh_host: SSH.Gitea.Example.org:2222\n",
+		);
+		for (const origin of ["ssh://git@ssh.gitea.example.org:2222/acme/shop.git", "git@ssh.gitea.example.org:acme/shop.git"]) {
+			const { deps, probe } = baseDeps({ origin, teaConfigPath });
+
+			await expect(resolveForgeTarget(REPO, deps)).resolves.toMatchObject({ kind: "gitea", baseUrl: "https://gitea.example.org", host: "gitea.example.org" });
+			expect(probe.calls).toEqual([]);
+		}
+	});
+
 	it("tea SSH host shared by two URLs falls back to the probe", async () => {
 		const teaConfigPath = await teaConfig(
 			[
