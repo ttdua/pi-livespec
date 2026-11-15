@@ -73,8 +73,8 @@ Blocked by: 4, 7
 
 Blocked by: 6, 7, 8
 
-- [ ] 9.1 Wire every hook, command and tool in `src/extension.ts` and update the usage text and `tests/extension.test.ts`
-- [ ] 9.2 Add an end-to-end resume test: a fake pi session on `livespec/<name>` with the in-memory forge shows the right next step
-- [ ] 9.3 Update `docs/architecture.md` (engine and content, pack location)
+- [x] 9.1 Wire every hook, command and tool in `src/extension.ts` and update the usage text and `tests/extension.test.ts`
+- [x] 9.2 Add an end-to-end resume test: a fake pi session on `livespec/<name>` with the in-memory forge shows the right next step
+- [x] 9.3 Update `docs/architecture.md` (engine and content, pack location)
 - [ ] 9.4 Run the manual 5-turn cache smoke through 9router and record it in `openspec/changes/engine-and-content/smoke.md`
-- [ ] 9.5 Run `bun run typecheck` and `bun run test`
+- [x] 9.5 Run `bun run typecheck` and `bun run test`
