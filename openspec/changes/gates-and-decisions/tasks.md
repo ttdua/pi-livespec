@@ -48,11 +48,11 @@ Blocked by: 4
 
 Blocked by: 3, 4, 5
 
-- [ ] 6.1 Add `src/interaction/complete.ts`: validate an answer once (HEAD, gate digest, `gateRefusal` ignoring the request itself, the amendment snapshot and the resulting plan), record the `answer` comment, then dispatch to one apply module per subject kind and write the result comment last
-- [ ] 6.2 Add the apply modules `complete-gate.ts` (overrides, `stale` on changes), `complete-amend.ts`, `complete-question.ts` (answer line, reclassify, cascade in design D12 order), `complete-stuck.ts` and `complete-decide.ts`, each idempotent
-- [ ] 6.3 Add `src/interaction/forge.ts`: request comment with yaml and plain-text instructions, one pending request per subject, `poll(requestId)`, and the pure `matchCommands` with permission, timing and ambiguity rules that produce ignored-command warnings
-- [ ] 6.4 Add `src/interaction/poll.ts` `pollApprovals` (finish applying requests first, then read fresh comments for pending ones) and `src/tools/register.ts`, which wraps every livespec tool (including `spec_validate`) so polling runs before it; hook polling into `session_start` and `/livespec next`
-- [ ] 6.5 Add `src/tools/approver-for.ts` (the adapter chain from session config and the tool `ctx`), and the approver doctor check with config and `hasUI` added to `DoctorDeps`
+- [x] 6.1 Add `src/interaction/complete.ts`: validate an answer once (HEAD, gate digest, `gateRefusal` ignoring the request itself, the amendment snapshot and the resulting plan), record the `answer` comment, then dispatch to one apply module per subject kind and write the result comment last
+- [x] 6.2 Add the apply modules `complete-gate.ts` (overrides, `stale` on changes), `complete-amend.ts`, `complete-question.ts` (answer line, reclassify, cascade in design D12 order), `complete-stuck.ts` and `complete-decide.ts`, each idempotent
+- [x] 6.3 Add `src/interaction/forge.ts`: request comment with yaml and plain-text instructions, one pending request per subject, `poll(requestId)`, and the pure `matchCommands` with permission, timing and ambiguity rules that produce ignored-command warnings
+- [x] 6.4 Add `src/interaction/poll.ts` `pollApprovals` (finish applying requests first, then read fresh comments for pending ones) and `src/tools/register.ts`, which wraps every livespec tool (including `spec_validate`) so polling runs before it; hook polling into `session_start` and `/livespec next`
+- [x] 6.5 Add `src/tools/approver-for.ts` (the adapter chain from session config and the tool `ctx`), and the approver doctor check with config and `hasUI` added to `DoctorDeps`
 
 ## 7. Gates tool
 
