@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { loadConfig } from "../src/config.ts";
+import { adapterChain, loadConfig } from "../src/config.ts";
 
 let root: string;
 let home: string;
@@ -113,5 +113,72 @@ describe("loadConfig", () => {
 		userFile("bogus: 1\n");
 		const { warnings } = await loadConfig(root, home);
 		expect(warnings.some((w) => w.includes("bogus"))).toBe(true);
+	});
+
+	test("Interaction adapter list", async () => {
+		projectFile("interaction: { adapter: [forge, in-session] }\n");
+		const config = await loadConfig(root, home);
+		expect(config.project?.interaction).toEqual({ adapter: ["forge", "in-session"] });
+		expect(adapterChain(config)).toEqual({ chain: ["forge", "in-session"], source: "project" });
+		expect(config.warnings).toEqual([]);
+	});
+
+	test("Unknown adapter name", async () => {
+		userFile("interaction: { adapter: [plannotator] }\n");
+		const config = await loadConfig(root, home);
+		expect(config.warnings.some((w) => w.includes("plannotator") && w.includes("unknown adapter"))).toBe(true);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+	});
+
+	test("interaction adapter must be a list", async () => {
+		projectFile("interaction: { adapter: forge }\n");
+		userFile("interaction: [forge]\n");
+		const config = await loadConfig(root, home);
+		expect(config.project?.interaction).toBeUndefined();
+		expect(config.user.interaction).toBeUndefined();
+		expect(config.warnings.some((w) => w.includes("interaction.adapter") && w.includes("list"))).toBe(true);
+		expect(config.warnings.some((w) => w.includes('"interaction" must be a mapping'))).toBe(true);
+		expect(adapterChain(config).chain).toEqual(["in-session"]);
+	});
+
+	test("unknown interaction key warns", async () => {
+		userFile("interaction: { adapter: [forge], timeout: 3 }\n");
+		const config = await loadConfig(root, home);
+		expect(config.warnings.some((w) => w.includes("interaction.timeout"))).toBe(true);
+		expect(config.user.interaction).toEqual({ adapter: ["forge"] });
+	});
+
+	test("project chain wins over user chain", async () => {
+		projectFile("interaction: { adapter: [forge] }\n");
+		userFile("interaction: { adapter: [in-session, forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["forge"], source: "project" });
+	});
+
+	test("present project setting wins even when empty, and an empty chosen list falls back to the default source", async () => {
+		projectFile("interaction: { adapter: [] }\n");
+		userFile("interaction: { adapter: [forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+	});
+
+	test("project list of only unknown names falls back to the default source, not the user chain", async () => {
+		projectFile("interaction: { adapter: [plannotator] }\n");
+		userFile("interaction: { adapter: [forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+	});
+
+	test("user chain is used without a project chain", async () => {
+		projectFile("forge: github\n");
+		userFile("interaction: { adapter: [in-session, forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session", "forge"], source: "user" });
+	});
+
+	test("empty adapter list falls back to the default", async () => {
+		projectFile("interaction: { adapter: [] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
 	});
 });
