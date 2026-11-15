@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
+import { registerBuiltinRules } from "../../src/decide/registry.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import { createGit, type Git } from "../../src/engine/git.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
@@ -35,6 +36,7 @@ let pack: Pack;
 
 beforeEach(async () => {
 	resetRegistryForTests();
+	registerBuiltinRules();
 	registerBuiltinChecks();
 	const loaded = await loadPack("/nowhere", { readFile: async () => undefined });
 	if (!loaded.ok) throw new Error("default pack must load");

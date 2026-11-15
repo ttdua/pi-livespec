@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { registerBuiltinRules } from "../../src/decide/registry.ts";
+import type { TagsConfig } from "../../src/decide/rules/tags.ts";
 import { defaultPackPath, loadPack } from "../../src/engine/pack-load.ts";
 import type { LoadedPack } from "../../src/engine/pack-types.ts";
 import { registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
@@ -35,6 +37,7 @@ function phase(r: LoadedPack, id: string) {
 
 beforeEach(() => {
 	resetRegistryForTests();
+	registerBuiltinRules();
 	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff"]) {
 		registerCheck(name, async () => []);
 	}
@@ -70,6 +73,7 @@ describe("default pack", () => {
 		expect(define.checks).toEqual(["spec-format", "capabilities-match-diff"]);
 		expect(define.gate).toBe("human");
 		expect(phase(r, "build").per).toBe("unit");
+		expect((okPack(r).decisions.difficulty as { mode: string }).mode).toBe("rule");
 	});
 
 	test("Registered check name", async () => {
@@ -105,6 +109,29 @@ describe("override merge", () => {
 		expect(pack.phases).toHaveLength(8);
 		expect(pack.phases.at(-1)?.id).toBe("docs");
 		expect(phase(r, "docs").gate).toBe("none");
+	});
+
+	test("Decisions merge through the rule", async () => {
+		const r = await load('extends: agent-skills\ndecisions:\n  tags:\n    mode: rule\n    paths:\n      security: ["**/crypto/**"]\n      infra: ["ops/**"]\n');
+		const tags = okPack(r).decisions.tags as TagsConfig;
+		expect(tags.mode).toBe("rule");
+		expect(tags.paths.security).toEqual(["**/auth/**", "**/middleware/**", "**/crypto/**"]);
+		expect(tags.paths.infra).toEqual(["ops/**"]);
+		expect(tags.paths.ui).toEqual(["**/*.tsx", "**/*.jsx", "**/*.css", "**/*.vue", "**/*.svelte"]);
+		expect(tags.keywords.api).toEqual(["endpoint", "public api"]);
+		expect(okPack(r).decisions.difficulty).toEqual({ mode: "rule" });
+	});
+
+	test("override of a decision point without mode is an error", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  difficulty: {}\n");
+		expect(r.ok).toBe(false);
+	});
+
+	test("override with mode jev is rejected at its position", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  tags:\n    mode: jev\n");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 4, col: 11 });
 	});
 
 	test("Merge loops", async () => {

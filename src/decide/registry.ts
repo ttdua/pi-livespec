@@ -1,0 +1,99 @@
+// Decision rule registry: one rule per decision point, plus the `decisions`
+// pack sub-schema that dispatches on the point key.
+
+import { type Node, type Pair, isMap, isScalar } from "yaml";
+import { registerPackSchema } from "../engine/registry.ts";
+import { difficultyRule, difficultySchema } from "./rules/difficulty.ts";
+import { tagsRule, tagsSchema } from "./rules/tags.ts";
+
+export type RuleResult =
+	| { outcome: unknown; reason: string; data?: { agentAdditions?: string[] } }
+	| { ask: { summary: string; options: { id: string; label: string }[] } };
+
+export type RuleSchema = {
+	validate(node: Node | null, report: (n: Node, msg: string) => void): void;
+	merge?(base: unknown, over: unknown): unknown;
+};
+
+export type RuleFn = (facts: unknown, config: unknown) => RuleResult;
+export type Rule = { schema: RuleSchema; fn: RuleFn };
+
+const rules = new Map<string, Rule>();
+
+type Raw = Record<string, unknown>;
+
+function isRaw(v: unknown): v is Raw {
+	return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function keyName(pair: Pair): string | undefined {
+	return isScalar(pair.key) ? String(pair.key.value) : undefined;
+}
+
+/** Checks the shared `mode: rule` key of one point's config. */
+function validateMode(map: Node, modePair: Pair | undefined, report: (n: Node, msg: string) => void): void {
+	const value = modePair?.value;
+	if (isScalar(value) && value.value === "rule") return;
+	if (isScalar(value) && value.value === "jev") {
+		report(value, "`jev` is reserved for a later version; use `mode: rule`");
+		return;
+	}
+	report((value as Node | null | undefined) ?? map, "`mode` must be `rule`");
+}
+
+/** Validates the whole `decisions` map: known points, `mode: rule`, then the point's own schema. */
+function validateDecisions(node: Node | null, report: (n: Node, msg: string) => void): void {
+	if (!isMap(node)) {
+		if (node) report(node, "`decisions` must be a map");
+		return;
+	}
+	for (const pair of node.items) {
+		const point = keyName(pair);
+		const rule = point === undefined ? undefined : rules.get(point);
+		if (!rule) {
+			report(pair.key as Node, `no rule is registered for decision point \`${point ?? "?"}\``);
+			continue;
+		}
+		const value = pair.value as Node | null;
+		if (!isMap(value)) {
+			report((value ?? pair.key) as Node, `\`decisions.${point}\` must be a map`);
+			continue;
+		}
+		validateMode(value, value.items.find((p) => keyName(p) === "mode"), report);
+		rule.schema.validate(value, report);
+	}
+}
+
+export function registerRule(point: string, schema: RuleSchema, fn: RuleFn): void {
+	rules.set(point, { schema, fn });
+	registerPackSchema("decisions", { validate: validateDecisions });
+}
+
+export function ruleFor(point: string): Rule | undefined {
+	return rules.get(point);
+}
+
+export function resetRulesForTests(): void {
+	rules.clear();
+}
+
+export function registerBuiltinRules(): void {
+	registerRule("tags", tagsSchema, tagsRule);
+	registerRule("difficulty", difficultySchema, difficultyRule);
+}
+
+/** Merges two `decisions` values per point: the point's `merge`, else a one-level spread. */
+export function mergeDecisions(base: unknown, over: unknown): Record<string, unknown> {
+	const b = isRaw(base) ? base : {};
+	const o = isRaw(over) ? over : {};
+	const merged: Record<string, unknown> = { ...b };
+	for (const [point, value] of Object.entries(o)) {
+		if (!(point in b)) {
+			merged[point] = value;
+			continue;
+		}
+		const merge = rules.get(point)?.schema.merge;
+		merged[point] = merge ? merge(b[point], value) : { ...(isRaw(b[point]) ? b[point] : {}), ...(isRaw(value) ? value : {}) };
+	}
+	return merged;
+}

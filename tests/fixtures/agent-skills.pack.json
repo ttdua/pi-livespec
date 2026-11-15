@@ -13,7 +13,58 @@
 		"change_iterations": 5,
 		"discovered_deps": 2
 	},
-	"decisions": {},
+	"decisions": {
+		"tags": {
+			"mode": "rule",
+			"paths": {
+				"security": [
+					"**/auth/**",
+					"**/middleware/**"
+				],
+				"migration": [
+					"**/migrations/**"
+				],
+				"ui": [
+					"**/*.tsx",
+					"**/*.jsx",
+					"**/*.css",
+					"**/*.vue",
+					"**/*.svelte"
+				],
+				"api": [
+					"**/api/**",
+					"**/routes/**"
+				]
+			},
+			"keywords": {
+				"security": [
+					"auth",
+					"token",
+					"password",
+					"session",
+					"permission",
+					"secret"
+				],
+				"migration": [
+					"migration",
+					"schema"
+				],
+				"perf": [
+					"performance",
+					"latency",
+					"throughput",
+					"cache"
+				],
+				"api": [
+					"endpoint",
+					"public api"
+				]
+			}
+		},
+		"difficulty": {
+			"mode": "rule"
+		}
+	},
 	"init": {
 		"skills": [
 			"constraint-driven-development"
