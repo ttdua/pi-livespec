@@ -287,6 +287,41 @@ describe("in-session approver", () => {
 		expect(result).toMatchObject({ outcome: "approved", choice: "b" });
 	});
 
+	test("options whose rendered labels collide stay distinct and each maps to its own id", async () => {
+		const request = gateRequest({
+			kind: "stuck",
+			subject: "stuck:S1",
+			options: [
+				{ id: "a] [b", label: "Retry" },
+				{ id: "b", label: "Retry [a]" },
+			],
+		});
+		const first = scriptedUI(["Retry [a] [b]"]);
+		const viaFirst = await createInSessionApprover(first, login).request(request);
+		const menu = (first.calls[0] as { options: string[] }).options;
+		expect(menu).toEqual(["Retry [a] [b]", "Retry [a] [b] (2)"]);
+		expect(viaFirst).toMatchObject({ outcome: "approved", choice: "a] [b" });
+
+		const second = scriptedUI(["Retry [a] [b] (2)"]);
+		const viaSecond = await createInSessionApprover(second, login).request(request);
+		expect(viaSecond).toMatchObject({ outcome: "approved", choice: "b" });
+	});
+
+	test("duplicate option entries both stay in the menu with a suffix", async () => {
+		const request = gateRequest({
+			options: [
+				{ id: "x", label: "Go" },
+				{ id: "x", label: "Go" },
+			],
+		});
+		const ui = scriptedUI(["Go [x] (2)", "No notes"]);
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(ui.calls[0]).toMatchObject({
+			options: ["approve", "request changes", "dismiss", "Go [x]", "Go [x] (2)"],
+		});
+		expect(result).toMatchObject({ outcome: "approved", choice: "x" });
+	});
+
 	test("raw option label without the id suffix is not accepted", async () => {
 		const request = gateRequest({ kind: "stuck", subject: "stuck:S1", options: [{ id: "a", label: "Retry" }] });
 		const result = await createInSessionApprover(scriptedUI(["Retry"]), login).request(request);

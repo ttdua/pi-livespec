@@ -36,20 +36,30 @@ type MenuEntry<T> = readonly [label: string, value: T];
 
 /**
  * Shows `entries` and returns the value of the picked label. A cancel, or a label
- * that is not in the table, is `CANCELLED`. Labels are unique by construction
- * (option labels end in `[<id>]`, built-ins never do); a repeated label can only
- * come from a repeated option id, which names the same option, so the first wins.
+ * that is not in the table, is `CANCELLED`.
  */
 async function choose<T>(ui: ApproverUI, title: string, entries: readonly MenuEntry<T>[]): Promise<T | Cancelled> {
-	const table = new Map<string, T>();
-	for (const [label, value] of entries) {
-		if (!table.has(label)) table.set(label, value);
-	}
+	const table = displayTable(entries);
 	const picked = await ui.select(title, [...table.keys()]);
 	return picked !== undefined && table.has(picked) ? (table.get(picked) as T) : CANCELLED;
 }
 
-/** Request options are shown as `<label> [<id>]`, unique per id and distinct from the built-in action labels. */
+/**
+ * Builds the label → value table by position. A label that collides with an
+ * earlier one (a built-in or another option) gets ` (2)`, ` (3)`, … until it is
+ * unique, so no entry is ever dropped or shadowed.
+ */
+function displayTable<T>(entries: readonly MenuEntry<T>[]): Map<string, T> {
+	const table = new Map<string, T>();
+	for (const [label, value] of entries) {
+		let display = label;
+		for (let n = 2; table.has(display); n++) display = `${label} (${n})`;
+		table.set(display, value);
+	}
+	return table;
+}
+
+/** Request options are shown as `<label> [<id>]`; `choose` makes any remaining collision unique by position. */
 function optionEntries<T>(options: RequestOption[], wrap: (o: RequestOption) => T): MenuEntry<T>[] {
 	return options.map((o) => [`${o.label} [${o.id}]`, wrap(o)] as const);
 }
