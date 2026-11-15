@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add the optional `env` argument to `ExecFn` and `createExec` in `src/forge/github.ts`, plus `tokenEnvVar(hostname)` (`GH_TOKEN` for `github.com` and `*.ghe.com`, else `GH_ENTERPRISE_TOKEN`)
-- [ ] 1.2 Add `GitHubForgeOptions.token`: every `gh` call (`api`, `auth status`) passes it in `tokenEnvVar(host)`, never in argv. Extend the fake `gh`: record the env, keep an accounts registry (`auth status --json`, `auth token`), and answer identity, authorship and `repos/{o}/{r}` push permission per token
-- [ ] 1.3 Add `login` to `GiteaOptions` and `TeaLookup` in `src/forge/tea-config.ts`, `gitea.ts` and `gitea-transport.ts`: a named login must match the host; several matching logins with no name throw `auth` naming them
-- [ ] 1.4 Add `account?: { name; token? }` to the `detectForge` deps in `src/forge/detect.ts`, passing it to the chosen adapter. Factor out `resolveForgeTarget` so account resolution uses the same endpoint. Gitea detection also maps an `origin` host equal to a `tea` login's `ssh_host` to that login's URL; `giteaUrl` and `host` config keep working for any domain
+- [x] 1.1 Add the optional `env` argument to `ExecFn` and `createExec` in `src/forge/github.ts`, plus `tokenEnvVar(hostname)` (`GH_TOKEN` for `github.com` and `*.ghe.com`, else `GH_ENTERPRISE_TOKEN`)
+- [x] 1.2 Add `GitHubForgeOptions.token`: every `gh` call (`api`, `auth status`) passes it in `tokenEnvVar(host)`, never in argv. Extend the fake `gh`: record the env, keep an accounts registry (`auth status --json`, `auth token`), and answer identity, authorship and `repos/{o}/{r}` push permission per token
+- [x] 1.3 Add `login` to `GiteaOptions` and `TeaLookup` in `src/forge/tea-config.ts`, `gitea.ts` and `gitea-transport.ts`: a named login must match the host; several matching logins with no name throw `auth` naming them
+- [x] 1.4 Add `account?: { name; token? }` to the `detectForge` deps in `src/forge/detect.ts`, passing it to the chosen adapter. Factor out `resolveForgeTarget` so account resolution uses the same endpoint. Gitea detection also maps an `origin` host equal to a `tea` login's `ssh_host` to that login's URL; `giteaUrl` and `host` config keep working for any domain
 
 ## 2. Account discovery, access and storage
 
