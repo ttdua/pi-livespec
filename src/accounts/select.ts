@@ -13,8 +13,6 @@ type RuleInput = {
 	/** The stored candidate when it is valid for the forge, matches the remote and is still a candidate. */
 	stored: Entry | undefined;
 	writers: Entry[];
-	/** The stored value exists but is not a valid account name for the forge. */
-	storedInvalid: boolean;
 };
 
 type Rule = (i: RuleInput) => SelectionResult | undefined;
@@ -24,10 +22,10 @@ const hasAccess = (e: Entry | undefined, access: Access): boolean => e?.access =
 
 function derive(facts: SelectionFacts): RuleInput {
 	const { stored, forge, remote, candidates } = facts;
-	const storedInvalid = stored !== undefined && !isSafeAccountName(stored.account, forge);
-	const matches = stored !== undefined && !storedInvalid && stored.remote === remote;
+	// A stored name invalid for the forge counts as not stored.
+	const matches = stored !== undefined && isSafeAccountName(stored.account, forge) && stored.remote === remote;
 	const entry = matches ? candidates.find((e) => e.candidate.name === stored.account) : undefined;
-	return { facts, stored: entry, writers: candidates.filter((e) => e.access === "true"), storedInvalid };
+	return { facts, stored: entry, writers: candidates.filter((e) => e.access === "true") };
 }
 
 const environmentToken: Rule = ({ facts }) => (facts.envToken ? { kind: "env" } : undefined);
@@ -47,9 +45,8 @@ const severalWriters: Rule = ({ facts, writers }) => {
 const storedUnverified: Rule = ({ stored }) =>
 	stored && hasAccess(stored, "unknown") ? { kind: "use", account: stored.candidate.name, source: "stored", unverified: true } : undefined;
 
-const refusal: Rule = ({ facts, storedInvalid }) => {
+const refusal: Rule = ({ facts }) => {
 	const options = names(facts.candidates);
-	if (storedInvalid) return { kind: "refuse", reason: "invalid", options };
 	return { kind: "refuse", reason: options.length === 0 ? "no-candidates" : "no-access", options };
 };
 
