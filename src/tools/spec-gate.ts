@@ -14,11 +14,12 @@ import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, GateSnapshot, RequestOption } from "../interaction/approver.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
+import { agentSkillsOf } from "../interaction/session-ctx.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { agentSkillsOf, sendRequest, withStep } from "./request-flow.ts";
+import { sendRequest, withStep } from "./request-flow.ts";
 
 export type SpecGateParams = { target: string };
 

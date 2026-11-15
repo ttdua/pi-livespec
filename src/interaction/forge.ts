@@ -8,7 +8,7 @@ import type { Answered, ApprovalRequest, Approver } from "./approver.ts";
 import { ANSWER_KIND } from "./approver.ts";
 import { matchCommands } from "./forge-match.ts";
 import { commandAuthors, readPermissions } from "./forge-permissions.ts";
-import { readRequests, type RequestsState, requestComment } from "./requests.ts";
+import { openRequestFor, readRequests, requestComment } from "./requests.ts";
 
 export {
 	type ClassChange,
@@ -58,11 +58,6 @@ export function plainText(r: ApprovalRequest): string {
 		...commandsFor(r).map((c) => `- \`${c}\``),
 	);
 	return out.join("\n");
-}
-
-/** The id of a pending or applying request for `subject`, if any. */
-function openRequestFor(requests: RequestsState, subject: string): string | undefined {
-	return (requests.pending.find((p) => p.subject === subject) ?? requests.applying.find((a) => a.subject === subject))?.id;
 }
 
 // --- the adapter -------------------------------------------------------------------

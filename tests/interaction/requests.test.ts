@@ -5,7 +5,10 @@ import {
 	type AnswerData,
 	answerComment,
 	newRequestId,
+	openRequestFor,
+	openRequests,
 	readRequests,
+	type RequestsState,
 	requestComment,
 } from "../../src/interaction/requests.ts";
 
@@ -81,5 +84,17 @@ describe("readRequests", () => {
 		expect(id).toMatch(/^[A-Za-z0-9._-]+$/);
 		expect(newRequestId("decide:tags.U3", NOW)).toBe(`decide-tags-U3.${NOW.getTime().toString(36)}`);
 		expect(newRequestId("question:Q4", NOW)).toMatch(/^question-Q4\.[0-9a-z]+$/);
+	});
+});
+
+describe("open requests", () => {
+	test("pending then applying requests are open; openRequestFor finds either by subject", () => {
+		const state = {
+			pending: [{ id: "gate-plan.a", subject: "gate:plan", kind: "gate", mode: "blocking", createdAt: "", data: {} }],
+			applying: [{ id: "question-Q1.b", subject: "question:Q1", record: {} }],
+		} as unknown as RequestsState;
+		expect(openRequests(state)).toEqual([{ id: "gate-plan.a", subject: "gate:plan" }, { id: "question-Q1.b", subject: "question:Q1" }]);
+		expect(openRequestFor(state, "question:Q1")).toBe("question-Q1.b");
+		expect(openRequestFor(state, "gate:define")).toBeUndefined();
 	});
 });

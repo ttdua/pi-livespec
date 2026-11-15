@@ -10,6 +10,7 @@ import { integrationBranch } from "../engine/git.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import { openRequests } from "../interaction/requests.ts";
 import { normalizeUnitInput } from "./classify-units.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import {
@@ -40,7 +41,7 @@ export function planRefusal(w: WriteContext, state: ChangeState): string | undef
 	if (!phase?.outputs.includes(UNITS_OUTPUT)) return `plan_units refused: it runs only in the phase that outputs ${UNITS_OUTPUT}, and the change is in ${phaseId ?? "no phase"}.`;
 	if (state.lock.locked !== undefined) return "plan_units refused: the plan is locked by an approved plan gate. Change units with unit_amend.";
 	if (state.git.dirty) return "plan_units refused: the working tree has uncommitted changes; commit or stash them, then rerun plan_units.";
-	const open = [...state.requests.pending.map((r) => r.subject), ...state.requests.applying.map((r) => r.subject)];
+	const open = openRequests(state.requests).map((r) => r.subject);
 	if (open.length > 0) return `plan_units refused: a request is pending (${open.map(untrusted).join(", ")}); wait for its answer.`;
 	return undefined;
 }

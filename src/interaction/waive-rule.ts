@@ -2,6 +2,7 @@
 // matcher and answer validation: an approval while waivable checks fail must
 // choose `waive`. A plain approve or a named gate's own option never waives.
 
+import { validApproval } from "../engine/locks.ts";
 import type { Outcome } from "./approver.ts";
 
 export const WAIVE = "waive";
@@ -14,7 +15,6 @@ export function failingWaivableOf(snapshot: unknown): string[] {
 
 /** Why an answer cannot approve while `failing` checks fail, or undefined when it may. */
 export function unwaivedApproval(failing: string[], answer: { outcome: Outcome; choice?: string }): string | undefined {
-	const approves = answer.outcome === "approved" || answer.outcome === "approved_with_notes";
-	if (!approves || failing.length === 0 || answer.choice === WAIVE) return undefined;
+	if (!validApproval({ outcome: answer.outcome, superseded: false }) || failing.length === 0 || answer.choice === WAIVE) return undefined;
 	return `waivable checks fail (${failing.join(", ")}): they must be waived with choose ${WAIVE}`;
 }

@@ -14,7 +14,7 @@ import { parseSpec } from "../core/spec.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { ApprovalRequest, QuestionClass, QuestionSnapshot } from "../interaction/approver.ts";
-import { prepareRequest } from "../interaction/requests.ts";
+import { openRequestFor, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -51,10 +51,6 @@ export function questionForm(p: SpecQuestionParams): QuestionForm | { refused: s
 	return { action: "ask", text: text!.trim(), class: cls };
 }
 
-/** A pending or applying request for the question's subject. */
-export function openRequestFor(state: ChangeState, subject: string): string | undefined {
-	return [...state.requests.pending, ...state.requests.applying].find((r) => r.subject === subject)?.id;
-}
 
 /** The open question that `reask` names. */
 export function reaskTarget(change: Change, id: string): Question | { refused: string } {
@@ -158,7 +154,7 @@ export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): 
 	if (!change.ok) return toolResult(change.message, undefined, true);
 	const { state } = change;
 	if (form.action === "reask") {
-		const open = openRequestFor(state, `${SUBJECT_PREFIX}${form.id}`);
+		const open = openRequestFor(state.requests, `${SUBJECT_PREFIX}${form.id}`);
 		if (open) return toolResult(refusal(`a request for ${form.id} is pending (${open}): wait for its answer or end it with /livespec dismiss.`).refused, undefined, true);
 	}
 	const q = await resolveQuestion(w, state, form);

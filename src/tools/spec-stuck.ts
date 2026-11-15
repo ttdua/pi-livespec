@@ -8,7 +8,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { ApprovalRequest, RequestOption, StuckSnapshot } from "../interaction/approver.ts";
-import { prepareRequest } from "../interaction/requests.ts";
+import { openRequestFor, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -114,7 +114,7 @@ export function stuckPlan(state: ChangeState, report: StuckReport): { id: string
 	const open = state.iterations.stuckOpen;
 	if (open === undefined) return { id: nextStuckId(state.marked), report, write: true };
 	const subject = `${SUBJECT_PREFIX}${open}`;
-	const requested = [...state.requests.pending, ...state.requests.applying].some((r) => r.subject === subject);
+	const requested = openRequestFor(state.requests, subject) !== undefined;
 	const stored = storedReport(state.marked, open);
 	if (requested || !stored) return refusal(`stuck report ${open} is unanswered; wait for the human's choice.`);
 	return { id: open, report: stored, write: false };

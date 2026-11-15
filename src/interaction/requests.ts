@@ -139,6 +139,16 @@ export function readRequests(marked: MarkedComment[]): RequestsState {
 	return { pending, applying };
 }
 
+/** Pending then applying requests, as `{ id, subject }`, in that order; a request of either kind is open. */
+export function openRequests(requests: RequestsState): { id: string; subject: Subject }[] {
+	return [...requests.pending, ...requests.applying].map(({ id, subject }) => ({ id, subject }));
+}
+
+/** The id of the open (pending or applying) request for `subject`, if any. */
+export function openRequestFor(requests: RequestsState, subject: Subject): string | undefined {
+	return openRequests(requests).find((r) => r.subject === subject)?.id;
+}
+
 /** The first own comment that closes a request: its `answer` comment, else its result comment. */
 export type Closer = { commentId: string; answerCommentId?: string };
 

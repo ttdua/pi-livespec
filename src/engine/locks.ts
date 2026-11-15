@@ -41,11 +41,12 @@ const ACTIONS = new Set<string>(["edit", "add", "drop"]);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
-const isApproved = (o: Outcome): boolean => o === "approved" || o === "approved_with_notes";
-
-/** True only for an approved (with or without notes), non-superseded result; undefined is no approval. */
-export function validApproval(r: GateResult | undefined): boolean {
-	return r !== undefined && isApproved(r.outcome) && !r.superseded;
+/**
+ * True only for an approved (with or without notes), non-superseded result; undefined is no approval.
+ * The one approval test: gate results, amendments and answers (with their verdict) all use it.
+ */
+export function validApproval(r: Pick<GateResult, "outcome" | "superseded"> | undefined): boolean {
+	return r !== undefined && (r.outcome === "approved" || r.outcome === "approved_with_notes") && !r.superseded;
 }
 
 // --- parsing own marked comments into facts ----------------------------------
@@ -69,7 +70,7 @@ function gateData(d: unknown): GateData | undefined {
 
 function amendData(d: unknown): AmendData | undefined {
 	if (!isObject(d) || typeof d.action !== "string" || !ACTIONS.has(d.action) || typeof d.unit !== "string") return undefined;
-	const approved = typeof d.outcome === "string" && OUTCOMES.has(d.outcome) && validApproval({ outcome: d.outcome as Outcome, superseded: d.superseded === true, at: "", waivers: [], notes: "" });
+	const approved = typeof d.outcome === "string" && OUTCOMES.has(d.outcome) && validApproval({ outcome: d.outcome as Outcome, superseded: d.superseded === true });
 	const data: AmendData = { action: d.action as AmendData["action"], unit: d.unit, approved };
 	if (typeof d.new === "string") data.digest = d.new;
 	return data;

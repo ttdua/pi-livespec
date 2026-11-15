@@ -3,7 +3,6 @@
 // and apply the first valid answer per request, and keep the ignored-command
 // warnings for the card. Never throws: errors go to `session.record`.
 
-import { basename } from "node:path";
 import { parseChange } from "../core/change.ts";
 import { reclassifyQuestion } from "../core/question-lines.ts";
 import type { Pack } from "../engine/pack-types.ts";
@@ -16,6 +15,7 @@ import { type CompletionCtx, completeAnswer, finishApplying } from "./complete.t
 import { type ClassChange, matchCommands } from "./forge-match.ts";
 import { commandAuthors, readPermissions } from "./forge-permissions.ts";
 import { readRequests } from "./requests.ts";
+import { sessionCompletionCtx } from "./session-ctx.ts";
 
 const STEP = "poll";
 
@@ -42,9 +42,7 @@ async function readFresh(t: Target): Promise<Fresh> {
 }
 
 function completionCtx(t: Target, marked: MarkedComment[]): CompletionCtx {
-	const ctx: CompletionCtx = { forge: t.forge, git: t.session.git, pack: t.pack, issue: t.state.issue.number, marked, root: t.session.cwd, now: () => new Date() };
-	if (t.session.activeTree !== undefined) ctx.agentSkills = basename(t.session.activeTree);
-	return ctx;
+	return sessionCompletionCtx(t.session, t.forge, t.pack, t.state.issue.number, marked);
 }
 
 async function finishAll(t: Target): Promise<void> {
