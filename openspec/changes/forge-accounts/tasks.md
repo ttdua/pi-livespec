@@ -35,9 +35,9 @@ Blocked by: 3
 
 Blocked by: 4
 
-- [ ] 5.1 Add `/livespec account [name]` in `src/commands/account.ts` and route it in `src/extension.ts` (usage text updated)
-- [ ] 5.2 Add the `forge-account` doctor check in `src/accounts/doctor.ts` (report only) and the `forge-account` card section in `src/accounts/card.ts` (untrusted wrapping, quiet in steady state)
-- [ ] 5.3 Secret-handling tests across the flow: no token in argv, errors, doctor, card or tool details
+- [x] 5.1 Add `/livespec account [name]` in `src/commands/account.ts` and route it in `src/extension.ts` (usage text updated)
+- [x] 5.2 Add the `forge-account` doctor check in `src/accounts/doctor.ts` (report only) and the `forge-account` card section in `src/accounts/card.ts` (untrusted wrapping, quiet in steady state)
+- [x] 5.3 Secret-handling tests across the flow: no token in argv, errors, doctor, card or tool details
 
 ## 6. Docs, manual check and suite
 
