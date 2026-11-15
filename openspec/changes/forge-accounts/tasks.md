@@ -21,7 +21,7 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 Add `src/accounts/select.ts`: `selectAccount(facts)` implementing the environment override and the selection rules, with table tests for every selection scenario
+- [x] 3.1 Add `src/accounts/select.ts`: `selectAccount(facts)` implementing the environment override and the selection rules, with table tests for every selection scenario
 
 ## 4. Session integration and write block
 
