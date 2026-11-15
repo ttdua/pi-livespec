@@ -5,7 +5,7 @@
 
 **Change**: `forge-accounts`
 **Finalized at**: `2026-11-15 16:11`
-**Outcome**: `pr-updated` (pending: push and PR wait for the user's approval, see "Policy deviation")
+**Outcome**: `pr-created`
 
 ---
 
@@ -13,8 +13,8 @@
 
 - **Branch**: `spec/forge-accounts`
 - **Base branch**: `main`. The branch is stacked on `ls-04` (PR #15), so its PR merges after #15.
-- **Final state**: `pr-updated` (pending push). The worktree branch `forge-accounts` was fast-forwarded into `spec/forge-accounts` at `a75d1c2`. The branch has no upstream yet.
-- **PR URL**: N/A (no PR yet)
+- **Final state**: `pr-open`. The worktree branch `forge-accounts` was fast-forwarded into `spec/forge-accounts` at `a75d1c2`, then pushed to `origin/spec/forge-accounts` with the user's approval.
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/16. Base is `ls-04` (stacked on #15), as the user chose.
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`. No PR exists until the user approves the push and the PR.
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/16#issuecomment-6892279086)
 
 ---
 
@@ -56,24 +56,14 @@
 
 ## Policy deviation
 
-The project `AGENTS.md` overrides finalize steps 10–12: "do not push, merge or open a PR unless the user has explicitly allowed it in chat".
-- **Steps 1–9 ran:** worktree tests, code review gate, fast-forward merge, re-test, cleanup, this receipt.
-- **Step 10, push:** not run.
-- **Steps 11–12, PR and orientation comment:** not run.
-
-They run once the user approves. The PR base must be chosen then: `ls-04` (stacked on #15) or `main` (after #15 merges).
+The project `AGENTS.md` says: do not push, merge or open a PR without explicit permission in chat. So the push and PR (steps 10–12) waited until the user approved them in chat; the user also chose the PR base, `ls-04`.
 
 ---
 
 ## Next step
 
-1. After the user approves:
-   - push `spec/forge-accounts`;
-   - open the PR on the chosen base;
-   - post the orientation comment;
-   - update this receipt.
-2. Wait for PR code review.
-3. After approval:
-   - run `/opsx-archive` on this feature branch;
-   - push the archive commits to update the PR;
-   - merge the PR after #15 (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands the implementation and the archive in `main`.
+1. Wait for PR review of #16.
+2. After approval:
+   - run `/opsx-archive` on `spec/forge-accounts`, so the commits land there;
+   - push the archive commits to update the PR.
+3. Merge #15 first, retarget #16 to `main`, then merge #16 (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands the implementation and the archive in `main`.
