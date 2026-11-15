@@ -322,6 +322,46 @@ describe("github adapter", () => {
 				rmSync(dir, { recursive: true, force: true });
 			}
 		});
+
+		it("an aborted gh call is killed and resolves as aborted", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "hang-gh-"));
+			const ghPath = join(dir, "gh");
+			writeFileSync(ghPath, "#!/bin/sh\nexec sleep 30\n");
+			chmodSync(ghPath, 0o755);
+			try {
+				const abort = new AbortController();
+				const started = Date.now();
+				const pending = createExec()(ghPath, [], undefined, undefined, abort.signal);
+				setTimeout(() => abort.abort(), 50);
+				await expect(pending).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+				expect(Date.now() - started).toBeLessThan(5_000);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("an aborted gh that ignores SIGTERM settles only after it has exited", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "stubborn-gh-"));
+			const pidFile = join(dir, "pid");
+			try {
+				const abort = new AbortController();
+				const pending = createExec()("sh", ["-c", `trap '' TERM; echo $$ > ${pidFile}; while :; do sleep 0.05; done`], undefined, undefined, abort.signal);
+				setTimeout(() => abort.abort(), 200);
+
+				await expect(pending).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+
+				const pid = Number(readFileSync(pidFile, "utf8").trim());
+				expect(() => process.kill(pid, 0)).toThrow();
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("an already aborted signal never leaves a running gh", async () => {
+			const abort = new AbortController();
+			abort.abort();
+			await expect(createExec()("sh", ["-c", "sleep 30"], undefined, undefined, abort.signal)).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+		});
 	});
 
 	it("a non-2xx answer throws http with the status", async () => {

@@ -66,7 +66,8 @@ describe("checkAccess on GitHub", () => {
 		const gh = fakeGh({ accounts: [{ login: "ttdua", token: "tok-ttdua", repo: "hang" }] });
 
 		const pending = checkAccess(fakeEnv({ exec: gh.exec }), githubTarget(), candidate("ttdua"));
-		await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS);
+		// The deadline aborts the call; the aborted process then exits on the next tick.
+		await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS + 1);
 
 		await expect(pending).resolves.toBe("unknown");
 	});
@@ -164,6 +165,39 @@ describe("candidateToken", () => {
 });
 
 describe("checkAll", () => {
+	it("hanging checks are aborted at their deadline and never exceed four at once", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		const accounts: FakeAccount[] = Array.from({ length: 6 }, (_, i) => ({
+			login: `user${i}`,
+			token: `tok-${i}`,
+			repo: "hang",
+			...(i % 2 === 0 ? { tokenLookup: "hang" as const } : {}),
+		}));
+		const gh = fakeGh({ accounts, settleMs: 200 });
+
+		const pending = checkAll(fakeEnv({ exec: gh.exec }), githubTarget(), accounts.map((a) => candidate(a.login)));
+		await vi.advanceTimersByTimeAsync(3 * (ACCESS_TIMEOUT_MS + 200));
+
+		await expect(pending).resolves.toEqual(accounts.map((a) => ({ candidate: candidate(a.login), access: "unknown" })));
+		expect(gh.maxInFlight()).toBeLessThanOrEqual(ACCESS_CONCURRENCY);
+		for (const account of accounts) {
+			const mine = gh.calls.filter((c) => c.args.includes(account.login) || c.env?.GH_TOKEN === account.token);
+			const start = mine[0]?.at ?? Number.NaN;
+			for (const call of mine) expect(call.at).toBeLessThan(start + ACCESS_TIMEOUT_MS);
+		}
+	});
+
+	it("a token lookup that answers after the deadline starts no API call", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		const gh = fakeGh({ accounts: [{ login: "ttdua", token: "tok-ttdua", repo: true, tokenLookup: { lateMs: ACCESS_TIMEOUT_MS + 1_000 } }] });
+
+		const pending = checkAll(fakeEnv({ exec: gh.exec }), githubTarget(), [candidate("ttdua")]);
+		await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS + 2_000);
+
+		await expect(pending).resolves.toEqual([{ candidate: candidate("ttdua"), access: "unknown" }]);
+		expect(gh.calls.filter((c) => c.args[0] === "api")).toEqual([]);
+	});
+
 	it("at most four checks run at once", async () => {
 		const accounts = Array.from({ length: 9 }, (_, i) => ({ login: `user${i}`, token: `tok-${i}`, repo: i % 2 === 0, delayMs: 20 }));
 		const gh = fakeGh({ accounts });

@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readStored, writeStored } from "../../src/accounts/store.ts";
+import { type AccountForge, readStored, writeStored } from "../../src/accounts/store.ts";
+import type { StoredAccount } from "../../src/accounts/types.ts";
 import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { makeRepo } from "../helpers/repo.ts";
 
@@ -43,7 +44,7 @@ describe("account storage", () => {
 		const global = await isolatedGlobal();
 		const { git } = recordingGit(global.env);
 
-		await writeStored(git, root, STORED);
+		await writeStored(git, root, STORED, "github");
 
 		expect(localGet(root, "livespec.account")).toBe("ttdua");
 		expect(localGet(root, "livespec.accountRemote")).toBe("github.com/acme/widgets");
@@ -72,19 +73,62 @@ describe("account storage", () => {
 		const root = await makeRepo();
 		const global = await isolatedGlobal();
 		const { git, calls } = recordingGit(global.env);
-		const unsafe = [
-			{ account: "evil\nname", remote: STORED.remote },
-			{ account: "-x", remote: STORED.remote },
-			{ account: "", remote: STORED.remote },
-			{ account: "a".repeat(101), remote: STORED.remote },
-			{ account: "ttdua", remote: "github.com/acme/widgets\n[core]" },
-			{ account: "ttdua", remote: "--remote" },
+		const unsafe: [StoredAccount, AccountForge][] = [
+			[{ account: "evil\nname", remote: STORED.remote }, "gitea"],
+			[{ account: "-x", remote: STORED.remote }, "gitea"],
+			[{ account: "", remote: STORED.remote }, "gitea"],
+			[{ account: "a".repeat(101), remote: STORED.remote }, "gitea"],
+			[{ account: "evil\nname", remote: STORED.remote }, "github"],
+			[{ account: "-x", remote: STORED.remote }, "github"],
+			[{ account: "ttdua", remote: "github.com/acme/widgets\n[core]" }, "github"],
+			[{ account: "ttdua", remote: "--remote" }, "github"],
+			[{ account: "ttdua", remote: "-github.com/acme/widgets" }, "github"],
+			[{ account: "ttdua", remote: "github.com/acme" }, "github"],
+			[{ account: "ttdua", remote: "github.com/acme/widgets/extra" }, "github"],
+			[{ account: "ttdua", remote: "github.com//widgets" }, "github"],
 		];
 
-		for (const value of unsafe) await expect(writeStored(git, root, value)).rejects.toThrow(/invalid/);
+		for (const [value, forge] of unsafe) await expect(writeStored(git, root, value, forge)).rejects.toThrow(/invalid/);
 
 		expect(calls).toEqual([]);
 		await expect(readStored(git, root)).resolves.toBeUndefined();
+	});
+
+	it("GitHub names must be GitHub logins", async () => {
+		const root = await makeRepo();
+		const global = await isolatedGlobal();
+		const { git, calls } = recordingGit(global.env);
+
+		for (const account of ["bad/name", "bad name", "a".repeat(40), "-lead", "bad_name"]) {
+			await expect(writeStored(git, root, { account, remote: STORED.remote }, "github")).rejects.toThrow(/invalid/);
+		}
+		expect(calls).toEqual([]);
+
+		await writeStored(git, root, { account: "a".repeat(39), remote: STORED.remote }, "github");
+		await expect(readStored(git, root)).resolves.toEqual({ account: "a".repeat(39), remote: STORED.remote });
+	});
+
+	it("tea login names keep the generic rule", async () => {
+		const root = await makeRepo();
+		const global = await isolatedGlobal();
+		const { git } = recordingGit(global.env);
+
+		for (const account of ["gitea.example.org", "bad/name", "admin login", "gitea_admin"]) {
+			const stored = { account, remote: "gitea.example.org/acme/widgets" };
+			await writeStored(git, root, stored, "gitea");
+			await expect(readStored(git, root)).resolves.toEqual(stored);
+		}
+	});
+
+	it("a valid remote longer than 100 characters round-trips", async () => {
+		const root = await makeRepo();
+		const global = await isolatedGlobal();
+		const { git } = recordingGit(global.env);
+		const stored = { account: "ttdua", remote: `gitea.example.org:3000/${"o".repeat(60)}/${"r".repeat(60)}` };
+
+		await writeStored(git, root, stored, "gitea");
+
+		await expect(readStored(git, root)).resolves.toEqual(stored);
 	});
 
 	it("an unsafe value already in the local config reads as not stored", async () => {
@@ -102,7 +146,7 @@ describe("account storage", () => {
 		const global = await isolatedGlobal();
 		const { git, calls } = recordingGit(global.env);
 
-		await writeStored(git, root, { account: "a-b", remote: STORED.remote });
+		await writeStored(git, root, { account: "a-b", remote: STORED.remote }, "github");
 		await readStored(git, root);
 
 		expect(calls).toEqual([
@@ -119,6 +163,6 @@ describe("account storage", () => {
 		const global = await isolatedGlobal();
 		const { git } = recordingGit({ ...global.env, GIT_CEILING_DIRECTORIES: tmpdir() });
 
-		await expect(writeStored(git, notARepo, STORED)).rejects.toThrow(/git config/);
+		await expect(writeStored(git, notARepo, STORED, "github")).rejects.toThrow(/git config/);
 	});
 });

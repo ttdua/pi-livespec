@@ -9,13 +9,13 @@ import type { AccountEnv } from "./types.ts";
 
 export type TokenDeps = Pick<AccountEnv, "exec" | "teaLookup">;
 
-/** The candidate's own token, or `undefined` when it has none for this target. */
-export async function candidateToken(d: TokenDeps, target: ForgeTarget, name: string): Promise<string | undefined> {
-	return target.kind === "github" ? githubToken(d, target.authority, name) : giteaToken(d, target, name);
+/** The candidate's own token, or `undefined` when it has none for this target. `signal` aborts the `gh` lookup. */
+export async function candidateToken(d: TokenDeps, target: ForgeTarget, name: string, signal?: AbortSignal): Promise<string | undefined> {
+	return target.kind === "github" ? githubToken(d, target.authority, name, signal) : giteaToken(d, target, name);
 }
 
-async function githubToken(d: TokenDeps, host: string, login: string): Promise<string | undefined> {
-	const result = await d.exec("gh", ["auth", "token", "--hostname", host, "--user", login]);
+async function githubToken(d: TokenDeps, host: string, login: string, signal: AbortSignal | undefined): Promise<string | undefined> {
+	const result = await d.exec("gh", ["auth", "token", "--hostname", host, "--user", login], undefined, undefined, signal);
 	if (result.spawnError !== undefined || result.code !== 0) return undefined;
 	const token = result.stdout.trim();
 	return token === "" ? undefined : token;

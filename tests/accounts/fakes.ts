@@ -2,11 +2,12 @@
 // `ExecFn`, a loopback Gitea serving `GET /api/v1/repos/{o}/{r}` per token,
 // temp `tea` configs and forge targets. Nothing here reads real credentials.
 
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach } from "vitest";
 import type { AccountEnv } from "../../src/accounts/types.ts";
 import type { ForgeTarget } from "../../src/forge/detect.ts";
 import type { ExecFn, ExecResult } from "../../src/forge/github.ts";
@@ -20,12 +21,16 @@ export interface FakeAccount {
 	repo: RepoAnswer;
 	/** Delay before the repository answer, in ms. */
 	delayMs?: number;
+	/** `hang`: `gh auth token` runs until aborted; `lateMs`: it ignores the signal and answers after that many ms. */
+	tokenLookup?: "hang" | { lateMs: number };
 }
 
 export interface ExecCall {
 	file: string;
 	args: string[];
 	env?: Record<string, string>;
+	/** `Date.now()` when the call started. */
+	at: number;
 }
 
 export interface FakeGhOptions {
@@ -36,17 +41,20 @@ export interface FakeGhOptions {
 	noJsonStatus?: boolean;
 	/** Raw stdout of `auth status --json hosts`, replacing the generated one. */
 	statusStdout?: string;
+	/** Time an aborted call takes to exit, in ms; default 0. */
+	settleMs?: number;
 }
 
 export interface FakeGh {
 	exec: ExecFn;
 	calls: ExecCall[];
-	/** Highest number of `gh api` calls in flight at once. */
+	/** Highest number of `gh` calls (processes) alive at once. */
 	maxInFlight: () => number;
 }
 
 const ok = (stdout: string): ExecResult => ({ stdout, stderr: "", code: 0 });
 const failed = (stderr: string): ExecResult => ({ stdout: "", stderr, code: 1 });
+const ABORTED: ExecResult = { stdout: "", stderr: "", code: null, spawnError: "aborted" };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function flagValue(args: string[], flag: string): string | undefined {
@@ -54,9 +62,19 @@ function flagValue(args: string[], flag: string): string | undefined {
 	return at === -1 ? undefined : args[at + 1];
 }
 
+/** A process that runs until `signal` aborts, then takes `settleMs` to exit, as `createExec` reports it. */
+function runUntilAborted(signal: AbortSignal | undefined, settleMs: number): Promise<ExecResult> {
+	return new Promise((resolve) => {
+		const settle = () => setTimeout(() => resolve(ABORTED), settleMs);
+		if (signal?.aborted) settle();
+		else signal?.addEventListener("abort", settle, { once: true });
+	});
+}
+
 /** A scripted `gh`: `auth status --hostname h --json hosts`, `auth token --hostname h --user u`, `api repos/{o}/{r} --hostname h`. */
 export function fakeGh(opts: FakeGhOptions): FakeGh {
 	const calls: ExecCall[] = [];
+	const settleMs = opts.settleMs ?? 0;
 	let inFlight = 0;
 	let maxInFlight = 0;
 
@@ -68,33 +86,40 @@ export function fakeGh(opts: FakeGhOptions): FakeGh {
 		return ok(`${JSON.stringify({ hosts: { [host]: entries } })}\n`);
 	};
 
-	const authToken = (args: string[]): ExecResult => {
+	const authToken = async (args: string[], signal: AbortSignal | undefined): Promise<ExecResult> => {
 		const account = opts.accounts.find((a) => a.login === flagValue(args, "--user"));
-		return account ? ok(`${account.token}\n`) : failed("no oauth token found\n");
+		if (!account) return failed("no oauth token found\n");
+		if (account.tokenLookup === "hang") return runUntilAborted(signal, settleMs);
+		if (account.tokenLookup) await sleep(account.tokenLookup.lateMs);
+		return ok(`${account.token}\n`);
 	};
 
-	const api = async (args: string[], env: Record<string, string> | undefined): Promise<ExecResult> => {
+	const api = async (env: Record<string, string> | undefined, signal: AbortSignal | undefined): Promise<ExecResult> => {
 		const token = env?.GH_TOKEN ?? env?.GH_ENTERPRISE_TOKEN ?? opts.accounts.find((a) => a.login === opts.active)?.token;
 		const account = opts.accounts.find((a) => a.token === token);
 		if (!account) return failed("gh: Bad credentials (HTTP 401)\n");
-		if (account.repo === "hang") return new Promise<ExecResult>(() => {});
+		if (account.repo === "hang") return runUntilAborted(signal, settleMs);
+		if (account.delayMs) await sleep(account.delayMs);
+		return repoResult(account.repo);
+	};
+
+	const dispatch = (args: string[], env: Record<string, string> | undefined, signal: AbortSignal | undefined): ExecResult | Promise<ExecResult> => {
+		if (args[0] === "auth" && args[1] === "status") return authStatus(args);
+		if (args[0] === "auth" && args[1] === "token") return authToken(args, signal);
+		if (args[0] === "api") return api(env, signal);
+		return failed(`fake gh: unsupported ${args.join(" ")}`);
+	};
+
+	const exec: ExecFn = async (file, args, _input, env, signal) => {
+		calls.push({ file, args, env, at: Date.now() });
+		if (file !== "gh") return failed(`fake gh: unexpected program ${file}`);
 		inFlight++;
 		maxInFlight = Math.max(maxInFlight, inFlight);
 		try {
-			if (account.delayMs) await sleep(account.delayMs);
-			return repoResult(account.repo);
+			return await dispatch(args, env, signal);
 		} finally {
 			inFlight--;
 		}
-	};
-
-	const exec: ExecFn = async (file, args, _input, env) => {
-		calls.push({ file, args, env });
-		if (file !== "gh") return failed(`fake gh: unexpected program ${file}`);
-		if (args[0] === "auth" && args[1] === "status") return authStatus(args);
-		if (args[0] === "auth" && args[1] === "token") return authToken(args);
-		if (args[0] === "api") return api(args, env);
-		return failed(`fake gh: unsupported ${args.join(" ")}`);
 	};
 	return { exec, calls, maxInFlight: () => maxInFlight };
 }
@@ -141,8 +166,17 @@ export async function fakeGiteaRepo(accounts: FakeAccount[]): Promise<FakeGiteaR
 	};
 }
 
+const teaDirs: string[] = [];
+
+// Registered at import time: every test file using teaConfig gets its temp dirs removed.
+afterEach(async () => {
+	for (const dir of teaDirs.splice(0)) await rm(dir, { recursive: true, force: true });
+});
+
+/** Writes a temp `tea` config (removed after each test) and returns its path. */
 export async function teaConfig(text: string): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "tea-"));
+	teaDirs.push(dir);
 	const path = join(dir, "config.yml");
 	await writeFile(path, text);
 	return path;
