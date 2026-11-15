@@ -84,10 +84,25 @@ describe("unit blocks", () => {
 		const out = removeUnitBlock(body, "U1");
 		const c = parseChange(out);
 		expect(c.units.map((u) => u.id)).toEqual(["U3"]);
-		expect(out).toContain("## Units\n### U3");
+		expect(out).toContain("## Units\n\n### U3");
 		const last = removeUnitBlock(body, "U3");
 		expect(parseChange(last).units.map((u) => u.id)).toEqual(["U1"]);
-		expect(last).toContain("- [x] done\n\n## Durable docs");
+		expect(last).toContain("- [x] done\n\n\n## Durable docs");
+	});
+
+	it("remove deletes only the block and keeps the suffix byte-identical", () => {
+		const src = "## Units\r\n### U1 — A\r\nCovers: x\r\n- [ ] pending\r\n  \n\n\t\r\n## Durable docs\n";
+		expect(removeUnitBlock(src, "U1")).toBe("## Units\r\n  \n\n\t\r\n## Durable docs\n");
+	});
+
+	it("insert into an empty Units section keeps existing lines and EOLs", () => {
+		const src = "## Proposal\r\nP\r\n\r\n## Units\r\n<!-- keep this planning note -->\r\n\r\n## Durable docs\r\nx\r\n";
+		const out = insertUnitBlock(src, ["### U1 — T", "- [ ] pending"]);
+		expect(out).toBe(
+			"## Proposal\r\nP\r\n\r\n## Units\r\n<!-- keep this planning note -->\r\n\r\n### U1 — T\r\n- [ ] pending\r\n\r\n## Durable docs\r\nx\r\n",
+		);
+		const last = insertUnitBlock("## Units\n<!-- note -->", ["### U1 — T", "- [ ] pending"]);
+		expect(last).toBe("## Units\n<!-- note -->\n\n### U1 — T\n- [ ] pending\n");
 	});
 
 	it("setUnitField changes one line", () => {

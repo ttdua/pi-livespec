@@ -68,26 +68,33 @@ export function replaceUnitBlock(body: string, id: string, lines: string[]): str
 	return joinLines([...change.lines.slice(0, u.startLine), ...block, ...change.lines.slice(u.endLine + 1)]);
 }
 
-/** Appends a block after the last unit, separated by a blank line; creates `## Units` when absent. */
+/** Appends a block after the last unit; splices into an existing `## Units` section, creating it only when absent. */
 export function insertUnitBlock(body: string, lines: string[]): string {
 	const change = parseChange(body);
 	const eol = eolOf(change.lines);
 	const last = change.units[change.units.length - 1];
-	if (!last) return replaceSection(body, "Units", lines.join("\n"));
-	const head = terminated(change.lines.slice(0, last.endLine + 1), eol);
+	const at = last ? last.endLine + 1 : emptySectionInsertPoint(change.lines);
+	if (at === undefined) return replaceSection(body, "Units", lines.join("\n"));
+	const head = terminated(change.lines.slice(0, at), eol);
 	const block = [{ text: "", eol } as Line, ...withEol(lines, eol)];
-	const tail = change.lines.slice(last.endLine + 1);
-	if (tail.length === 0) return joinLines([...head, ...block]);
-	return joinLines([...head, ...block, ...tail]);
+	return joinLines([...head, ...block, ...change.lines.slice(at)]);
 }
 
-/** Removes the unit's block and the blank lines that follow it. */
+/** Index after the last non-blank line of an existing `## Units` section, or undefined when absent. */
+function emptySectionInsertPoint(lines: Line[]): number | undefined {
+	const start = lines.findIndex((l) => l.text === "## Units");
+	if (start === -1) return undefined;
+	let end = start + 1;
+	while (end < lines.length && !/^## /.test(lines[end]!.text)) end++;
+	while (end > start + 1 && lines[end - 1]!.text.trim() === "") end--;
+	return end;
+}
+
+/** Removes exactly the unit's lines (heading to status line); the suffix stays byte-identical. */
 export function removeUnitBlock(body: string, id: string): string {
 	const change = parseChange(body);
 	const u = findUnit(change.units, id);
-	let end = u.endLine + 1;
-	while (end < change.lines.length && change.lines[end]!.text.trim() === "") end++;
-	return joinLines([...change.lines.slice(0, u.startLine), ...change.lines.slice(end)]);
+	return joinLines([...change.lines.slice(0, u.startLine), ...change.lines.slice(u.endLine + 1)]);
 }
 
 /** Rewrites one `Difficulty:` or `Tags:` line inside the unit's block. */

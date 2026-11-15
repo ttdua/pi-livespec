@@ -22,11 +22,13 @@ function formatLine(q: { id: string; checked: boolean; text: string; answer?: st
 	return `- [${q.checked ? "x" : " "}] ${q.id} (${cls}): ${q.text}${tail}`;
 }
 
-function rewrite(body: string, id: string, next: (q: Question) => string): string {
+const CLASS_TOKEN = /^- \[[ x]\] (Q\d+) \((?:non-blocking|blocking)\): /;
+
+function rewriteRaw(body: string, id: string, next: (raw: string, q: Question) => string): string {
 	const change = parseChange(body);
 	const q = findQuestion(change.questions, id);
 	const out = change.lines.slice();
-	out[q.line] = { text: next(q), eol: change.lines[q.line]!.eol };
+	out[q.line] = { text: next(change.lines[q.line]!.text, q), eol: change.lines[q.line]!.eol };
 	return joinLines(out);
 }
 
@@ -51,16 +53,19 @@ export function appendQuestion(body: string, cls: QuestionClass, text: string): 
 	return { body: joinLines([...head, { text: line, eol }, ...lines.slice(at)]), id };
 }
 
-/** Ticks the question and records the answer; the class may change with it. */
+/** Ticks the question and records the answer; the class may change with it. Question text bytes are kept. */
 export function answerQuestion(body: string, id: string, cls: QuestionClass, answer: string): string {
 	const clean = singleLine(answer, "answer");
-	return rewrite(body, id, (q) => formatLine({ id, checked: true, text: q.text, answer: clean }, cls));
+	return rewriteRaw(body, id, (raw) => {
+		const head = CLASS_TOKEN.exec(raw)![0];
+		const rest = raw.slice(head.length);
+		const at = rest.lastIndexOf(ANSWER_SEP);
+		const text = at === -1 ? rest.trimEnd() : rest.slice(0, at);
+		return `- [x] ${id} (${cls}): ${text}${ANSWER_SEP}${clean}`;
+	});
 }
 
-/** Changes only the `(class)` of the question line. */
+/** Changes only the class token of the raw question line. */
 export function reclassifyQuestion(body: string, id: string, cls: QuestionClass): string {
-	return rewrite(body, id, (q) => {
-		const checked = q.checked;
-		return formatLine({ id, checked, text: q.text, ...(q.answer === undefined ? {} : { answer: q.answer }) }, cls);
-	});
+	return rewriteRaw(body, id, (raw) => raw.replace(/^(- \[[ x]\] Q\d+ \()(?:non-blocking|blocking)(\): )/, `$1${cls}$2`));
 }

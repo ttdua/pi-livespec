@@ -73,4 +73,17 @@ describe("question lines", () => {
 		expect(parseChange(answered).questions[1]).toMatchObject({ kind: "blocking", answer: "yes", checked: true });
 		expect(reclassifyQuestion(crlf, "Q1", "non-blocking")).toContain("(non-blocking): Which header carries the client IP behind the proxy?\r\n");
 	});
+
+	it("raw spacing survives reclassify and answer", () => {
+		const src = "## Questions\r\n- [ ] Q1 (blocking):   Keep spacing?  \r\n- [x] Q2 (blocking): T  — Answer:  a  b \r\n";
+		expect(reclassifyQuestion(src, "Q1", "non-blocking")).toBe(
+			"## Questions\r\n- [ ] Q1 (non-blocking):   Keep spacing?  \r\n- [x] Q2 (blocking): T  — Answer:  a  b \r\n",
+		);
+		expect(reclassifyQuestion(src, "Q2", "non-blocking")).toBe(
+			"## Questions\r\n- [ ] Q1 (blocking):   Keep spacing?  \r\n- [x] Q2 (non-blocking): T  — Answer:  a  b \r\n",
+		);
+		expect(answerQuestion(src, "Q1", "blocking", "yes")).toBe(
+			"## Questions\r\n- [x] Q1 (blocking):   Keep spacing? — Answer: yes\r\n- [x] Q2 (blocking): T  — Answer:  a  b \r\n",
+		);
+	});
 });
