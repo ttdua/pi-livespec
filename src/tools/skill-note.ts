@@ -6,6 +6,7 @@ import { SKILL_NOTE_KIND } from "../engine/comments-cache.ts";
 import type { NextStep } from "../engine/state-types.ts";
 import { writeMarked } from "../forge/markers.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type SkillNoteParams = { skill: string; reason: string };
 
@@ -43,7 +44,7 @@ export async function runSkillNote(p: SkillNoteParams): Promise<ToolResult<undef
 }
 
 export function registerSkillNote(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "skill_note",
 		label: "Record skill note",
 		description:

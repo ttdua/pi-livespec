@@ -1,8 +1,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-// Registered for side effect: the forge-account doctor check and card section, and the approvals card section.
+// Registered for side effect: the forge-account doctor check and card section, the approvals card section and the approver doctor check.
 import "./accounts/card.ts";
 import "./accounts/doctor.ts";
 import "./interaction/card.ts";
+import "./interaction/doctor.ts";
 import { type CommandEnv } from "./commands/deps.ts";
 import { messageOf } from "./core/messages.ts";
 import {

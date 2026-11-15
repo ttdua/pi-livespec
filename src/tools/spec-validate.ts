@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runValidateCommand } from "../commands/validate.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export function registerSpecValidate(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "spec_validate",
 		label: "Validate specs",
 		description: "Run every livespec check over the repository's specs/ folder and list the results.",

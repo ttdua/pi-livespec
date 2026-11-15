@@ -75,7 +75,8 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const iterationCap = pack.loops.change_iterations;
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, iterationCap }, n);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git });
-	return { ...snapshot, checks, warnings: warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings] };
+	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
+	return { ...snapshot, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {

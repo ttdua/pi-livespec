@@ -6,6 +6,7 @@ import type { ChangeState } from "../engine/state-types.ts";
 import { formatOpenChanges, formatState } from "./format-step.ts";
 import { requireSession, type ToolResult, toolResult } from "./guard.ts";
 import { readCurrentChange } from "./read-change.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type SpecStatusDetails = { state: ChangeState | null; open?: OpenChange[] };
 
@@ -19,7 +20,7 @@ export async function runSpecStatus(): Promise<ToolResult<SpecStatusDetails>> {
 }
 
 export function registerSpecStatus(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "spec_status",
 		label: "livespec status",
 		description: "Rebuild the change snapshot and return the change state: phase, units, questions, counters, check results and the stale flag.",

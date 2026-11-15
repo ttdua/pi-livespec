@@ -17,6 +17,7 @@ import { LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { afterForgeWrite, prepareWrite, requireWritable, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type ChangeStartParams = { issue: number };
 /** Set in full on success; empty on a refusal or failure. */
@@ -223,7 +224,7 @@ export async function runChangeStart(p: ChangeStartParams): Promise<Result> {
 }
 
 export function registerChangeStart(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "change_start",
 		label: "Start livespec change",
 		description:

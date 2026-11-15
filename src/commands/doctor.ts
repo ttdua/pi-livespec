@@ -2,6 +2,7 @@
 // Doctor only reports and suggests; `DoctorDeps` exposes read functions only.
 
 import type { ResolvedAccount } from "../accounts/resolve.ts";
+import type { LoadedConfig } from "../config.ts";
 import type { ContentManager } from "../content/manager.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import type { Forge } from "../forge/types.ts";
@@ -24,6 +25,10 @@ export type DoctorDeps = {
 	account?: ResolvedAccount;
 	/** Why the session refuses forge writes, read-only. */
 	accountBlock?: string;
+	/** The loaded project and user config. */
+	config: LoadedConfig;
+	/** Whether the command's session has a dialog-capable UI. */
+	hasUI: boolean;
 };
 export type DoctorCheck = (d: DoctorDeps) => Promise<DoctorResult[]>;
 
