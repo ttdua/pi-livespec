@@ -348,6 +348,15 @@ describe("completion engine", () => {
 		expect(step.next).not.toContain("stuck report");
 	});
 
+	test("stuck answer records its outcome", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options, recommended: "A" }));
+		const record = await prepare(f, "stuck", "stuck:S1", { id: "S1" }, options);
+		await completeAnswer(await ctxOf(f), record, answer({ outcome: "dismissed", notes: "not now" }));
+		expect(ofKind(await markedOf(f), "stuck", "S1-answer")[0]?.data).toMatchObject({ outcome: "dismissed", choice: "" });
+	});
+
 	const STEPS: [name: string, failsOn: (op: string, args: unknown[]) => boolean][] = [
 		["body write", (op) => op === "updateIssueBody"],
 		["stale comment", commentOfKind("stale")],

@@ -12,8 +12,8 @@ const cascade = (q: string, afterPlan: boolean): MarkedComment =>
 	marked("stale", q, { reason: q, phases: ["define", "plan"], units: [], after_plan: afterPlan });
 const stuck = (id: string): MarkedComment =>
 	marked("stuck", id, { where: "w", tried: [], hypothesis: "h", options: [{ id: "A", label: "a" }, { id: "B", label: "b" }], recommended: "A" });
-const stuckAnswer = (id: string): MarkedComment =>
-	marked("stuck", `${id}-answer`, { request: `stuck-${id}.x`, choice: "A", notes: "", by: "alice", at: "t", adapter: "forge" });
+const stuckAnswer = (id: string, outcome = "approved", choice = "A"): MarkedComment =>
+	marked("stuck", `${id}-answer`, { request: `stuck-${id}.x`, outcome, choice, notes: "", by: "alice", at: "t", adapter: "forge" });
 
 const fiveCascades = (): MarkedComment[] => ["Q1", "Q2", "Q3", "Q4", "Q5"].map((q) => cascade(q, true));
 
@@ -42,5 +42,14 @@ describe("deriveIterations", () => {
 	test("open stuck report is reported", () => {
 		const state = deriveIterations([stuck("S1"), stuckAnswer("S1"), stuck("S2")], 5);
 		expect(state).toEqual({ count: 0, cap: 5, blocking: false, stuckOpen: "S2" });
+	});
+
+	test("a dismissed stuck answer does not lift the cap", () => {
+		const dismissed = deriveIterations([...fiveCascades(), stuck("S1"), stuckAnswer("S1", "dismissed", "")], 5);
+		expect(dismissed).toEqual({ count: 5, cap: 5, blocking: true, stuckOpen: undefined });
+		const noChoice = deriveIterations([...fiveCascades(), stuck("S1"), stuckAnswer("S1", "approved", "")], 5);
+		expect(noChoice.blocking).toBe(true);
+		const withNotes = deriveIterations([...fiveCascades(), stuck("S1"), stuckAnswer("S1", "approved_with_notes", "B")], 5);
+		expect(withNotes.blocking).toBe(false);
 	});
 });
