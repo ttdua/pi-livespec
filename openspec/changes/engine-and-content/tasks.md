@@ -54,11 +54,11 @@ Blocked by: 4, 5
 
 Blocked by: 4, 5
 
-- [ ] 7.1 Add the static routing note `src/hooks/routing-note.ts` with the Core Operating Behaviors summary and MIT attribution
-- [ ] 7.2 Add the pure `renderCard` and `registerCardSection` in `src/hooks/phase-card.ts` (untrusted wrapping, stale notice, product pointer, constraints prompt, skill-note reminder, registered sections)
-- [ ] 7.3 Add `src/hooks/session.ts`: the `Session` holder, forge setup through `detectForge` + `CachedForge`, resume card, build → review auto-advance, background upgrade kick-off, uninitialized-project message
-- [ ] 7.4 Add `src/hooks/context.ts`: `before_agent_start` section plus snapshot refresh, `context` card append, `tool_call` observer for optional skill reads, `resources_discover`, and refresh after write tools
-- [ ] 7.5 Add the five-turn cache-prefix test
+- [x] 7.1 Add the static routing note `src/hooks/routing-note.ts` with the Core Operating Behaviors summary and MIT attribution
+- [x] 7.2 Add the pure `renderCard` and `registerCardSection` in `src/hooks/phase-card.ts` (untrusted wrapping, stale notice, product pointer, constraints prompt, skill-note reminder, registered sections)
+- [x] 7.3 Add `src/hooks/session.ts`: the `Session` holder, forge setup through `detectForge` + `CachedForge`, resume card, build → review auto-advance, background upgrade kick-off, uninitialized-project message
+- [x] 7.4 Add `src/hooks/context.ts`: `before_agent_start` section plus snapshot refresh, `context` card append, `tool_call` observer for optional skill reads, `resources_discover`, and refresh after write tools
+- [x] 7.5 Add the five-turn cache-prefix test
 
 ## 8. Tools
 
