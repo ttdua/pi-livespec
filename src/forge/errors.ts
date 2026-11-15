@@ -26,3 +26,13 @@ export class ForgeError extends Error {
 		this.status = init.status;
 	}
 }
+
+/** The forge could not be reached. */
+export function isUnreachable(error: unknown): error is ForgeError {
+	return error instanceof ForgeError && error.code === "unreachable";
+}
+
+/** The forge cannot be read now: unreachable, or a cache refusing while read-only. */
+export function isOffline(error: unknown): error is ForgeError {
+	return error instanceof ForgeError && (error.code === "unreachable" || error.code === "readonly");
+}

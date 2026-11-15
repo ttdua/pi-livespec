@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { exposedSkillPaths } from "../content/expose.ts";
-import { messageOf } from "../commands/messages.ts";
+import { messageOf } from "../core/messages.ts";
 import { renderCard } from "./phase-card.ts";
 import { ROUTING_NOTE } from "./routing-note.ts";
 import type { Session } from "./session.ts";
@@ -63,8 +63,10 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 		const session = initializedSession();
 		if (!session) return undefined;
 		try {
+			const card = phaseCardMessage(session);
+			session.firstCardShown();
 			// Pi's message union has no member for an untyped custom user message; the shape is the Contracts one.
-			return { messages: [...event.messages, phaseCardMessage(session) as unknown as (typeof event.messages)[number]] };
+			return { messages: [...event.messages, card as unknown as (typeof event.messages)[number]] };
 		} catch (error) {
 			warn(ctx, "context", error);
 			return undefined;

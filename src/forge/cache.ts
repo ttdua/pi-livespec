@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { ForgeError } from "./errors.ts";
+import { ForgeError, isUnreachable } from "./errors.ts";
 import type {
 	CheckSummary,
 	Comment,
@@ -77,9 +77,6 @@ function readOnlyError(operation: string, cause?: ForgeError): ForgeError {
 	});
 }
 
-function isUnreachable(error: unknown): error is ForgeError {
-	return error instanceof ForgeError && error.code === "unreachable";
-}
 
 /**
  * Decorates a Forge with a per-issue read cache and read-only mode.

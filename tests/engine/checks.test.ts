@@ -138,6 +138,19 @@ describe("runChecks", () => {
 		expect(results).toEqual([{ check: "honest", code: "x", severity: "error", message: "m" }]);
 	});
 
+	test("a throwing check becomes a check-failed error result and later checks still run", async () => {
+		registerCheck("explodes", async () => {
+			throw new Error("boom");
+		});
+		registerCheck("after", async () => [{ code: "ok", severity: "warning", message: "ran" }]);
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["explodes", "after"] } : p)) };
+		const results = await runChecks(custom, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
+		expect(results).toEqual([
+			{ check: "explodes", code: "check-failed", severity: "error", message: "Check explodes failed: boom" },
+			{ check: "after", code: "ok", severity: "warning", message: "ran" },
+		]);
+	});
+
 	test("results are tagged with the named check that produced them", async () => {
 		registerCheck("depends-merged", async () => [{ code: "dep-open", severity: "error", message: "Change #34 is not merged." }]);
 		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["depends-merged", "units-format", "not-registered"] } : p)) };

@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { capabilitiesMatchDiff } from "../core/capabilities-diff.ts";
 import type { Change } from "../core/change.ts";
+import { messageOf } from "../core/messages.ts";
 import type { Result } from "../core/result.ts";
 import { parseSpec } from "../core/spec.ts";
 import { validateSpec } from "../core/validate-spec.ts";
@@ -33,12 +34,12 @@ async function validateCapability(root: string, capability: string): Promise<Res
 		text = await readFile(join(root, file), "utf8");
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code === "ENOENT") return [errorResult("spec-missing", file, `${file} does not exist`)];
-		return [errorResult("file-unreadable", file, e instanceof Error ? e.message : String(e))];
+		return [errorResult("file-unreadable", file, messageOf(e))];
 	}
 	try {
 		return validateSpec(parseSpec(text, capability), file);
 	} catch (e) {
-		return [errorResult("file-parse", file, e instanceof Error ? e.message : String(e))];
+		return [errorResult("file-parse", file, messageOf(e))];
 	}
 }
 
@@ -78,10 +79,21 @@ export function registerBuiltinChecks(): void {
 
 registerBuiltinChecks();
 
+/** Runs one named check; an unregistered name or a check that throws becomes an error Result. */
+async function runOne(name: string, ctx: CheckContext): Promise<Result[]> {
+	const check = getCheck(name);
+	if (!check) return [{ code: "check-unregistered", severity: "error", message: `Check ${name} is not registered` }];
+	try {
+		return await check(ctx);
+	} catch (error) {
+		return [{ code: "check-failed", severity: "error", message: `Check ${name} failed: ${messageOf(error)}` }];
+	}
+}
+
 /**
  * Runs the checks the active phase lists, in pack order, and concatenates their results.
  * Each result is tagged with the name of the check that produced it. No check runs without a single
- * known phase. A listed name that is not registered is an error Result.
+ * known phase. A listed name that is not registered, or a check that throws, is an error Result.
  */
 export async function runChecks(
 	pack: Pack,
@@ -95,10 +107,7 @@ export async function runChecks(
 	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git };
 	const results: CheckResult[] = [];
 	for (const name of phase.checks) {
-		const check = getCheck(name);
-		const produced: Result[] = check
-			? await check(checkCtx)
-			: [{ code: "check-unregistered", severity: "error", message: `Check ${name} is not registered` }];
+		const produced = await runOne(name, checkCtx);
 		// The registered name is applied last, so a result cannot claim another check's name.
 		for (const result of produced) results.push({ ...result, check: name });
 	}

@@ -4,7 +4,7 @@
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ForgeError } from "../forge/errors.ts";
+import { isOffline } from "../forge/errors.ts";
 import { registerKind } from "../forge/markers.ts";
 import type { Comment, Forge, Issue } from "../forge/types.ts";
 
@@ -47,9 +47,6 @@ function isEntry(value: unknown): value is Entry {
 	);
 }
 
-function isUnreachable(error: unknown): boolean {
-	return error instanceof ForgeError && (error.code === "unreachable" || error.code === "readonly");
-}
 
 export class CommentsCache {
 	private readonly dir: string;
@@ -75,7 +72,7 @@ export class CommentsCache {
 			await this.tryWrite(issue.number, { updatedAt: issue.updatedAt, fetchedAt: this.now(), comments });
 			return { comments, stale: false };
 		} catch (error) {
-			if (cached && isUnreachable(error)) return { comments: cached.comments, stale: true };
+			if (cached && isOffline(error)) return { comments: cached.comments, stale: true };
 			throw error;
 		}
 	}

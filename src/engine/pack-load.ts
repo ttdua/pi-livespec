@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 // Side effect: built-in named checks are registered before any pack is validated.
 import "./checks.ts";
 import { type Document, LineCounter, type Node, isAlias, isMap, isScalar, parseDocument, visit } from "yaml";
@@ -7,7 +8,7 @@ import { type Merged, type Origin, type ParsedPack, mergePack, standalonePack } 
 import { validatePackDocument } from "./pack-schema.ts";
 import type { LoadedPack, PackError } from "./pack-types.ts";
 
-const DEFAULT_PACK_FILE = "src/packs/agent-skills.yaml";
+export const DEFAULT_PACK_FILE = "src/packs/agent-skills.yaml";
 const OVERRIDE_FILE = ".pi/livespec/flow.yaml";
 
 type ReadFile = (p: string) => Promise<string | undefined>;
@@ -113,9 +114,14 @@ function finish(merged: Merged, file: string, carried: PackError[]): LoadedPack 
 	return { ok: true, pack: merged.pack, warnings: all.filter((e) => e.severity === "warning") };
 }
 
+/** The file path of the bundled default pack, relative to the module at `moduleUrl`. */
+export function defaultPackPath(moduleUrl: string = import.meta.url): string {
+	return fileURLToPath(new URL("../packs/agent-skills.yaml", moduleUrl));
+}
+
 async function readDefault(read: ReadFile | undefined): Promise<string> {
-	const url = new URL("../packs/agent-skills.yaml", import.meta.url);
-	const text = (await read?.(url.pathname)) ?? (await readFs(url.pathname));
+	const path = defaultPackPath();
+	const text = (await read?.(path)) ?? (await readFs(path));
 	if (text === undefined) throw new Error(`default pack missing: ${DEFAULT_PACK_FILE}`);
 	return text;
 }

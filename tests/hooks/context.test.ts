@@ -63,6 +63,17 @@ describe("context hooks", () => {
 		for (const note of notes) expect(note).toBe(ROUTING_NOTE);
 	});
 
+	test("the first card the model sees points at specs/product.md, later ones do not", async () => {
+		const h = await resumed();
+		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
+		const first = await cardText(h.pi, h.ctx, [user("one", 1)]);
+		expect(first).toContain("specs/product.md");
+		const second = await cardText(h.pi, h.ctx, [user("one", 1)]);
+		expect(second).not.toContain("specs/product.md");
+		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
+		expect(await cardText(h.pi, h.ctx, [user("two", 2)])).not.toContain("specs/product.md");
+	});
+
 	test("Appended at the end", async () => {
 		const h = await resumed();
 		const input = [user("one", 1), { role: "assistant", content: [{ type: "text", text: "ok" }] }, user("two", 2)];

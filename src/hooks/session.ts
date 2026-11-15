@@ -7,7 +7,7 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { messageOf } from "../commands/messages.ts";
+import { messageOf } from "../core/messages.ts";
 import { formatOutcome } from "../commands/skills.ts";
 import { type LoadedConfig, loadConfig } from "../config.ts";
 import { ContentManager, type UpgradeOutcome } from "../content/manager.ts";
@@ -18,7 +18,7 @@ import { advancePhase } from "../engine/advance.ts";
 import { CommentsCache } from "../engine/comments-cache.ts";
 import { defaultGitExec } from "../engine/git-exec.ts";
 import { createGit, type Git } from "../engine/git.ts";
-import { loadPack } from "../engine/pack-load.ts";
+import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import { CachedForge } from "../forge/cache.ts";
 import { detectForge, parseRemote } from "../forge/detect.ts";
@@ -90,7 +90,7 @@ export class Session {
 		return message;
 	}
 
-	/** The first card of a session points at specs/product.md; later ones do not. */
+	/** The first card the model sees points at specs/product.md; later ones do not. Called by the `context` hook. */
 	firstCardShown(): void {
 		this.first = false;
 		this.card = { ...this.card, first: false };
@@ -141,11 +141,21 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	}
 }
 
+/** A pack load that throws (an unreadable file) becomes a pack error, so the card and tools show the reason. */
+async function loadSessionPack(session: Session): Promise<void> {
+	try {
+		session.pack = await loadPack(session.cwd);
+	} catch (error) {
+		const message = session.record("load", error);
+		session.pack = { ok: false, errors: [{ severity: "error", file: DEFAULT_PACK_FILE, line: 1, col: 1, path: "", message }] };
+	}
+}
+
 async function loadSessionBasics(session: Session, d: SessionDeps, content: ContentManager): Promise<void> {
 	try {
 		session.config = await loadConfig(session.cwd, d.home);
 		if (!session.initialized) return;
-		session.pack = await loadPack(session.cwd);
+		await loadSessionPack(session);
 	} catch (error) {
 		session.record("load", error);
 	}
@@ -183,14 +193,16 @@ function safeNotify(ctx: ExtensionContext, message: string, type: "info" | "warn
 	}
 }
 
-/** UI-only: a custom entry never reaches the LLM, which sees the card only through the `context` hook. */
+/**
+ * UI-only: a custom entry never reaches the LLM, which sees the card only through the `context` hook.
+ * So the resume entry does not consume the first card; the `context` hook marks it shown.
+ */
 function showResumeCard(pi: ExtensionAPI, session: Session): void {
 	try {
 		appendResumeEntry(pi, renderCard(session.card));
 	} catch (error) {
 		session.record("resume", error);
 	}
-	session.firstCardShown();
 }
 
 function upgradeNotice(o: UpgradeOutcome): { message: string; type: "info" | "warning" } | undefined {

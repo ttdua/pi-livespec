@@ -3,6 +3,7 @@
 // `decideUpgrade` and the filesystem work to `tree.ts`, `lock.ts` and `skill-diff.ts`.
 
 import type { Channel } from "../config.ts";
+import { messageOf } from "../core/messages.ts";
 import { GitError } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { CompatFailure } from "./compat.ts";
@@ -246,8 +247,4 @@ function failure(a: Extract<Applied, { ok: false }>): { reason: string; failures
 
 function fetchFailure(source: string, error: unknown): string {
 	return `cannot fetch agent-skills from ${source}: ${messageOf(error)}`;
-}
-
-function messageOf(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }

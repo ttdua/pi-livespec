@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { type CommandEnv } from "./commands/deps.ts";
-import { messageOf } from "./commands/messages.ts";
+import { messageOf } from "./core/messages.ts";
 import {
 	type Reply,
 	doctorReply,

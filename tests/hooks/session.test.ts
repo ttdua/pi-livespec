@@ -110,6 +110,17 @@ describe("session_start", () => {
 		expect(h.content.autoCheck.calls).toHaveLength(0);
 	});
 
+	test("a pack load that throws shows the reason on the card", async () => {
+		// The override path is a directory, so reading it fails with EISDIR and loadPack throws.
+		const h = await harness({ branch: CHANGE_BRANCH, files: { ".pi/livespec/flow.yaml/keep": "x\n" } });
+		await h.start();
+		const session = getSession();
+		expect(session?.pack).toMatchObject({ ok: false, errors: [{ severity: "error", file: "src/packs/agent-skills.yaml", line: 1, col: 1 }] });
+		const card = await cardText(h.pi, h.ctx);
+		expect(card).toContain("src/packs/agent-skills.yaml:1:1");
+		expect(card).toContain("EISDIR");
+	});
+
 	test("session_start kicks off autoCheck without awaiting it", async () => {
 		const h = await harness({ branch: CHANGE_BRANCH, activeTree: `/clone/${TREE_SHA}` });
 		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });

@@ -4,7 +4,7 @@
 
 import { type Change, parseChange } from "../core/change.ts";
 import { sectionText } from "../core/sections.ts";
-import { ForgeError } from "../forge/errors.ts";
+import { isOffline } from "../forge/errors.ts";
 import { phaseLabel } from "../forge/labels.ts";
 import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
@@ -44,9 +44,6 @@ function idsOfKind(marked: MarkedComment[], kind: string): string[] {
 	return marked.filter((m) => m.kind === kind).map((m) => m.id);
 }
 
-function isOffline(error: unknown): boolean {
-	return error instanceof ForgeError && (error.code === "unreachable" || error.code === "readonly");
-}
 
 /**
  * The login confirmed by `whoami` now, or undefined when the forge is unreachable. A login seen

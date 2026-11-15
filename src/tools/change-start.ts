@@ -8,10 +8,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseChange } from "../core/change.ts";
+import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { setHeaderLine } from "../core/sections.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
-import { messageOf } from "../commands/messages.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Issue } from "../forge/types.ts";
@@ -161,12 +161,12 @@ async function handleWriteFailure(
 		try {
 			await rollback(w.session.git, start.branch, created.previous);
 		} catch (error) {
-			return refuse(`Version conflict on #${n} (${changed}); rolling back ${start.branch} failed: ${messageOf(error)}`);
+			return refuse(`Version conflict on #${n} (${changed}); rolling back ${start.branch} failed: ${untrusted(messageOf(error))}`);
 		}
 		return refuse(`Version conflict on #${n} (${changed}); nothing was written, ${start.branch} was deleted and ${created.previous} checked out again. Rerun change_start #${n}.`);
 	}
 	if (await recordedOnForge(w.forge, n, start.branch, base)) return undefined;
-	return refuse(`Writing Branch and Base to #${n} failed with an unknown outcome (${messageOf(outcome.error)}). ${rerunHint(n)}`);
+	return refuse(`Writing Branch and Base to #${n} failed with an unknown outcome (${untrusted(messageOf(outcome.error))}). ${rerunHint(n)}`);
 }
 
 /** Writes the start and settles any failure; undefined means the issue records the start. */

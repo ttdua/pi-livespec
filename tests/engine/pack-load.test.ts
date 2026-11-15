@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { loadPack } from "../../src/engine/pack-load.ts";
+import { defaultPackPath, loadPack } from "../../src/engine/pack-load.ts";
 import type { LoadedPack } from "../../src/engine/pack-types.ts";
 import { registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
 
@@ -200,5 +200,11 @@ describe("override limits", () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.errors[0]).toMatchObject({ line: 3, col: 3 });
+	});
+});
+
+describe("default pack path", () => {
+	test("resolves a module directory containing a space to a plain file path", async () => {
+		expect(defaultPackPath("file:///tmp/my%20dir/src/engine/pack-load.ts")).toBe("/tmp/my dir/src/packs/agent-skills.yaml");
 	});
 });

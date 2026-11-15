@@ -11,7 +11,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
-import { ForgeError } from "../forge/errors.ts";
+import { isOffline } from "../forge/errors.ts";
 import type { CardInput } from "./phase-card.ts";
 import type { Session } from "./session.ts";
 
@@ -38,9 +38,6 @@ function unnotedSkills(session: Session, step: NextStep, state: ChangeState): st
 	return step.optional.filter((skill) => session.skillReads.has(skill) && !noted.has(`${step.phase}.${skill}`));
 }
 
-function isOffline(error: unknown): boolean {
-	return error instanceof ForgeError && (error.code === "unreachable" || error.code === "readonly");
-}
 
 type Resolved = { kind: "change"; number: number; warning?: string } | Exclude<CardInput, { kind: "change" }>;
 
