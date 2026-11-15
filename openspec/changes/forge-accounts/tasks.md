@@ -27,9 +27,9 @@ Blocked by: 2
 
 Blocked by: 3
 
-- [ ] 4.1 Add `src/accounts/resolve.ts` (`resolveAccount`, `chooseAccount`): gather facts, call `selectAccount`, ask through `ctx.ui.select` when the result is "ask", store, and notify once. Add `src/forge/redact.ts` (`RedactingForge`)
-- [ ] 4.2 Wire resolution into `connectForge` in `src/hooks/session.ts`, for initialized projects only: target, resolve, build the adapter with the account, wrap it in redaction and cache, then confirm `whoami`. Add `SessionDeps.accounts`, `session.accountBlock`, `accountNotice`, `reconnect()`, `switchAccount()` and `CardInput.account`
-- [ ] 4.3 Block every forge mutation on `accountBlock`: `requireWritable` in `src/tools/guard.ts` and `applyAdvance` in `src/hooks/session.ts`; the block is independent of read-only mode
+- [x] 4.1 Add `src/accounts/resolve.ts` (`resolveAccount`, `chooseAccount`): gather facts, call `selectAccount`, ask through `ctx.ui.select` when the result is "ask", store, and notify once. Add `src/forge/redact.ts` (`RedactingForge`)
+- [x] 4.2 Wire resolution into `connectForge` in `src/hooks/session.ts`, for initialized projects only: target, resolve, build the adapter with the account, wrap it in redaction and cache, then confirm `whoami`. Add `SessionDeps.accounts`, `session.accountBlock`, `accountNotice`, `reconnect()`, `switchAccount()` and `CardInput.account`
+- [x] 4.3 Block every forge mutation on `accountBlock`: `requireWritable` in `src/tools/guard.ts` and `applyAdvance` in `src/hooks/session.ts`; the block is independent of read-only mode
 
 ## 5. Command, doctor and card
 
