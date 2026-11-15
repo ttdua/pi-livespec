@@ -29,7 +29,7 @@ async function answeredStuck() {
 }
 
 /** Every tool name registered by the harness plus `spec_validate`, read from one real registration. */
-const TOOL_NAMES = ["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate"];
+const TOOL_NAMES = ["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units"];
 
 describe("every livespec tool polls first", () => {
 	test("the list covers every registered tool", async () => {
