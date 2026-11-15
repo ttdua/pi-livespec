@@ -8,6 +8,7 @@ import type { Comment } from "../forge/types.ts";
 import type { Answered, Override, QuestionClass } from "./approver.ts";
 import { type Command, parseCommand } from "./commands.ts";
 import { allRequests, type Closer, closers, type PendingRequest } from "./requests.ts";
+import { failingWaivableOf, unwaivedApproval } from "./waive-rule.ts";
 
 export type Permission = "none" | "read" | "write" | "admin";
 
@@ -30,7 +31,6 @@ export type MatchOptions = {
 const WRITERS = new Set<Permission>(["write", "admin"]);
 const GATE_LIKE = ["gate:", "amend:"];
 const CHOICE_LIKE = ["stuck:", "decide:"];
-const WAIVE = "waive";
 
 const hasPrefix = (subject: string, prefixes: string[]): boolean => prefixes.some((p) => subject.startsWith(p));
 const isGateLike = (r: PendingRequest): boolean => hasPrefix(r.subject, GATE_LIKE);
@@ -115,11 +115,6 @@ function targetOf(open: PendingRequest[], command: Command): Target {
 
 // --- answers -------------------------------------------------------------------------
 
-function failingWaivable(r: PendingRequest): string[] {
-	const snapshot = r.data.snapshot as { failingWaivable?: unknown };
-	return Array.isArray(snapshot.failingWaivable) ? snapshot.failingWaivable.map(String) : [];
-}
-
 function base(comment: Comment): Pick<Answered, "status" | "by" | "at" | "adapter" | "answerComment"> {
 	return {
 		status: "answered",
@@ -130,14 +125,18 @@ function base(comment: Comment): Pick<Answered, "status" | "by" | "at" | "adapte
 	};
 }
 
-/** The answer a decision command gives, or why it cannot answer `request`. */
+/** The answer a command gives, or why it cannot answer `request`; an unwaived approval is refused here too. */
 function decisionAnswer(request: PendingRequest, command: Command, comment: Comment): Answered | string {
+	const answer = commandAnswer(request, command, comment);
+	if (typeof answer === "string") return answer;
+	return unwaivedApproval(failingWaivableOf(request.data.snapshot), answer) ?? answer;
+}
+
+function commandAnswer(request: PendingRequest, command: Command, comment: Comment): Answered | string {
 	const answer = base(comment);
 	switch (command.verb) {
 		case "approve": {
 			if (isChoiceLike(request)) return `approve cannot answer ${request.subject}: use /livespec choose <option-id>`;
-			const failing = failingWaivable(request);
-			if (failing.length > 0) return `waivable checks fail (${failing.join(", ")}): they must be waived with /livespec choose ${WAIVE}`;
 			return { ...answer, outcome: command.notes === "" ? "approved" : "approved_with_notes", notes: command.notes };
 		}
 		case "changes":

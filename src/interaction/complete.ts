@@ -72,7 +72,7 @@ function summary(record: AnswerData): Completion {
 
 /** Records the validated answer durably, before any effect runs. */
 export async function recordAnswer(run: Run, req: RequestRecord, ans: Answered): Promise<AnswerData> {
-	const verdict = await validateAnswer(run.ctx, req);
+	const verdict = await validateAnswer(run.ctx, req, ans);
 	const record: AnswerData = { request: req, answer: ans, verdict: verdict.verdict };
 	if (verdict.verdict === "superseded") record.reason = verdict.reason;
 	await postComment(run, answerComment(req.id, record));

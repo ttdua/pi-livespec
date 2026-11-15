@@ -201,6 +201,19 @@ describe("completion engine", () => {
 		expect((await refresh(f)).issue.labels).toContain("livespec:phase/plan");
 	});
 
+	test("an approval that does not waive failing waivable checks is superseded", async () => {
+		const f = await fixture("define");
+		const options = [{ id: "waive", label: "Waive size-limits" }, { id: "accept", label: "accept" }];
+		const record = await prepare(f, "gate", "gate:define", { target: "define", digests: {}, failingWaivable: ["size-limits"] }, options);
+		const out = await completeAnswer(await ctxOf(f), record, answer({ choice: "accept" }));
+		expect(out.status).toBe("superseded");
+		expect(out.result).toContain("choose waive");
+		const gate = ofKind(await markedOf(f), "gate").at(-1)?.data as { superseded?: boolean; waivers: string[] };
+		expect(gate.superseded).toBe(true);
+		expect(gate.waivers).toEqual([]);
+		expect((await refresh(f)).issue.labels).toContain("livespec:phase/define");
+	});
+
 	test("Forge answer recorded", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));

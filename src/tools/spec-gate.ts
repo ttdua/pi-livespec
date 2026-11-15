@@ -11,9 +11,10 @@ import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { Answered, ApprovalRequest, GateSnapshot, RequestOption } from "../interaction/approver.ts";
+import type { ApprovalRequest, GateSnapshot, RequestOption } from "../interaction/approver.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
+import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -22,7 +23,6 @@ import { agentSkillsOf, sendRequest, withStep } from "./request-flow.ts";
 export type SpecGateParams = { target: string };
 
 const PLAN = "plan";
-const WAIVE = "waive";
 const BASE36 = 36;
 const SELF_BY = "livespec";
 const NEW_STUCK_HINT = "An earlier stuck answer that chose no option does not lift the cap: send a new stuck report with spec_stuck.";
@@ -96,13 +96,6 @@ export function gateRequest(
 	return request;
 }
 
-/** A plain approve does not pass a failing waivable check; only `waive` does. */
-export function unwaivedApproval(plan: GatePlan, ans: Answered): string | undefined {
-	const approved = ans.outcome === "approved" || ans.outcome === "approved_with_notes";
-	if (!approved || plan.failingWaivable.length === 0 || ans.choice === WAIVE) return undefined;
-	return `The approval was not recorded: ${plan.failingWaivable.join(", ")} fails and must be waived with choose ${WAIVE}. Request the gate again.`;
-}
-
 // --- I/O -----------------------------------------------------------------------------
 
 async function passSelf(w: WriteContext, state: ChangeState, target: string): Promise<ToolResult<undefined>> {
@@ -120,7 +113,8 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const request = await buildRequest(w, state, target, plan);
-	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again", precheck: (ans) => unwaivedApproval(plan, ans) });
+	// The waive rule is enforced for every adapter when the answer is validated (`validateAnswer`).
+	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again" });
 }
 
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {

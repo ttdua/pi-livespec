@@ -19,6 +19,7 @@ import type {
 	Override,
 	RequestOption,
 } from "./approver.ts";
+import { failingWaivableOf } from "./waive-rule.ts";
 
 const DIFFICULTIES: Difficulty[] = ["low", "medium", "high"];
 
@@ -127,9 +128,7 @@ type GateAction = { action: "approve" } | { action: "changes" } | { action: "dis
 
 /** Failing waivable checks of a gate request; a plain approve cannot pass them, only `waive`. */
 function failingWaivable(r: ApprovalRequest): string[] {
-	if (r.kind !== "gate") return [];
-	const list = (r.record.snapshot as { failingWaivable?: unknown }).failingWaivable;
-	return Array.isArray(list) ? list.map(String) : [];
+	return r.kind === "gate" ? failingWaivableOf(r.record.snapshot) : [];
 }
 
 /**

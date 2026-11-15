@@ -148,6 +148,14 @@ describe("forge adapter", () => {
 		expect(waived.matches[0]?.answer).toMatchObject({ outcome: "approved", choice: "waive" });
 	});
 
+	test("choose of a named gate option with failing waivable checks is ignored with a waive hint", () => {
+		const options = [{ id: "waive", label: "waive size-limits" }, { id: "accept", label: "accept the dependency" }];
+		const gate = pending("gate:new-dependency", { options, snapshot: { target: "new-dependency", digests: {}, failingWaivable: ["size-limits"] } });
+		const out = matchThread([gate], [comment("9", "alice", "/livespec choose accept", LATER)], writers("alice"));
+		expect(out.matches).toEqual([]);
+		expect(out.warnings[0]).toContain("choose waive");
+	});
+
 	test("getPermission is called once per author", async () => {
 		const { world, n } = await setup();
 		const calls: string[] = [];

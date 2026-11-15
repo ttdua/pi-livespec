@@ -35,8 +35,6 @@ export type SendOptions = {
 	tool: string;
 	/** What to ask for again when no adapter remained. */
 	retry: string;
-	/** A refusal of an in-session answer before it is completed; undefined lets it complete. */
-	precheck?: (ans: Answered) => string | undefined;
 	/**
 	 * "Answer later" handling, for question requests only: `hook` runs once before the next adapter gets
 	 * the async request, and `text` is the (non-error) result when no adapter remained.
@@ -66,8 +64,6 @@ export async function sendRequest(w: WriteContext, state: ChangeState, request: 
 		await afterForgeWrite(w.session, n);
 		return toolResult(withStep(w.session, `Requested ${request.subject} on the forge as ${result.requestId}; wait for the human's answer.`), undefined);
 	}
-	const refused = o.precheck?.(result);
-	if (refused) return toolResult(refused, undefined, true);
 	// `Completion.result` is already wrapped as untrusted where it holds forge text.
 	const completion = await completeAnswer(completionCtx(w, state), request.record, result);
 	await afterForgeWrite(w.session, n);

@@ -9,9 +9,9 @@ import type { AdapterName, Answered, GateSnapshot, RequestRecord } from "./appro
 import { type ApplyFn, phasesAfter, postOnce, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 import type { AnswerData } from "./requests.ts";
+import { WAIVE } from "./waive-rule.ts";
 
 const PLAN = "plan";
-const WAIVE = "waive";
 
 const isApproved = (a: Answered): boolean => a.outcome === "approved" || a.outcome === "approved_with_notes";
 

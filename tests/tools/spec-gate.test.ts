@@ -223,6 +223,17 @@ describe("spec_gate", () => {
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
 	});
 
+	test("in-session choice of a named gate option does not pass a failing waivable check", async () => {
+		registerSizeLimits();
+		registerGate("new-dependency", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
+		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
+		const h = await change("build", { ui: human("accept"), files: flow });
+		const out = await h.call("spec_gate", { target: "new-dependency" });
+		expect(textOf(out)).toContain("choose waive");
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", superseded: true, waivers: [] });
+	});
+
 	test("plan gate locks digests and offers overrides", async () => {
 		const h = await change("plan", { ui: human("approve") });
 		await seedClassification(h);

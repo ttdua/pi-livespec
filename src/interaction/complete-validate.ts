@@ -1,6 +1,6 @@
 // Validating an answer once, before it is recorded (design D2): a gate checks
-// HEAD, the gate digest and the gate refusal conditions (ignoring the request
-// itself); an amendment checks the affected unit's digest and done state and the
+// the waive rule, HEAD, the gate digest and the gate refusal conditions
+// (ignoring the request itself), for every adapter alike; an amendment checks the affected unit's digest and done state and the
 // validity of the resulting plan. Other kinds are always valid.
 
 import { parseChange } from "../core/change.ts";
@@ -13,8 +13,9 @@ import { deriveCommentFacts, phaseFromLabels, readGitFacts, sectionPresence } fr
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Issue } from "../forge/types.ts";
 import { amendedBody } from "./amend-body.ts";
-import type { AmendSnapshot, GateSnapshot, RequestRecord } from "./approver.ts";
+import type { AmendSnapshot, Answered, GateSnapshot, RequestRecord } from "./approver.ts";
 import type { CompletionCtx } from "./complete-effects.ts";
+import { failingWaivableOf, unwaivedApproval } from "./waive-rule.ts";
 
 export type Verdict = { verdict: "valid" } | { verdict: "superseded"; reason: string };
 
@@ -41,7 +42,9 @@ async function stateNow(ctx: CompletionCtx, issue: Issue): Promise<ChangeState> 
 	return { ...snapshot, checks: await runChecks(ctx.pack, snapshot, { root: ctx.root, git: ctx.git }) };
 }
 
-async function validateGate(ctx: CompletionCtx, req: RequestRecord, issue: Issue): Promise<Verdict> {
+async function validateGate(ctx: CompletionCtx, req: RequestRecord, ans: Answered, issue: Issue): Promise<Verdict> {
+	const unwaived = unwaivedApproval(failingWaivableOf(req.snapshot), ans);
+	if (unwaived !== undefined) return superseded(unwaived);
 	if ((await ctx.git.head()) !== req.head_sha) return superseded("HEAD moved since the request");
 	if (req.gate_digest !== undefined && gateDigest(issue.body) !== req.gate_digest) return superseded("the issue changed since the request");
 	const target = (req.snapshot as GateSnapshot).target;
@@ -64,8 +67,8 @@ function validateAmend(req: RequestRecord, issue: Issue): Verdict {
 }
 
 /** Whether the human's answer still applies to what they saw. Run once, before the answer is recorded. */
-export async function validateAnswer(ctx: CompletionCtx, req: RequestRecord): Promise<Verdict> {
-	if (req.subject.startsWith("gate:")) return validateGate(ctx, req, await ctx.forge.getIssue(ctx.issue));
+export async function validateAnswer(ctx: CompletionCtx, req: RequestRecord, ans: Answered): Promise<Verdict> {
+	if (req.subject.startsWith("gate:")) return validateGate(ctx, req, ans, await ctx.forge.getIssue(ctx.issue));
 	if (req.subject.startsWith("amend:")) return validateAmend(req, await ctx.forge.getIssue(ctx.issue));
 	return VALID;
 }
