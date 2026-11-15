@@ -5,6 +5,7 @@ import { registerBuiltinRules } from "../../src/decide/registry.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
 import { gatePayload, type ReviewFacts } from "../../src/engine/gate-payload.ts";
+import { untrusted } from "../../src/hooks/phase-card.ts";
 import { gateRefusal, registerGate, registerGatePayload, resetGatesForTests } from "../../src/engine/gates.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
@@ -64,7 +65,7 @@ describe("gateRefusal", () => {
 
 	test("Failing check that is not waivable", () => {
 		const checks = [{ check: "spec-format", code: "spec-missing", severity: "error" as const, file: "specs/rate-limit/spec.md", message: "specs/rate-limit/spec.md does not exist" }];
-		expect(gateRefusal(ready("define", { checks }), pack, "define")).toBe("Check spec-format fails: specs/rate-limit/spec.md does not exist.");
+		expect(gateRefusal(ready("define", { checks }), pack, "define")).toBe(`Check spec-format fails: ${untrusted("specs/rate-limit/spec.md does not exist")}.`);
 		registerCheck("size-limits", async () => [], { waivable: true });
 		const waivable = [{ check: "size-limits", code: "x", severity: "error" as const, message: "too big" }];
 		expect(gateRefusal(ready("plan", { checks: waivable }), pack, "plan")).toBeUndefined();
@@ -95,7 +96,7 @@ describe("gateRefusal", () => {
 		registerGate("new-dependency", { checks: ["dep-ok"] });
 		expect(gateRefusal(ready("build"), pack, "new-dependency")).toBeUndefined();
 		const failing = [{ check: "dep-ok", code: "x", severity: "error" as const, message: "missing licence" }];
-		expect(gateRefusal(ready("build", { checks: failing }), pack, "new-dependency")).toBe("Check dep-ok fails: missing licence.");
+		expect(gateRefusal(ready("build", { checks: failing }), pack, "new-dependency")).toBe(`Check dep-ok fails: ${untrusted("missing licence")}.`);
 		const other = [{ check: "units-format", code: "x", severity: "error" as const, message: "unrelated" }];
 		expect(gateRefusal(ready("build", { checks: other }), pack, "new-dependency")).toBeUndefined();
 		expect(gateRefusal(ready("define"), pack, "plan")).toBe("plan is neither the current phase (define) nor a registered gate.");

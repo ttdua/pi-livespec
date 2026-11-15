@@ -1,6 +1,7 @@
 // Gate registration and the pure gate evaluation (design D7): named gates,
 // per-phase review payload providers and gate refusal. Nothing here does I/O.
 
+import { untrusted } from "../hooks/phase-card.ts";
 import type { ReviewFacts } from "./gate-payload.ts";
 import type { Pack, Phase } from "./pack-types.ts";
 import { isWaivable } from "./registry.ts";
@@ -129,7 +130,8 @@ const changedUnits: RefusalRule = ({ state, pack, target }) => {
 
 const failingCheck: RefusalRule = ({ state, target }) => {
 	const failure = failingChecks(state, target).find((r) => !isWaivable(r.check));
-	return failure ? `Check ${failure.check} fails: ${sentence(failure.message)}.` : undefined;
+	// The check message can quote forge text (unit titles, file names), so it is wrapped as untrusted.
+	return failure ? `Check ${failure.check} fails: ${untrusted(sentence(failure.message))}.` : undefined;
 };
 
 const REFUSALS: RefusalRule[] = [noGate, blockingQuestion, openStuck, capReached, pendingRequest, dirtyTree, changedUnits, failingCheck];
