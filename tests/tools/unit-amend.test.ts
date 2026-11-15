@@ -126,6 +126,14 @@ describe("unit_amend", () => {
 		expect(lockState(h).frozen).toEqual([]);
 	});
 
+	test("in-session amendments get distinct subjects", async () => {
+		const h = await planned();
+		await h.amend({ add: true, replacement: unit("Burst", "src/limits/burst.ts", "b") });
+		await h.amend({ drop: true, unit: "U1" });
+		const subjects = (await ofKind(h, "answer")).map((m) => (m.data as { request: { subject: string } }).request.subject);
+		expect(subjects).toEqual(["amend:1", "amend:2"]);
+	});
+
 	test("Drop a done unit", async () => {
 		const h = await planned();
 		await webEdit(h, tickU1);

@@ -17,7 +17,7 @@ import type { ChangeState } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
-import type { AmendSnapshot, ApprovalRequest } from "../interaction/approver.ts";
+import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest } from "../interaction/approver.ts";
 import { allRequests, openRequests, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { classifyUnits, normalizeUnitInput } from "./classify-units.ts";
@@ -147,9 +147,17 @@ export async function planAmend(state: ChangeState, body: string, form: AmendFor
 	return { snapshot, summary: summaryOf(state.issue.number, snapshot, target ? blockOf(body, target) : undefined) };
 }
 
-/** `amend:<n>`, one past the number of amendment requests the issue has seen. */
+/**
+ * `amend:<n>`, one past the number of distinct amendment requests the issue has seen: forge requests leave a
+ * `request` comment, in-session answers only an `answer` comment carrying the request.
+ */
 export function amendSubject(state: ChangeState): string {
-	return `${AMEND_PREFIX}${allRequests(state.marked).filter((r) => r.subject.startsWith(AMEND_PREFIX)).length + 1}`;
+	const ids = new Set(allRequests(state.marked).filter((r) => r.subject.startsWith(AMEND_PREFIX)).map((r) => r.id));
+	for (const m of state.marked) {
+		const subject = m.kind === ANSWER_KIND ? (m.data as { request?: { subject?: unknown } } | null)?.request?.subject : undefined;
+		if (typeof subject === "string" && subject.startsWith(AMEND_PREFIX)) ids.add(m.id);
+	}
+	return `${AMEND_PREFIX}${ids.size + 1}`;
 }
 
 /** The light gate request: only the affected unit, with its classification overridable unless it is dropped. */
