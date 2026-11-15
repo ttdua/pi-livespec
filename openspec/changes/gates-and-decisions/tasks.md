@@ -75,8 +75,8 @@ Blocked by: 7
 
 Blocked by: 8
 
-- [ ] 9.1 Add `spec_question` (append `Q<n>`, class, `reask`) over the chain
-- [ ] 9.2 Add `spec_stuck` (2–3 options, a recommended option, links), which writes the `stuck` report comment and sends a blocking request
+- [x] 9.1 Add `spec_question` (append `Q<n>`, class, `reask`) over the chain
+- [x] 9.2 Add `spec_stuck` (2–3 options, a recommended option, links), which writes the `stuck` report comment and sends a blocking request
 
 ## 10. Docs and end-to-end verification
 
