@@ -4,6 +4,7 @@
 
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "vitest";
+import type { GitExec } from "../../src/engine/git-exec.ts";
 import type { Session } from "../../src/hooks/session.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { FakeGitea, type FakeGiteaAccount } from "../forge/fake-gitea.ts";
@@ -101,6 +102,34 @@ describe("Gitea: reads keep working while the account blocks writes", () => {
 		expect(card).toContain("upstream rejected credentials ***");
 		const values = [session.errors.join("\n"), session.forgeError ?? "", JSON.stringify(session.card), card, text(status), JSON.stringify(status.details)];
 		for (const value of values) expect(value).not.toContain(ADMIN.token);
+		expect(created.isError).toBe(true);
+		expect(fake.calls.filter((c) => c.method !== "GET")).toEqual([]);
+	});
+
+	test("a forge error echoing GITEA_TOKEN is redacted when the selection fails", async () => {
+		const ENV: FakeGiteaAccount = { token: "tok-gitea-env", login: "env-bot", push: true };
+		const fake = await giteaFake([ENV, ADMIN]);
+		const teaConfig = `logins:\n${teaLogin("gitea-admin", fake.url, ADMIN)}`;
+		const failStoredRead = (real: GitExec): GitExec => async (args, opts) =>
+			args.includes("--get") ? { code: 3, stdout: "", stderr: "fatal: bad config file" } : real(args, opts);
+		const h = await harness({ branch: CHANGE_BRANCH, gitea: { url: fake.url, teaConfig }, accountEnv: { GITEA_TOKEN: ENV.token }, accountGit: failStoredRead });
+		fake.seedIssue({ title: "per-ip-cap", body: resumeBody("x"), labels: BUILD_LABELS });
+		fake.echoTokenOnRead(/\/issues/);
+		await h.start();
+		const session = current();
+		expect(session.accountBlock).toContain("account selection failed");
+		expect(session.account?.token).toBeUndefined();
+
+		const status = await h.call("spec_status");
+		const card = await cardText(h.pi, h.ctx);
+		const created = await h.call("change_new", { name: "rate-limit" });
+
+		// Positive control: the adapter did send GITEA_TOKEN, and its echo reaches the user redacted.
+		expect(fake.calls.some((c) => c.authorization === `token ${ENV.token}`)).toBe(true);
+		expect(session.errors.join("\n")).toContain("upstream rejected credentials ***");
+		expect(card).toContain("upstream rejected credentials ***");
+		const values = [session.errors.join("\n"), session.forgeError ?? "", JSON.stringify(session.card), card, text(status), JSON.stringify(status.details)];
+		for (const value of values) expect(value).not.toContain(ENV.token);
 		expect(created.isError).toBe(true);
 		expect(fake.calls.filter((c) => c.method !== "GET")).toEqual([]);
 	});

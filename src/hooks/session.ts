@@ -326,7 +326,7 @@ async function connectWithAccount(
 	resolved: ResolvedAccount | undefined,
 	d: SessionDeps,
 ): Promise<Connection | undefined> {
-	let tokens = chosenToken(resolved);
+	let tokens = knownTokens(target, resolved, d);
 	try {
 		tokens = await redactionTokens(target, resolved, d);
 		const account = detectAccount(target, resolved);
@@ -343,19 +343,21 @@ async function connectWithAccount(
 	}
 }
 
-function chosenToken(resolved: ResolvedAccount | undefined): string[] {
-	return resolved?.token ? [resolved.token] : [];
+/** The tokens known without a lookup: the chosen account's and the forge's environment token, whatever the resolution decided. */
+function knownTokens(target: ForgeTarget, resolved: ResolvedAccount | undefined, d: SessionDeps): string[] {
+	return [resolved?.token, d.accounts.env[envTokenVar(target)]].filter((t): t is string => t !== undefined && t !== "");
 }
 
 /**
- * Every token the adapter can send: the chosen account's, and for a refused Gitea selection the
- * read-only login's, which the adapter reads from the `tea` config itself. Read here only to redact;
- * it is neither stored on the session nor rendered.
+ * Every token the adapter can send: the chosen account's; the forge's environment token, which the
+ * adapter may send whatever the resolution decided (even when it failed); and for a refused Gitea
+ * selection the read-only login's, which the adapter reads from the `tea` config itself. Read here
+ * only to redact; neither is stored on the session nor rendered.
  */
 async function redactionTokens(target: ForgeTarget, resolved: ResolvedAccount | undefined, d: SessionDeps): Promise<string[]> {
 	const login = resolved?.readOnlyLogin;
 	const readOnly = login === undefined ? undefined : await candidateToken(d.accounts, target, login);
-	return readOnly === undefined ? chosenToken(resolved) : [...chosenToken(resolved), readOnly];
+	return readOnly === undefined ? knownTokens(target, resolved, d) : [...knownTokens(target, resolved, d), readOnly];
 }
 
 /**

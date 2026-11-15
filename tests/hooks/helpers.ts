@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AccountEnv } from "../../src/accounts/types.ts";
 import type { ContentManager, UpgradeOutcome } from "../../src/content/manager.ts";
-import { defaultGitExec } from "../../src/engine/git-exec.ts";
+import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { type DetectDeps, detectForge } from "../../src/forge/detect.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { defaultExec, type ExecFn } from "../../src/forge/github.ts";
@@ -169,6 +169,8 @@ export type HarnessOptions = {
 	 * `detectForge` builds the adapter over real `fetch`. `forge` is ignored.
 	 */
 	gitea?: { url: string; teaConfig: string };
+	/** Wraps the account flow's git seam, e.g. to make a `git config --local --get` fail. */
+	accountGit?: (real: GitExec) => GitExec;
 };
 
 /** The project config of the harness: Gitea mode names the forge, so detection never probes. */
@@ -214,7 +216,8 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 	const pi = new FakePi();
 	const content = fakeContent(o.activeTree);
 	const fake = fakeAccounts(home, o.accounts, o.accountEnv);
-	const accounts = await giteaAccounts(fake.env, o.gitea);
+	const giteaEnv = await giteaAccounts(fake.env, o.gitea);
+	const accounts = o.accountGit ? { ...giteaEnv, git: o.accountGit(giteaEnv.git) } : giteaEnv;
 	const detectCalls: Partial<DetectDeps>[] = [];
 	const deps: Partial<SessionDeps> = {
 		home,
