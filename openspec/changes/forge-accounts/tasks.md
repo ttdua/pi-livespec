@@ -11,11 +11,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Add `src/accounts/types.ts` (candidate, access, stored value, selection facts and result, source labels, `AccountEnv`) and `src/accounts/env.ts` (`defaultAccountEnv`)
-- [ ] 2.2 Add `src/accounts/candidates.ts`: GitHub candidates from `gh auth status --json hosts`, Gitea candidates from the `tea` config logins for the host
-- [ ] 2.3 Add `src/accounts/token.ts` (GitHub `gh auth token --hostname --user`; Gitea login token) and `src/accounts/redact.ts` (`redactTokens`)
-- [ ] 2.4 Add `src/accounts/access.ts`: per-candidate push check with that candidate's token, `true` / `false` / `unknown`, 5 s timeout, at most 4 in parallel
-- [ ] 2.5 Add `src/accounts/store.ts`: `git config --local` read and write of `livespec.account` and `livespec.accountRemote`, with value validation and `--end-of-options`
+- [x] 2.1 Add `src/accounts/types.ts` (candidate, access, stored value, selection facts and result, source labels, `AccountEnv`) and `src/accounts/env.ts` (`defaultAccountEnv`)
+- [x] 2.2 Add `src/accounts/candidates.ts`: GitHub candidates from `gh auth status --json hosts`, Gitea candidates from the `tea` config logins for the host
+- [x] 2.3 Add `src/accounts/token.ts` (GitHub `gh auth token --hostname --user`; Gitea login token) and `src/accounts/redact.ts` (`redactTokens`)
+- [x] 2.4 Add `src/accounts/access.ts`: per-candidate push check with that candidate's token, `true` / `false` / `unknown`, 5 s timeout, at most 4 in parallel
+- [x] 2.5 Add `src/accounts/store.ts`: `git config --local` read and write of `livespec.account` and `livespec.accountRemote`, with value validation and `--end-of-options`
 
 ## 3. Pure selection
 
