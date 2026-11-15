@@ -120,11 +120,11 @@ The forge account is chosen **per clone**, never globally. The choice lives in t
 
 `/livespec account [name]` shows the current account and its source, or switches to a named account that has write access. `doctor` and the status card report the account and whether it is confirmed, unverified or blocked.
 
-**Writes stay blocked until the identity is confirmed.** A mismatch, a refusal or an unconfirmed identity blocks forge writes and pushes; it never falls back to another account.
+**Writes stay blocked until the identity is confirmed.** A mismatch, a refusal or an unconfirmed identity blocks forge writes; it never falls back to another account.
 
 **Self-hosted Gitea** is found through `giteaUrl` or `host` in the project config, or through a `tea` login whose `ssh_host` maps the git remote to the web host.
 
-**Token handling.** A token for a subprocess (`gh`, `tea`) goes through that call's environment. A token for an HTTP request goes in the `Authorization` header. A token never appears in argv, messages, logs or files.
+**Token handling.** A token for a subprocess (`gh`) goes through that call's environment; `tea` is never run, only its config is read. A token for an HTTP request goes in the `Authorization` header. A token never appears in argv, messages, logs or files.
 
 ## Principles
 

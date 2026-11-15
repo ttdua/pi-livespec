@@ -27,6 +27,8 @@ export interface ResolvedAccount {
 	unverified: boolean;
 	/** Why writes are refused; set exactly when no account can be used. */
 	block?: string;
+	/** Gitea only, on a refusal: the `tea` login the adapter reads with; writes stay blocked. Set by the session. */
+	readOnlyLogin?: string;
 	/** One line announcing a stored choice; set only when the git config was written. */
 	notice?: string;
 	facts: SelectionFacts;

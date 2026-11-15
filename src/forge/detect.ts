@@ -40,7 +40,6 @@ export interface ForgeTarget {
 	repo: string;
 }
 
-
 interface RemoteRef {
 	/** Lower-cased host name, without port. */
 	host: string;

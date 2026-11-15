@@ -77,6 +77,15 @@ export interface FakeGiteaOptions {
 	repo?: string;
 	/** Clamps `limit` like Gitea's `API.MAX_RESPONSE_ITEMS`. */
 	maxPageSize?: number;
+	/** Extra tokens the fake accepts, each authenticating as `login` with `push` on the repository. */
+	accounts?: FakeGiteaAccount[];
+}
+
+/** A user of the fake beside the bot (`FAKE_TOKEN`): `/user` answers its login, the repository its push permission. */
+export interface FakeGiteaAccount {
+	token: string;
+	login: string;
+	push: boolean;
 }
 
 interface Reply {
@@ -88,6 +97,7 @@ interface Ctx {
 	groups: string[];
 	query: URLSearchParams;
 	body: Record<string, unknown>;
+	account: FakeGiteaAccount;
 }
 
 type Handler = (ctx: Ctx) => Reply;
@@ -116,6 +126,7 @@ export class FakeGitea {
 		private readonly withContentVersion: boolean,
 		private readonly prefix: string,
 		private readonly maxPageSize = Number.POSITIVE_INFINITY,
+		private readonly accounts: FakeGiteaAccount[] = [],
 	) {
 		this.buildRoutes();
 		server.on("request", (req, res) => void this.serve(req, res));
@@ -123,7 +134,7 @@ export class FakeGitea {
 
 	static async start(opts: FakeGiteaOptions = {}): Promise<FakeGitea> {
 		const server = createServer();
-		const fake = new FakeGitea(server, opts.withContentVersion ?? true, `/api/v1/repos/${opts.owner ?? "o"}/${opts.repo ?? "r"}`, opts.maxPageSize);
+		const fake = new FakeGitea(server, opts.withContentVersion ?? true, `/api/v1/repos/${opts.owner ?? "o"}/${opts.repo ?? "r"}`, opts.maxPageSize, opts.accounts);
 		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 		return fake;
 	}
@@ -266,12 +277,19 @@ export class FakeGitea {
 
 	private dispatch(method: string, url: URL, authorization: string | undefined, body: Record<string, unknown>): Reply {
 		if (method === "GET" && url.pathname === "/api/v1/version") return ok({ version: "1.22.0" });
-		if (authorization !== `token ${FAKE_TOKEN}`) return { status: 401, json: { message: "token is required" } };
+		const account = this.accountOf(authorization);
+		if (!account) return { status: 401, json: { message: "token is required" } };
 		for (const [m, pattern, handler] of this.routes) {
 			const match = m === method ? pattern.exec(url.pathname) : null;
-			if (match) return handler({ groups: match.slice(1), query: url.searchParams, body });
+			if (match) return handler({ groups: match.slice(1), query: url.searchParams, body, account });
 		}
 		return notFound(`${method} ${url.pathname}`);
+	}
+
+	/** The account `authorization` authenticates as: the bot for `FAKE_TOKEN`, else one of `accounts`. */
+	private accountOf(authorization: string | undefined): FakeGiteaAccount | undefined {
+		if (authorization === `token ${FAKE_TOKEN}`) return { token: FAKE_TOKEN, login: BOT_LOGIN, push: true };
+		return this.accounts.find((a) => authorization === `token ${a.token}`);
 	}
 
 	private route(method: string, path: string | RegExp, handler: Handler): void {
@@ -282,7 +300,8 @@ export class FakeGitea {
 	private buildRoutes(): void {
 		const r = this.prefix.replaceAll("/", "\\/");
 		const id = "(\\d+)";
-		this.route("GET", "/api/v1/user", () => ok({ login: BOT_LOGIN }));
+		this.route("GET", "/api/v1/user", (c) => ok({ login: c.account.login }));
+		this.route("GET", r, (c) => ok({ full_name: this.prefix.replace("/api/v1/repos/", ""), permissions: { admin: false, push: c.account.push, pull: true } }));
 
 		this.route("GET", `${r}/issues`, (c) => ok(this.pageOf(this.searchIssues(c.query), c.query).map((i) => this.issueJson(i))));
 		this.route("POST", `${r}/issues`, (c) => created(this.issueJson(this.createIssue(c.body))));

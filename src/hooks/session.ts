@@ -21,6 +21,7 @@ import { createGit, type Git } from "../engine/git.ts";
 import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import { defaultAccountEnv } from "../accounts/env.ts";
+import { readOnlyLogin } from "../accounts/read-only.ts";
 import { redactTokens } from "../accounts/redact.ts";
 import { type AccountUI, chooseAccount, envTokenVar, type ResolvedAccount, resolveAccount } from "../accounts/resolve.ts";
 import type { AccountEnv } from "../accounts/types.ts";
@@ -274,12 +275,22 @@ async function targetFor(session: Session, d: SessionDeps): Promise<ForgeTarget 
 /** Runs the selection; a refusal becomes the block. `resolveAccount` never rejects, but a bug must not reach pi. */
 async function resolveSessionAccount(session: Session, target: ForgeTarget, link: SessionLink): Promise<ResolvedAccount | undefined> {
 	try {
-		return adoptAccount(session, await resolveAccount(target, session.cwd, link.ui, link.deps.accounts));
+		return adoptAccount(session, withReadOnlyLogin(target, await resolveAccount(target, session.cwd, link.ui, link.deps.accounts)));
 	} catch (error) {
 		session.record("account", error);
 		session.accountBlock = `account selection failed: ${untrusted(messageOf(error))}`;
 		return undefined;
 	}
+}
+
+/**
+ * A refused Gitea selection still names a `tea` login for reads, so the adapter does not fail on several
+ * logins for the host; the block keeps every write refused. GitHub reads need no account.
+ */
+function withReadOnlyLogin(target: ForgeTarget, resolved: ResolvedAccount): ResolvedAccount {
+	if (target.kind !== "gitea" || resolved.block === undefined) return resolved;
+	const login = readOnlyLogin(resolved.facts);
+	return login === undefined ? resolved : { ...resolved, readOnlyLogin: login };
 }
 
 function adoptAccount(session: Session, resolved: ResolvedAccount): ResolvedAccount {
@@ -292,10 +303,12 @@ function adoptAccount(session: Session, resolved: ResolvedAccount): ResolvedAcco
 /**
  * The account handed to detection: the chosen candidate, or for GitHub the environment token (passed
  * explicitly, so the adapter uses the token the selection saw; the name is only read by Gitea). A Gitea
- * environment token reaches the adapter through `env.GITEA_TOKEN`.
+ * environment token reaches the adapter through `env.GITEA_TOKEN`; a refused Gitea selection reads with
+ * its read-only login.
  */
 function detectAccount(target: ForgeTarget, resolved: ResolvedAccount | undefined): DetectDeps["account"] {
 	if (resolved?.account !== undefined) return { name: resolved.account, token: resolved.token };
+	if (resolved?.readOnlyLogin !== undefined) return { name: resolved.readOnlyLogin };
 	if (resolved?.source === "env" && target.kind === "github") return { name: envTokenVar(target), token: resolved.token };
 	return undefined;
 }
@@ -326,14 +339,15 @@ async function connectWithAccount(
 }
 
 /**
- * `whoami` must equal the chosen candidate's user; for the environment token, a successful `whoami`
- * is the identity. A mismatch or a failure sets the block. Without an account (refused) nothing runs.
+ * `whoami` must equal the chosen candidate's user; for the environment token, or a candidate whose
+ * user is unknown (a `tea` login without `user`), a successful `whoami` is the identity and is
+ * recorded. A mismatch or a failure sets the block. Without an account (refused) nothing runs.
  */
 async function confirmIdentity(session: Session, forge: CachedForge, resolved: ResolvedAccount | undefined): Promise<void> {
 	if (!resolved || resolved.block !== undefined) return;
 	try {
 		const { login } = await forge.whoami();
-		if (resolved.source === "env") {
+		if (resolved.source === "env" || resolved.user === "") {
 			session.account = { ...resolved, user: login };
 			return;
 		}

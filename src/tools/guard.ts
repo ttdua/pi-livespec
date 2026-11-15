@@ -8,6 +8,7 @@ import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { Session } from "../hooks/session.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { getSession } from "../hooks/session-store.ts";
 
 export type Refusal = { ok: false; message: string };
@@ -50,7 +51,8 @@ export function requireWritable(session: Session): { ok: true; forge: CachedForg
 	if (session.accountBlock !== undefined) return { ok: false, message: `${ACCOUNT_BLOCKED}: ${session.accountBlock}` };
 	const forge = session.forge;
 	if (forge === undefined) {
-		const reason = session.forgeError === undefined ? "." : `: ${session.forgeError}.`;
+		// The error may carry forge text (an HTTP body), so it is data, not instructions.
+		const reason = session.forgeError === undefined ? "." : `: ${untrusted(session.forgeError)}.`;
 		return { ok: false, message: `${NO_FORGE}${reason}` };
 	}
 	if (forge.isReadOnly()) return { ok: false, message: READ_ONLY };

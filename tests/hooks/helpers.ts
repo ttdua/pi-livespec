@@ -4,13 +4,13 @@
 // temp `tea` config path) and the session hooks and tools over a fake pi.
 
 import { execFileSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AccountEnv } from "../../src/accounts/types.ts";
 import type { ContentManager, UpgradeOutcome } from "../../src/content/manager.ts";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
-import type { DetectDeps } from "../../src/forge/detect.ts";
+import { type DetectDeps, detectForge } from "../../src/forge/detect.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { defaultExec, type ExecFn } from "../../src/forge/github.ts";
 import type { Forge } from "../../src/forge/types.ts";
@@ -163,7 +163,38 @@ export type HarnessOptions = {
 	accountEnv?: Record<string, string>;
 	hasUI?: boolean;
 	select?: (title: string, options: string[]) => Promise<string | undefined>;
+	/**
+	 * A real Gitea flow against the loopback fake at `url`: origin `<url>/acme/shop.git`, the project
+	 * config names the Gitea, `tea` holds `teaConfig` (YAML) at the temp path, and the real
+	 * `detectForge` builds the adapter over real `fetch`. `forge` is ignored.
+	 */
+	gitea?: { url: string; teaConfig: string };
 };
+
+/** The project config of the harness: Gitea mode names the forge, so detection never probes. */
+function projectConfig(o: HarnessOptions): string {
+	const base = "integrationBranch: main\n";
+	return o.gitea ? `${base}forge: gitea\ngiteaUrl: ${o.gitea.url}\n` : base;
+}
+
+/** The detect seam: the memory forge by default, the real detection in Gitea mode. */
+function detectFor(o: HarnessOptions, world: MemoryWorld, calls: Partial<DetectDeps>[]): SessionDeps["detect"] {
+	return async (root, detectDeps = {}) => {
+		calls.push(detectDeps);
+		if (o.detectFails) throw new ForgeError({ code: "unsupported", operation: "detectForge", message: "unknown forge host" });
+		if (o.gitea) return detectForge(root, detectDeps);
+		return o.forge ? o.forge(world) : world.forge;
+	};
+}
+
+/** In Gitea mode the account flow talks HTTP to the fake and reads the written `tea` config. */
+async function giteaAccounts(env: AccountEnv, gitea: HarnessOptions["gitea"]): Promise<AccountEnv> {
+	if (!gitea) return env;
+	const path = env.teaLookup.teaConfigPath as string;
+	await mkdir(join(path, ".."), { recursive: true });
+	await writeFile(path, gitea.teaConfig);
+	return { ...env, fetch: globalThis.fetch };
+}
 
 /** A git repo with `origin`, optionally initialized and switched to `branch`, plus registered hooks. */
 export async function harness(o: HarnessOptions = {}): Promise<Harness> {
@@ -171,11 +202,11 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 	const home = await mkdtemp(join(tmpdir(), "ls-hooks-home-"));
 	homes.push(home);
 	await writeIn(root, "README.md", "x\n");
-	if (o.initialized !== false) await writeIn(root, ".pi/livespec/config.yaml", "integrationBranch: main\n");
+	if (o.initialized !== false) await writeIn(root, ".pi/livespec/config.yaml", projectConfig(o));
 	for (const [rel, text] of Object.entries(o.files ?? {})) await writeIn(root, rel, text);
 	commitAll(root);
 	execFileSync("git", ["branch", "-M", "main"], { cwd: root });
-	execFileSync("git", ["remote", "add", "origin", ORIGIN], { cwd: root });
+	execFileSync("git", ["remote", "add", "origin", o.gitea ? `${o.gitea.url}/acme/shop.git` : ORIGIN], { cwd: root });
 	blockNetwork(root);
 	if (o.branch) execFileSync("git", ["switch", "-q", "-c", o.branch], { cwd: root });
 	const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
@@ -183,15 +214,12 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 	const pi = new FakePi();
 	const content = fakeContent(o.activeTree);
 	const fake = fakeAccounts(home, o.accounts, o.accountEnv);
+	const accounts = await giteaAccounts(fake.env, o.gitea);
 	const detectCalls: Partial<DetectDeps>[] = [];
 	const deps: Partial<SessionDeps> = {
 		home,
-		accounts: fake.env,
-		detect: async (_root, detectDeps = {}) => {
-			detectCalls.push(detectDeps);
-			if (o.detectFails) throw new ForgeError({ code: "unsupported", operation: "detectForge", message: "unknown forge host" });
-			return o.forge ? o.forge(world) : world.forge;
-		},
+		accounts,
+		detect: detectFor(o, world, detectCalls),
 		content: () => content.manager,
 		now: () => new Date("2026-11-15T08:00:00Z"),
 	};
@@ -206,7 +234,7 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 		if (!t) throw new Error(`tool ${tool} is not registered`);
 		return (await t.execute("call-1", params, undefined, undefined, ctx)) as ToolOut;
 	};
-	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts: fake.env, detectCalls, start: () => startIn(root), startIn, call };
+	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts, detectCalls, start: () => startIn(root), startIn, call };
 }
 
 export type PromptEvent = { type: "before_agent_start"; systemPromptOptions: { sections: Record<string, string> } };

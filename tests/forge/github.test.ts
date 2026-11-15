@@ -462,6 +462,7 @@ describe("github adapter with an account token", () => {
 			await w.forge.createIssue({ title: "t", body: "b", labels: [] });
 
 			expect(readFileSync(w.store.path, "utf8")).not.toContain(AMBIENT);
+			expect(w.envLog().length).toBeGreaterThan(0);
 			for (const env of w.envLog()) expect(env).toEqual({});
 		} finally {
 			for (const [name, value] of Object.entries(saved)) {
