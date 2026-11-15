@@ -107,6 +107,25 @@ define ──gate──► plan ──gate──► build ──► review ─�
 - The **small-fix lane** skips the ceremony: on a `fix/<slug>` branch it edits code, tests and the living spec directly, with no issue, and ships one pull request. A post-check moves the work into a full change when the fix turns out not to be small.
 - Every loop has a cap. Reaching a cap stops the work and sends a stuck report to the human.
 
+## Forge accounts
+
+The forge account is chosen **per clone**, never globally. The choice lives in the clone's local git config (`livespec.account` and `livespec.accountRemote`, written with `--local`), so all worktrees of a clone share it and the machine-wide `gh` or `tea` default is ignored.
+
+**Selection** runs at session start:
+
+1. Candidates come from `gh auth status --json hosts` (GitHub) or the `tea` logins (Gitea) for the web host of the forge target.
+2. Each candidate is checked for write access to the repository.
+3. A token in the environment overrides the registry and is verified as its own identity.
+4. A stored account that still has write access is reused. Otherwise, a single writer is stored automatically; when several can write, the user is asked once; when none can, the choice is refused.
+
+`/livespec account [name]` shows the current account and its source, or switches to a named account that has write access. `doctor` and the status card report the account and whether it is confirmed, unverified or blocked.
+
+**Writes stay blocked until the identity is confirmed.** A mismatch, a refusal or an unconfirmed identity blocks forge writes; it never falls back to another account.
+
+**Self-hosted Gitea** is found through `giteaUrl` or `host` in the project config, or through a `tea` login whose `ssh_host` maps the git remote to the web host.
+
+**Token handling.** A token for a subprocess (`gh`) goes through that call's environment; `tea` is never run, only its config is read. A token for an HTTP request goes in the `Authorization` header. A token never appears in argv, messages, logs or files.
+
 ## Principles
 
 - **The parent owns the evidence.** The main session runs `Verify` and posts receipts. Subagents only implement and commit ([ADR 0003](decisions/0003-parent-owned-evidence.md)).

@@ -1,6 +1,7 @@
 // `/livespec doctor`: runs the built-in and registered checks and prints them.
 // Doctor only reports and suggests; `DoctorDeps` exposes read functions only.
 
+import type { ResolvedAccount } from "../accounts/resolve.ts";
 import type { ContentManager } from "../content/manager.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import type { Forge } from "../forge/types.ts";
@@ -19,6 +20,10 @@ export type DoctorDeps = {
 	forge: () => Promise<{ forge: Forge; readOnly: boolean }>;
 	exists(p: string): Promise<boolean>;
 	listDir(p: string): Promise<string[]>;
+	/** The session's last account resolution, read-only; unset without a session. */
+	account?: ResolvedAccount;
+	/** Why the session refuses forge writes, read-only. */
+	accountBlock?: string;
 };
 export type DoctorCheck = (d: DoctorDeps) => Promise<DoctorResult[]>;
 

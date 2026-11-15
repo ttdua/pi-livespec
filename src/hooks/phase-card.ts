@@ -7,7 +7,10 @@ import type { PackError } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 
-export type CardInput = { first: boolean; constraintsTemplate: boolean; unnotedSkills: string[] } & (
+/** The forge-account state a card may show: the one-time choice notice and the write block. */
+export type CardAccount = { line?: string; blocked?: string };
+
+export type CardInput = { first: boolean; constraintsTemplate: boolean; unnotedSkills: string[]; account?: CardAccount } & (
 	| { kind: "change"; step: NextStep; state: ChangeState }
 	| { kind: "list"; open: OpenChange[] }
 	| { kind: "pack-errors"; errors: PackError[] }

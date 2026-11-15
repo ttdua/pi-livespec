@@ -85,9 +85,9 @@ describe("livespec extension", () => {
 		expect(sendMessage).toHaveBeenCalledTimes(1);
 		const content = (sendMessage.mock.calls[0]![0] as { content: string }).content;
 		expect(content).toBe(
-			"Usage: /livespec [validate | migrate-openspec | init | doctor | next | skills <status|update|pin <sha>|unpin|rollback>]",
+			"Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback>]",
 		);
-		for (const sub of ["validate", "migrate-openspec", "init", "doctor", "next", "skills"]) expect(content).toContain(sub);
+		for (const sub of ["validate", "migrate-openspec", "init", "doctor", "next", "account [name]", "skills"]) expect(content).toContain(sub);
 		expect(notify).not.toHaveBeenCalled();
 		expect(snapshot(root)).toEqual(before);
 	});
@@ -133,6 +133,17 @@ describe("livespec extension", () => {
 		});
 		await expect(commands.get("livespec")!.handler("validate", ctx)).resolves.toBeUndefined();
 		expect(notify).toHaveBeenCalled();
+	});
+
+	it("account without a livespec session says to run init", async () => {
+		const root = await makeRepo();
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("account ttdua", ctx);
+		expect(sendMessage.mock.calls[0]![0]).toMatchObject({
+			customType: "livespec-account",
+			content: "livespec is not set up in this project: run /livespec init first.",
+		});
+		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it("next without a livespec session says to run init", async () => {

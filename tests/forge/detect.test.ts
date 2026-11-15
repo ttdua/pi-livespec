@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { GiteaForge } from "../../src/forge/gitea.ts";
 import { GitHubForge, type ExecFn, type ExecResult } from "../../src/forge/github.ts";
-import { detectForge, type DetectDeps } from "../../src/forge/detect.ts";
+import { detectForge, type DetectDeps, resolveForgeTarget } from "../../src/forge/detect.ts";
+import { FAKE_TOKEN, FakeGitea } from "./fake-gitea.ts";
 
 const REPO = "/work/repo";
 const CONFIG_PATH = `${REPO}/.pi/livespec/config.yaml`;
@@ -39,10 +43,17 @@ interface Scenario {
 	origin: string;
 	config?: string;
 	probe?: FakeFetch;
+	/** Path of the `tea` config detection reads; defaults to a missing file. */
+	teaConfigPath?: string;
 }
 
 /** Builds deps for one scenario; the probe defaults to a host that does not answer Gitea. */
-function baseDeps({ origin, config, probe = fakeFetch(() => new Response("not found", { status: 404 })) }: Scenario): {
+function baseDeps({
+	origin,
+	config,
+	probe = fakeFetch(() => new Response("not found", { status: 404 })),
+	teaConfigPath = "/nonexistent/tea.yml",
+}: Scenario): {
 	deps: DetectDeps;
 	probe: FakeFetch;
 } {
@@ -53,8 +64,17 @@ function baseDeps({ origin, config, probe = fakeFetch(() => new Response("not fo
 		readFile: async (path) => (path === CONFIG_PATH ? config : undefined),
 		homedir: "/home/test",
 		platform: "linux",
+		teaLookup: { env: {}, teaConfigPath },
 	};
 	return { deps, probe };
+}
+
+/** Writes a temporary `tea` config holding `text`. */
+async function teaConfig(text: string): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), "tea-"));
+	const path = join(dir, "config.yml");
+	await writeFile(path, text);
+	return path;
 }
 
 describe("detectForge", () => {
@@ -236,5 +256,164 @@ describe("detectForge", () => {
 		const { deps } = baseDeps({ origin: "https://git.example.org/widgets" });
 		const error = await detectForge(REPO, deps).catch((e: unknown) => e);
 		expect((error as ForgeError).code).toBe("unsupported");
+	});
+});
+
+describe("detectForge with an account", () => {
+	const fakes: FakeGitea[] = [];
+	afterEach(async () => {
+		for (const fake of fakes.splice(0)) await fake.close();
+	});
+
+	it("Account passed to GitHub", async () => {
+		const seen: { args: string[]; env?: Record<string, string> }[] = [];
+		const { deps } = baseDeps({ origin: "https://github.com/acme/widgets.git" });
+		const gitExec = deps.exec;
+		deps.exec = async (file, args, input, env) => {
+			if (file === "git") return gitExec(file, args, input, env);
+			seen.push({ args, env });
+			return { stdout: JSON.stringify({ login: "ttdua" }), stderr: "", code: 0 };
+		};
+		deps.account = { name: "ttdua", token: "tok-ttdua" };
+
+		const forge = await detectForge(REPO, deps);
+		await forge.whoami();
+
+		expect(forge).toBeInstanceOf(GitHubForge);
+		expect(seen.length).toBeGreaterThanOrEqual(2);
+		for (const call of seen) {
+			expect(call.env).toEqual({ GH_TOKEN: "tok-ttdua" });
+			expect(call.args.join(" ")).not.toContain("tok-ttdua");
+		}
+	});
+
+	it("Account passed to Gitea", async () => {
+		const fake = await FakeGitea.start({ owner: "acme", repo: "widgets" });
+		fakes.push(fake);
+		const teaConfigPath = await teaConfig(
+			`logins:\n  - name: gitea-admin\n    url: ${fake.url}\n    token: admin-token\n  - name: gitea.example.org\n    url: ${fake.url}\n    token: ${FAKE_TOKEN}\n`,
+		);
+		const { deps } = baseDeps({ origin: `${fake.url}/acme/widgets.git`, teaConfigPath });
+		deps.fetch = globalThis.fetch;
+		deps.account = { name: "gitea.example.org" };
+
+		const forge = await detectForge(REPO, deps);
+		await forge.whoami();
+
+		expect(forge).toBeInstanceOf(GiteaForge);
+		const userCall = fake.calls.find((c) => c.path === "/api/v1/user");
+		expect(userCall?.authorization).toBe(`token ${FAKE_TOKEN}`);
+	});
+});
+
+describe("resolveForgeTarget", () => {
+	it("resolveForgeTarget returns the giteaUrl override and keeps the port", async () => {
+		const { deps, probe } = baseDeps({
+			origin: "git@ssh.gitea.example.org:acme/shop.git",
+			config: "forge: gitea\ngiteaUrl: https://gitea.example.org:8443\n",
+		});
+		await expect(resolveForgeTarget(REPO, deps)).resolves.toEqual({
+			kind: "gitea",
+			host: "gitea.example.org",
+			authority: "gitea.example.org:8443",
+			baseUrl: "https://gitea.example.org:8443",
+			owner: "acme",
+			repo: "shop",
+		});
+		expect(probe.calls).toEqual([]);
+
+		const loopback = baseDeps({ origin: "http://127.0.0.1:3000/acme/shop.git", probe: fakeFetch(() => versionOk()) });
+		await expect(resolveForgeTarget(REPO, loopback.deps)).resolves.toEqual({
+			kind: "gitea",
+			host: "127.0.0.1",
+			authority: "127.0.0.1:3000",
+			baseUrl: "http://127.0.0.1:3000",
+			owner: "acme",
+			repo: "shop",
+		});
+	});
+
+	it("returns the GitHub endpoint for github.com and an Enterprise host", async () => {
+		await expect(resolveForgeTarget(REPO, baseDeps({ origin: "git@github.com:acme/widgets.git" }).deps)).resolves.toEqual({
+			kind: "github",
+			host: "github.com",
+			authority: "github.com",
+			baseUrl: "https://github.com",
+			owner: "acme",
+			repo: "widgets",
+		});
+		const ghe = baseDeps({ origin: "https://ghe.example.org:8443/acme/widgets.git", config: "forge: github\n" });
+		await expect(resolveForgeTarget(REPO, ghe.deps)).resolves.toMatchObject({
+			kind: "github",
+			host: "ghe.example.org",
+			authority: "ghe.example.org:8443",
+		});
+	});
+
+	it("Gitea by configured URL", async () => {
+		const { deps, probe } = baseDeps({
+			origin: "git@ssh.gitea.example.org:acme/shop.git",
+			config: "forge: gitea\ngiteaUrl: https://gitea.example.org\n",
+		});
+
+		const forge = await detectForge(REPO, deps);
+
+		expect(forge).toBeInstanceOf(GiteaForge);
+		await expect(resolveForgeTarget(REPO, deps)).resolves.toMatchObject({ kind: "gitea", baseUrl: "https://gitea.example.org", host: "gitea.example.org" });
+		expect(probe.calls).toEqual([]);
+	});
+
+	it("Gitea by tea SSH host", async () => {
+		const teaConfigPath = await teaConfig(
+			"logins:\n  - name: gitea.example.org\n    url: https://gitea.example.org\n    token: tok\n    ssh_host: SSH.Gitea.Example.org\n",
+		);
+		const { deps, probe } = baseDeps({ origin: "git@ssh.gitea.example.org:acme/shop.git", teaConfigPath });
+
+		const forge = await detectForge(REPO, deps);
+
+		expect(forge).toBeInstanceOf(GiteaForge);
+		await expect(resolveForgeTarget(REPO, deps)).resolves.toEqual({
+			kind: "gitea",
+			host: "gitea.example.org",
+			authority: "gitea.example.org",
+			baseUrl: "https://gitea.example.org",
+			owner: "acme",
+			repo: "shop",
+		});
+		expect(probe.calls).toEqual([]);
+	});
+
+	it("tea SSH host matches with the port ignored on both sides", async () => {
+		const teaConfigPath = await teaConfig(
+			"logins:\n  - name: gitea.example.org\n    url: https://gitea.example.org\n    token: tok\n    ssh_host: SSH.Gitea.Example.org:2222\n",
+		);
+		for (const origin of ["ssh://git@ssh.gitea.example.org:2222/acme/shop.git", "git@ssh.gitea.example.org:acme/shop.git"]) {
+			const { deps, probe } = baseDeps({ origin, teaConfigPath });
+
+			await expect(resolveForgeTarget(REPO, deps)).resolves.toMatchObject({ kind: "gitea", baseUrl: "https://gitea.example.org", host: "gitea.example.org" });
+			expect(probe.calls).toEqual([]);
+		}
+	});
+
+	it("tea SSH host shared by two URLs falls back to the probe", async () => {
+		const teaConfigPath = await teaConfig(
+			[
+				"logins:",
+				"  - name: a",
+				"    url: https://gitea.example.org",
+				"    token: tok-a",
+				"    ssh_host: ssh.gitea.example.org",
+				"  - name: b",
+				"    url: https://other.example.org",
+				"    token: tok-b",
+				"    ssh_host: ssh.gitea.example.org",
+				"",
+			].join("\n"),
+		);
+		const probe = fakeFetch(() => versionOk());
+		const { deps } = baseDeps({ origin: "git@ssh.gitea.example.org:acme/shop.git", teaConfigPath, probe });
+
+		await expect(resolveForgeTarget(REPO, deps)).resolves.toMatchObject({ kind: "gitea", baseUrl: "https://ssh.gitea.example.org" });
+		expect(probe.calls).toEqual(["https://ssh.gitea.example.org/api/v1/version"]);
 	});
 });

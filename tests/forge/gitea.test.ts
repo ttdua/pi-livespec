@@ -94,6 +94,86 @@ describe("gitea adapter", () => {
 			await expect(forge.whoami()).rejects.toMatchObject({ code: "auth", status: 403, operation: "whoami" });
 		});
 
+		describe("named tea login", () => {
+			/** Writes a tea config with logins `gitea.example.org` (the fake's token) and `gitea-admin`, both for `url`. */
+			async function twoLogins(url: string, extra = ""): Promise<string> {
+				const dir = await mkdtemp(join(tmpdir(), "tea-"));
+				const teaConfigPath = join(dir, "config.yml");
+				await writeFile(
+					teaConfigPath,
+					`logins:\n  - name: gitea-admin\n    url: ${url}\n    token: admin-token\n    user: admin\n  - name: gitea.example.org\n    url: ${url}\n    token: ${FAKE_TOKEN}\n    user: bot\n${extra}`,
+				);
+				return teaConfigPath;
+			}
+
+			it("Named login", async () => {
+				const w = await world();
+				const teaConfigPath = await twoLogins(w.fake.url);
+				const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: {}, teaConfigPath, login: "gitea.example.org" });
+
+				await forge.whoami();
+
+				expect(w.fake.calls[0].authorization).toBe(`token ${FAKE_TOKEN}`);
+				expect(spawned.calls).not.toHaveBeenCalled();
+			});
+
+			it("Ambiguous logins", async () => {
+				const w = await world();
+				const teaConfigPath = await twoLogins(w.fake.url);
+				const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: {}, teaConfigPath });
+
+				const error = await forge.whoami().catch((e: unknown) => e);
+
+				expect(error).toBeInstanceOf(ForgeError);
+				expect(error).toMatchObject({ code: "auth", operation: "whoami" });
+				expect((error as ForgeError).message).toContain("gitea-admin");
+				expect((error as ForgeError).message).toContain("gitea.example.org");
+				expect((error as ForgeError).message).toContain("/livespec account");
+				expect((error as ForgeError).message).not.toContain(FAKE_TOKEN);
+				expect((error as ForgeError).message).not.toContain("admin-token");
+				expect(w.fake.calls).toEqual([]);
+			});
+
+			it("Named login missing", async () => {
+				const w = await world();
+				const teaConfigPath = await twoLogins(w.fake.url);
+				const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: {}, teaConfigPath, login: "nobody" });
+
+				const error = await forge.whoami().catch((e: unknown) => e);
+
+				expect(error).toBeInstanceOf(ForgeError);
+				expect(error).toMatchObject({ code: "auth", operation: "whoami" });
+				expect((error as ForgeError).message).toContain("nobody");
+				expect(w.fake.calls).toEqual([]);
+			});
+
+			it("Named login for another host", async () => {
+				const w = await world();
+				const teaConfigPath = await twoLogins(
+					w.fake.url,
+					`  - name: elsewhere\n    url: https://gitea.example.org\n    token: ${FAKE_TOKEN}\n    user: bot\n`,
+				);
+				const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: {}, teaConfigPath, login: "elsewhere" });
+
+				const error = await forge.whoami().catch((e: unknown) => e);
+
+				expect(error).toBeInstanceOf(ForgeError);
+				expect(error).toMatchObject({ code: "auth", operation: "whoami" });
+				expect((error as ForgeError).message).toContain("elsewhere");
+				expect(w.fake.calls).toEqual([]);
+			});
+
+			it("GITEA_TOKEN wins over a named login", async () => {
+				const w = await world();
+				const teaConfigPath = await twoLogins(w.fake.url);
+				const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: { GITEA_TOKEN: FAKE_TOKEN }, teaConfigPath, login: "gitea-admin" });
+
+				await forge.whoami();
+
+				expect(w.fake.calls[0].authorization).toBe(`token ${FAKE_TOKEN}`);
+			});
+		});
+
 		it("a rejected token is an auth error with its status", async () => {
 			const w = await world();
 			const forge = new GiteaForge({ baseUrl: w.fake.url, owner: "o", repo: "r", env: { GITEA_TOKEN: "bad" }, teaConfigPath: "/nonexistent" });

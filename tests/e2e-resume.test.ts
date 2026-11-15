@@ -14,7 +14,7 @@ import { getSession, setSession } from "../src/hooks/session-store.ts";
 import { defaultPack, validTreeFiles, writeTree } from "./content/helpers.ts";
 import { MemoryWorld } from "./forge/memory-forge.ts";
 import { FakePi, fakeCtx } from "./hooks/fake-pi.ts";
-import { BUILD_LABELS, CHANGE_BRANCH, ORIGIN, blockNetwork, cardText, promptEvent, resumeBody } from "./hooks/helpers.ts";
+import { BUILD_LABELS, CHANGE_BRANCH, ORIGIN, blockNetwork, cardText, fakeAccounts, promptEvent, resumeBody } from "./hooks/helpers.ts";
 import { FIXTURE_BODY } from "./helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "./helpers/repo.ts";
 
@@ -66,7 +66,8 @@ async function resumeWith(body: (head: string) => string) {
 	const world = new MemoryWorld();
 	const n = await world.seedIssue({ title: "per-ip-cap", body: body(head), labels: BUILD_LABELS });
 	const pi = new FakePi();
-	extension(pi.api as never, { home, detect: async () => world.forge });
+	// The fake `gh` registry holds one writable account, so no real `gh` or token is consulted.
+	extension(pi.api as never, { home, detect: async () => world.forge, accounts: fakeAccounts(home).env });
 	const ctx = fakeCtx(root);
 	await pi.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 	const prompt = promptEvent();

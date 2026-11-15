@@ -16,6 +16,8 @@ export class HttpError extends Error {
 
 export interface ApiRequest {
 	method: string;
+	/** Token from the environment of this `gh` call; `undefined` means the active account acts. */
+	token?: string;
 	/** Route without query string and leading slash. */
 	path: string;
 	query: URLSearchParams;
@@ -116,7 +118,7 @@ function listIssues(data: FakeGhData, req: ApiRequest): unknown {
 	return [...issues, ...pulls];
 }
 
-function createIssue(data: FakeGhData, req: ApiRequest): unknown {
+function createIssue(data: FakeGhData, req: ApiRequest, actor: string): unknown {
 	const labels = stringList(req.body.labels);
 	requireLabelsExist(data, labels);
 	const now = tick(data);
@@ -127,7 +129,7 @@ function createIssue(data: FakeGhData, req: ApiRequest): unknown {
 		body: text(req.body.body),
 		labels,
 		state: "open",
-		author: data.login,
+		author: actor,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -169,13 +171,13 @@ function createLabel(data: FakeGhData, req: ApiRequest): unknown {
 	return { name };
 }
 
-function createComment(data: FakeGhData, n: string, req: ApiRequest): unknown {
+function createComment(data: FakeGhData, n: string, req: ApiRequest, actor: string): unknown {
 	findIssue(data, n);
 	const now = tick(data);
 	const comment: CommentRec = {
 		id: data.nextCommentId++,
 		issue: Number(n),
-		author: data.login,
+		author: actor,
 		body: text(req.body.body),
 		createdAt: now,
 		updatedAt: now,
@@ -200,7 +202,7 @@ function listPulls(data: FakeGhData, req: ApiRequest): unknown {
 		.map((p) => pullJson(p, false));
 }
 
-function createPull(data: FakeGhData, req: ApiRequest): unknown {
+function createPull(data: FakeGhData, req: ApiRequest, actor: string): unknown {
 	const now = tick(data);
 	const number = data.nextNumber++;
 	const pull: PullRec = {
@@ -211,7 +213,7 @@ function createPull(data: FakeGhData, req: ApiRequest): unknown {
 		base: text(req.body.base),
 		title: text(req.body.title),
 		body: text(req.body.body),
-		author: data.login,
+		author: actor,
 		files: [],
 		reviews: [],
 		reviewComments: [],
@@ -230,10 +232,10 @@ function patchPull(data: FakeGhData, n: string, req: ApiRequest): unknown {
 	return pullJson(pull, true);
 }
 
-function createReviewComment(data: FakeGhData, n: string, req: ApiRequest): unknown {
+function createReviewComment(data: FakeGhData, n: string, req: ApiRequest, actor: string): unknown {
 	const pull = findPull(data, n);
 	if (typeof req.body.commit_id !== "string") unprocessable("commit_id is missing");
-	const comment = { path: text(req.body.path), line: Number(req.body.line), body: text(req.body.body), author: data.login };
+	const comment = { path: text(req.body.path), line: Number(req.body.line), body: text(req.body.body), author: actor };
 	pull.reviewComments.push(comment);
 	return { ...comment, user: userJson(comment.author) };
 }
@@ -263,10 +265,10 @@ function permissionOf(data: FakeGhData, login: string): unknown {
 	return { permission: level, user: userJson(login) };
 }
 
-function routes(data: FakeGhData): [string, RegExp, Handler][] {
+function routes(data: FakeGhData, actor: string): [string, RegExp, Handler][] {
 	return [
 		["GET", /^issues$/, (_m, req) => listIssues(data, req)],
-		["POST", /^issues$/, (_m, req) => createIssue(data, req)],
+		["POST", /^issues$/, (_m, req) => createIssue(data, req, actor)],
 		["GET", /^issues\/(\d+)$/, (m) => issueJson(findIssue(data, m[1]))],
 		["PATCH", /^issues\/(\d+)$/, (m, req) => patchIssue(data, m[1], req)],
 		["POST", /^issues\/(\d+)\/labels$/, (m, req) => addIssueLabels(data, m[1], req)],
@@ -274,11 +276,11 @@ function routes(data: FakeGhData): [string, RegExp, Handler][] {
 		["GET", /^labels$/, () => data.labels.map((name) => ({ name }))],
 		["POST", /^labels$/, (_m, req) => createLabel(data, req)],
 		["GET", /^issues\/(\d+)\/comments$/, (m) => Object.values(data.comments).filter((c) => c.issue === Number(m[1])).map(commentJson)],
-		["POST", /^issues\/(\d+)\/comments$/, (m, req) => createComment(data, m[1], req)],
+		["POST", /^issues\/(\d+)\/comments$/, (m, req) => createComment(data, m[1], req, actor)],
 		["GET", /^issues\/comments\/(\d+)$/, (m) => commentJson(data.comments[m[1]] ?? notFound(`comment ${m[1]}`))],
 		["PATCH", /^issues\/comments\/(\d+)$/, (m, req) => patchComment(data, m[1], req)],
 		["GET", /^pulls$/, (_m, req) => listPulls(data, req)],
-		["POST", /^pulls$/, (_m, req) => createPull(data, req)],
+		["POST", /^pulls$/, (_m, req) => createPull(data, req, actor)],
 		["GET", /^pulls\/(\d+)$/, (m) => pullJson(findPull(data, m[1]), true)],
 		["PATCH", /^pulls\/(\d+)$/, (m, req) => patchPull(data, m[1], req)],
 		["GET", /^pulls\/(\d+)\/files$/, (m) => findPull(data, m[1]).files.map((filename) => ({ filename }))],
@@ -292,22 +294,47 @@ function routes(data: FakeGhData): [string, RegExp, Handler][] {
 			/^pulls\/(\d+)\/comments$/,
 			(m) => findPull(data, m[1]).reviewComments.map((c) => ({ ...c, user: userJson(c.author) })),
 		],
-		["POST", /^pulls\/(\d+)\/comments$/, (m, req) => createReviewComment(data, m[1], req)],
+		["POST", /^pulls\/(\d+)\/comments$/, (m, req) => createReviewComment(data, m[1], req, actor)],
 		["GET", /^commits\/(.+)\/check-runs$/, (m) => checkRuns(data, decodeURIComponent(m[1]))],
 		["GET", /^commits\/(.+)\/status$/, (m) => commitStatuses(data, decodeURIComponent(m[1]))],
 		["GET", /^collaborators\/(.+)\/permission$/, (m) => permissionOf(data, decodeURIComponent(m[1]))],
 	];
 }
 
+/**
+ * The login a request acts as: the account owning `token`, else the active
+ * account when no token is sent and someone is logged in, else `undefined`.
+ */
+export function resolveActor(data: FakeGhData, token: string | undefined): string | undefined {
+	if (token !== undefined) return data.accounts.find((a) => a.token === token)?.login;
+	return data.authenticated ? data.login : undefined;
+}
+
+/** `permissions.push` of the served repo for `login`: its account flag, else its collaborator level. */
+function canPush(data: FakeGhData, login: string): boolean {
+	const account = data.accounts.find((a) => a.login === login);
+	if (account) return account.push;
+	const level = data.permissions[login] ?? "none";
+	return level === "write" || level === "admin";
+}
+
+function repoJson(data: FakeGhData, login: string): unknown {
+	return { full_name: data.repo, permissions: { pull: true, push: canPush(data, login), admin: false } };
+}
+
 /** Serves one request. Throws `HttpError` for non-2xx answers. */
 export function handleApi(data: FakeGhData, req: ApiRequest): unknown {
-	if (!data.authenticated) throw new HttpError(401, "Requires authentication");
-	if (req.method === "GET" && req.path === "user") return userJson(data.login);
+	const actor = resolveActor(data, req.token);
+	if (actor === undefined) {
+		throw new HttpError(401, req.token === undefined ? "Requires authentication" : "Bad credentials");
+	}
+	if (req.method === "GET" && req.path === "user") return userJson(actor);
+	if (req.method === "GET" && req.path === `repos/${data.repo}`) return repoJson(data, actor);
 
 	const prefix = `repos/${data.repo}/`;
 	if (!req.path.startsWith(prefix)) return notFound(req.path);
 	const rest = req.path.slice(prefix.length);
-	for (const [method, pattern, handler] of routes(data)) {
+	for (const [method, pattern, handler] of routes(data, actor)) {
 		const match = method === req.method ? rest.match(pattern) : null;
 		if (match) return handler(match, req);
 	}

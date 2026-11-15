@@ -2,6 +2,7 @@
 // the result into a `Reply`; the extension only routes and shows replies.
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { runAccountCommand } from "./account.ts";
 import { type CommandEnv, doctorDeps, initDeps, sessionFor, skillsDeps } from "./deps.ts";
 import { formatDoctor, runDoctor } from "./doctor.ts";
 import { type InitReport, runInit } from "./init.ts";
@@ -68,4 +69,9 @@ export async function nextReply(ctx: ExtensionCommandContext): Promise<Reply> {
 
 export async function skillsReply(args: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> {
 	return { customType: "livespec-skills", content: await runSkillsCommand(args, await skillsDeps(ctx.cwd, env)) };
+}
+
+/** `account [name]` reads and switches the running session; without one it explains why. */
+export async function accountReply(args: string, ctx: ExtensionCommandContext): Promise<Reply> {
+	return { customType: "livespec-account", content: await runAccountCommand(args, sessionFor(ctx.cwd)) };
 }

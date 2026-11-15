@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { GitHubForge, type ExecFn, defaultExec } from "../../src/forge/github.ts";
 import type { ReviewComment } from "../../src/forge/types.ts";
-import { type FakeGhData, FakeGhStore, type IssueRec, type PullRec, emptyData, tick } from "./fake-gh/state.ts";
+import { type AccountRec, type FakeGhData, FakeGhStore, type IssueRec, type PullRec, type TokenEnvRec, emptyData, tick } from "./fake-gh/state.ts";
 import {
 	BOT_LOGIN,
 	type ContractWorld,
@@ -26,12 +26,19 @@ export class GitHubWorld implements ContractWorld {
 	readonly store: FakeGhStore;
 	private readonly dir: string;
 
-	constructor(opts: { hostname?: string } = {}) {
+	constructor(opts: { hostname?: string; token?: string; accounts?: AccountRec[] } = {}) {
 		this.dir = mkdtempSync(join(tmpdir(), "fake-gh-"));
 		this.store = new FakeGhStore(join(this.dir, "state.json"));
-		this.store.init(emptyData(`${REPO.owner}/${REPO.repo}`, BOT_LOGIN));
-		const exec: ExecFn = (file, args, input) => defaultExecWithState(this.store.path, file, args, input);
-		this.forge = new GitHubForge({ ghPath: FAKE_GH_PATH, repo: REPO, exec, hostname: opts.hostname });
+		this.store.init({ ...emptyData(`${REPO.owner}/${REPO.repo}`, BOT_LOGIN), accounts: opts.accounts ?? [] });
+		this.forge = new GitHubForge({ ghPath: FAKE_GH_PATH, repo: REPO, exec: this.exec, hostname: opts.hostname, token: opts.token });
+	}
+
+	/** Runs programs with FAKE_GH_STATE pointing at this world's state. */
+	readonly exec: ExecFn = (file, args, input, env) => defaultExecWithState(this.store.path, file, args, input, env);
+
+	/** Token variables of every fake `gh` invocation, aligned with `argvLog()`. */
+	envLog(): TokenEnvRec[] {
+		return this.store.read().envLog;
 	}
 
 	/** argv of every fake `gh` invocation, in order. */
@@ -187,14 +194,14 @@ export class GitHubWorld implements ContractWorld {
 	}
 }
 
-/** Runs the fake with FAKE_GH_STATE set, without touching the test process environment. */
-function defaultExecWithState(statePath: string, file: string, args: string[], input?: string) {
-	const previous = process.env.FAKE_GH_STATE;
-	process.env.FAKE_GH_STATE = statePath;
-	try {
-		return defaultExec(file, args, input);
-	} finally {
-		if (previous === undefined) delete process.env.FAKE_GH_STATE;
-		else process.env.FAKE_GH_STATE = previous;
-	}
+/**
+ * Ambient token variables blanked for every fake `gh` run, so a real token of
+ * the machine never decides identity or lands in the state file. The fake
+ * treats an empty value as unset.
+ */
+const BLANK_TOKEN_ENV = { GH_TOKEN: "", GH_ENTERPRISE_TOKEN: "" };
+
+/** Runs the fake with FAKE_GH_STATE and the per-call env in its own environment; `process.env` is never mutated. */
+function defaultExecWithState(statePath: string, file: string, args: string[], input?: string, env?: Record<string, string>) {
+	return defaultExec(file, args, input, { ...BLANK_TOKEN_ENV, FAKE_GH_STATE: statePath, ...env });
 }

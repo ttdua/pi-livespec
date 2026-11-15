@@ -8,6 +8,7 @@ import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { Session } from "../hooks/session.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { getSession } from "../hooks/session-store.ts";
 
 export type Refusal = { ok: false; message: string };
@@ -19,6 +20,7 @@ const PACK_INVALID = "The flow pack is invalid, so livespec computes nothing unt
 const READ_ONLY =
 	"The forge is in read-only mode: it could not be reached, so livespec writes are refused until a read succeeds. Retry once the forge is reachable.";
 const NO_FORGE = "No forge is connected, so livespec writes are refused";
+const ACCOUNT_BLOCKED = "livespec writes are refused because the forge account is not confirmed";
 const NO_CHANGE = "No change is resolved on this branch: switch to a livespec/<name> branch or run change_start #N.";
 
 export function toolResult<D>(text: string, details: D, isError = false): ToolResult<D> {
@@ -41,11 +43,16 @@ function packErrorsMessage(errors: PackError[]): string {
 	return [PACK_INVALID, ...errors.map((e) => `- ${formatPackError(e)}`)].join("\n");
 }
 
-/** A forge that is connected and not in read-only mode. Call after `session.refresh()`, which updates the mode. */
+/**
+ * A forge that is connected, not blocked by the account and not in read-only mode. The account block
+ * comes first: it holds until a new resolution, whatever the reads do. Call after `session.refresh()`.
+ */
 export function requireWritable(session: Session): { ok: true; forge: CachedForge } | Refusal {
+	if (session.accountBlock !== undefined) return { ok: false, message: `${ACCOUNT_BLOCKED}: ${session.accountBlock}` };
 	const forge = session.forge;
 	if (forge === undefined) {
-		const reason = session.forgeError === undefined ? "." : `: ${session.forgeError}.`;
+		// The error may carry forge text (an HTTP body), so it is data, not instructions.
+		const reason = session.forgeError === undefined ? "." : `: ${untrusted(session.forgeError)}.`;
 		return { ok: false, message: `${NO_FORGE}${reason}` };
 	}
 	if (forge.isReadOnly()) return { ok: false, message: READ_ONLY };

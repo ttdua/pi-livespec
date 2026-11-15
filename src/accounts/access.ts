@@ -1,0 +1,101 @@
+// Write-access check of one candidate, with that candidate's own token: the
+// active `gh` account and `GITEA_TOKEN` are never used. `permissions.push`
+// decides; HTTP 401/403/404 is no access; a missing field, a failure or the
+// timeout is `unknown`.
+
+import type { ForgeTarget } from "../forge/detect.ts";
+import { tokenEnvVar } from "../forge/github.ts";
+import { candidateToken } from "./token.ts";
+import type { Access, AccountCandidate, AccountEnv } from "./types.ts";
+
+/** Cap of one candidate check, token lookup included. */
+export const ACCESS_TIMEOUT_MS = 5_000;
+/** Checks running at once. */
+export const ACCESS_CONCURRENCY = 4;
+
+export type AccessDeps = Pick<AccountEnv, "exec" | "fetch" | "teaLookup">;
+
+export interface CandidateAccess {
+	candidate: AccountCandidate;
+	access: Access;
+}
+
+/** Statuses that mean the token cannot see or push to the repository. */
+const DENIED_STATUSES = new Set([401, 403, 404]);
+const GH_HTTP_STATUS = /\(HTTP (\d{3})\)/;
+
+/**
+ * Whether `candidate` can push to the target repository. At `ACCESS_TIMEOUT_MS`
+ * the token lookup and the API call are aborted, no call starts afterwards, and
+ * the result is `unknown`. Resolves only once every call it started has
+ * settled, so a caller's concurrency cap counts live processes. Never rejects.
+ */
+export async function checkAccess(d: AccessDeps, target: ForgeTarget, candidate: AccountCandidate): Promise<Access> {
+	const deadline = new AbortController();
+	const timer = setTimeout(() => deadline.abort(), ACCESS_TIMEOUT_MS);
+	try {
+		const access = await checkWithToken(d, target, candidate.name, deadline.signal);
+		return deadline.signal.aborted ? "unknown" : access;
+	} catch {
+		// Any failure of the check (unreadable tea config, aborted fetch) is not write access.
+		return "unknown";
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** Checks every candidate, at most `ACCESS_CONCURRENCY` at once; results keep the input order. */
+export async function checkAll(d: AccessDeps, target: ForgeTarget, candidates: AccountCandidate[]): Promise<CandidateAccess[]> {
+	const results: CandidateAccess[] = new Array(candidates.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < candidates.length) {
+			const index = next++;
+			const candidate = candidates[index] as AccountCandidate;
+			results[index] = { candidate, access: await checkAccess(d, target, candidate) };
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(ACCESS_CONCURRENCY, candidates.length) }, worker));
+	return results;
+}
+
+async function checkWithToken(d: AccessDeps, target: ForgeTarget, name: string, signal: AbortSignal): Promise<Access> {
+	const token = await candidateToken(d, target, name, signal);
+	if (token === undefined || signal.aborted) return "unknown";
+	return target.kind === "github" ? githubAccess(d, target, token, signal) : giteaAccess(d, target, token, signal);
+}
+
+async function githubAccess(d: AccessDeps, target: ForgeTarget, token: string, signal: AbortSignal): Promise<Access> {
+	const route = `repos/${target.owner}/${target.repo}`;
+	const env = { [tokenEnvVar(target.authority)]: token };
+	const result = await d.exec("gh", ["api", route, "--hostname", target.authority], undefined, env, signal);
+	if (result.spawnError !== undefined) return "unknown";
+	if (result.code !== 0) return deniedOrUnknown(Number(GH_HTTP_STATUS.exec(result.stderr)?.[1]));
+	return pushOf(parseJson(result.stdout));
+}
+
+async function giteaAccess(d: AccessDeps, target: ForgeTarget, token: string, signal: AbortSignal): Promise<Access> {
+	const url = `${target.baseUrl.replace(/\/+$/, "")}/api/v1/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}`;
+	const response = await d.fetch(url, { headers: { accept: "application/json", authorization: `token ${token}` }, signal });
+	if (!response.ok) return deniedOrUnknown(response.status);
+	return pushOf(parseJson(await response.text()));
+}
+
+function deniedOrUnknown(status: number): Access {
+	return DENIED_STATUSES.has(status) ? "false" : "unknown";
+}
+
+function parseJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+}
+
+/** `permissions.push` of a repository response; anything but a boolean is `unknown`. */
+function pushOf(repo: unknown): Access {
+	const push = (repo as { permissions?: { push?: unknown } } | null | undefined)?.permissions?.push;
+	if (typeof push !== "boolean") return "unknown";
+	return push ? "true" : "false";
+}

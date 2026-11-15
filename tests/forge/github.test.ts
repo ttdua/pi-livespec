@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createExec, type ExecResult, GitHubForge } from "../../src/forge/github.ts";
+import { createExec, type ExecFn, type ExecResult, GitHubForge, tokenEnvVar } from "../../src/forge/github.ts";
 import { runContract } from "./contract.ts";
 import { tick } from "./fake-gh/state.ts";
-import { GitHubWorld } from "./github-world.ts";
+import { FAKE_GH_PATH, GitHubWorld, REPO } from "./github-world.ts";
 import { BOT_LOGIN } from "./world.ts";
 
 runContract("github", () => new GitHubWorld());
@@ -322,6 +322,46 @@ describe("github adapter", () => {
 				rmSync(dir, { recursive: true, force: true });
 			}
 		});
+
+		it("an aborted gh call is killed and resolves as aborted", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "hang-gh-"));
+			const ghPath = join(dir, "gh");
+			writeFileSync(ghPath, "#!/bin/sh\nexec sleep 30\n");
+			chmodSync(ghPath, 0o755);
+			try {
+				const abort = new AbortController();
+				const started = Date.now();
+				const pending = createExec()(ghPath, [], undefined, undefined, abort.signal);
+				setTimeout(() => abort.abort(), 50);
+				await expect(pending).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+				expect(Date.now() - started).toBeLessThan(5_000);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("an aborted gh that ignores SIGTERM settles only after it has exited", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "stubborn-gh-"));
+			const pidFile = join(dir, "pid");
+			try {
+				const abort = new AbortController();
+				const pending = createExec()("sh", ["-c", `trap '' TERM; echo $$ > ${pidFile}; while :; do sleep 0.05; done`], undefined, undefined, abort.signal);
+				setTimeout(() => abort.abort(), 200);
+
+				await expect(pending).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+
+				const pid = Number(readFileSync(pidFile, "utf8").trim());
+				expect(() => process.kill(pid, 0)).toThrow();
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("an already aborted signal never leaves a running gh", async () => {
+			const abort = new AbortController();
+			abort.abort();
+			await expect(createExec()("sh", ["-c", "sleep 30"], undefined, undefined, abort.signal)).resolves.toMatchObject({ code: null, spawnError: "aborted" });
+		});
 	});
 
 	it("a non-2xx answer throws http with the status", async () => {
@@ -331,5 +371,114 @@ describe("github adapter", () => {
 			(e: unknown) => e,
 		);
 		expect(error).toMatchObject({ code: "http", status: 404, operation: "getIssue" });
+	});
+});
+
+describe("github adapter with an account token", () => {
+	const TTDUA = { login: "ttdua", token: "tok-ttdua", push: true };
+	const NAICOI = { login: "naicoi92", token: "tok-naicoi92", push: true };
+	const worlds: GitHubWorld[] = [];
+	/** A world whose active `gh` account is naicoi92 and whose adapter carries `token`. */
+	const make = (opts: { token?: string; hostname?: string; accounts?: (typeof TTDUA)[] } = {}): GitHubWorld => {
+		const w = new GitHubWorld({ accounts: opts.accounts ?? [TTDUA, NAICOI], token: opts.token, hostname: opts.hostname });
+		w.store.update((d) => {
+			d.login = NAICOI.login;
+		});
+		worlds.push(w);
+		return w;
+	};
+	afterEach(async () => {
+		for (const w of worlds.splice(0)) await w.dispose();
+	});
+
+	it("Account token used", async () => {
+		const w = make({ token: TTDUA.token });
+
+		expect(await w.forge.whoami()).toEqual({ login: "ttdua" });
+		const issue = await w.forge.createIssue({ title: "t", body: "b", labels: [] });
+
+		expect(issue.author).toBe("ttdua");
+		expect(w.envLog().length).toBeGreaterThanOrEqual(3);
+		for (const env of w.envLog()) expect(env).toEqual({ GH_TOKEN: TTDUA.token });
+	});
+
+	it("Enterprise host token", async () => {
+		const w = make({ token: TTDUA.token, hostname: "ghe.example.org" });
+
+		expect(await w.forge.whoami()).toEqual({ login: "ttdua" });
+
+		expect(w.envLog().length).toBeGreaterThanOrEqual(2);
+		for (const env of w.envLog()) expect(env).toEqual({ GH_ENTERPRISE_TOKEN: TTDUA.token });
+		for (const argv of w.argvLog()) expect(argv.slice(argv.indexOf("--hostname"), argv.indexOf("--hostname") + 2)).toEqual(["--hostname", "ghe.example.org"]);
+	});
+
+	it("Token not in arguments", async () => {
+		const w = make({ token: TTDUA.token });
+		await w.forge.whoami();
+		const n = await w.forge.createIssue({ title: "t", body: "b", labels: ["x"] });
+		await w.forge.createComment(n.number, "c");
+
+		expect(w.argvLog().length).toBeGreaterThanOrEqual(4);
+		for (const arg of w.argvLog().flat()) expect(arg).not.toContain(TTDUA.token);
+	});
+
+	it("No token given", async () => {
+		const envs: (Record<string, string> | undefined)[] = [];
+		const w = make();
+		const recording: ExecFn = (file, args, input, env) => {
+			envs.push(env);
+			return w.exec(file, args, input, env);
+		};
+		const forge = new GitHubForge({ ghPath: FAKE_GH_PATH, repo: REPO, exec: recording });
+
+		expect(await forge.whoami()).toEqual({ login: "naicoi92" });
+		expect(envs.length).toBeGreaterThanOrEqual(2);
+		for (const env of envs) expect(env).toBeUndefined();
+	});
+
+	it("token with leading dash never reaches argv", async () => {
+		const odd = { login: "odd", token: "--hostname=evil.example.org\n-x", push: true };
+		const w = make({ token: odd.token, accounts: [odd, NAICOI] });
+
+		expect(await w.forge.whoami()).toEqual({ login: "odd" });
+
+		for (const env of w.envLog()) expect(env).toEqual({ GH_TOKEN: odd.token });
+		for (const arg of w.argvLog().flat()) {
+			expect(arg).not.toContain("evil.example.org");
+			expect(arg).not.toContain("\n");
+		}
+	});
+
+	it("ambient gh token variables never reach the fake gh", async () => {
+		const AMBIENT = "ambient-sentinel";
+		const saved = { GH_TOKEN: process.env.GH_TOKEN, GH_ENTERPRISE_TOKEN: process.env.GH_ENTERPRISE_TOKEN };
+		process.env.GH_TOKEN = `${AMBIENT}-gh`;
+		process.env.GH_ENTERPRISE_TOKEN = `${AMBIENT}-ghe`;
+		try {
+			const w = new GitHubWorld();
+			worlds.push(w);
+
+			expect(await w.forge.whoami()).toEqual({ login: BOT_LOGIN });
+			await w.forge.createIssue({ title: "t", body: "b", labels: [] });
+
+			expect(readFileSync(w.store.path, "utf8")).not.toContain(AMBIENT);
+			expect(w.envLog().length).toBeGreaterThan(0);
+			for (const env of w.envLog()) expect(env).toEqual({});
+		} finally {
+			for (const [name, value] of Object.entries(saved)) {
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
+		}
+	});
+
+	it("tokenEnvVar maps hosts", () => {
+		expect(tokenEnvVar(undefined)).toBe("GH_TOKEN");
+		expect(tokenEnvVar("github.com")).toBe("GH_TOKEN");
+		expect(tokenEnvVar("GitHub.com")).toBe("GH_TOKEN");
+		expect(tokenEnvVar("acme.ghe.com")).toBe("GH_TOKEN");
+		expect(tokenEnvVar("ghe.example.org")).toBe("GH_ENTERPRISE_TOKEN");
+		expect(tokenEnvVar("ghe.example.org:8443")).toBe("GH_ENTERPRISE_TOKEN");
+		expect(tokenEnvVar("ghe.com.example.org")).toBe("GH_ENTERPRISE_TOKEN");
 	});
 });

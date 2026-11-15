@@ -12,13 +12,20 @@ import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { isOffline } from "../forge/errors.ts";
-import type { CardInput } from "./phase-card.ts";
+import type { CardAccount, CardInput } from "./phase-card.ts";
 import type { Session } from "./session.ts";
 
 const CONSTRAINTS_FILE = ["specs", "constraints.md"];
 const FORGE_NOT_CONNECTED = "the forge is not connected";
 
-type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills">;
+type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills" | "account">;
+
+/** The account part of the card: the pending notice and the write block; `undefined` when neither is set. */
+export function cardAccount(session: Session): CardAccount | undefined {
+	const { accountNotice: line, accountBlock: blocked } = session;
+	if (line === undefined && blocked === undefined) return undefined;
+	return { ...(line !== undefined ? { line } : {}), ...(blocked !== undefined ? { blocked } : {}) };
+}
 
 /** Whether `specs/constraints.md` still begins with the init template marker. A missing file is not a template. */
 export async function constraintsTemplate(root: string): Promise<boolean> {
@@ -72,7 +79,7 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {
 	const { session, first } = d;
-	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [] };
+	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session) };
 	if (!session.pack.ok) return { ...common, kind: "pack-errors", errors: session.pack.errors };
 	const pack = session.pack.pack;
 	const resolved = await resolve(session, common, await session.git.branch());
