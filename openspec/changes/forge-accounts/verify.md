@@ -1,8 +1,8 @@
 # Verification Report
 
 **Change**: `forge-accounts`
-**Verified at**: `2026-11-15 15:47`
-**Iteration**: `1`
+**Verified at**: `2026-11-15 16:07`
+**Iteration**: `2`
 **Verifier**: parent session (pi, `claude-opus-5-5`). It ran every check inline in the worktree `/Users/naicoi/Projects/oss/pi-livespec.forge-accounts`.
 
 ---
@@ -36,7 +36,7 @@ Evidence:
 
 ## 3. Requirement Evidence
 
-- [ ] ADDED / MODIFIED: implementation evidence (file / line). One requirement fails, see the table.
+- [x] ADDED / MODIFIED: implementation evidence (file / line)
 - [x] REMOVED: not applicable (none)
 - [x] RENAMED: not applicable (none)
 
@@ -56,7 +56,7 @@ Evidence:
 | forge-accounts / Account command | ADDED | Pass | src/commands/account.ts:15; src/accounts/resolve.ts:212 |
 | forge-accounts / Account switch refusals | ADDED | Pass | src/accounts/resolve.ts:212 |
 | forge-accounts / Doctor and card report | ADDED | Pass | src/accounts/doctor.ts:9; src/accounts/card.ts:6 |
-| forge-accounts / Secret handling | ADDED | **Fail** | src/hooks/session.ts:329 — `tokens` is built only from `resolved.token`; on a refused Gitea selection the adapter reads with `readOnlyLogin` (session.ts:311) whose token is never added, so `RedactingForge` cannot redact it |
+| forge-accounts / Secret handling | ADDED | Pass | src/hooks/session.ts:329 (list built before the lookup), :347 `knownTokens` (the chosen token plus the forge's environment token), :357 `redactionTokens` (adds the read-only login's token); src/forge/redact.ts:9 |
 | github-adapter / GitHub transport and auth | MODIFIED | Pass | src/forge/github.ts:61 (tokenEnvVar), per-call env in `run` |
 | gitea-adapter / Gitea transport and auth | MODIFIED | Pass | src/forge/tea-config.ts:43 (findGiteaToken), :52 (teaLogins) |
 | forge-interface / Forge detection | MODIFIED | Pass | src/forge/detect.ts:98 (detectForge), :108 (resolveForgeTarget) |
@@ -68,18 +68,15 @@ Evidence:
 - [x] Every scenario maps to a test
 - [x] The project test command was run fresh in this step
 
-**Test command**: `bun run test` (vitest run), in the worktree.
+**Test command**: `bunx vitest run --reporter=verbose`, the project test runner (`bun run test` runs `vitest run`) with verbose output so any failure is named. Run in the worktree at HEAD `b05724f`.
 
-**Result**: green on the final runs, with one isolated flake.
-
-| Run | Result | Exit |
-|---|---|---|
-| 1 (first fresh run) | `1 failed \| 1151 passed (1152)` | 1 |
-| 2–23 (22 runs, 6 of them with a concurrent typecheck for load) | `1152 passed (1152)` each | 0 |
-
-The failing test of run 1 was not captured, because output was filtered to the summary line, and 22 reruns did not reproduce it. This is recorded as a WARNING below.
+**Result**: exit 0. `Test Files 84 passed (84)`, `Tests 1154 passed (1154)`: 1154 `✓` lines and no `×`.
 
 `bun run typecheck` (`tsc --noEmit`): exit 0.
+
+The iteration 1 regressions for Secret handling are in the suite and pass:
+- `tests/hooks/session-account-gitea.test.ts:89`, "a forge error echoing the read-only login's token is redacted";
+- `tests/hooks/session-account-gitea.test.ts:109`, "a forge error echoing GITEA_TOKEN is redacted when the selection fails".
 
 **How the table was built:** the 73 `#### Scenario:` titles of the four delta specs were matched against `it`/`test` calls and `it.each` table rows with the same name.
 - 64 match directly.
@@ -165,7 +162,7 @@ The failing test of run 1 was not captured, because output was filtered to the s
 
 ## 5. Design and Contract Coherence (warning only)
 
-- [x] Decisions in design.md match the code, except the token-redaction gap listed under issues
+- [x] Decisions in design.md match the code
 - [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code
 
 ### Contracts compared, read-only
@@ -177,7 +174,7 @@ The failing test of run 1 was not captured, because output was filtered to the s
 | `ExecFn` (+`env`, +`signal` deviation), `tokenEnvVar` | matched | `src/forge/github.ts:61`, `createExec` |
 | `GitHubForgeOptions.token`, `GiteaOptions/TeaLookup.login`, `findGiteaToken`, `teaLogins` (+`sshHost`) | matched | `src/forge/github.ts`; `src/forge/tea-config.ts:43,52` |
 | `DetectDeps.account` (+`teaLookup` deviation), `ForgeTarget`/`resolveForgeTarget` | matched | `src/forge/detect.ts:98,108` |
-| `RedactingForge` | matched in shape | `src/forge/redact.ts:9`. The token list it gets is incomplete; see the issues |
+| `RedactingForge` | matched | `src/forge/redact.ts:9`, fed by `redactionTokens` (`src/hooks/session.ts:357`) |
 
 **Account types and logic**
 
@@ -200,11 +197,11 @@ The failing test of run 1 was not captured, because output was filtered to the s
 
 **Dependencies:** matched. `package.json` `dependencies` is exactly `{ "yaml": "^2.9.1" }`.
 
-**Internal deviations listed in apply.md:** present as recorded.
+**Internal deviations listed in apply.md**, including iteration 2's private `knownTokens` and `redactionTokens` and the test seams `FakeGitea.echoTokenOnRead` and `HarnessOptions.accountGit`: present as recorded.
 
 ### Drift warnings (non-blocking)
 
-- design.md "Tokens" says every token the adapter uses is known to the redaction. That is not true for the Gitea read-only fallback login. The functional gap is listed under issues as CRITICAL.
+None.
 
 ### Not verified
 
@@ -217,7 +214,7 @@ The failing test of run 1 was not captured, because output was filtered to the s
 
 - [x] Working tree is clean. `git status --porcelain` shows only `?? .codegraph/`, the local CodeGraph index. It is not part of the change and is not committed.
 
-**Commit range**: `c4e2cc9..5a8535f`. `c4e2cc9` is the scaffold commit on feature branch `spec/forge-accounts`; `5a8535f` holds the apply receipt.
+**Commit range**: `c4e2cc9..b05724f`, with HEAD `b05724f` holding the iteration 2 apply receipt. Iteration 2 fix commits: `7b71430`, `4f40865`.
 
 ---
 
@@ -225,24 +222,17 @@ The failing test of run 1 was not captured, because output was filtered to the s
 
 ### CRITICAL
 
-**Gitea read-only fallback token is not redacted** (`src/hooks/session.ts:311,329`; spec `forge-accounts` / Requirement: Secret handling).
-
-- **What happens:**
-  - On a refused Gitea selection, `detectAccount` hands the adapter `{ name: resolved.readOnlyLogin }`.
-  - `connectWithAccount` builds the redaction list from `resolved.token`, which is undefined for a refusal.
-  - A Gitea HTTP error that echoes the credential then reaches `session.errors`, the card, doctor or tool output unredacted. The requirement says tokens "MUST NOT appear in any notice, error, … card, …, including on failure".
-- **Recommendation (`/opsx-apply` iteration 2):**
-  1. When `readOnlyLogin` is set, fetch that login's token through `d.accounts` with `candidateToken(d.accounts, target, readOnlyLogin)`.
-  2. Add it to the `tokens` list given to `RedactingForge`, and to the `redactTokens` call in the `catch` at `session.ts:336`.
-  3. Do not store the login, do not set `resolved.account`, and keep `accountBlock` set.
-- **Regression test** in `tests/hooks/session-account-gitea.test.ts`: two `tea` logins and a refused selection. The fake Gitea answers a read with an error body containing the read-only login's token. The token must be absent from `session.errors`, `session.forgeError`, the card text and the `spec_status` result, and writes must stay refused.
+None. The iteration 1 CRITICAL item, the Gitea read-only fallback token not being redacted, is fixed at `src/hooks/session.ts:329,347,357` and covered by `tests/hooks/session-account-gitea.test.ts:89`. The related environment-token path is covered by `:109`.
 
 ### WARNING
 
-**One flaky test in the first fresh run.**
-- **What happened:** `bun run test` failed 1 of 1152 once. It was not reproduced in 22 reruns, including 6 under load, and the test name was not captured.
-- **Likely candidates:** the wall-clock assertions `tests/hooks/harness.test.ts:17` (`< 5_000` ms), `tests/forge/github.test.ts:337` (`< 5_000` ms), `tests/content/manager.test.ts:423` and `tests/content/root-lock.test.ts:52` (`< 1000` ms).
-- **Recommendation:** in iteration 2, run the suite with `--reporter=verbose` and keep the failure output when it recurs. Relax or remove the wall-clock bounds where a stderr or behaviour assertion already proves the point. Earlier review ledgers flagged `harness.test.ts` as a candidate.
+1. **Intermittent test timeouts.** Not reproduced in this run, which was green.
+   - **History:** iteration 1 verify had one unnamed failure in 1152 tests. In iteration 2, `tests/accounts/secrets.test.ts` › "No token in arguments" once hit its 5 s timeout. That test takes about 2.5 s on its own.
+   - **Recommendation:** give that test an explicit longer timeout, for example `test(name, fn, 15_000)`, or cut its subprocess count. Replace the wall-clock bounds with behaviour assertions: `tests/hooks/harness.test.ts:17`, `tests/forge/github.test.ts:337`, `tests/content/manager.test.ts:423`, `tests/content/root-lock.test.ts:52`.
+2. **Not verified: real Gitea.** Gitea behaviour is covered only by the loopback fake: named login, ambiguity, `ssh_host` mapping, the read-only fallback and its redaction.
+   - **Recommendation:** before release, run one manual session against a self-hosted Gitea with two `tea` logins for the host and no UI. Expect writes refused, reads working, and no token in the card or doctor output. Record it in `smoke.md`.
+3. **GitHub environment-token redaction on a failed selection has no test of its own.** It shares the code path with the Gitea test (`envTokenVar(target)`, `src/hooks/session.ts:347`).
+   - **Recommendation:** add a hook test with `GH_TOKEN` set and the stored-account read failing, where the fake `gh` echoes the token in stderr. Assert the token is absent from `session.errors` and the card.
 
 ### SUGGESTION
 
@@ -255,17 +245,13 @@ The failing test of run 1 was not captured, because output was filtered to the s
 ## Overall Decision
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
-- [ ] PASS_WITH_WARNINGS: proceed, noting the warnings
-- [x] FAIL: fix the cause, then re-apply (iteration 2)
+- [x] PASS_WITH_WARNINGS: proceed, noting the warnings
+- [ ] FAIL: fix the cause, then re-apply
 
 **Next step**:
 
-This is iteration 1 of 5.
-1. Run `/opsx-apply` in `/Users/naicoi/Projects/oss/pi-livespec.forge-accounts`. It detects the `FAIL`, runs a fix iteration (reading `systematic-debugging`) for the CRITICAL item, and records iteration 2 in `apply.md`.
-2. Then run `/opsx-verify` again.
+From the worktree `/Users/naicoi/Projects/oss/pi-livespec.forge-accounts`:
+1. Run `/opsx-continue` to create `finalize.md`.
+2. Then run `/opsx-archive`.
 
-> **Convergence loop reminder**:
-> - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
-> - FAIL, code-fixable: load `systematic-debugging`, re-run `/opsx-apply`, then verify again.
-> - FAIL, artifact-level: fix the artifact, then re-run `/opsx-apply`.
-> - Stop after 5 iterations and report to the user.
+This change is cut from `ls-04`, so its PR merges after PR #15.
