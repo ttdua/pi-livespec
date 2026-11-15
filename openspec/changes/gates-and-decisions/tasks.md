@@ -82,7 +82,7 @@ Blocked by: 8
 
 Blocked by: 9
 
-- [ ] 10.1 Add the cross-tool test `Tool has no answer parameter` over the parameter schemas of all five new tools
-- [ ] 10.2 Add an integration test over a fake forge and fake UI: define gate → plan_units → plan gate through forge → web edit freeze → amend → question cascade → stuck report at the cap (cap 1 via a project override) → choice lifts the block
-- [ ] 10.3 Update `docs/architecture.md` (interaction, decide, the request lifecycle, the known LS-06 gaps)
+- [x] 10.1 Add the cross-tool test `Tool has no answer parameter` over the parameter schemas of all five new tools
+- [x] 10.2 Add an integration test over a fake forge and fake UI: define gate → plan_units → plan gate through forge → web edit freeze → amend → question cascade → stuck report at the cap (cap 1 via a project override) → choice lifts the block
+- [x] 10.3 Update `docs/architecture.md` (interaction, decide, the request lifecycle, the known LS-06 gaps)
 - [ ] 10.4 Run `bun run typecheck` and `bun run test`, plus a manual TUI smoke of `spec_gate` in session and a forge `/livespec approve`, and record the results in `smoke.md`
