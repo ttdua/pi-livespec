@@ -1,19 +1,38 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runValidateCommand } from "../src/commands/validate.ts";
 import extension from "../src/extension.ts";
+import type { SessionDeps } from "../src/hooks/session.ts";
 import { readVersion } from "../src/version.ts";
 import { commitAll, makeRepo, writeIn } from "./helpers/repo.ts";
 
 type Handler = (args: string, ctx: unknown) => Promise<void> | void;
 
-function loadExtension(cwd = process.cwd()) {
+const homes: string[] = [];
+afterEach(() => {
+	for (const dir of homes.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function tempHome(): string {
+	const home = mkdtempSync(join(tmpdir(), "ls-ext-home-"));
+	homes.push(home);
+	return home;
+}
+
+function loadExtension(cwd = process.cwd(), deps: Partial<SessionDeps> = {}) {
 	const commands = new Map<string, { description?: string; handler: Handler }>();
 	const tools = new Map<string, { name: string; parameters?: unknown; execute: (...a: unknown[]) => Promise<unknown> }>();
 	const sendMessage = vi.fn();
 	const notify = vi.fn();
+	const events: string[] = [];
 	const api = {
+		on: (event: string) => {
+			if (!events.includes(event)) events.push(event);
+		},
+		appendEntry: vi.fn(),
+		registerEntryRenderer: vi.fn(),
 		registerCommand: (name: string, options: { description?: string; handler: Handler }) => {
 			commands.set(name, options);
 		},
@@ -22,8 +41,8 @@ function loadExtension(cwd = process.cwd()) {
 		},
 		sendMessage,
 	};
-	extension(api as never);
-	return { commands, tools, sendMessage, notify, ctx: { cwd, ui: { notify } } };
+	extension(api as never, deps);
+	return { commands, tools, events, sendMessage, notify, ctx: { cwd, ui: { notify }, isProjectTrusted: () => true, getSystemPromptOptions: () => ({ skills: [] }) } };
 }
 
 /** Map of every file path (relative) to its contents, excluding .git. */
@@ -42,10 +61,66 @@ const NO_SCENARIO = "# a\n\n## Purpose\nx\n\n## Requirements\n\n### Requirement:
 type ToolOut = { content: { type: string; text: string }[]; details: { results: unknown[] }; isError?: boolean };
 
 describe("livespec extension", () => {
-	it("registers the livespec command and spec_validate tool", () => {
+	it("registers the livespec command and the livespec tools", () => {
 		const { commands, tools } = loadExtension();
 		expect([...commands.keys()]).toEqual(["livespec"]);
-		expect([...tools.keys()]).toEqual(["spec_validate"]);
+		expect([...tools.keys()].sort()).toEqual(
+			["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start"].sort(),
+		);
+	});
+
+	it("registers the session and context hooks", () => {
+		const { events } = loadExtension();
+		for (const event of ["session_start", "before_agent_start", "context", "tool_call", "resources_discover"]) {
+			expect(events).toContain(event);
+		}
+	});
+
+	it("Usage lists subcommands", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "specs/a/spec.md", NO_SCENARIO);
+		const before = snapshot(root);
+		const { commands, sendMessage, notify, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("nonsense", ctx);
+		expect(sendMessage).toHaveBeenCalledTimes(1);
+		const content = (sendMessage.mock.calls[0]![0] as { content: string }).content;
+		expect(content).toBe(
+			"Usage: /livespec [validate | migrate-openspec | init | doctor | next | skills <status|update|pin <sha>|unpin|rollback>]",
+		);
+		for (const sub of ["validate", "migrate-openspec", "init", "doctor", "next", "skills"]) expect(content).toContain(sub);
+		expect(notify).not.toHaveBeenCalled();
+		expect(snapshot(root)).toEqual(before);
+	});
+
+	it("doctor routes to the checks and reports a missing clone", async () => {
+		const root = await makeRepo();
+		const home = tempHome();
+		const detect = async () => {
+			throw new Error("no forge in this test");
+		};
+		const { commands, sendMessage, notify, ctx } = loadExtension(root, { home, detect });
+		await commands.get("livespec")!.handler("doctor", ctx);
+		const content = (sendMessage.mock.calls[0]![0] as { content: string }).content;
+		expect(content).toContain("error clone: agent-skills is not cloned");
+		expect(content).toContain("forge detection failed: no forge in this test");
+		expect(notify).toHaveBeenCalledWith("livespec doctor found errors", "error");
+	});
+
+	it("skills routes to the content manager", async () => {
+		const root = await makeRepo();
+		const home = tempHome();
+		const { commands, sendMessage, ctx } = loadExtension(root, { home });
+		await commands.get("livespec")!.handler("skills bogus", ctx);
+		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toBe(
+			"Usage: /livespec skills <status|update|pin <sha>|unpin|rollback>",
+		);
+	});
+
+	it("next without a livespec session says to run init", async () => {
+		const root = await makeRepo();
+		const { commands, sendMessage, ctx } = loadExtension(root);
+		await commands.get("livespec")!.handler("next", ctx);
+		expect((sendMessage.mock.calls[0]![0] as { content: string }).content).toContain("/livespec init");
 	});
 
 	it("prints the package version", async () => {

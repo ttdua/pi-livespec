@@ -40,7 +40,8 @@ const MAX_RECORDED_ERRORS = 50;
 /** Without a forge, work in progress is unknown, so no upgrade runs; the skip is recorded and notified. */
 const NO_FORGE_SKIP = "forge unavailable; work in progress unknown";
 
-function defaultDeps(): SessionDeps {
+/** The real home, forge detection, content manager and clock. */
+export function defaultSessionDeps(): SessionDeps {
 	return {
 		home: homedir(),
 		detect: detectForge,
@@ -242,7 +243,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 }
 
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
-	const deps: SessionDeps = { ...defaultDeps(), ...d };
+	const deps: SessionDeps = { ...defaultSessionDeps(), ...d };
 	registerResumeRenderer(pi);
 	pi.on("session_start", async (_event, ctx) => {
 		try {
