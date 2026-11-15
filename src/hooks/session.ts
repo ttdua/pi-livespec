@@ -13,7 +13,7 @@ import { type LoadedConfig, loadConfig } from "../config.ts";
 import { ContentManager, type UpgradeOutcome } from "../content/manager.ts";
 import { createMirror } from "../content/mirror.ts";
 import { contentPaths } from "../content/paths.ts";
-import { type WorkInProgress, workInProgress } from "../content/wip.ts";
+import { workInProgress } from "../content/wip.ts";
 import { advancePhase } from "../engine/advance.ts";
 import { CommentsCache } from "../engine/comments-cache.ts";
 import { defaultGitExec } from "../engine/git-exec.ts";
@@ -24,20 +24,21 @@ import { CachedForge } from "../forge/cache.ts";
 import { detectForge, parseRemote } from "../forge/detect.ts";
 import { buildCardInput } from "./card-input.ts";
 import { type CardInput, renderCard } from "./phase-card.ts";
+import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
 import { setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
 
 export type SessionDeps = { home: string; detect: typeof detectForge; content: (home: string) => ContentManager; now: () => Date };
 
 export const AGENT_SKILLS_SOURCE = "https://github.com/addyosmani/agent-skills.git";
-export const RESUME_MESSAGE_TYPE = "livespec-resume";
 const NOT_CONNECTED = "the forge is not connected yet";
 const RELOAD_HINT = "The new skills apply after /reload or in the next session.";
 const INIT_HINT = "This project does not use livespec yet. Run /livespec init to set it up.";
 const MIGRATE_HINT = "This project has an openspec/ folder. Run /livespec migrate-openspec, then /livespec init.";
 const OPENSPEC_DIR = "openspec";
 const MAX_RECORDED_ERRORS = 50;
-const NO_FORGE_WIP: WorkInProgress = { busy: true, reason: "the forge is unavailable, so work in progress is unknown" };
+/** Without a forge, work in progress is unknown, so no upgrade runs; the skip is recorded and notified. */
+const NO_FORGE_SKIP = "forge unavailable; work in progress unknown";
 
 function defaultDeps(): SessionDeps {
 	return {
@@ -181,9 +182,10 @@ function safeNotify(ctx: ExtensionContext, message: string, type: "info" | "warn
 	}
 }
 
+/** UI-only: a custom entry never reaches the LLM, which sees the card only through the `context` hook. */
 function showResumeCard(pi: ExtensionAPI, session: Session): void {
 	try {
-		pi.sendMessage({ customType: RESUME_MESSAGE_TYPE, content: renderCard(session.card), display: true });
+		appendResumeEntry(pi, renderCard(session.card));
 	} catch (error) {
 		session.record("resume", error);
 	}
@@ -199,8 +201,12 @@ function upgradeNotice(o: UpgradeOutcome): { message: string; type: "info" | "wa
 
 async function runUpgrade(session: Session, content: ContentManager, ctx: ExtensionContext): Promise<void> {
 	if (!session.pack.ok) return;
+	if (!session.forge) {
+		safeNotify(ctx, `agent-skills check skipped: ${session.record("agent-skills", NO_FORGE_SKIP)}`, "info");
+		return;
+	}
 	try {
-		const wip = session.forge ? await workInProgress(session.forge) : NO_FORGE_WIP;
+		const wip = await workInProgress(session.forge);
 		const notice = upgradeNotice(await content.autoCheck(session.pack.pack, session.config.user.agentSkills.channel, wip));
 		if (notice) safeNotify(ctx, notice.message, notice.type);
 	} catch (error) {
@@ -237,6 +243,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
 	const deps: SessionDeps = { ...defaultDeps(), ...d };
+	registerResumeRenderer(pi);
 	pi.on("session_start", async (_event, ctx) => {
 		try {
 			await startSession(pi, deps, ctx);

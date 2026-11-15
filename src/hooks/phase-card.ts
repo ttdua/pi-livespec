@@ -74,7 +74,8 @@ function changeLines(step: NextStep, state: ChangeState): string[] {
 		[HEADER, `#${state.issue.number} ${untrusted(state.issue.title)}`, step.phase ?? phaseOfState(state)].join(SEPARATOR),
 		...(state.stale ? [STALE_LINE] : []),
 		...(state.readOnly ? [READ_ONLY_LINE] : []),
-		`Next: ${step.next}`,
+		// `next` is engine copy that interpolates forge text (unit titles, check messages, label ids).
+		`Next: ${untrusted(step.next)}`,
 		...inlineLine("Required skills", step.required),
 		...listLines("Redirects", step.redirects),
 		...listLines("Blocking questions", step.blockingQuestions.map((q) => `${q.id}: ${untrusted(q.text)}`)),

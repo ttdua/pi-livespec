@@ -16,6 +16,7 @@ export const PHASE_CARD_TYPE = "livespec-phase-card";
 /** A constant timestamp keeps the card byte-identical across turns. */
 const CARD_TIMESTAMP = 0;
 const READ_TOOL = "read";
+const NO_SKILLS = { skillPaths: [] as string[] };
 
 export type PhaseCardMessage = { role: "user"; customType: typeof PHASE_CARD_TYPE; content: string; timestamp: typeof CARD_TIMESTAMP };
 
@@ -82,15 +83,16 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 		return undefined;
 	});
 
-	pi.on("resources_discover", async () => {
-		const session = getSession();
-		if (!session) return { skillPaths: [] };
-		return {
-			skillPaths: exposedSkillPaths({
-				initialized: session.initialized,
-				pack: session.pack,
-				...(session.activeTree === undefined ? {} : { activeTree: session.activeTree }),
-			}),
-		};
+	pi.on("resources_discover", async (_event, ctx) => {
+		try {
+			const session = getSession();
+			if (!session) return NO_SKILLS;
+			const activeTree = session.activeTree;
+			return { skillPaths: exposedSkillPaths({ initialized: session.initialized, pack: session.pack, ...(activeTree === undefined ? {} : { activeTree }) }) };
+		} catch (error) {
+			getSession()?.record("resources_discover", error);
+			warn(ctx, "resources_discover", error);
+			return NO_SKILLS;
+		}
 	});
 }

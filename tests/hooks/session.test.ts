@@ -1,26 +1,30 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { gitStatus } from "../helpers/repo.ts";
-import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, harness, resumeBody, TREE_SHA } from "./helpers.ts";
+import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
+import { writeIn } from "../helpers/repo.ts";
 
 afterEach(async () => {
 	setSession(undefined);
 	await cleanupHomes();
 });
 
-const resumeMessages = (sent: { customType: string; content: string }[]) => sent.filter((m) => m.customType === "livespec-resume");
+/** The resume cards shown at session start: UI-only entries, as `{ content }` for the assertions below. */
+const resumeMessages = (entries: { customType: string; data: unknown }[]) =>
+	entries.filter((e) => e.customType === "livespec-resume").map((e) => ({ content: (e.data as { text: string }).text }));
 
 describe("session_start", () => {
 	test("Resume mid-change", async () => {
 		const h = await harness({ branch: CHANGE_BRANCH });
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
 		await h.start();
-		const [resume] = resumeMessages(h.pi.sent);
+		const [resume] = resumeMessages(h.pi.entries);
 		expect(resume?.content).toContain(`#${n}`);
 		expect(resume?.content).toContain("· build");
-		expect(resume?.content).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(resume?.content).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 		expect(resume?.content).toContain("Read specs/product.md");
-		expect(await cardText(h.pi, h.ctx)).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(await cardText(h.pi, h.ctx)).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 	});
 
 	test("Other branch", async () => {
@@ -28,7 +32,7 @@ describe("session_start", () => {
 		const a = await h.world.seedIssue({ title: "rate-limit", labels: BUILD_LABELS });
 		const b = await h.world.seedIssue({ title: "audit-log", labels: ["livespec", "livespec:phase/define"] });
 		await h.start();
-		const [resume] = resumeMessages(h.pi.sent);
+		const [resume] = resumeMessages(h.pi.entries);
 		expect(resume?.content).toContain(`#${a} <untrusted>rate-limit</untrusted> (build)`);
 		expect(resume?.content).toContain(`#${b} <untrusted>audit-log</untrusted> (define)`);
 	});
@@ -36,7 +40,7 @@ describe("session_start", () => {
 	test("Forge unavailable", async () => {
 		const h = await harness({ branch: CHANGE_BRANCH, detectFails: true });
 		await expect(h.start()).resolves.toBeUndefined();
-		const [resume] = resumeMessages(h.pi.sent);
+		const [resume] = resumeMessages(h.pi.entries);
 		expect(resume?.content).toContain("livespec · forge unavailable");
 		expect(resume?.content).toContain("unknown forge host");
 		expect(await cardText(h.pi, h.ctx)).toContain("livespec · forge unavailable");
@@ -78,7 +82,7 @@ describe("session_start", () => {
 		const issue = await h.world.forge.getIssue(n);
 		expect(issue.labels).toContain("livespec:phase/review");
 		expect(issue.labels).not.toContain("livespec:phase/build");
-		expect(resumeMessages(h.pi.sent)[0]?.content).toContain("· review");
+		expect(resumeMessages(h.pi.entries)[0]?.content).toContain("· review");
 	});
 
 	test("Not blocking", async () => {
@@ -101,7 +105,7 @@ describe("session_start", () => {
 		const session = getSession();
 		expect(session?.pack.ok).toBe(false);
 		expect(session?.card.kind).toBe("pack-errors");
-		expect(resumeMessages(h.pi.sent)[0]?.content).toMatch(/flow\.yaml:2:\d+ phases/);
+		expect(resumeMessages(h.pi.entries)[0]?.content).toMatch(/flow\.yaml:2:\d+ phases/);
 		expect(h.content.autoCheck.calls).toHaveLength(0);
 	});
 
@@ -133,9 +137,61 @@ describe("session_start", () => {
 		await h.world.seedIssue({ title: "a", body: resumeBody(h.head), labels: BUILD_LABELS });
 		await h.world.seedIssue({ title: "b", body: resumeBody(h.head), labels: BUILD_LABELS });
 		await h.start();
-		const content = resumeMessages(h.pi.sent)[0]?.content ?? "";
+		const content = resumeMessages(h.pi.entries)[0]?.content ?? "";
 		expect(content).toContain("livespec · change not resolved");
 		expect(content).toContain("Several open changes match");
 		expect(content).not.toContain("Open changes");
+	});
+
+	test("resume card is UI-only and never persisted into the LLM context", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.start();
+		expect(resumeMessages(h.pi.entries)).toHaveLength(1);
+		expect(h.pi.entryRenderers.has("livespec-resume")).toBe(true);
+		const rendered = h.pi.entryRenderers.get("livespec-resume")?.(h.pi.entries[0], { expanded: false }, { fg: (_c: string, t: string) => t }) as {
+			render(width: number): string[];
+		};
+		expect(rendered.render(200).join("\n")).toContain("Build U3");
+		// What pi would persist: every sendMessage, then the user prompts and replies of two turns.
+		const persisted: Msg[] = h.pi.sent.map((m) => ({ role: "custom", customType: m.customType, content: m.content, timestamp: 1 }));
+		const isCard = (m: Msg) => typeof m.content === "string" && m.content.startsWith("livespec ·");
+		expect(persisted.some(isCard)).toBe(false);
+		for (const turn of [1, 2]) {
+			persisted.push({ role: "user", content: `prompt ${turn}`, timestamp: turn });
+			const out = (await contextCall(h.pi, h.ctx, persisted)) ?? [];
+			expect(out.filter(isCard)).toHaveLength(1);
+			expect(out.at(-1)?.customType).toBe("livespec-phase-card");
+			persisted.push({ role: "assistant", content: [{ type: "text", text: `reply ${turn}` }] });
+		}
+	});
+
+	test("forge unavailable skips the upgrade check with a recorded reason", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH, detectFails: true });
+		await h.start();
+		await getSession()?.upgrade;
+		expect(h.content.autoCheck.calls).toHaveLength(0);
+		expect(getSession()?.errors).toContain("agent-skills: forge unavailable; work in progress unknown");
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("forge unavailable; work in progress unknown"), "info");
+	});
+
+	test("constraints template prompt follows the real specs/constraints.md", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH, files: { "specs/constraints.md": `${TEMPLATE_MARKER}\n# Constraints\n` } });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.start();
+		expect(await cardText(h.pi, h.ctx)).toContain("draft it with the constraint-driven-development skill");
+		await writeIn(h.root, "specs/constraints.md", "# Constraints\n- Node 22 only\n");
+		await getSession()?.refresh();
+		const card = await cardText(h.pi, h.ctx);
+		expect(card).not.toContain("constraint-driven-development");
+		expect(card).not.toContain("constraints.md");
+	});
+});
+
+describe("resume entry renderer", () => {
+	test("wraps long lines to the viewport width", async () => {
+		const { wrapLines } = await import("../../src/hooks/resume-entry.ts");
+		expect(wrapLines("abcdef\n\nxy", 4)).toEqual(["abcd", "ef", "", "xy"]);
+		expect(wrapLines("ab", 0)).toEqual(["a", "b"]);
 	});
 });

@@ -92,10 +92,10 @@ describe("context hooks", () => {
 	test("Issue edited between prompts", async () => {
 		const h = await resumed();
 		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
-		expect(await cardText(h.pi, h.ctx)).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(await cardText(h.pi, h.ctx)).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 		await h.world.editBodyBehindBack(h.n, resumeBody(h.head).replace("- [ ] pending", "- [x] done"));
 		// Within the run the card keeps the last snapshot.
-		expect(await cardText(h.pi, h.ctx)).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(await cardText(h.pi, h.ctx)).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
 		const card = await cardText(h.pi, h.ctx);
 		expect(card).not.toContain("Build U3");
@@ -107,7 +107,7 @@ describe("context hooks", () => {
 		await h.world.editBodyBehindBack(h.n, resumeBody(h.head).replace("- [x] Q1 (blocking)", "- [ ] Q1 (blocking)"));
 		expect(await cardText(h.pi, h.ctx)).toContain("Build U3");
 		await getSession()?.refresh();
-		expect(await cardText(h.pi, h.ctx)).toContain("Next: Answer blocking question Q1 before continuing.");
+		expect(await cardText(h.pi, h.ctx)).toContain("Next: <untrusted>Answer blocking question Q1 before continuing.</untrusted>");
 	});
 
 	test("Initialized project", async () => {
@@ -159,7 +159,7 @@ describe("context hooks", () => {
 		expect(card).toContain("token expired");
 		flaky.fail(false);
 		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
-		expect(await cardText(h.pi, h.ctx)).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(await cardText(h.pi, h.ctx)).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 	});
 
 	test("unreachable forge reuses the resolved change and states the card is stale", async () => {
@@ -170,7 +170,7 @@ describe("context hooks", () => {
 		expect(card).toContain(`#${h.n}`);
 		expect(card).toContain("Stale: this card is built from cached forge data");
 		expect(card).toContain("Read-only: the forge is unreachable, so livespec writes are refused.");
-		expect(card).toContain("Next: Build U3 — Rate limit per IP.");
+		expect(card).toContain("Next: <untrusted>Build U3 — Rate limit per IP.</untrusted>");
 	});
 
 	test("context hook survives a renderer that throws", async () => {
@@ -196,6 +196,20 @@ describe("context hooks", () => {
 		expect(getSession()?.skillReads.list()).toEqual(["code-simplification"]);
 		await h.pi.fire("before_agent_start", promptEvent(), h.ctx);
 		expect(await cardText(h.pi, h.ctx)).toContain("Needs skill note: code-simplification (record why with skill_note)");
+	});
+
+	test("resources_discover survives a failure building the exposed paths", async () => {
+		const h = await resumed();
+		const session = getSession();
+		if (!session) throw new Error("no session");
+		Object.defineProperty(session, "pack", {
+			get() {
+				throw new Error("pack exploded");
+			},
+		});
+		const out = await h.pi.fire("resources_discover", { type: "resources_discover", cwd: h.root, reason: "startup" }, h.ctx);
+		expect(out).toEqual({ skillPaths: [] });
+		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("pack exploded"), "warning");
 	});
 
 	test("no session means no hook output", async () => {

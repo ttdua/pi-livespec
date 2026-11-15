@@ -20,6 +20,9 @@ export class FakePi {
 	readonly commands = new Map<string, { description?: string; handler: (args: string, ctx: unknown) => unknown }>();
 	readonly tools = new Map<string, { name: string; execute: (...a: unknown[]) => Promise<unknown> }>();
 	readonly sent: SentMessage[] = [];
+	/** UI-only session entries from `appendEntry`; they never reach the LLM. */
+	readonly entries: { customType: string; data: unknown }[] = [];
+	readonly entryRenderers = new Map<string, (entry: unknown, options: unknown, theme: unknown) => unknown>();
 
 	/** The object handed to the code under test as `ExtensionAPI`. */
 	readonly api = {
@@ -36,6 +39,12 @@ export class FakePi {
 		},
 		sendMessage: (message: SentMessage) => {
 			this.sent.push(message);
+		},
+		appendEntry: (customType: string, data?: unknown) => {
+			this.entries.push({ customType, data });
+		},
+		registerEntryRenderer: (customType: string, renderer: (entry: unknown, options: unknown, theme: unknown) => unknown) => {
+			this.entryRenderers.set(customType, renderer);
 		},
 	};
 
