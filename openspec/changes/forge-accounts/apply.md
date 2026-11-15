@@ -1,8 +1,8 @@
 # Apply Receipt
 
 **Change**: `forge-accounts`
-**Iteration**: `1`
-**Applied at**: `2026-11-15T15:25:09+0700`
+**Iteration**: `2`
+**Applied at**: `2026-11-15` (iteration 2; iteration 1 at `2026-11-15T15:25:09+0700`)
 **Executor**: `subagent-driven-development`.
 - **Agents:** `implementer` writes each task; `code-reviewer` (read-only tools) reviews each task.
 - **Reviews:** one combined spec and quality review after each task, scoped re-reviews after each fix round, then one whole-branch review with a single fix wave and its scoped re-review.
@@ -24,8 +24,11 @@
 
 - **Range**: `c4e2cc9..HEAD`.
   - `c4e2cc9` is the scaffold commit of the change directory.
-  - HEAD is the parent of this receipt, `3c41644`; the receipt itself is committed after it.
-- **Count**: `19` commits up to `3c41644`, with no merge commits.
+  - HEAD is the parent of this receipt, `4f40865`; the receipt itself is committed after it.
+- **Count**: `23` commits up to `4f40865`, with no merge commits.
+- **Iteration 2 range**: `58bc883..4f40865`, after the iteration 1 verify receipt. It holds 2 fix commits:
+  - `7b71430` fix: redact the read-only tea login's token in forge errors;
+  - `4f40865` fix: redact the forge environment token when account selection fails.
 
 ---
 
@@ -35,20 +38,33 @@
 - **Remaining**: none.
 - **Checks:**
   - `bun run typecheck`: clean.
-  - `bun run test`: 1152 tests in 84 files passed.
+  - `bun run test`: 1154 tests in 84 files passed, on two fresh runs in iteration 2.
   - `openspec validate forge-accounts --strict`: valid.
   - `dependencies`: still exactly `yaml`.
 - **Manual smoke:** recorded in `smoke.md`. **PASS:** a real pi session on a scratch clone of `ttdua/pi-livespec` chose and stored `ttdua` while `naicoi92` was the active account in a scratch gh config. The session forge called GitHub as `ttdua`, and no `gh auth switch` was run.
 
 ---
 
-## Open item for the next iteration
+## Iteration 2 (fix for verify FAIL)
 
-- **Gitea read-only fallback token is not redacted** (found by the re-review of the final fix wave; Important, security).
-  - **Problem:** on a refused Gitea selection, the adapter now reads with `readOnlyLogin` (`src/hooks/session.ts:311`). The refused resolution carries no token, so the `RedactingForge` at `session.ts:328–332` gets an empty token list. A Gitea HTTP error that echoes the credential could then reach session errors or the card unredacted. That violates "Secret handling".
-  - **Fix:** fetch the read-only login's token through `AccountEnv` and add it to the connection's redaction list, without treating the login as chosen or clearing `accountBlock`.
-  - **Regression test:** a refused Gitea read returns an error containing that token; the token must be absent from session errors and model-visible output, and writes must stay blocked.
-  - **Rule:** SDD allows no second fix wave after the whole-branch review, so this is handed to verify, which should score it CRITICAL, and then to `/opsx-apply` iteration 2.
+**Cause:** the redaction list handed to `RedactingForge` and to the connect `catch` in `src/hooks/session.ts` came only from `resolved.token`, the chosen account's token. Two tokens the adapter can still send were missing from it:
+1. **Read-only login:** on a refused Gitea selection the adapter reads with `readOnlyLogin` and takes that login's token from the `tea` config itself. This is the CRITICAL item in `verify.md`.
+2. **Environment token on a failed selection:** when the resolution fails, for example because the stored-account read fails, it returns a block without a token. The adapter still sends `GITEA_TOKEN`, or `GH_TOKEN`/`GH_ENTERPRISE_TOKEN` for GitHub. The scoped re-review found this path; the cause is the same.
+
+**Fix:**
+- `knownTokens(target, resolved, d)` returns the chosen token plus the forge's non-empty environment token, whatever the resolution decided.
+- `redactionTokens(target, resolved, d)` adds the read-only login's token from `candidateToken(d.accounts, …)`.
+- These tokens are used only for redaction. They are never stored, never put on the session and never rendered. `accountBlock` is unchanged.
+
+**Tests** (`tests/hooks/session-account-gitea.test.ts`): the fake Gitea gains `echoTokenOnRead()`, and the hook harness gains `accountGit`. Each new test has a positive control: the error text reaches the user, with the token shown as `***`.
+- **Read-only login, refused selection:** the read-only login's token is absent from `session.errors`, `forgeError`, the card, and the `spec_status` content and details. `change_new` is still refused.
+- **Failed selection with `GITEA_TOKEN` set:** same assertions. The stored-account read is made to fail with `git config` exit 3.
+- **RED then GREEN:** both tests failed first, with the token visible in `session.errors`, then passed.
+- **Not covered:** the GitHub environment token shares the code path (`envTokenVar(target)`) but has no test of its own.
+
+**Review:** an `implementer` writes; a `code-reviewer` did the scoped re-review of `58bc883..7b71430`. Verdict: ADDRESSED, no new breakage. Its out-of-scope Critical (item 2 above) was fixed in `4f40865`, which the parent reviewed by diff and re-ran fresh: typecheck clean, 1154/1154 tests.
+
+**Earlier flake:** the verify WARNING could not be reproduced (24 further full runs green). During iteration 2, `tests/accounts/secrets.test.ts` › "No token in arguments" once hit its 5 s timeout and passed on rerun. It is kept as a known risk, not changed here, because it is outside the CRITICAL scope.
 
 ---
 
@@ -86,6 +102,10 @@ None changed in shape. All new public rows were added as planned.
 **Task 5: command, doctor, card**
 - `src/accounts/describe.ts` holds the shared wording.
 - Forge-derived fragments are wrapped with `untrusted()` where each message is built. The account modules import `untrusted` from `src/hooks/phase-card.ts`, which creates no import cycle.
+
+**Iteration 2**
+- Private helpers `knownTokens` and `redactionTokens` in `src/hooks/session.ts`. No types changed.
+- Test seams: `FakeGitea.echoTokenOnRead()` and `HarnessOptions.accountGit`.
 
 **Final fix wave**
 - `ResolvedAccount.readOnlyLogin` (`src/accounts/read-only.ts`): a read-only Gitea login used on a refusal.
@@ -125,4 +145,4 @@ None changed in shape. All new public rows were added as planned.
 
 ## Next step
 
-Run `/opsx-verify`. It is expected to report the open item as CRITICAL; then run `/opsx-apply` for iteration 2.
+Run `/opsx-verify` (iteration 2).
