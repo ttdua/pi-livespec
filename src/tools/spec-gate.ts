@@ -5,24 +5,19 @@
 // outcomes come only from an adapter. The phase advance is derived by
 // `nextStep` and applied by `Session.refresh`.
 
-import { basename } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { unitDigest } from "../core/digest.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { Session } from "../hooks/session.ts";
 import type { Answered, ApprovalRequest, GateSnapshot, RequestOption } from "../interaction/approver.ts";
-import { runChain } from "../interaction/chain.ts";
-import { type CompletionCtx, completeAnswer } from "../interaction/complete.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
-import { DuplicateRequestError } from "../interaction/forge.ts";
 import { prepareRequest } from "../interaction/requests.ts";
-import { type ApproverCtx, approverFor } from "./approver-for.ts";
-import { formatStep } from "./format-step.ts";
-import { afterForgeWrite, currentChange, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import type { ApproverCtx } from "./approver-for.ts";
+import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
+import { agentSkillsOf, sendRequest, withStep } from "./request-flow.ts";
 
 export type SpecGateParams = { target: string };
 
@@ -110,28 +105,11 @@ export function unwaivedApproval(plan: GatePlan, ans: Answered): string | undefi
 
 // --- I/O -----------------------------------------------------------------------------
 
-function agentSkillsOf(session: Session): string | undefined {
-	return session.activeTree === undefined ? undefined : basename(session.activeTree);
-}
-
-/** The card's next step after a write, so the agent sees where the change stands. */
-function withStep(session: Session, text: string): string {
-	const current = currentChange(session);
-	return current.kind === "change" ? `${text}\n\n${formatStep(current.step, current.state)}` : text;
-}
-
 async function passSelf(w: WriteContext, state: ChangeState, target: string): Promise<ToolResult<undefined>> {
 	const n = state.issue.number;
 	await w.forge.createComment(n, selfGateComment(state, target, new Date(), agentSkillsOf(w.session)));
 	await afterForgeWrite(w.session, n);
 	return toolResult(withStep(w.session, `The ${target} self gate passed.`), undefined);
-}
-
-function completionCtx(w: WriteContext, state: ChangeState): CompletionCtx {
-	const ctx: CompletionCtx = { forge: w.forge, git: w.session.git, pack: w.pack, issue: state.issue.number, marked: state.marked, root: w.session.cwd, now: () => new Date() };
-	const skills = agentSkillsOf(w.session);
-	if (skills !== undefined) ctx.agentSkills = skills;
-	return ctx;
 }
 
 async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan): Promise<ApprovalRequest> {
@@ -141,29 +119,8 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
-	const n = state.issue.number;
 	const request = await buildRequest(w, state, target, plan);
-	const { chain, adapters } = approverFor(w.session, ctx, n);
-	let result: Awaited<ReturnType<typeof runChain>>;
-	try {
-		// A gate request is never deferred: only question requests offer "answer later".
-		result = await runChain(chain, adapters, request, { onDeferred: async () => {} });
-	} catch (error) {
-		if (error instanceof DuplicateRequestError) return toolResult(error.message, undefined, true);
-		throw error;
-	}
-	if (result.status === "refused") return toolResult(`spec_gate refused: ${result.message}.`, undefined, true);
-	if (result.status === "deferred-all") return toolResult(`The ${request.subject} request was deferred with no adapter left; request the gate again.`, undefined, true);
-	if (result.status === "pending") {
-		await afterForgeWrite(w.session, n);
-		return toolResult(withStep(w.session, `Requested ${request.subject} on the forge as ${result.requestId}; wait for the human's answer.`), undefined);
-	}
-	const unwaived = unwaivedApproval(plan, result);
-	if (unwaived) return toolResult(unwaived, undefined, true);
-	// `Completion.result` is already wrapped as untrusted where it holds forge text.
-	const completion = await completeAnswer(completionCtx(w, state), request.record, result);
-	await afterForgeWrite(w.session, n);
-	return toolResult(withStep(w.session, completion.result), undefined);
+	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again", precheck: (ans) => unwaivedApproval(plan, ans) });
 }
 
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
