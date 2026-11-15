@@ -63,6 +63,20 @@ describe("RedactingForge", () => {
 		}
 	});
 
+	it("redacts a thrown non-Error value", async () => {
+		const inner = leakyForge() as unknown as Record<string, unknown>;
+		inner.getIssue = async () => {
+			throw `gh failed with ${TOKEN}`;
+		};
+		const forge = new RedactingForge(inner as unknown as Forge, () => [TOKEN]);
+		const error = await forge.getIssue(1).then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toBe("gh failed with ***");
+	});
+
 	it("passes results and non-forge errors through", async () => {
 		const inner = leakyForge() as unknown as Record<string, unknown>;
 		inner.whoami = async () => ({ login: "ttdua" });

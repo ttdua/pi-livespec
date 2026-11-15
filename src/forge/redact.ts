@@ -116,9 +116,12 @@ export class RedactingForge implements Forge {
 		}
 	}
 
-	/** The same error with every known token removed from its message; code, operation and status are kept. */
+	/**
+	 * The same error with every known token removed from its message; code, operation and status are
+	 * kept. A thrown non-Error value becomes an `Error` with its redacted text.
+	 */
 	private redact(error: unknown): unknown {
-		if (!(error instanceof Error)) return error;
+		if (!(error instanceof Error)) return new Error(redactTokens(String(error), this.tokens()));
 		const message = redactTokens(error.message, this.tokens());
 		if (message === error.message) return error;
 		if (error instanceof ForgeError) return new ForgeError({ code: error.code, operation: error.operation, status: error.status, message });

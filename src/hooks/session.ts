@@ -152,6 +152,7 @@ export class Session {
 		const chosen = await chooseAccount(target, this.cwd, name, this.link.deps.accounts);
 		if (!chosen.ok) return chosen;
 		await this.connect(chosen.resolved);
+		if (this.forge === undefined) return { ok: false, message: `${name} was stored, but the forge could not be connected: ${this.forgeError ?? NOT_CONNECTED}` };
 		if (this.accountBlock !== undefined) return { ok: false, message: this.accountBlock };
 		return { ok: true, message: chosen.resolved.notice ?? `livespec uses \`${name}\` for this repository` };
 	}
@@ -252,8 +253,12 @@ async function connectForge(session: Session, link: SessionLink, chosen?: Resolv
 	const target = await targetFor(session, link.deps);
 	if (!target) return;
 	const resolved = chosen ? adoptAccount(session, chosen) : await resolveSessionAccount(session, target, link);
-	if (!(await connectWithAccount(session, target, resolved, link.deps))) return;
-	await confirmIdentity(session, resolved);
+	const connection = await connectWithAccount(session, target, resolved, link.deps);
+	if (!connection) return;
+	// Identity first: the forge is published only afterwards, so no write can run with an unconfirmed account.
+	await confirmIdentity(session, connection.forge, resolved);
+	session.forge = connection.forge;
+	session.comments = connection.comments;
 }
 
 async function targetFor(session: Session, d: SessionDeps): Promise<ForgeTarget | undefined> {
@@ -294,20 +299,28 @@ function detectAccount(target: ForgeTarget, resolved: ResolvedAccount | undefine
 	return undefined;
 }
 
-/** Builds the adapter once with the account, wrapped `RedactingForge` → `CachedForge`. True when connected. */
-async function connectWithAccount(session: Session, target: ForgeTarget, resolved: ResolvedAccount | undefined, d: SessionDeps): Promise<boolean> {
+type Connection = { forge: CachedForge; comments: CommentsCache };
+
+/** Builds the adapter once with the account, wrapped `RedactingForge` → `CachedForge`; not yet published on the session. */
+async function connectWithAccount(
+	session: Session,
+	target: ForgeTarget,
+	resolved: ResolvedAccount | undefined,
+	d: SessionDeps,
+): Promise<Connection | undefined> {
 	try {
 		const account = detectAccount(target, resolved);
 		const inner = await d.detect(session.cwd, { ...detectDepsOf(d.accounts), ...(account ? { account } : {}) });
 		const tokens = resolved?.token ? [resolved.token] : [];
 		const { host, owner, repo } = target;
 		const cacheRoot = join(d.home, ".pi", "agent", "livespec", "cache");
-		session.forge = new CachedForge(new RedactingForge(inner, () => tokens), { cacheRoot, host, owner, repo });
-		session.comments = new CommentsCache({ dir: join(cacheRoot, host, owner, repo), now: () => d.now().getTime() });
-		return true;
+		return {
+			forge: new CachedForge(new RedactingForge(inner, () => tokens), { cacheRoot, host, owner, repo }),
+			comments: new CommentsCache({ dir: join(cacheRoot, host, owner, repo), now: () => d.now().getTime() }),
+		};
 	} catch (error) {
 		session.forgeError = session.record("forge", redactTokens(messageOf(error), resolved?.token ? [resolved.token] : []));
-		return false;
+		return undefined;
 	}
 }
 
@@ -315,9 +328,8 @@ async function connectWithAccount(session: Session, target: ForgeTarget, resolve
  * `whoami` must equal the chosen candidate's user; for the environment token, a successful `whoami`
  * is the identity. A mismatch or a failure sets the block. Without an account (refused) nothing runs.
  */
-async function confirmIdentity(session: Session, resolved: ResolvedAccount | undefined): Promise<void> {
-	const forge = session.forge;
-	if (!forge || !resolved || resolved.block !== undefined) return;
+async function confirmIdentity(session: Session, forge: CachedForge, resolved: ResolvedAccount | undefined): Promise<void> {
+	if (!resolved || resolved.block !== undefined) return;
 	try {
 		const { login } = await forge.whoami();
 		if (resolved.source === "env") {

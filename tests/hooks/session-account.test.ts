@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { ForgeError } from "../../src/forge/errors.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import type { Session } from "../../src/hooks/session.ts";
@@ -14,6 +14,7 @@ import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import type { AccountRec } from "../forge/fake-gh/state.ts";
 import {
 	allDone,
+	deferred,
 	BUILD_LABELS,
 	CHANGE_BRANCH,
 	cleanupHomes,
@@ -207,9 +208,11 @@ describe("identity confirmation and the write block", () => {
 
 		expect(current().accountBlock).toContain("connection reset");
 		expect((await h.call("change_new", { name: "rate-limit" })).isError).toBe(true);
-		// A successful read does not lift the block.
+		// A successful read through the session's forge does not lift the block.
 		await current().refresh();
-		await h.world.forge.searchIssues({ labels: [], state: "open" });
+		await current().forge?.searchIssues({ labels: [], state: "open" });
+		expect((await h.call("spec_status")).content).toBeDefined();
+		expect(current().forge?.isReadOnly()).toBe(false);
 		expect(current().accountBlock).toBeDefined();
 		expect((await h.call("change_new", { name: "rate-limit" })).isError).toBe(true);
 	});
@@ -279,6 +282,38 @@ describe("identity confirmation and the write block", () => {
 	});
 });
 
+describe("no write before the identity is confirmed", () => {
+	test("a write while whoami is pending is refused, and allowed after confirmation", async () => {
+		const who = deferred<void>();
+		const h = await harness({
+			accounts: [TTDUA],
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						const value = Reflect.get(target, prop, receiver);
+						if (prop !== "whoami") return typeof value === "function" ? value.bind(target) : value;
+						return async () => {
+							await who.promise;
+							return { login: "ttdua" };
+						};
+					},
+				}) as Forge,
+		});
+		const started = h.start();
+		await vi.waitFor(() => expect(h.detectCalls.length).toBe(1));
+		await new Promise((r) => setTimeout(r, 50));
+
+		const during = await h.call("change_new", { name: "rate-limit" });
+		expect(during.isError).toBe(true);
+		expect(await h.world.forge.searchIssues({ labels: [], state: "all" })).toEqual([]);
+
+		who.resolve();
+		await started;
+		const after = await h.call("change_new", { name: "rate-limit" });
+		expect(after.isError).toBe(false);
+	});
+});
+
 describe("asking once", () => {
 	test("the question is asked through ctx.ui.select and the answer is stored", async () => {
 		const h = await harness({
@@ -326,6 +361,26 @@ describe("switchAccount and reconnect", () => {
 		expect(r.message).toContain("cannot push");
 		expect(session.account?.account).toBe("ttdua");
 		expect(session.accountBlock).toBeUndefined();
+	});
+
+	test("a switch whose reconnect fails is not reported as ok", async () => {
+		let failDetect = false;
+		const h = await harness({
+			branch: CHANGE_BRANCH,
+			accounts: [NAICOI_WRITER, TTDUA],
+			forge: (world) => {
+				if (failDetect) throw new ForgeError({ code: "unsupported", operation: "detectForge", message: "detection broke" });
+				return world.forge;
+			},
+		});
+		await h.start();
+		failDetect = true;
+
+		const r = await current().switchAccount("ttdua");
+
+		expect(r.ok).toBe(false);
+		expect(r.message).toContain("detection broke");
+		expect(current().forge).toBeUndefined();
 	});
 
 	test("reconnect re-runs the resolution", async () => {
