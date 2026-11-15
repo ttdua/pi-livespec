@@ -4,6 +4,7 @@
 
 import { formatResults } from "../commands/validate.ts";
 import { parseChange } from "../core/change.ts";
+import { messageOf } from "../core/messages.ts";
 import type { Result } from "../core/result.ts";
 import { replaceSection, sectionText, setHeaderLine } from "../core/sections.ts";
 import { renderUnit, type RenderableUnit, type UnitInput } from "../core/unit-blocks.ts";
@@ -44,9 +45,16 @@ export async function reconcileBase(git: Git, branch: string, issueBase: string 
 
 // --- step 2: classify ----------------------------------------------------------
 
-/** Assigns `U1…Un` in input order and runs the `tags` then `difficulty` decision per unit; nothing is posted. */
-export function classifyPlan(units: UnitInput[], decisions: Pack["decisions"]): Promise<ClassifiedUnits> {
-	return classifyUnits(units.map((input, i) => ({ id: `U${i + 1}`, input })), decisions);
+/**
+ * Assigns `U1…Un` in input order and runs the `tags` then `difficulty` decision per unit; nothing is
+ * posted. A rule that rejects its facts (e.g. a non-kebab-case extra tag) is a refusal.
+ */
+export async function classifyPlan(units: UnitInput[], decisions: Pack["decisions"]): Promise<{ ok: true; plan: ClassifiedUnits } | { ok: false; message: string }> {
+	try {
+		return { ok: true, plan: await classifyUnits(units.map((input, i) => ({ id: `U${i + 1}`, input })), decisions) };
+	} catch (error) {
+		return { ok: false, message: `plan_units refused: ${messageOf(error)}; nothing was merged or written.` };
+	}
 }
 
 // --- step 3: render and validate -----------------------------------------------

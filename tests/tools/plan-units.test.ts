@@ -241,6 +241,14 @@ describe("plan_units", () => {
 		expect((tags?.data as { agent_additions?: string[] }).agent_additions).toEqual(["perf"]);
 	});
 
+	test("a non-kebab extra tag is refused before anything is written", async () => {
+		const h = await planning();
+		const out = await h.plan([{ ...U1, extra_tags: ["Not Kebab"] }]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("kebab-case");
+		expect(await marked(h)).toEqual([]);
+	});
+
 	test("refuses outside plan", async () => {
 		const h = await planning("define");
 		const out = await h.plan();

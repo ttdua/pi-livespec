@@ -8,6 +8,7 @@ import { messageOf } from "../core/messages.ts";
 import type { UnitInput } from "../core/unit-blocks.ts";
 import { integrationBranch } from "../engine/git.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { normalizeUnitInput } from "./classify-units.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -54,10 +55,20 @@ async function settleWrite(w: WriteContext, n: number, body: string, base: strin
 	return `Writing the units to #${n} failed with an unknown outcome (${untrusted(messageOf(outcome.error))}). ${RERUN}`;
 }
 
+/** Steps 6 and its failure handling: the body write, settled; undefined means the issue records the plan. */
+async function recordPlan(w: WriteContext, issue: Issue, body: string, base: string): Promise<string | undefined> {
+	const outcome = await writePlan(w.forge, issue, body);
+	const failed = outcome.kind === "written" ? undefined : await settleWrite(w, issue.number, body, base, outcome);
+	await afterForgeWrite(w.session, issue.number);
+	return failed;
+}
+
 async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[]): Promise<ToolResult<undefined>> {
 	const n = state.issue.number;
 	const git = w.session.git;
-	const classified = await classifyPlan(units, w.pack.decisions);
+	const classifiedOrRefusal = await classifyPlan(units, w.pack.decisions);
+	if (!classifiedOrRefusal.ok) return refuse(classifiedOrRefusal.message);
+	const classified = classifiedOrRefusal.plan;
 	const issue = await w.forge.getIssue(n);
 	const valid = validatePlan(issue.body, classified.units);
 	if (!valid.ok) return refuse(valid.message);
@@ -67,10 +78,7 @@ async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[]):
 	const merged = await mergeIntegration(git, integration);
 	if (!merged.ok) return refuse(merged.message);
 	await postDecisionRecords(w.forge, n, classified.records);
-	const body = plannedBody(valid.body, merged.base);
-	const outcome = await writePlan(w.forge, issue, body);
-	const failed = outcome.kind === "written" ? undefined : await settleWrite(w, n, body, merged.base, outcome);
-	await afterForgeWrite(w.session, n);
+	const failed = await recordPlan(w, issue, plannedBody(valid.body, merged.base), merged.base);
 	if (failed) return refuse(failed);
 	await setLivespecBase(git, state.git.branch, merged.base);
 	const list = classified.units.map((u) => `${u.id} (${u.difficulty}, [${u.tags.join(", ")}])`).join(", ");

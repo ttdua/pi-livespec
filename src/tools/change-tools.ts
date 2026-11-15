@@ -9,6 +9,7 @@ import { registerSpecGate } from "./spec-gate.ts";
 import { registerSpecNext } from "./spec-next.ts";
 import { registerSpecStatus } from "./spec-status.ts";
 import { registerSpecWrite } from "./spec-write.ts";
+import { registerUnitAmend } from "./unit-amend.ts";
 
 export function registerChangeTools(pi: ExtensionAPI): void {
 	registerSpecStatus(pi);
@@ -19,4 +20,5 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeStart(pi);
 	registerSpecGate(pi);
 	registerPlanUnits(pi);
+	registerUnitAmend(pi);
 }
