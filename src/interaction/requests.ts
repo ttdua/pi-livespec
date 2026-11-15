@@ -75,10 +75,15 @@ export function answerComment(id: string, data: AnswerData): string {
 	return writeMarked(ANSWER_KIND, id, data);
 }
 
-/** When the request was made, from the base36 ms suffix of its id; "" when the id carries none. */
+const BASE36_SUFFIX = /^[0-9a-z]+$/;
+
+/** When the request was made, from the base36 ms suffix of its id; "" when the suffix is missing or no valid date. */
 function createdAtOf(id: string): string {
-	const ms = Number.parseInt(id.slice(id.lastIndexOf(ID_SEPARATOR) + 1), BASE36);
-	return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
+	const separator = id.lastIndexOf(ID_SEPARATOR);
+	const suffix = separator === -1 ? "" : id.slice(separator + 1);
+	if (!BASE36_SUFFIX.test(suffix)) return "";
+	const date = new Date(Number.parseInt(suffix, BASE36));
+	return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function asRequestRecord(m: MarkedComment): RequestRecord | undefined {

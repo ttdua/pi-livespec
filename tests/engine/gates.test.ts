@@ -134,6 +134,11 @@ describe("gatePayload", () => {
 			decision("tags", "U3", ["security", "api"], "src/middleware/ratelimit.ts matches **/middleware/**", { agent_additions: ["api"] }),
 			decision("difficulty", "U3", "medium", "default"),
 		];
+		const otherContract = parseMarked(
+			decisionComment({ point: "tags", subject: "U3", digest: "0".repeat(64), source: "human", outcome: ["perf"], reason: "older contract reason" }),
+		);
+		if (!otherContract) throw new Error("bad decision");
+		marked.push({ commentId: "c-old", author: "bot", ...otherContract });
 		const payload = gatePayload(ready("plan", { marked }), pack, "plan", FACTS);
 		expect(payload.summary).toBe(
 			[
@@ -168,10 +173,20 @@ describe("gatePayload", () => {
 				"",
 				"Spec diff (git diff --stat 0123456789abcdef0123456789abcdef01234567..HEAD -- specs/):",
 				FACTS.specsStat,
+				"",
+				"Changed spec files:",
+				"- specs/rate-limit/spec.md",
 			].join("\n"),
 		);
 		expect(payload.files).toEqual(["specs/rate-limit/spec.md"]);
 		expect(payload.links).toEqual([FACTS.issueUrl]);
+	});
+
+	test("define payload lists full spec paths when the stat truncates them", () => {
+		const long = "specs/a-very-long-capability-name-that-git-truncates/spec.md";
+		const facts = { specsStat: " .../spec.md | 3 +++\n 1 file changed, 3 insertions(+)", specsFiles: [long] };
+		const summary = gatePayload(ready("define"), pack, "define", facts).summary;
+		expect(summary).toContain(`Changed spec files:\n- ${long}`);
 	});
 
 	test("long proposal is cut to its first lines", () => {

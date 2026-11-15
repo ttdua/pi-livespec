@@ -71,6 +71,19 @@ export function latestDecisions(marked: MarkedComment[]): Map<string, DecisionRe
 	return latest;
 }
 
+/**
+ * The latest `<point>.<subject>` record made for `digest` (the unit's current contract); records for
+ * any other digest belong to an older contract and are skipped, even when newer.
+ */
+export function currentDecision(marked: MarkedComment[], point: string, subject: string, digest: string): DecisionRecord | undefined {
+	const id = `${point}.${subject}`;
+	let found: DecisionRecord | undefined;
+	for (const m of marked) {
+		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest) found = m.data;
+	}
+	return found;
+}
+
 /** The small-fix PR body block: a marker line, then one fenced yaml block with the record. */
 export function formatDecisionBlock(point: string, record: DecisionRecord): string {
 	return `<!-- livespec:decision:${point} -->\n${FENCE_OPEN}\n${stringify(compactFacts(record))}\`\`\``;

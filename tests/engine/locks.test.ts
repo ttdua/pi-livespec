@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type Change, parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
-import { deriveLocks, gateDigest } from "../../src/engine/locks.ts";
+import { deriveLocks, gateDigest, validApproval } from "../../src/engine/locks.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 
@@ -136,10 +136,19 @@ describe("deriveLocks", () => {
 		expect(approved.stalePhases).toEqual([]);
 	});
 
-	test("superseded latest result gives no valid result", () => {
+	test("superseded latest result gives no valid approval and does not fall back", () => {
 		const change = parseChange(BODY);
-		const lock = deriveLocks(change, [gate("define", "approved"), gate("define", "approved", { superseded: true })]);
-		expect(lock.gates.define).toEqual({ outcome: "approved", superseded: true, at: expect.any(String) });
+		const lock = deriveLocks(change, [
+			gate("define", "approved", { at: "2026-11-15T09:00:00Z" }),
+			gate("define", "changes_requested", { at: "2026-11-15T10:00:00Z", superseded: true }),
+		]);
+		expect(validApproval(lock.gates.define)).toBe(false);
+		expect(lock.gates.define).toEqual({ outcome: "changes_requested", superseded: true, at: "2026-11-15T10:00:00Z" });
+		const approvedButSuperseded = deriveLocks(change, [gate("define", "approved"), gate("define", "approved", { superseded: true })]);
+		expect(validApproval(approvedButSuperseded.gates.define)).toBe(false);
+		expect(validApproval({ outcome: "approved_with_notes", superseded: false, at: "t" })).toBe(true);
+		expect(validApproval({ outcome: "dismissed", superseded: false, at: "t" })).toBe(false);
+		expect(validApproval(undefined)).toBe(false);
 		const superseded = deriveLocks(parseChange(BODY), [planGate(digests(change)), planGate({ U1: "x" }, { superseded: true })]);
 		expect(superseded.locked).toEqual(digests(change));
 	});

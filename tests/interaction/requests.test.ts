@@ -66,6 +66,15 @@ describe("readRequests", () => {
 		expect(state.applying.map((a) => [a.id, a.subject])).toEqual([[ID, "gate:plan"]]);
 	});
 
+	test("malformed id suffix does not throw", () => {
+		const bad = "gate-plan.zzzzzzzzzzzz";
+		const state = readRequests(comments(requestComment(bad, { ...RECORD, id: bad }, "text"), requestComment("gate-x.no_pe", { ...RECORD, id: "gate-x.no_pe" }, "t")));
+		expect(state.pending.map((p) => [p.id, p.createdAt])).toEqual([
+			[bad, ""],
+			["gate-x.no_pe", ""],
+		]);
+	});
+
 	test("request id matches the marker id pattern", () => {
 		const id = newRequestId("gate:plan", NOW);
 		expect(id).toBe(ID);

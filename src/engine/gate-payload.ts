@@ -4,7 +4,8 @@
 
 import type { Unit } from "../core/change.ts";
 import { sectionText } from "../core/sections.ts";
-import { latestDecisions } from "../decide/records.ts";
+import { unitDigest } from "../core/digest.ts";
+import { currentDecision, type DecisionRecord } from "../decide/records.ts";
 import { registeredPayload } from "./gates.ts";
 import type { Git } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
@@ -15,7 +16,7 @@ export type GatePayload = { summary: string; links: string[]; files: string[] };
 
 const SPECS_PATH = "specs/";
 const PROPOSAL_LINES = 5;
-const CLASSIFICATION_POINTS = new Set(["tags", "difficulty"]);
+const CLASSIFICATION_POINTS = ["tags", "difficulty"];
 
 /** The stat and file names of `git diff <base>..HEAD -- specs/`; empty without a `Base`. */
 export async function collectReviewFacts(git: Pick<Git, "diffStat" | "diffNames">, base: string | undefined): Promise<ReviewFacts> {
@@ -41,7 +42,8 @@ function defineSections(state: ChangeState, body: string, facts: ReviewFacts): s
 	const header = ["Capabilities", "Product impact"].map((k) => headerLine(state, k)).filter((l): l is string => l !== undefined);
 	const base = state.change.header.base ?? "<Base>";
 	const diff = [`Spec diff (git diff --stat ${base}..HEAD -- specs/):`, facts.specsStat === "" ? "(no changes)" : facts.specsStat];
-	return [header, proposalSection(body, facts.issueUrl), diff];
+	const files = facts.specsFiles.length === 0 ? [] : ["Changed spec files:", ...facts.specsFiles.map((f) => `- ${f}`)];
+	return [header, proposalSection(body, facts.issueUrl), diff, files];
 }
 
 function unitLine(u: Unit): string {
@@ -51,12 +53,16 @@ function unitLine(u: Unit): string {
 
 function planSections(state: ChangeState): string[][] {
 	const units = ["Units:", ...state.change.units.map(unitLine)];
-	const unitIds = new Set(state.change.units.map((u) => u.id));
-	const records = [...latestDecisions(state.marked)].filter(([, r]) => CLASSIFICATION_POINTS.has(r.point) && unitIds.has(r.subject));
+	const records = state.change.units.flatMap((u) => {
+		const digest = unitDigest(u);
+		return CLASSIFICATION_POINTS.map((point) => currentDecision(state.marked, point, u.id, digest)).filter(
+			(r): r is DecisionRecord => r !== undefined,
+		);
+	});
 	if (records.length === 0) return [units];
-	const lines = records.map(([id, r]) => {
+	const lines = records.map((r) => {
 		const additions = r.agent_additions?.length ? ` (agent additions: ${r.agent_additions.join(", ")})` : "";
-		return `- ${id}: ${r.reason}${additions}`;
+		return `- ${r.point}.${r.subject}: ${r.reason}${additions}`;
 	});
 	return [units, ["Decisions:", ...lines]];
 }

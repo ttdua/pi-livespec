@@ -8,6 +8,11 @@ import { unitDigest } from "../core/digest.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { Outcome } from "../interaction/approver.ts";
 
+/**
+ * The valid gate result of a phase: its latest own gate comment newer than the latest `stale` listing it.
+ * A superseded latest result is kept as-is (so callers can say "request again") and never replaced by an
+ * older result; use `validApproval` to ask whether it approves.
+ */
 export type GateResult = { outcome: Outcome; superseded: boolean; at: string };
 
 export type LockState = {
@@ -37,6 +42,11 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 const isApproved = (o: Outcome): boolean => o === "approved" || o === "approved_with_notes";
 
+/** True only for an approved (with or without notes), non-superseded result; undefined is no approval. */
+export function validApproval(r: GateResult | undefined): boolean {
+	return r !== undefined && isApproved(r.outcome) && !r.superseded;
+}
+
 // --- parsing own marked comments into facts ----------------------------------
 
 function stringRecord(v: unknown): Record<string, string> | undefined {
@@ -56,7 +66,7 @@ function gateData(d: unknown): GateData | undefined {
 
 function amendData(d: unknown): AmendData | undefined {
 	if (!isObject(d) || typeof d.action !== "string" || !ACTIONS.has(d.action) || typeof d.unit !== "string") return undefined;
-	const approved = typeof d.outcome === "string" && isApproved(d.outcome as Outcome) && d.superseded !== true;
+	const approved = typeof d.outcome === "string" && OUTCOMES.has(d.outcome) && validApproval({ outcome: d.outcome as Outcome, superseded: d.superseded === true, at: "" });
 	const data: AmendData = { action: d.action as AmendData["action"], unit: d.unit, approved };
 	if (typeof d.new === "string") data.digest = d.new;
 	return data;
@@ -99,7 +109,7 @@ function stalesOf(facts: Fact[]): Extract<Fact, { kind: "stale" }>[] {
 /** The latest approved, non-superseded plan gate's `locked` map, then every later approved amendment in order. */
 function lockOf(facts: Fact[]): Record<string, string> | undefined {
 	const base = gatesOf(facts)
-		.filter((g) => g.data.name === PLAN_PHASE && isApproved(g.data.outcome) && !g.data.superseded)
+		.filter((g) => g.data.name === PLAN_PHASE && validApproval(g.data))
 		.pop();
 	if (!base) return undefined;
 	const locked: Record<string, string> = { ...(base.data.locked ?? {}) };
@@ -135,7 +145,7 @@ function stalePhasesOf(facts: Fact[]): string[] {
 	const stale = new Set<string>();
 	for (const s of stalesOf(facts)) {
 		for (const phase of s.data.phases) {
-			const reopened = gates.some((g) => g.at > s.at && g.data.name === phase && isApproved(g.data.outcome) && !g.data.superseded);
+			const reopened = gates.some((g) => g.at > s.at && g.data.name === phase && validApproval(g.data));
 			if (!reopened) stale.add(phase);
 		}
 	}

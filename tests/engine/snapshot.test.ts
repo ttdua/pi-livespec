@@ -87,7 +87,7 @@ describe("readChangeSnapshot", () => {
 		const fresh = new CachedForge(world.forge, { cacheRoot: join(dir, "issues"), host: "h", owner: "o", repo: "r" });
 		const state = await readChangeSnapshot({ ...deps(fresh, () => fresh.isReadOnly()), comments }, n);
 		expect(state.stale).toBe(true);
-		expect(state.counters).toEqual({});
+		expect(state.counters).toEqual({ change_iterations: 0 });
 		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
 	});
 
@@ -106,11 +106,11 @@ describe("readChangeSnapshot", () => {
 			},
 		});
 		const d = deps(forge);
-		expect((await readChangeSnapshot(d, n)).counters).toEqual({ review_rounds: 2 });
+		expect((await readChangeSnapshot(d, n)).counters).toEqual({ review_rounds: 2, change_iterations: 0 });
 		// The account switches; whoami can no longer confirm who is logged in.
 		whoamiFails = true;
 		const state = await readChangeSnapshot(d, n);
-		expect(state.counters).toEqual({});
+		expect(state.counters).toEqual({ change_iterations: 0 });
 		expect(state.incomplete).toEqual([]);
 		expect(state.stale).toBe(true);
 		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
@@ -137,7 +137,7 @@ describe("readChangeSnapshot", () => {
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.incomplete).toEqual(["U3"]);
 		expect(state.skillNotes).toEqual(["build.debugging-and-error-recovery"]);
-		expect(state.counters).toEqual({ review_rounds: 2 });
+		expect(state.counters).toEqual({ review_rounds: 2, change_iterations: 0 });
 		expect(state.warnings).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
 	});
 
@@ -185,6 +185,14 @@ describe("readChangeSnapshot", () => {
 		expect(state.requests.applying).toEqual([]);
 		expect(state.marked.map((m) => m.kind)).toEqual(["gate", "request"]);
 		expect(state.commandWarnings).toEqual([]);
+	});
+
+	test("zero iterations override a stored counter comment", async () => {
+		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "change_iterations", { value: 4 }));
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.counters).toEqual({ change_iterations: 0 });
+		expect(state.iterations.count).toBe(0);
 	});
 
 	test("iterations count overrides the counter value", async () => {

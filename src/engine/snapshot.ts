@@ -76,7 +76,7 @@ export function deriveCommentFacts(
 ): Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations"> {
 	const iterations = deriveIterations(marked, iterationCap);
 	return {
-		counters: { ...readCounters(marked), ...(iterations.count > 0 ? { change_iterations: iterations.count } : {}) },
+		counters: { ...readCounters(marked), change_iterations: iterations.count },
 		skillNotes: idsOfKind(marked, "skill-note"),
 		incomplete: idsOfKind(marked, "incomplete"),
 		marked,
