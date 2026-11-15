@@ -357,6 +357,40 @@ describe("completion engine", () => {
 		expect(ofKind(await markedOf(f), "stuck", "S1-answer")[0]?.data).toMatchObject({ outcome: "dismissed", choice: "" });
 	});
 
+	test("gate with overrides resumes after a crash before the override record", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		const crashing = failingOnce(f.world.forge, commentOfKind("decision"));
+		await expect(completeAnswer(await ctxOf(f, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
+		expect(parseChange(await f.world.bodyOf(f.n)).units[1]?.difficulty).toBe("high");
+
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		const marked = await markedOf(f);
+		const overrides = ofKind(marked, "decision", "difficulty.U3").filter((m) => (m.data as { source?: string }).source === "human");
+		expect(overrides).toHaveLength(1);
+		expect(overrides[0]?.data).toMatchObject({ outcome: "high", overridden_by: { by: "alice", from: "medium" } });
+		expect(ofKind(marked, "gate").filter((m) => (m.data as { request?: string }).request === record.id)).toHaveLength(1);
+		expect(readRequests(marked).applying).toEqual([]);
+		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("changes requested resumes after a crash before the gate result", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		const crashing = failingOnce(f.world.forge, commentOfKind("gate"));
+		await expect(completeAnswer(await ctxOf(f, crashing), record, answer({ outcome: "changes_requested", notes: "tighten" }))).rejects.toThrow("injected");
+		expect(ofKind(await markedOf(f), "stale", record.id)).toHaveLength(1);
+
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		const marked = await markedOf(f);
+		expect(ofKind(marked, "stale", record.id)).toHaveLength(1);
+		expect(ofKind(marked, "gate")).toHaveLength(1);
+		expect(ofKind(marked, "gate")[0]?.data).toMatchObject({ outcome: "changes_requested", request: record.id });
+		expect(readRequests(marked).applying).toEqual([]);
+		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
 	const STEPS: [name: string, failsOn: (op: string, args: unknown[]) => boolean][] = [
 		["body write", (op) => op === "updateIssueBody"],
 		["stale comment", commentOfKind("stale")],
