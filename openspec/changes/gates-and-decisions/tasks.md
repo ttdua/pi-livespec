@@ -2,11 +2,11 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `src/decide/registry.ts`: `registerRule(point, schema, fn)`, the `decisions` pack sub-schema (unknown point, `mode: rule` only, `jev` rejected with line and column), the per-point merge used by `mergePack`, and `registerBuiltinRules()` so tests can re-register after a reset
-- [ ] 1.2 Add `src/decide/rules/tags.ts` (path globs via `matchGlob`, keywords matched as whole words or phrases ignoring case, `extra_tags` append-only and reported as `agentAdditions` data, per-tag union merge) and `src/decide/rules/difficulty.ts`
-- [ ] 1.3 Add `src/decide/seam.ts` `decide(point, facts, deps)`, which returns rule outcomes with typed `data`, or sends `ask` through an injected approver
-- [ ] 1.4 Add `src/decide/records.ts`: the `decision` comment body (`facts_hash` above 2,000 characters, `agent_additions`, `overridden_by`), the latest-record-per-id reader, and the small-fix PR-body `formatDecisionBlock` and `parseDecisionBlocks`
-- [ ] 1.5 Import the rule bootstrap from `src/engine/pack-load.ts` (like `./checks.ts`). Fill `decisions.tags` and `decisions.difficulty` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`, and make `pack-merge.ts` merge `decisions` per point
+- [x] 1.1 Add `src/decide/registry.ts`: `registerRule(point, schema, fn)`, the `decisions` pack sub-schema (unknown point, `mode: rule` only, `jev` rejected with line and column), the per-point merge used by `mergePack`, and `registerBuiltinRules()` so tests can re-register after a reset
+- [x] 1.2 Add `src/decide/rules/tags.ts` (path globs via `matchGlob`, keywords matched as whole words or phrases ignoring case, `extra_tags` append-only and reported as `agentAdditions` data, per-tag union merge) and `src/decide/rules/difficulty.ts`
+- [x] 1.3 Add `src/decide/seam.ts` `decide(point, facts, deps)`, which returns rule outcomes with typed `data`, or sends `ask` through an injected approver
+- [x] 1.4 Add `src/decide/records.ts`: the `decision` comment body (`facts_hash` above 2,000 characters, `agent_additions`, `overridden_by`), the latest-record-per-id reader, and the small-fix PR-body `formatDecisionBlock` and `parseDecisionBlocks`
+- [x] 1.5 Import the rule bootstrap from `src/engine/pack-load.ts` (like `./checks.ts`). Fill `decisions.tags` and `decisions.difficulty` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`, and make `pack-merge.ts` merge `decisions` per point
 
 ## 2. Approver contract, command parser, config and in-session adapter
 
