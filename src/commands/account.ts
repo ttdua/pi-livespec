@@ -4,6 +4,7 @@
 // `Session.switchAccount`. Never throws; tokens are never read here.
 
 import { accountLabel, blockText, candidateLines, sourceLabel, storedRemote } from "../accounts/describe.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import type { Session } from "../hooks/session.ts";
 
 const NOT_INITIALIZED = "livespec is not set up in this project: run /livespec init first.";
@@ -22,7 +23,8 @@ function showAccount(session: Session): string {
 	const account = session.account;
 	const host = session.target?.authority;
 	if (!account || host === undefined) {
-		const reason = session.accountBlock ?? session.forgeError;
+		// The block is wrapped by its producer; the forge error is raw forge text.
+		const reason = session.accountBlock ?? (session.forgeError === undefined ? undefined : untrusted(session.forgeError));
 		return reason === undefined ? `${NOT_CONNECTED}.` : `${NOT_CONNECTED}: ${reason}`;
 	}
 	const blocked = session.accountBlock;

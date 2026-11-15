@@ -4,14 +4,14 @@
 // enforces), and nothing otherwise. It reads only `i.account` and is pure.
 
 import { type CardSection, registerCardSection } from "../hooks/phase-card.ts";
-import { SWITCH_COMMAND, blockText } from "./describe.ts";
+import { SWITCH_COMMAND, blockText, withSwitchHint } from "./describe.ts";
 
 const PREFIX = "Account: ";
 const HINT = `See /livespec account, or switch with ${SWITCH_COMMAND}.`;
 
 export const accountSection: CardSection = (i) => {
 	const account = i.account;
-	if (account?.blocked !== undefined) return `${PREFIX}${blockText(account.blocked)}. ${HINT}`;
+	if (account?.blocked !== undefined) return `${PREFIX}${withSwitchHint(blockText(account.blocked), HINT)}`;
 	if (account?.line !== undefined) return `${PREFIX}${account.line}`;
 	return undefined;
 };

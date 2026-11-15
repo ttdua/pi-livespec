@@ -29,7 +29,7 @@ import { type DetectDeps, detectForge, type ForgeTarget, resolveForgeTarget } fr
 import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
-import { type CardInput, renderCard } from "./phase-card.ts";
+import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
 import { setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
@@ -148,11 +148,11 @@ export class Session {
 	/** `/livespec account <name>`: stores `name` when it can push, then reconnects with that resolution. Never throws. */
 	async switchAccount(name: string): Promise<{ ok: boolean; message: string }> {
 		const target = this.target;
-		if (!this.link || !target) return { ok: false, message: `${NOT_CONNECTED}: ${this.forgeError ?? NOT_BOUND}` };
+		if (!this.link || !target) return { ok: false, message: `${NOT_CONNECTED}: ${this.forgeError === undefined ? NOT_BOUND : untrusted(this.forgeError)}` };
 		const chosen = await chooseAccount(target, this.cwd, name, this.link.deps.accounts);
 		if (!chosen.ok) return chosen;
 		await this.connect(chosen.resolved);
-		if (this.forge === undefined) return { ok: false, message: `${name} was stored, but the forge could not be connected: ${this.forgeError ?? NOT_CONNECTED}` };
+		if (this.forge === undefined) return { ok: false, message: `${name} was stored, but the forge could not be connected: ${this.forgeError === undefined ? NOT_CONNECTED : untrusted(this.forgeError)}` };
 		if (this.accountBlock !== undefined) return { ok: false, message: this.accountBlock };
 		return { ok: true, message: chosen.resolved.notice ?? `livespec uses \`${name}\` for this repository` };
 	}
@@ -276,7 +276,8 @@ async function resolveSessionAccount(session: Session, target: ForgeTarget, link
 	try {
 		return adoptAccount(session, await resolveAccount(target, session.cwd, link.ui, link.deps.accounts));
 	} catch (error) {
-		session.accountBlock = session.record("account", error);
+		session.record("account", error);
+		session.accountBlock = `account selection failed: ${untrusted(messageOf(error))}`;
 		return undefined;
 	}
 }
@@ -344,11 +345,11 @@ async function confirmIdentity(session: Session, forge: CachedForge, resolved: R
 }
 
 function mismatchMessage(resolved: ResolvedAccount, login: string): string {
-	return `the forge identifies the account ${resolved.account} as ${login}, but it was chosen as ${resolved.user}; writes are refused. Fix the login, then run ${SWITCH_COMMAND}.`;
+	return `the forge identifies the account ${resolved.account} as ${untrusted(login)}, but it was chosen as ${resolved.user}; writes are refused. Fix the login, then run ${SWITCH_COMMAND}.`;
 }
 
 function identityFailure(session: Session, resolved: ResolvedAccount, error: unknown): string {
-	const reason = messageOf(error);
+	const reason = untrusted(messageOf(error));
 	if (resolved.source === "env" && session.target) {
 		const variable = envTokenVar(session.target);
 		const rejected = error instanceof ForgeError && error.code === "auth";

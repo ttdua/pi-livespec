@@ -56,7 +56,12 @@ export function leftOutLines(a: ResolvedAccount, blocked: boolean): string[] {
 	return a.facts.candidates.filter((e) => e.candidate.name !== a.account).map((entry) => candidateLine(a, entry, blocked));
 }
 
-/** The block reason as shown to the model: untrusted, since it may carry forge logins and error text. */
+/** The block reason as its producer built it: forge-derived fragments are already wrapped as untrusted. */
 export function blockText(block: string): string {
-	return `writes are refused: ${untrusted(block)}`;
+	return `writes are refused: ${block}`;
+}
+
+/** `text`, followed by `hint` only when `text` does not already name the switch command, so the guidance appears once. */
+export function withSwitchHint(text: string, hint: string): string {
+	return text.includes(SWITCH_COMMAND) ? text : `${text} ${hint}`;
 }

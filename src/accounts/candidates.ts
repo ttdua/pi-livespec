@@ -2,6 +2,7 @@
 // host, or every `tea` login whose URL host is the target's web host. Active
 // and default markers are ignored.
 
+import { untrusted } from "../hooks/phase-card.ts";
 import type { ForgeTarget } from "../forge/detect.ts";
 import { type TeaLogin, teaLogins } from "../forge/tea-config.ts";
 import type { AccountCandidate, AccountEnv } from "./types.ts";
@@ -25,7 +26,7 @@ async function githubCandidates(d: CandidateDeps, host: string): Promise<Candida
 	const result = await d.exec(GH, ["auth", "status", "--hostname", host, "--json", "hosts"]);
 	if (result.spawnError !== undefined || result.code !== 0) {
 		const detail = (result.stderr || result.spawnError || "").trim().split("\n")[0];
-		return none(`gh auth status --json hosts failed (${detail}); upgrade gh to a version that supports it`);
+		return none(`gh auth status --json hosts failed (${untrusted(detail ?? "")}); upgrade gh to a version that supports it`);
 	}
 	const logins = parseHostLogins(result.stdout, host);
 	if (logins === undefined) return none("gh auth status --json hosts gave unexpected output; upgrade gh");

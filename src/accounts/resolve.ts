@@ -7,6 +7,7 @@
 import type { ForgeTarget } from "../forge/detect.ts";
 import { tokenEnvVar } from "../forge/github.ts";
 import { messageOf } from "../core/messages.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { ACCESS_TIMEOUT_MS, checkAccess, checkAll } from "./access.ts";
 import { listCandidates } from "./candidates.ts";
 import { redactTokens } from "./redact.ts";
@@ -77,8 +78,13 @@ export async function resolveAccount(target: ForgeTarget, root: string, ui: Acco
 		facts = await gatherFacts(run, facts);
 		return await apply(run, facts, selectAccount(facts), ui, envToken);
 	} catch (error) {
-		return blocked(run, facts, `account selection failed: ${messageOf(error)}`);
+		return blocked(run, facts, `account selection failed: ${forgeText(run, error)}`);
 	}
+}
+
+/** The text of a caught error, which may carry forge text: redacted, then wrapped as untrusted. */
+function forgeText(run: Run, error: unknown): string {
+	return untrusted(redactTokens(messageOf(error), run.tokens));
 }
 
 function baseFacts(target: ForgeTarget, envToken: boolean, ui: AccountUI): SelectionFacts {
@@ -208,7 +214,7 @@ export async function chooseAccount(target: ForgeTarget, root: string, name: str
 	try {
 		return await switchTo(run, name);
 	} catch (error) {
-		return { ok: false, message: redactTokens(`switching to ${name} failed: ${messageOf(error)}`, run.tokens) };
+		return { ok: false, message: `switching to ${name} failed: ${forgeText(run, error)}` };
 	}
 }
 
