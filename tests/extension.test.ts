@@ -65,7 +65,7 @@ describe("livespec extension", () => {
 		const { commands, tools } = loadExtension();
 		expect([...commands.keys()]).toEqual(["livespec"]);
 		expect([...tools.keys()].sort()).toEqual(
-			["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units", "unit_amend"].sort(),
+			["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units", "unit_amend", "spec_question", "spec_stuck"].sort(),
 		);
 	});
 

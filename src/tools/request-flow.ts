@@ -37,6 +37,11 @@ export type SendOptions = {
 	retry: string;
 	/** A refusal of an in-session answer before it is completed; undefined lets it complete. */
 	precheck?: (ans: Answered) => string | undefined;
+	/**
+	 * "Answer later" handling, for question requests only: `hook` runs once before the next adapter gets
+	 * the async request, and `text` is the (non-error) result when no adapter remained.
+	 */
+	deferred?: { hook: () => Promise<void>; text: string };
 };
 
 /** Sends `request` through the chain; a forge request is pending, an in-session answer is completed now. */
@@ -46,12 +51,16 @@ export async function sendRequest(w: WriteContext, state: ChangeState, request: 
 	let result: Awaited<ReturnType<typeof runChain>>;
 	try {
 		// Gate-like requests are never deferred: only question requests offer "answer later".
-		result = await runChain(chain, adapters, request, { onDeferred: async () => {} });
+		result = await runChain(chain, adapters, request, { onDeferred: o.deferred?.hook ?? (async () => {}) });
 	} catch (error) {
 		if (error instanceof DuplicateRequestError) return toolResult(error.message, undefined, true);
 		throw error;
 	}
 	if (result.status === "refused") return toolResult(`${o.tool} refused: ${result.message}.`, undefined, true);
+	if (result.status === "deferred-all" && o.deferred) {
+		await afterForgeWrite(w.session, n);
+		return toolResult(withStep(w.session, o.deferred.text), undefined);
+	}
 	if (result.status === "deferred-all") return toolResult(`The ${request.subject} request was deferred with no adapter left; ${o.retry}.`, undefined, true);
 	if (result.status === "pending") {
 		await afterForgeWrite(w.session, n);
