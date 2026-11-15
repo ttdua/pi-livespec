@@ -117,6 +117,7 @@ export class FakeGitea {
 	private readonly permissions = new Map<string, Permission>();
 	private readonly routes: [string, RegExp, Handler][] = [];
 	private unreachable = false;
+	private echoTokenOn: RegExp | undefined;
 	private nextNumber = 1;
 	private nextId = 1;
 	private clock = 0;
@@ -151,6 +152,14 @@ export class FakeGitea {
 	/** While true, every connection is dropped without an answer. */
 	setUnreachable(value: boolean): void {
 		this.unreachable = value;
+	}
+
+	/**
+	 * While set, every GET whose path matches answers HTTP 500 with a message echoing the request's
+	 * token, like a misbehaving proxy; `undefined` turns it off.
+	 */
+	echoTokenOnRead(path: RegExp | undefined): void {
+		this.echoTokenOn = path;
 	}
 
 	// ---- seeding and inspection (act on state directly, never recorded) ----
@@ -277,6 +286,9 @@ export class FakeGitea {
 
 	private dispatch(method: string, url: URL, authorization: string | undefined, body: Record<string, unknown>): Reply {
 		if (method === "GET" && url.pathname === "/api/v1/version") return ok({ version: "1.22.0" });
+		if (method === "GET" && this.echoTokenOn?.test(url.pathname)) {
+			return { status: 500, json: { message: `upstream rejected credentials ${authorization?.replace(/^token /, "") ?? ""}` } };
+		}
 		const account = this.accountOf(authorization);
 		if (!account) return { status: 401, json: { message: "token is required" } };
 		for (const [m, pattern, handler] of this.routes) {

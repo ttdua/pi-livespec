@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import type { Session } from "../../src/hooks/session.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { FakeGitea, type FakeGiteaAccount } from "../forge/fake-gitea.ts";
-import { BUILD_LABELS, CHANGE_BRANCH, cleanupHomes, harness, type HarnessOptions, resumeBody, type ToolOut } from "./helpers.ts";
+import { BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, harness, type HarnessOptions, resumeBody, type ToolOut } from "./helpers.ts";
 
 const ADMIN: FakeGiteaAccount = { token: "tok-gitea-admin", login: "admin", push: true };
 const BOT: FakeGiteaAccount = { token: "tok-gitea-bot", login: "livespec-bot", push: true };
@@ -82,6 +82,26 @@ describe("Gitea: reads keep working while the account blocks writes", () => {
 		const created = await h.call("change_new", { name: "rate-limit" });
 		expect(created.isError).toBe(true);
 		expect(text(created)).toContain(block as string);
+		expect(fake.calls.filter((c) => c.method !== "GET")).toEqual([]);
+	});
+
+	test("a forge error echoing the read-only login's token is redacted", async () => {
+		const { fake, h } = await twoWriters();
+		fake.echoTokenOnRead(/\/issues/);
+		await h.start();
+		const session = current();
+		expect(session.account?.readOnlyLogin).toBe("gitea-admin");
+
+		const status = await h.call("spec_status");
+		const card = await cardText(h.pi, h.ctx);
+		const created = await h.call("change_new", { name: "rate-limit" });
+
+		// Positive control: the forge error reaches the user, with the token replaced.
+		expect(session.errors.join("\n")).toContain("upstream rejected credentials ***");
+		expect(card).toContain("upstream rejected credentials ***");
+		const values = [session.errors.join("\n"), session.forgeError ?? "", JSON.stringify(session.card), card, text(status), JSON.stringify(status.details)];
+		for (const value of values) expect(value).not.toContain(ADMIN.token);
+		expect(created.isError).toBe(true);
 		expect(fake.calls.filter((c) => c.method !== "GET")).toEqual([]);
 	});
 

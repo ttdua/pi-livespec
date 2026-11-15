@@ -23,6 +23,7 @@ import type { LoadedPack } from "../engine/pack-types.ts";
 import { defaultAccountEnv } from "../accounts/env.ts";
 import { readOnlyLogin } from "../accounts/read-only.ts";
 import { redactTokens } from "../accounts/redact.ts";
+import { candidateToken } from "../accounts/token.ts";
 import { type AccountUI, chooseAccount, envTokenVar, type ResolvedAccount, resolveAccount } from "../accounts/resolve.ts";
 import type { AccountEnv } from "../accounts/types.ts";
 import { CachedForge } from "../forge/cache.ts";
@@ -315,17 +316,21 @@ function detectAccount(target: ForgeTarget, resolved: ResolvedAccount | undefine
 
 type Connection = { forge: CachedForge; comments: CommentsCache };
 
-/** Builds the adapter once with the account, wrapped `RedactingForge` → `CachedForge`; not yet published on the session. */
+/**
+ * Builds the adapter once with the account, wrapped `RedactingForge` → `CachedForge`; not yet published
+ * on the session. Errors, here and from the adapter, are redacted with every token it can send.
+ */
 async function connectWithAccount(
 	session: Session,
 	target: ForgeTarget,
 	resolved: ResolvedAccount | undefined,
 	d: SessionDeps,
 ): Promise<Connection | undefined> {
+	let tokens = chosenToken(resolved);
 	try {
+		tokens = await redactionTokens(target, resolved, d);
 		const account = detectAccount(target, resolved);
 		const inner = await d.detect(session.cwd, { ...detectDepsOf(d.accounts), ...(account ? { account } : {}) });
-		const tokens = resolved?.token ? [resolved.token] : [];
 		const { host, owner, repo } = target;
 		const cacheRoot = join(d.home, ".pi", "agent", "livespec", "cache");
 		return {
@@ -333,9 +338,24 @@ async function connectWithAccount(
 			comments: new CommentsCache({ dir: join(cacheRoot, host, owner, repo), now: () => d.now().getTime() }),
 		};
 	} catch (error) {
-		session.forgeError = session.record("forge", redactTokens(messageOf(error), resolved?.token ? [resolved.token] : []));
+		session.forgeError = session.record("forge", redactTokens(messageOf(error), tokens));
 		return undefined;
 	}
+}
+
+function chosenToken(resolved: ResolvedAccount | undefined): string[] {
+	return resolved?.token ? [resolved.token] : [];
+}
+
+/**
+ * Every token the adapter can send: the chosen account's, and for a refused Gitea selection the
+ * read-only login's, which the adapter reads from the `tea` config itself. Read here only to redact;
+ * it is neither stored on the session nor rendered.
+ */
+async function redactionTokens(target: ForgeTarget, resolved: ResolvedAccount | undefined, d: SessionDeps): Promise<string[]> {
+	const login = resolved?.readOnlyLogin;
+	const readOnly = login === undefined ? undefined : await candidateToken(d.accounts, target, login);
+	return readOnly === undefined ? chosenToken(resolved) : [...chosenToken(resolved), readOnly];
 }
 
 /**
