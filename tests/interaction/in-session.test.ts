@@ -71,7 +71,7 @@ function questionRequest(): ApprovalRequest {
 
 describe("in-session approver", () => {
 	test("Approve in the TUI", async () => {
-		const ui = scriptedUI(["approve", false]);
+		const ui = scriptedUI(["approve", "No notes"]);
 		const result = await createInSessionApprover(ui, login).request(gateRequest());
 		expect(result).toMatchObject({ status: "answered", outcome: "approved", notes: "", by: "alice", adapter: "in-session" });
 		expect(result.status === "answered" && Number.isNaN(Date.parse(result.at))).toBe(false);
@@ -83,7 +83,7 @@ describe("in-session approver", () => {
 	});
 
 	test("approve with notes is approved_with_notes", async () => {
-		const ui = scriptedUI(["approve", true, "looks good"]);
+		const ui = scriptedUI(["approve", "Add notes", "looks good"]);
 		const result = await createInSessionApprover(ui, login).request(gateRequest());
 		expect(result).toMatchObject({ outcome: "approved_with_notes", notes: "looks good" });
 	});
@@ -95,7 +95,7 @@ describe("in-session approver", () => {
 	});
 
 	test("cancelled notes input after approve is dismissed", async () => {
-		const ui = scriptedUI(["approve", true, undefined]);
+		const ui = scriptedUI(["approve", "Add notes", undefined]);
 		const result = await createInSessionApprover(ui, login).request(gateRequest());
 		expect(result).toMatchObject({ outcome: "dismissed" });
 	});
@@ -120,10 +120,12 @@ describe("in-session approver", () => {
 	});
 
 	test("waive option is offered when given", async () => {
-		const ui = scriptedUI(["Waive failing checks", false]);
+		const ui = scriptedUI(["Waive failing checks [waive]", "No notes"]);
 		const request = gateRequest({ options: [{ id: "waive", label: "Waive failing checks" }] });
 		const result = await createInSessionApprover(ui, login).request(request);
-		expect(ui.calls[0]).toMatchObject({ options: ["approve", "request changes", "dismiss", "Waive failing checks"] });
+		expect(ui.calls[0]).toMatchObject({
+			options: ["approve", "request changes", "dismiss", "Waive failing checks [waive]"],
+		});
 		expect(result).toMatchObject({ outcome: "approved", choice: "waive" });
 	});
 
@@ -170,7 +172,7 @@ describe("in-session approver", () => {
 	});
 
 	test("stuck options are chosen by label", async () => {
-		const ui = scriptedUI(["Try B"]);
+		const ui = scriptedUI(["Try B [b]"]);
 		const request = gateRequest({
 			kind: "stuck",
 			subject: "stuck:S1",
@@ -180,15 +182,15 @@ describe("in-session approver", () => {
 			],
 		});
 		const result = await createInSessionApprover(ui, login).request(request);
-		expect(ui.calls[0]).toMatchObject({ options: ["Try A", "Try B"] });
+		expect(ui.calls[0]).toMatchObject({ options: ["Try A [a]", "Try B [b]"] });
 		expect(result).toMatchObject({ outcome: "approved", choice: "b" });
 	});
 
 	test("override prompts set difficulty and tags", async () => {
 		const ui = scriptedUI([
 			"approve",
-			false,
-			true,
+			"No notes",
+			"Adjust Difficulty or Tags",
 			"U2",
 			"difficulty",
 			"high",
@@ -199,7 +201,12 @@ describe("in-session approver", () => {
 		]);
 		const request = gateRequest({ subject: "gate:plan", phase: "plan", overridable: { units: ["U1", "U2"] } });
 		const result = await createInSessionApprover(ui, login).request(request);
-		expect(ui.calls[2]).toMatchObject({ method: "confirm", title: "Adjust Difficulty or Tags?" });
+		expect(ui.calls[1]).toMatchObject({ method: "select", options: ["No notes", "Add notes"] });
+		expect(ui.calls[2]).toMatchObject({
+			method: "select",
+			title: "Adjust Difficulty or Tags?",
+			options: ["Keep classification", "Adjust Difficulty or Tags"],
+		});
 		expect(ui.calls[3]).toMatchObject({ method: "select", options: ["U1", "U2", "done"] });
 		expect(result).toMatchObject({
 			outcome: "approved",
@@ -216,9 +223,73 @@ describe("in-session approver", () => {
 	});
 
 	test("cancelled override prompt is dismissed", async () => {
-		const ui = scriptedUI(["approve", false, true, undefined]);
+		const ui = scriptedUI(["approve", "No notes", "Adjust Difficulty or Tags", undefined]);
 		const request = gateRequest({ subject: "gate:plan", overridable: { units: ["U1"] } });
 		const result = await createInSessionApprover(ui, login).request(request);
+		expect(result).toMatchObject({ outcome: "dismissed" });
+	});
+
+	test("cancel at the notes prompt is dismissed", async () => {
+		const ui = scriptedUI(["approve", undefined]);
+		const result = await createInSessionApprover(ui, login).request(gateRequest());
+		expect(result).toMatchObject({ outcome: "dismissed", notes: "" });
+	});
+
+	test("cancel at the override prompt is dismissed", async () => {
+		const ui = scriptedUI(["approve", "No notes", undefined]);
+		const request = gateRequest({ subject: "gate:plan", overridable: { units: ["U1"] } });
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(result).toMatchObject({ outcome: "dismissed" });
+		expect(result).not.toHaveProperty("overrides");
+	});
+
+	test("explicit no at the notes and override prompts approves without notes or overrides", async () => {
+		const ui = scriptedUI(["approve", "No notes", "Keep classification"]);
+		const request = gateRequest({ subject: "gate:plan", overridable: { units: ["U1"] } });
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(result).toMatchObject({ outcome: "approved", notes: "" });
+		expect(result).not.toHaveProperty("overrides");
+	});
+
+	test("confirm is never used, so a cancelled confirm cannot read as no", async () => {
+		const ui = scriptedUI(["approve", "No notes", "Keep classification"]);
+		await createInSessionApprover(ui, login).request(
+			gateRequest({ subject: "gate:plan", overridable: { units: ["U1"] } }),
+		);
+		expect(ui.calls.some((c) => c.method === "confirm")).toBe(false);
+	});
+
+	test("option label colliding with a built-in action maps to the option, not the action", async () => {
+		const request = gateRequest({ options: [{ id: "waive", label: "approve" }] });
+		const pickOption = scriptedUI(["approve [waive]", "No notes"]);
+		const viaOption = await createInSessionApprover(pickOption, login).request(request);
+		expect(pickOption.calls[0]).toMatchObject({ options: ["approve", "request changes", "dismiss", "approve [waive]"] });
+		expect(viaOption).toMatchObject({ outcome: "approved", choice: "waive" });
+
+		const pickBuiltin = scriptedUI(["approve", "No notes"]);
+		const viaBuiltin = await createInSessionApprover(pickBuiltin, login).request(request);
+		expect(viaBuiltin).toMatchObject({ outcome: "approved" });
+		expect(viaBuiltin).not.toHaveProperty("choice");
+	});
+
+	test("two options sharing a label map to their own ids", async () => {
+		const request = gateRequest({
+			kind: "stuck",
+			subject: "stuck:S1",
+			options: [
+				{ id: "a", label: "Retry" },
+				{ id: "b", label: "Retry" },
+			],
+		});
+		const ui = scriptedUI(["Retry [b]"]);
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(ui.calls[0]).toMatchObject({ options: ["Retry [a]", "Retry [b]"] });
+		expect(result).toMatchObject({ outcome: "approved", choice: "b" });
+	});
+
+	test("raw option label without the id suffix is not accepted", async () => {
+		const request = gateRequest({ kind: "stuck", subject: "stuck:S1", options: [{ id: "a", label: "Retry" }] });
+		const result = await createInSessionApprover(scriptedUI(["Retry"]), login).request(request);
 		expect(result).toMatchObject({ outcome: "dismissed" });
 	});
 

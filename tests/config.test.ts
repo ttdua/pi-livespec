@@ -155,6 +155,20 @@ describe("loadConfig", () => {
 		expect(adapterChain(config)).toEqual({ chain: ["forge"], source: "project" });
 	});
 
+	test("present project setting wins even when empty, and an empty chosen list falls back to the default source", async () => {
+		projectFile("interaction: { adapter: [] }\n");
+		userFile("interaction: { adapter: [forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+	});
+
+	test("project list of only unknown names falls back to the default source, not the user chain", async () => {
+		projectFile("interaction: { adapter: [plannotator] }\n");
+		userFile("interaction: { adapter: [forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+	});
+
 	test("user chain is used without a project chain", async () => {
 		projectFile("forge: github\n");
 		userFile("interaction: { adapter: [in-session, forge] }\n");
