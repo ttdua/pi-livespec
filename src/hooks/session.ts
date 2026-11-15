@@ -98,6 +98,8 @@ export class Session {
 	accountNotice?: string;
 	/** Command comments the last approval poll ignored, with the reason; copied into the change state. */
 	commandWarnings: string[] = [];
+	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
+	pollInFlight?: Promise<void>;
 	private first = true;
 	private link?: SessionLink;
 

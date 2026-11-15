@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
+import { parseChange } from "../../src/core/change.ts";
+import { unitDigest } from "../../src/core/digest.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
@@ -22,6 +24,7 @@ afterEach(async () => {
 const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const DEFINE_LABELS = ["livespec", "livespec:phase/define"];
 const BUILD_LABELS = ["livespec", "livespec:phase/build"];
+const REQUIREMENT = "rate-limit/Requirement: Per-IP cap";
 const STUCK_OPTIONS = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
 
 const rev = (root: string, ref = "HEAD") => execFileSync("git", ["rev-parse", ref], { cwd: root, encoding: "utf8" }).trim();
@@ -128,6 +131,42 @@ describe("pollApprovals", () => {
 		const results = (await ownMarked(h.world, h.n)).filter((m) => m.kind === "stuck" && m.id.endsWith("-answer"));
 		expect(results.map((m) => m.id)).toEqual(["S0-answer", "S1-answer"]);
 		expect(results[1]?.data).toMatchObject({ choice: "B", request: h.r.id });
+	});
+
+	test("concurrent polls complete an answer once", async () => {
+		const slow = (world: MemoryWorld): Forge =>
+			new Proxy(world.forge, {
+				get(target, prop, receiver) {
+					const value = Reflect.get(target, prop, receiver);
+					if (typeof value !== "function") return value;
+					return async (...args: unknown[]) => {
+						await new Promise((r) => setTimeout(r, 2));
+						return value.apply(target, args);
+					};
+				},
+			});
+		const h = await toolHarness({ branch: CHANGE_BRANCH, forge: slow });
+		const body = resumeBody(h.head)
+			.replace("- [x] Q1 (blocking)", "- [ ] Q1 (blocking)")
+			.replace("Verify: `npm test -- ratelimit`\n- [ ] pending", "Verify: `npm test -- ratelimit`\n- [x] done");
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: BUILD_LABELS });
+		const locked = Object.fromEntries(parseChange(body).units.map((u) => [u.id, unitDigest(u)]));
+		const gate = { phase: "plan", outcome: "approved", notes: "", by: "alice", at: "t", adapter: "in-session", head_sha: h.head, waivers: [], locked };
+		await h.world.postComment(n, BOT_LOGIN, writeMarked("gate", "plan.self-1", gate));
+		const r = request("question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] }, body, h.head, 1);
+		await postRequest(h.world, n, r);
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(n, "alice", `/livespec answer Q1 X-Forwarded-For --changes ${REQUIREMENT}`);
+		await h.session.refresh();
+
+		await Promise.all([pollApprovals(h.session), pollApprovals(h.session)]);
+
+		const marked = await ownMarked(h.world, n);
+		expect(marked.filter((m) => m.kind === "answer")).toHaveLength(1);
+		expect(marked.filter((m) => m.kind === "stale")).toHaveLength(1);
+		expect(marked.filter((m) => m.kind === "question")).toHaveLength(1);
+		if (h.session.card.kind !== "change") throw new Error("no change card");
+		expect(h.session.card.state.counters.change_iterations).toBe(1);
 	});
 
 	test("ignored commands become card warnings", async () => {

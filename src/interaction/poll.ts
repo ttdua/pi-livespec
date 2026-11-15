@@ -95,8 +95,17 @@ async function pollChange(t: Target): Promise<void> {
 /**
  * Finishes applying requests, then answers pending ones from command comments. Skips without a
  * writable forge, or when the snapshot shows no pending or applying request. Never throws.
+ * Single-flight per session: concurrent callers (parallel tool calls, session start, `/livespec next`)
+ * await the same run. Polls from other sessions or machines are not coordinated (known gap).
  */
-export async function pollApprovals(session: Session): Promise<void> {
+export function pollApprovals(session: Session): Promise<void> {
+	session.pollInFlight ??= pollOnce(session).finally(() => {
+		session.pollInFlight = undefined;
+	});
+	return session.pollInFlight;
+}
+
+async function pollOnce(session: Session): Promise<void> {
 	try {
 		const target = pollTarget(session);
 		if (!target) {
