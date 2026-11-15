@@ -23,6 +23,7 @@ import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestReco
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
 import { prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { untrusted } from "../../src/hooks/phase-card.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN, OTHER_LOGIN } from "../forge/world.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
@@ -389,6 +390,16 @@ describe("completion engine", () => {
 		expect(ofKind(marked, "gate")[0]?.data).toMatchObject({ outcome: "changes_requested", request: record.id });
 		expect(readRequests(marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("completion result wraps forge text as untrusted", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options, recommended: "A" }));
+		const record = await prepare(f, "stuck", "stuck:S1", { id: "S1" }, options);
+		const out = await completeAnswer(await ctxOf(f), record, answer({ choice: "B", by: "ev<il" }));
+		expect(out.result).toContain(untrusted("ev<il"));
+		expect(out.result).not.toContain("ev<il");
 	});
 
 	const STEPS: [name: string, failsOn: (op: string, args: unknown[]) => boolean][] = [

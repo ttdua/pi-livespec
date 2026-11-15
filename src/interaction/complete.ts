@@ -4,6 +4,7 @@
 // validated again; `finishApplying` finishes every answer left applying.
 
 import { messageOf } from "../core/messages.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import type { Answered, RequestRecord } from "./approver.ts";
 import { applyAmend } from "./complete-amend.ts";
 import { applyDecide } from "./complete-decide.ts";
@@ -17,6 +18,7 @@ import { type AnswerData, answerComment, readRequests } from "./requests.ts";
 export type { CompletionCtx } from "./complete-effects.ts";
 export { validateAnswer } from "./complete-validate.ts";
 
+/** `result` is display text; every part that comes from the forge (by, reason, choice) is wrapped as untrusted. */
 export type Completion = { status: "completed" | "superseded"; result: string };
 
 const APPLY_BY_PREFIX: [prefix: string, apply: ApplyFn][] = [
@@ -41,10 +43,10 @@ function recordedAnswer(run: Run, id: string): AnswerData | undefined {
 function summary(record: AnswerData): Completion {
 	const { request, answer } = record;
 	if (record.verdict === "superseded") {
-		return { status: "superseded", result: `${request.subject}: the answer no longer matches the change (${record.reason ?? "superseded"}); request it again.` };
+		return { status: "superseded", result: `${untrusted(request.subject)}: the answer no longer matches the change (${untrusted(record.reason ?? "superseded")}); request it again.` };
 	}
-	const choice = answer.choice === undefined ? "" : ` (choice ${answer.choice})`;
-	return { status: "completed", result: `${request.subject}: ${answer.outcome}${choice} by ${answer.by} via ${answer.adapter}.` };
+	const choice = answer.choice === undefined ? "" : ` (choice ${untrusted(answer.choice)})`;
+	return { status: "completed", result: `${untrusted(request.subject)}: ${answer.outcome}${choice} by ${untrusted(answer.by)} via ${answer.adapter}.` };
 }
 
 /** Records the validated answer durably, before any effect runs. */
