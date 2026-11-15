@@ -114,4 +114,4 @@ These routes cache in 128-token blocks.
 - **Pass:** `cmc/claude-haiku-5-5`, `cx/gpt-5.6-luna`, `gpt-6-luna`, `cx/gpt-6-luna`.
 - **Fail:** `cmc/gpt-5.6-luna`. The phase card stops cache growth after the first user message, so uncached input grows linearly with the conversation. That is the anti-goal named in the project brief. This is limited to that route so far, since `gpt-6-luna` on the same router passes.
 
-The decision on how to handle this is recorded in `apply.md` (Contract deviations / follow-ups) once taken.
+**User decision (2026-11-15):** the `cmc/gpt-5.6-luna` result is attributed to that route, and `gpt-6-luna` is the route to use. The cache criterion is met on the routes in use, and no design change is made in this change.
