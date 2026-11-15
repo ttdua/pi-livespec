@@ -4,6 +4,7 @@
 import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import type { AdapterName } from "../interaction/approver.ts";
 import type { RequestsState } from "../interaction/requests.ts";
 import type { IterationState } from "./iterations.ts";
 import type { LockState } from "./locks.ts";
@@ -51,6 +52,13 @@ export type NextStep = {
 	activeUnits: string[];
 	blockedUnits: { id: string; waitingOn: string[] }[];
 	incomplete: string[];
+	/** Pending and applying approver requests, in comment order; `mode` is the effective mode. */
+	pending: { id: string; subject: string; mode: string; adapter: AdapterName }[];
+	/** Frozen and stale units in the lock scope (design D8); empty outside it. */
+	frozenUnits: string[];
+	staleUnits: string[];
+	/** The unanswered stuck report, if any. */
+	stuckOpen?: string;
 	advance?: string;
 	next: string;
 };

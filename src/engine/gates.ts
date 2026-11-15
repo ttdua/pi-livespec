@@ -68,7 +68,7 @@ export function failingWaivable(state: ChangeState, pack: Pack, target: string):
 }
 
 /** Whether `phase` is at or after the phase whose outputs include `issue#Units`, following `requires`. */
-function atOrAfterUnits(pack: Pack, phase: Phase): boolean {
+export function atOrAfterUnits(pack: Pack, phase: Phase): boolean {
 	const seen = new Set<string>();
 	const walk = (p: Phase | undefined): boolean => {
 		if (!p || seen.has(p.id)) return false;

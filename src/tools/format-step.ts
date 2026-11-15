@@ -7,6 +7,7 @@ import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import { pendingText } from "../interaction/card.ts";
 
 const NO_CHANGE_NEXT = "Run change_start #N to start or switch to one of the open changes, or create a change with change_new.";
 const STALE_LINE = "Stale: built from cached forge data; it may be out of date.";
@@ -50,6 +51,10 @@ function stepLines(step: NextStep): string[] {
 		...inlineLine("Blocked units", step.blockedUnits.map((b) => `${b.id} (waits on ${b.waitingOn.join(", ")})`)),
 		...inlineLine("Counters", step.counters.map(counterText)),
 		...inlineLine("Incomplete", step.incomplete),
+		...listLines("Pending approvals", step.pending.map(pendingText)),
+		...inlineLine("Frozen units", step.frozenUnits),
+		...inlineLine("Stale units", step.staleUnits),
+		...(step.stuckOpen === undefined ? [] : [`Stuck report: ${step.stuckOpen}`]),
 		...(step.advance === undefined ? [] : [`Advance: ${step.advance}`]),
 	];
 }

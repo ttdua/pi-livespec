@@ -3,7 +3,9 @@ import { nextStep } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, PackError } from "../../src/engine/pack-types.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
-import { type CardInput, registerCardSection, renderCard, resetCardSectionsForTests } from "../../src/hooks/phase-card.ts";
+import { type CardInput, registerCardSection, renderCard, resetCardSectionsForTests, untrusted } from "../../src/hooks/phase-card.ts";
+import { approvalsSection } from "../../src/interaction/card.ts";
+import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
 let pack: Pack;
@@ -183,5 +185,46 @@ describe("renderCard", () => {
 	test("rendering is deterministic", () => {
 		const input = changeCard(defineState(), { first: true, constraintsTemplate: true });
 		expect(renderCard(input)).toBe(renderCard(structuredClone(input)));
+	});
+});
+
+describe("approvals section", () => {
+	const noQuestion = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
+	const pendingPlan: PendingRequest = {
+		id: "gate-plan.lx3k2a",
+		subject: "gate:plan",
+		kind: "gate",
+		mode: "blocking",
+		createdAt: "",
+		data: { id: "gate-plan.lx3k2a", kind: "gate", subject: "gate:plan", mode: "blocking", head_sha: "f", snapshot: { target: "plan", digests: {}, failingWaivable: [] }, summary: "s" },
+	};
+	const lock = { locked: { U1: "a" }, frozen: ["U2"], staleUnits: [], stalePhases: [], gates: {} };
+
+	test("Pending approvals shown", () => {
+		registerCardSection("approvals", approvalsSection);
+		const state = stateFor("build", { requests: { pending: [pendingPlan], applying: [] }, lock }, noQuestion);
+		const card = renderCard(changeCard(state));
+		expect(card).toContain("Pending approvals:\n- gate:plan (gate-plan.lx3k2a) via forge, blocking");
+		expect(card).toContain("Frozen units: U2");
+	});
+
+	test("Ignored command shown", () => {
+		registerCardSection("approvals", approvalsSection);
+		const warning = "Ignored /livespec approve from mallory: mallory has no write access.";
+		const card = renderCard(changeCard(stateFor("define", { commandWarnings: [warning] })));
+		expect(card).toContain(`Ignored commands:\n- ${untrusted(warning)}`);
+	});
+
+	test("approvals section lists stale units and the open stuck report", () => {
+		registerCardSection("approvals", approvalsSection);
+		const state = stateFor("build", { lock: { ...lock, frozen: [], staleUnits: ["U3"] }, iterations: { count: 1, cap: 5, blocking: false, stuckOpen: "S1" } }, noQuestion);
+		const card = renderCard(changeCard(state));
+		expect(card).toContain("Stale units: U3");
+		expect(card).toContain("Stuck report: S1 waits for the human's choice");
+	});
+
+	test("approvals section is empty without approvals", () => {
+		expect(approvalsSection(changeCard(stateFor("define")))).toBeUndefined();
+		expect(approvalsSection({ ...BASE, kind: "list", open: [] })).toBeUndefined();
 	});
 });
