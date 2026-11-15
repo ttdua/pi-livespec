@@ -2,11 +2,13 @@ import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
+import { createGit } from "../../src/engine/git.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
+import { reconcileBase } from "../../src/tools/plan-units-steps.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH } from "../hooks/helpers.ts";
@@ -41,7 +43,7 @@ const U2: UnitInput = {
 };
 
 /** `next` decides how the next `updateIssueBody` fails. */
-type Fault = { next: "none" | "conflict" | "lost" };
+type Fault = { next: "none" | "conflict" | "lost"; comment?: boolean };
 
 function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => Forge {
 	return (world) =>
@@ -49,6 +51,12 @@ function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => For
 			get(target, prop, receiver) {
 				const value = Reflect.get(target, prop, receiver);
 				if (typeof value !== "function") return value;
+				if (prop === "createComment") {
+					return async (...args: unknown[]) => {
+						if (fault.comment) throw new ForgeError({ code: "http", operation: "createComment", message: "bad gateway", status: 502 });
+						return value.apply(target, args);
+					};
+				}
 				if (prop !== "updateIssueBody") return value.bind(target);
 				return async (...args: unknown[]) => {
 					const f = fault.next;
@@ -64,10 +72,10 @@ function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => For
 type Plan = ToolHarness & { n: number; base: string; fault: Fault; plan(units?: UnitInput[]): ReturnType<ToolHarness["call"]> };
 
 /** A started change on its branch: `Branch`, `Base` and the `livespecBase` config set as change_start leaves them. */
-async function planning(phase = "plan"): Promise<Plan> {
+async function planning(phase = "plan", config?: string): Promise<Plan> {
 	const fault: Fault = { next: "none" };
 	let n = 0;
-	const h = await toolHarness({ branch: CHANGE_BRANCH, forge: faultyForge(fault, () => n) });
+	const h = await toolHarness({ branch: CHANGE_BRANCH, forge: faultyForge(fault, () => n), ...(config !== undefined ? { config } : {}) });
 	h.git("config", "user.name", "t");
 	h.git("config", "user.email", "t@t");
 	const base = h.head;
@@ -156,13 +164,17 @@ describe("plan_units", () => {
 		expect(baseConfig(h)).toBe(upstream);
 	});
 
-	test("a rerun repairs a config left behind by an unknown outcome", async () => {
+	test("a rerun repairs a config left behind by an unknown outcome, even when it then refuses", async () => {
 		const h = await planning();
 		const upstream = await advanceIntegration(h);
 		h.git("merge", "-q", "--no-edit", "origin/main");
 		await h.world.editBodyBehindBack(h.n, setHeaderLine(await issueBody(h), "Base", upstream));
+		await writeIn(h.root, "scratch.txt", "x\n");
 		await h.session.refresh();
-		await h.plan();
+		expect(baseConfig(h)).toBe(h.base);
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("uncommitted");
 		expect(baseConfig(h)).toBe(upstream);
 	});
 
@@ -249,6 +261,31 @@ describe("plan_units", () => {
 		expect(await marked(h)).toEqual([]);
 	});
 
+	test("refuses when the integration branch is unknown", async () => {
+		const h = await planning("plan", "# no integrationBranch\n");
+		const head = h.git("rev-parse", "HEAD");
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("integration branch is unknown");
+		expect(h.git("rev-parse", "HEAD")).toBe(head);
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("a failed decision record after the merge refuses and asks for a rerun", async () => {
+		const h = await planning();
+		const upstream = await advanceIntegration(h);
+		const before = await issueBody(h);
+		h.fault.comment = true;
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("Rerun plan_units");
+		expect(await issueBody(h)).toBe(before);
+		expect(baseConfig(h)).toBe(h.base);
+		h.fault.comment = false;
+		expect((await h.plan()).isError).toBe(false);
+		expect(baseConfig(h)).toBe(upstream);
+	});
+
 	test("refuses outside plan", async () => {
 		const h = await planning("define");
 		const out = await h.plan();
@@ -275,5 +312,21 @@ describe("plan_units", () => {
 		const out = await h.plan();
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("pending");
+	});
+});
+
+describe("reconcileBase", () => {
+	test("equal config, a non-ancestor and an unknown commit are no-ops", async () => {
+		const h = await planning();
+		const git = createGit(h.root);
+		expect(await reconcileBase(git, CHANGE_BRANCH, h.base)).toBe(false);
+		expect(await reconcileBase(git, CHANGE_BRANCH, undefined)).toBe(false);
+		const upstream = await advanceIntegration(h);
+		expect(await reconcileBase(git, CHANGE_BRANCH, upstream)).toBe(false);
+		expect(await reconcileBase(git, CHANGE_BRANCH, "0".repeat(40))).toBe(false);
+		expect(baseConfig(h)).toBe(h.base);
+		h.git("merge", "-q", "--no-edit", "origin/main");
+		expect(await reconcileBase(git, CHANGE_BRANCH, upstream)).toBe(true);
+		expect(baseConfig(h)).toBe(upstream);
 	});
 });

@@ -14,6 +14,7 @@ import { renderUnit } from "../core/unit-blocks.ts";
 import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
 import type { AmendSnapshot, ApprovalRequest } from "../interaction/approver.ts";
@@ -59,10 +60,24 @@ export function stateRefusal(state: ChangeState): { refused: string } | undefine
 	return undefined;
 }
 
-/** The next free unit id: one past the highest `U<n>` in the body. */
-export function nextUnitId(units: Unit[]): string {
-	const max = units.reduce((m, u) => Math.max(m, Number(u.id.slice(1)) || 0), 0);
-	return `U${max + 1}`;
+const UNIT_ID = /^U(\d+)$/;
+
+/** Unit ids named by own comments: decision subjects, amendment units and locked digests, so a dropped id stays taken. */
+export function historyUnitIds(marked: MarkedComment[]): string[] {
+	const ids: string[] = [];
+	for (const m of marked) {
+		const d = (typeof m.data === "object" && m.data !== null ? m.data : {}) as Record<string, unknown>;
+		if (m.kind === "decision" && typeof d.subject === "string") ids.push(d.subject);
+		if (m.kind === "amendment" && typeof d.unit === "string") ids.push(d.unit);
+		if (m.kind === "gate" && typeof d.locked === "object" && d.locked !== null) ids.push(...Object.keys(d.locked));
+	}
+	return ids;
+}
+
+/** The next free unit id: one past the highest `U<n>` in the body or the history, so an id is never reused. */
+export function nextUnitId(units: Unit[], history: string[] = []): string {
+	const numbers = [...units.map((u) => u.id), ...history].map((id) => Number(UNIT_ID.exec(id)?.[1] ?? 0));
+	return `U${Math.max(0, ...numbers) + 1}`;
 }
 
 function dropRefusal(units: Unit[], target: Unit): { refused: string } | undefined {
@@ -73,10 +88,10 @@ function dropRefusal(units: Unit[], target: Unit): { refused: string } | undefin
 }
 
 /** The snapshot of an edit or add: the classified, rendered unit; an edit keeps the unit's status line. */
-async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], decisions: Pack["decisions"]): Promise<AmendSnapshot | { refused: string }> {
+async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], history: string[], decisions: Pack["decisions"]): Promise<AmendSnapshot | { refused: string }> {
 	const existing = form.action === "edit" ? units.find((u) => u.id === form.unit) : undefined;
 	if (form.action === "edit" && !existing) return refusal(`${form.unit} is not in the body.`);
-	const id = existing?.id ?? nextUnitId(units);
+	const id = existing?.id ?? nextUnitId(units, history);
 	let classified: Awaited<ReturnType<typeof classifyUnits>>;
 	try {
 		classified = await classifyUnits([{ id, input: form.replacement }], decisions);
@@ -95,9 +110,14 @@ function blockOf(body: string, unit: Unit): string[] {
 	return parseChange(body).lines.slice(unit.startLine, unit.endLine + 1).map((l) => l.text);
 }
 
-function summaryOf(n: number, s: AmendSnapshot, shown: string[]): string {
-	const verb = s.action === "edit" ? "Replace" : s.action === "add" ? "Add" : "Drop";
-	return [`${verb} ${s.unit} in change #${n}:`, "", ...shown].join("\n");
+const SEPARATOR = "--- becomes ---";
+
+/** Only the affected unit: an edit shows the old block, a separator, then the new block. */
+function summaryOf(n: number, s: AmendSnapshot, current: string[] | undefined): string {
+	const head = (verb: string) => [`${verb} ${s.unit} in change #${n}:`, ""];
+	if (s.action === "edit") return [...head("Replace"), ...(current ?? []), "", SEPARATOR, "", ...(s.lines ?? [])].join("\n");
+	if (s.action === "add") return [...head("Add"), ...(s.lines ?? [])].join("\n");
+	return [...head("Drop"), ...(current ?? [])].join("\n");
 }
 
 /** The resulting plan must pass the LS-02 unit validators. */
@@ -118,14 +138,13 @@ export async function planAmend(state: ChangeState, body: string, form: AmendFor
 		if (refused) return refused;
 		snapshot = { action: "drop", unit: target.id, oldDigest: unitDigest(target), oldDone: target.done, records: [] };
 	} else {
-		snapshot = await contractSnapshot(form, units, decisions);
+		snapshot = await contractSnapshot(form, units, historyUnitIds(state.marked), decisions);
 	}
 	if ("refused" in snapshot) return snapshot;
 	const invalid = planErrors(body, snapshot);
 	if (invalid) return { refused: invalid };
 	const target = units.find((u) => u.id === snapshot.unit);
-	const shown = snapshot.lines ?? (target ? blockOf(body, target) : []);
-	return { snapshot, summary: summaryOf(state.issue.number, snapshot, shown) };
+	return { snapshot, summary: summaryOf(state.issue.number, snapshot, target ? blockOf(body, target) : undefined) };
 }
 
 /** `amend:<n>`, one past the number of amendment requests the issue has seen. */

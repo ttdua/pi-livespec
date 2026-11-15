@@ -14,6 +14,7 @@ import type { Git } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { Issue } from "../forge/types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { type ClassifiedUnits, classifyUnits } from "./classify-units.ts";
 import { livespecBaseKey } from "./change-start.ts";
 
@@ -89,9 +90,17 @@ export async function mergeIntegration(git: Git, integration: string): Promise<{
 
 // --- step 5: post the decision records -----------------------------------------
 
-/** One `decision` comment per unit and point, before the body write (records are keyed by unit digest). */
-export async function postDecisionRecords(forge: CachedForge, n: number, records: DecisionRecord[]): Promise<void> {
-	for (const r of records) await forge.createComment(n, decisionComment(r));
+/**
+ * One `decision` comment per unit and point, before the body write (records are keyed by unit digest).
+ * A failure is a refusal: the merge commit stays, the body and Base are untouched, and a rerun posts again.
+ */
+export async function postDecisionRecords(forge: CachedForge, n: number, records: DecisionRecord[]): Promise<string | undefined> {
+	try {
+		for (const r of records) await forge.createComment(n, decisionComment(r));
+		return undefined;
+	} catch (error) {
+		return `plan_units refused: posting the decision records to #${n} failed (${untrusted(messageOf(error))}). The units and Base were not written; the merge commit stays on the branch. Rerun plan_units to finish.`;
+	}
 }
 
 // --- step 6: write Units and Base ----------------------------------------------

@@ -155,6 +155,13 @@ describe("unit_amend", () => {
 		expect(h.human.summaries).toEqual([]);
 	});
 
+	test("a dropped id is never reused by an add", async () => {
+		const h = await planned();
+		expect((await h.amend({ drop: true, unit: "U2" })).isError).toBe(false);
+		expect((await h.amend({ add: true, replacement: unit("Burst", "src/limits/burst.ts", "b") })).isError).toBe(false);
+		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U3"]);
+	});
+
 	test("refuses before a lock", async () => {
 		const h = await planned({ locked: false });
 		const out = await h.amend({ unit: "U2", replacement: { ...U2, verify: "bun test readme" } });
@@ -178,6 +185,9 @@ describe("unit_amend", () => {
 		const summary = h.human.summaries[0]!;
 		expect(summary).toContain("### U2 — Readme note");
 		expect(summary).toContain("Verify: `bun test readme`");
+		expect(summary).toContain("Verify: `bun test r`");
+		expect(summary.indexOf("Verify: `bun test r`")).toBeLessThan(summary.indexOf("Verify: `bun test readme`"));
+		expect(summary.match(/### U2 — Readme note/g)).toHaveLength(2);
 		expect(summary).not.toContain("U1");
 		expect(summary).not.toContain("Counter");
 	});
