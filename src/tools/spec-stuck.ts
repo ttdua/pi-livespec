@@ -125,7 +125,14 @@ export function stuckPlan(state: ChangeState, report: StuckReport): { id: string
 async function send(w: WriteContext, state: ChangeState, plan: { id: string; report: StuckReport; write: boolean }, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	if (plan.write) await w.forge.createComment(state.issue.number, writeMarked(STUCK_KIND, plan.id, plan.report));
 	const request = stuckRequest(state, plan.id, plan.report, new Date());
-	return sendRequest(w, state, request, ctx, { tool: TOOL, retry: `call spec_stuck again to send stuck report ${plan.id}` });
+	const result = await sendRequest(w, state, request, ctx, { tool: TOOL, retry: `call spec_stuck again to send stuck report ${plan.id}` });
+	return plan.write ? result : resentNote(plan.id, result);
+}
+
+/** The open report was sent again: the agent must know its new parameters were not used. */
+export function resentNote(id: string, result: ToolResult<undefined>): ToolResult<undefined> {
+	const note = `stuck report ${id} already exists and was sent again unchanged; the new parameters were not used.`;
+	return toolResult(`${note}\n\n${result.content.map((c) => c.text).join("\n")}`, undefined, result.isError);
 }
 
 export async function runSpecStuck(p: SpecStuckParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {

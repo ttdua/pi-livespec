@@ -4,6 +4,9 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { prepareRequest, requestComment } from "../../src/interaction/requests.ts";
+import type { Forge } from "../../src/forge/types.ts";
+import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
@@ -25,12 +28,12 @@ const ANSWER_NOW = "answer now";
 const ANSWER_LATER = "answer later (non-blocking)";
 const CHANGES_TITLE = "Does the answer change a requirement?";
 
-type Opts = { config?: string; ui?: FakeUI; edit?: (b: string) => string };
+type Opts = { config?: string; ui?: FakeUI; edit?: (b: string) => string; forge?: (world: MemoryWorld) => Forge };
 type Q = ToolHarness & { n: number; ask(params: unknown): ReturnType<ToolHarness["call"]> };
 
 /** A change on its branch with the `rate-limit` living spec committed after `Base`, in `phase`. */
 async function change(phase: string, o: Opts = {}): Promise<Q> {
-	const h = await toolHarness({ branch: CHANGE_BRANCH, ...(o.config ? { config: o.config } : {}), ...(o.ui ? { ui: o.ui } : {}) });
+	const h = await toolHarness({ branch: CHANGE_BRANCH, ...(o.config ? { config: o.config } : {}), ...(o.ui ? { ui: o.ui } : {}), ...(o.forge ? { forge: o.forge } : {}) });
 	const base = h.git("rev-parse", "HEAD");
 	await writeIn(h.root, "specs/rate-limit/spec.md", SPEC);
 	commitAll(h.root, "spec");
@@ -227,6 +230,56 @@ describe("spec_question", () => {
 		expect(card(alone).state.change.questions.find((q) => q.id === "Q3")).toMatchObject({ kind: "non-blocking", checked: false });
 		expect(await ofKind(alone, "request")).toEqual([]);
 		expect(card(alone).step.pending).toEqual([]);
+	});
+
+	test("a question added but not sent names reask", async () => {
+		const h = await change("define", { config: SESSION_CHAIN });
+		const out = await h.ask({ text: "Which store keeps the counters?" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain('Q3 was added to ## Questions but not sent: ');
+		expect(textOf(out)).toContain('send it with spec_question { reask: "Q3" }');
+		expect((await questions(h)).map((q) => q.id)).toEqual(["Q1", "Q2", "Q3"]);
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("a duplicate request after the append names reask", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		// A pending forge request for question:Q3 already exists, so sending the new Q3 is a duplicate.
+		await seedMarked(h, requestComment("question-Q3.lx0", prepareRequest({ kind: "question", subject: "question:Q3", mode: "blocking", head: h.head, body: "", snapshot: { id: "Q3", text: "old", requirements: [] }, summary: "old", now: new Date(Date.UTC(2026, 0, 1)) }), "plain"));
+		await h.session.refresh();
+		const out = await h.ask({ text: "Which store keeps the counters?" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain('Q3 was added to ## Questions but not sent: ');
+		expect(textOf(out)).toContain('reask: "Q3"');
+		expect((await questions(h)).map((q) => q.id)).toEqual(["Q1", "Q2", "Q3"]);
+	});
+
+	test("answer later retries the reclassification once after a version conflict", async () => {
+		let conflicts = 0;
+		const h: Q = await change("define", {
+			config: BOTH_CHAIN,
+			ui: human({ later: true }),
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop !== "updateIssueBody") return Reflect.get(target, prop, receiver);
+						return async (n: number, body: string, expect: never) => {
+							if (conflicts === 0 && body.includes("Q3 (non-blocking)")) {
+								conflicts++;
+								await world.editBodyBehindBack(n, (await world.bodyOf(n)).replace("Limit each client IP.", "Limit each client IP address."));
+							}
+							return target.updateIssueBody(n, body, expect);
+						};
+					},
+				}),
+		});
+		const out = await h.ask({ text: "Which store keeps the counters?" });
+		expect(conflicts).toBe(1);
+		expect(out.isError).toBe(false);
+		const body = await h.world.bodyOf(h.n);
+		expect(body).toContain("- [ ] Q3 (non-blocking): Which store keeps the counters?");
+		expect(body).toContain("Limit each client IP address.");
+		expect((await ofKind(h, "request"))[0]?.data).toMatchObject({ subject: "question:Q3", mode: "async" });
 	});
 
 	test("text must be one line and exactly one of text or reask is given", async () => {

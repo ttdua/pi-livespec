@@ -108,6 +108,19 @@ describe("spec_stuck", () => {
 		expect((await ofKind(h, "stuck")).map((m) => m.id)).toEqual(["S1", "S1-answer", "S2", "S2-answer"]);
 	});
 
+	test("an open report without a request is sent again unchanged", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("stuck", "S1", REPORT));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.stuck({ ...REPORT, where: "somewhere else" });
+		expect(out.isError).toBe(false);
+		expect(textOf(out)).toContain("stuck report S1 already exists and was sent again unchanged; the new parameters were not used");
+		expect((await ofKind(h, "stuck")).map((m) => m.id)).toEqual(["S1"]);
+		expect((await ofKind(h, "request"))[0]?.data).toMatchObject({ subject: "stuck:S1" });
+		expect(String((await ofKind(h, "request"))[0]?.data && ((await ofKind(h, "request"))[0]!.data as { summary: string }).summary)).toContain(REPORT.where);
+	});
+
 	test("a second report waits while one is unanswered", async () => {
 		const h = await change({ config: FORGE_CHAIN });
 		await h.stuck(REPORT);

@@ -28,6 +28,8 @@ export type QuestionForm = { action: "ask"; text: string; class: QuestionClass }
 const TOOL = "spec_question";
 const SUBJECT_PREFIX = "question:";
 const SPECS_PATH = "specs";
+/** The reclassify write of "answer later": the first try plus one retry after a version conflict. */
+const RECLASSIFY_TRIES = 2;
 const DEFERRED_TEXT = (id: string) => `${id} is now non-blocking and stays open with no adapter left to ask; send it again later with spec_question { reask: "${id}" }.`;
 
 const refusal = (message: string): { refused: string } => ({ refused: `${TOOL} refused: ${message}` });
@@ -122,12 +124,16 @@ async function appendToBody(forge: CachedForge, n: number, form: Extract<Questio
 
 /** "Answer later": rewrites the question to non-blocking, version-checked, before the next adapter is asked. */
 function reclassifyHook(forge: CachedForge, n: number, id: string): () => Promise<void> {
-	return async () => {
+	const attempt = async (): Promise<boolean> => {
 		const issue = await forge.getIssue(n);
 		const next = reclassifyQuestion(issue.body, id, "non-blocking");
-		if (next === issue.body) return;
-		const written = await forge.updateIssueBody(n, next, issue.version);
-		if (written.status === "conflict") throw new ReclassifyConflict(`${TOOL}: the issue changed while ${id} was made non-blocking; call spec_question { reask: "${id}" } again.`);
+		if (next === issue.body) return true;
+		return (await forge.updateIssueBody(n, next, issue.version)).status === "written";
+	};
+	return async () => {
+		// One retry over a fresh read: a concurrent edit elsewhere in the body should not lose the deferral.
+		for (let i = 0; i < RECLASSIFY_TRIES; i++) if (await attempt()) return;
+		throw new ReclassifyConflict(`the issue changed while ${id} was made non-blocking`);
 	};
 }
 
@@ -159,16 +165,24 @@ export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): 
 	if ("refused" in q) return toolResult(q.refused, undefined, true);
 	const requirements = await readRequirements(w.session.cwd, parseChange(q.body));
 	const request = questionRequest(state, q, { body: q.body, requirements, now: new Date() });
+	let result: ToolResult<undefined>;
 	try {
-		return await sendRequest(w, state, request, ctx, {
+		result = await sendRequest(w, state, request, ctx, {
 			tool: TOOL,
 			retry: `call spec_question { reask: "${q.id}" }`,
 			deferred: { hook: reclassifyHook(w.forge, state.issue.number, q.id), text: DEFERRED_TEXT(q.id) },
 		});
 	} catch (error) {
-		if (error instanceof ReclassifyConflict) return toolResult(error.message, undefined, true);
-		throw error;
+		if (!(error instanceof ReclassifyConflict)) throw error;
+		result = toolResult(`${TOOL}: ${error.message}`, undefined, true);
 	}
+	return form.action === "ask" && result.isError ? notSent(q.id, result) : result;
+}
+
+/** A new question was appended but not sent: name it, so a retry asks it again instead of adding another. */
+export function notSent(id: string, result: ToolResult<undefined>): ToolResult<undefined> {
+	const reason = result.content.map((c) => c.text).join("\n").replace(/[.\s]+$/, "");
+	return toolResult(`${id} was added to ## Questions but not sent: ${reason}; send it with spec_question { reask: "${id}" }.`, undefined, true);
 }
 
 export function registerSpecQuestion(pi: ExtensionAPI): void {
