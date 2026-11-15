@@ -60,7 +60,7 @@ export function answerQuestion(body: string, id: string, cls: QuestionClass, ans
 		const head = CLASS_TOKEN.exec(raw)![0];
 		const rest = raw.slice(head.length);
 		const at = rest.lastIndexOf(ANSWER_SEP);
-		const text = at === -1 ? rest.trimEnd() : rest.slice(0, at);
+		const text = at === -1 ? rest : rest.slice(0, at);
 		return `- [x] ${id} (${cls}): ${text}${ANSWER_SEP}${clean}`;
 	});
 }

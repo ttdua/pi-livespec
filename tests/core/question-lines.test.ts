@@ -83,7 +83,9 @@ describe("question lines", () => {
 			"## Questions\r\n- [ ] Q1 (blocking):   Keep spacing?  \r\n- [x] Q2 (non-blocking): T  — Answer:  a  b \r\n",
 		);
 		expect(answerQuestion(src, "Q1", "blocking", "yes")).toBe(
-			"## Questions\r\n- [x] Q1 (blocking):   Keep spacing? — Answer: yes\r\n- [x] Q2 (blocking): T  — Answer:  a  b \r\n",
+			"## Questions\r\n- [x] Q1 (blocking):   Keep spacing?   — Answer: yes\r\n- [x] Q2 (blocking): T  — Answer:  a  b \r\n",
 		);
+		const parsed = parseChange(answerQuestion(src, "Q1", "blocking", "yes")).questions[0]!;
+		expect(parsed).toMatchObject({ checked: true, answer: "yes" });
 	});
 });
