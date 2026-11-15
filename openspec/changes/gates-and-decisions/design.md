@@ -171,6 +171,7 @@ Only the first line of a comment that starts with `/livespec ` is read. Tokens a
 - `registerGate(name, { checks, options? })` adds named gates.
 - Phase gates come from the pack: the `gate` value of each phase and its `checks`.
 - `registerCheck(name, fn, { waivable? })` marks a check as waivable. Existing checks are not waivable.
+- Waivers apply to the gated phase only, per check name, for as long as that gate result stays valid.
 
 **`spec_gate <target>` refuses when:**
 - the target is neither the current phase nor a registered named gate;
