@@ -1,8 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+// Registered for side effect: the forge-account doctor check and card section.
+import "./accounts/card.ts";
+import "./accounts/doctor.ts";
 import { type CommandEnv } from "./commands/deps.ts";
 import { messageOf } from "./core/messages.ts";
 import {
 	type Reply,
+	accountReply,
 	doctorReply,
 	initReply,
 	migrateReply,
@@ -16,7 +20,7 @@ import { registerChangeTools } from "./tools/change-tools.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
 import { readVersion } from "./version.ts";
 
-const USAGE = "Usage: /livespec [validate | migrate-openspec | init | doctor | next | skills <status|update|pin <sha>|unpin|rollback>]";
+const USAGE = "Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback>]";
 
 function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> | Reply {
 	switch (sub) {
@@ -32,6 +36,8 @@ function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: Com
 			return doctorReply(ctx, env);
 		case "next":
 			return nextReply(ctx);
+		case "account":
+			return accountReply(rest, ctx);
 		case "skills":
 			return skillsReply(rest, ctx, env);
 		default:
@@ -87,7 +93,7 @@ async function handleCommand(pi: ExtensionAPI, args: string, ctx: ExtensionComma
 export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> = {}): void {
 	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
 	pi.registerCommand("livespec", {
-		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, skills",
+		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, account, skills",
 		handler: (args, ctx) => handleCommand(pi, args, ctx, env),
 	});
 	registerSpecValidate(pi);

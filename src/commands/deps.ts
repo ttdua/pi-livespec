@@ -75,6 +75,7 @@ export function initDeps(cwd: string, env: CommandEnv): InitDeps {
 export async function doctorDeps(ctx: ExtensionCommandContext, env: CommandEnv): Promise<DoctorDeps> {
 	const config = await configFor(ctx.cwd, env);
 	const skills = ctx.getSystemPromptOptions().skills ?? [];
+	const session = sessionFor(ctx.cwd);
 	return {
 		root: ctx.cwd,
 		home: env.home,
@@ -86,6 +87,8 @@ export async function doctorDeps(ctx: ExtensionCommandContext, env: CommandEnv):
 		forge: () => forgeFor(ctx.cwd, env),
 		exists,
 		listDir,
+		...(session?.account ? { account: session.account } : {}),
+		...(session?.accountBlock !== undefined ? { accountBlock: session.accountBlock } : {}),
 	};
 }
 
