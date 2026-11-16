@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 `staleUnitsOf` in `src/engine/locks.ts` clears a unit when an approved amendment for it or an approved, non-superseded plan gate is newer than the `stale` comment (design D1)
-- [ ] 1.2 Remove `LockState.stalePhases` and `stalePhasesOf`; update every test consumer (`tests/helpers/change-state.ts`, `tests/hooks/phase-card.test.ts`, `tests/engine/next-step.test.ts`, `tests/engine/locks.test.ts`) (design D4)
-- [ ] 1.3 Tests in `tests/engine/locks.test.ts`: "Stale before the first lock" (unit level, `deriveLocks`) and "Identical amendment clears a stale unit"; e2e "Stale before the first lock" through the cascade, define and plan gates in `tests/e2e/gates-flow.test.ts`
+- [x] 1.1 `staleUnitsOf` in `src/engine/locks.ts` clears a unit when an approved amendment for it or an approved, non-superseded plan gate is newer than the `stale` comment (design D1)
+- [x] 1.2 Remove `LockState.stalePhases` and `stalePhasesOf`; update every test consumer (`tests/helpers/change-state.ts`, `tests/hooks/phase-card.test.ts`, `tests/engine/next-step.test.ts`, `tests/engine/locks.test.ts`) (design D4)
+- [x] 1.3 Tests in `tests/engine/locks.test.ts`: "Stale before the first lock" (unit level, `deriveLocks`) and "Identical amendment clears a stale unit"; e2e "Stale before the first lock" through the cascade, define and plan gates in `tests/e2e/gates-flow.test.ts`
 
 ## 2. Adapter chain fallback
 
