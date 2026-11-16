@@ -214,6 +214,8 @@ The refusals for blocking questions, stuck reports and the cap SHALL give the sa
 ### Requirement: Re-planning after the lock
 After the first lock, `plan_units` MUST refuse, and every unit change SHALL go through `unit_amend`. While a lock exists, the plan gate MUST refuse when any unit is frozen or stale. When the plan gate is approved again, its comment SHALL lock the digests of every unit in the body. Status lines of unchanged units MUST be kept.
 
+A unit SHALL stop being stale when, after the `stale` comment that named it, either an amendment for it is approved, even one whose content is identical to the current unit, or a plan gate is approved and not superseded. A unit made stale before the first lock is therefore cleared by the first plan approval.
+
 #### Scenario: Second plan gate re-locks
 - **WHEN** after a cascade the stale units are amended and the plan gate is approved again
 - **THEN** the new plan `gate` comment locks the digests of every unit in the body
@@ -221,6 +223,14 @@ After the first lock, `plan_units` MUST refuse, and every unit change SHALL go t
 #### Scenario: Plan gate with a stale unit
 - **WHEN** a lock exists, U3 is stale, and `spec_gate plan` runs
 - **THEN** the tool refuses and names U3
+
+#### Scenario: Stale before the first lock
+- **WHEN** in `plan` before any plan gate was approved, an answer's cascade marks U2 stale and moves the change to `define`, and the define and plan gates are then approved
+- **THEN** U2 is not stale and the next step does not ask to amend it
+
+#### Scenario: Identical amendment clears a stale unit
+- **WHEN** a lock exists, U3 is stale, and an amendment of U3 with unchanged content is approved
+- **THEN** U3 is no longer stale
 
 ### Requirement: Unit classification check
 The `unit-classification` check SHALL report an error for a unit whose `Difficulty` or `Tags` differ from the latest decision record for that unit and point, and for a unit with no such record. Records for a digest that is not in the body MUST be ignored. A `source: human` record from an answered rule ask for the unit's current digest SHALL count as that unit's decision record. The default pack SHALL list the check in the `plan` phase.
