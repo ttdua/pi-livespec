@@ -374,7 +374,9 @@ describe("plan_units", () => {
 		const h = await planning();
 		await addQuestion(h, "- [ ] Q1 (non-blocking): x");
 		await storeRequest(h, "question-Q1.lx3k2a", "question:Q1", "question", "blocking");
-		expect((await h.plan()).isError).toBe(false);
+		const written = await h.plan();
+		expect(written.isError).toBe(false);
+		expect(parseChange(await issueBody(h)).units).toHaveLength(2);
 
 		const g = await planning();
 		await addQuestion(g, "- [ ] Q2 (blocking): y");
