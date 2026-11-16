@@ -18,8 +18,10 @@ import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
 import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest } from "../interaction/approver.ts";
-import { allRequests, openRequests, prepareRequest } from "../interaction/requests.ts";
+import { allRequests, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
+import { blockingStateRefusal } from "../engine/gates.ts";
+import { blockingRequests } from "../engine/request-mode.ts";
 import { classifyUnits, normalizeUnitInput } from "./classify-units.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -52,11 +54,13 @@ export function amendForm(p: UnitAmendParams): AmendForm | { refused: string } {
 	return refusal(FORMS);
 }
 
-/** Refusals that hold whatever the form: no lock yet, or a request pending or applying. */
+/** Refusals that hold whatever the form: no lock yet, a blocking state, or a blocking request pending or applying. */
 export function stateRefusal(state: ChangeState): { refused: string } | undefined {
 	if (state.lock.locked === undefined) return refusal("the plan is not locked yet; write units with plan_units before the plan gate.");
-	const open = openRequests(state.requests).map((r) => r.subject);
-	if (open.length > 0) return refusal(`a request is pending (${open.map(untrusted).join(", ")}); wait for its answer.`);
+	const blockingState = blockingStateRefusal(state);
+	if (blockingState !== undefined) return refusal(blockingState);
+	const blocking = blockingRequests(state).map((r) => r.subject);
+	if (blocking.length > 0) return refusal(`a blocking request is pending (${blocking.map(untrusted).join(", ")}); wait for its answer.`);
 	return undefined;
 }
 
