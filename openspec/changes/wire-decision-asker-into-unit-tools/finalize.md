@@ -18,7 +18,7 @@ Deviation from the canonical `pr-updated` flow: no pre-review PR existed and `is
 - **Branch**: `issue-24`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: `filled after PR creation`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/26`
 
 ---
 
@@ -31,7 +31,7 @@ Deviation from the canonical `pr-updated` flow: no pre-review PR existed and `is
 
 ## PR comment
 
-- **PR comment status**: `filled after PR creation`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/26#issuecomment-6911318513)
 
 ---
 
