@@ -1,0 +1,58 @@
+// The application-boundary `ask` of the decision seam (design D10): a rule's
+// `DecisionAsk` becomes a blocking `decide:<point>.<subject>` request, runs
+// through the configured approver chain, and comes back as the seam's answer.
+// An in-session answer is completed at once (the `decision` record with
+// `source: human`); a forge request stays pending until a `/livespec choose`.
+
+import type { DecisionAsk, DecideDeps } from "../decide/seam.ts";
+import type { ChangeState } from "../engine/state-types.ts";
+import type { ApprovalRequest, DecideSnapshot } from "../interaction/approver.ts";
+import { readMarkedComments } from "../forge/markers.ts";
+import { openRequestFor, prepareRequest, readRequests } from "../interaction/requests.ts";
+import type { ApproverCtx } from "./approver-for.ts";
+import type { WriteContext } from "./guard.ts";
+import { dispatchRequest } from "./request-flow.ts";
+
+const SUBJECT_PREFIX = "decide:";
+
+export type DecisionAsker = NonNullable<DecideDeps["ask"]>;
+
+/**
+ * The request for `intent`. Its kind is `stuck`: like a stuck report it is a choice among options, with
+ * no gate digest and no waivable checks; adapters and completion route it by its `decide:` subject.
+ */
+export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Date): ApprovalRequest {
+	const subject = `${SUBJECT_PREFIX}${intent.point}.${intent.subject}`;
+	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts };
+	const { summary, options } = intent;
+	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now });
+	const phase = state.phase.kind === "ok" ? state.phase.id : "";
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options };
+}
+
+/**
+ * The `ask` a tool passes to `decide`. An open request for the same subject, read fresh from the
+ * forge (the tool's snapshot may predate it), is pending, so no adapter asks twice for one subject. No available adapter, or a request deferred by every adapter, throws: the caller
+ * refuses before writing, like any other rule failure.
+ */
+export function createDecisionAsker(w: WriteContext, state: ChangeState, ctx: ApproverCtx, now: () => Date = () => new Date()): DecisionAsker {
+	return async (intent) => {
+		const request = decisionRequest(state, intent, now());
+		const { comments } = await readMarkedComments(w.forge, state.issue.number);
+		const open = openRequestFor(readRequests(comments), request.subject);
+		if (open !== undefined) return { status: "pending", requestId: open };
+		const result = await dispatchRequest(w, state, request, ctx, async () => {});
+		switch (result.status) {
+			case "completed":
+				return result.answer;
+			case "pending":
+				return result;
+			case "duplicate":
+				return { status: "pending", requestId: result.pendingId };
+			case "refused":
+				throw new Error(`decision \`${intent.point}.${intent.subject}\` cannot ask a human: ${result.message}`);
+			case "deferred-all":
+				throw new Error(`decision \`${intent.point}.${intent.subject}\` was deferred with no adapter left`);
+		}
+	};
+}
