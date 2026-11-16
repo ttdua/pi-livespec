@@ -233,6 +233,26 @@ describe("/livespec class commands", () => {
 		expect(await classMarks(h, h.n)).toHaveLength(1);
 	});
 
+	test("a recorded class command needs no permission lookup", async () => {
+		const asked: string[] = [];
+		const h = await q2Pending({
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop !== "getPermission") return Reflect.get(target, prop, receiver);
+						return async (login: string) => (asked.push(login), target.getPermission(login));
+					},
+				}),
+		});
+		await pollApprovals(h.session);
+		expect(await classMarks(h, h.n)).toHaveLength(1);
+		expect(asked).toContain("alice");
+		asked.length = 0;
+		await h.session.refresh();
+		await pollApprovals(h.session);
+		expect(asked).not.toContain("alice");
+	});
+
 	test("Class command already matching", async () => {
 		const h = await q2Pending({ nonBlocking: true });
 		await pollApprovals(h.session);

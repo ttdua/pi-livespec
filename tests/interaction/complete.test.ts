@@ -453,6 +453,28 @@ describe("completion engine", () => {
 		expect(out.finished[0]?.result).not.toContain("<b>");
 	});
 
+	test("malformed own stale-unit text stays escaped in a superseded reason", async () => {
+		const f = await fixture("plan");
+		await seedLock(f);
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stale", "s1", { phases: [], units: ["<b>forge-stale-text</b>"] }));
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.status).toBe("superseded");
+		expect(out.result).toContain("forge-stale-text");
+		expect(out.result.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("<b>");
+	});
+
+	test("legacy wrapped reason stays escaped", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		const legacy = { request: record, answer: answer(), verdict: "superseded" as const, reason: `Check x fails: ${untrusted("<b>forge</b>")}.` };
+		await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, legacy));
+		const out = await finishApplying(await ctxOf(f));
+		const text = out.finished[0]?.result ?? "";
+		expect(text).toContain("forge");
+		expect(text.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("<b>");
+	});
+
 	test("a newly recorded superseded answer marks its reason as already wrapped", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] });

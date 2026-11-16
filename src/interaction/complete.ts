@@ -63,7 +63,9 @@ function humanLines(answer: Answered): string[] {
 /** The reason to show: new reasons are wrapped where they are built, legacy ones (no `reason_wrapped`) as a whole. */
 function reasonText(record: AnswerData): string {
 	if (record.reason === undefined) return "superseded";
-	return record.reason_wrapped === true ? record.reason : untrusted(record.reason);
+	if (record.reason_wrapped === true) return record.reason;
+	// Decision: a legacy reason keeps its pre-#20 rendering, the whole reason wrapped once more (safe, even when it already holds a wrapper).
+	return untrusted(record.reason);
 }
 
 function summary(record: AnswerData): Completion {

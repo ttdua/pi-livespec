@@ -85,8 +85,9 @@ async function answerPending(t: Target): Promise<string[]> {
 	const { comments, marked } = await readFresh(t);
 	const pending = readRequests(marked).pending;
 	if (pending.length === 0) return [];
-	const { perms, warnings } = await readPermissions(t.forge, commandAuthors(comments, pending));
-	const result = matchCommands(pending, comments, perms, { marked, appliedClasses: appliedClassIds(marked) });
+	const appliedClasses = appliedClassIds(marked);
+	const { perms, warnings } = await readPermissions(t.forge, commandAuthors(comments, pending, appliedClasses));
+	const result = matchCommands(pending, comments, perms, { marked, appliedClasses });
 	await applyClasses(t, result.classes);
 	let current = marked;
 	for (const match of result.matches) {

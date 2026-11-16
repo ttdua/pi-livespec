@@ -379,4 +379,3 @@ The `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iter
 - D13: `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iterations` (with `iterations.stuckOpen`).
 - Removed in code: `Approver.poll`, `ApproverUI.confirm`, `GateSnapshot.digests`, `LockState.stalePhases`.
 - Where the setting comes from: an empty `interaction.adapter` list counts as unset and falls through project → user → default (not straight to the default).
-
