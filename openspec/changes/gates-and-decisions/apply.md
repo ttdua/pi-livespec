@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `gates-and-decisions`
-**Iteration**: `1`
-**Applied at**: `2026-11-16 04:30`
+**Iteration**: `2`
+**Applied at**: `2026-11-16 07:25` (iteration 2: smoke fix after real GitHub smoke)
 **Executor**: `subagent-driven-development`. The implementer seat was the `implementer` agent; the task reviewer, final whole-branch reviewer and re-reviewer seats were the `code-reviewer` agent. Tasks 1–3 ran as parallel lanes; Tasks 4–10 ran sequentially.
 
 ---
@@ -22,21 +22,17 @@
 
 ## Commits
 
-- **Range**: `667c3d6..HEAD` on `gates-and-decisions`. Before this receipt the head was `573fe3b`; the receipt commit follows it.
-- **Count**: 56 commits before the receipt, including 3 lane merge commits.
+- **Range**: `667c3d6..HEAD` on `gates-and-decisions` (iteration 1 ended at `97c1862`; iteration 2 adds `b2eae04` user decision, `125a0d8` plan_units fix, `9521505` memory-forge fidelity, and the smoke record)
+- **Count**: 60 commits (incl. 3 lane merges) before the iteration-2 receipt
 
-Verification at `573fe3b`: `bun run typecheck` is clean, and `bun run test` passes 112 files with 1539 tests. The baseline before apply was 84 files with 1154 tests.
+Verification: `bun run typecheck` clean; `bun run test` 112 files / 1541 tests pass.
 
 ---
 
 ## Tasks
 
-- **Completed**: 38 of 39 checkboxes in tasks.md are ticked.
-- **Remaining**: `10.4`, the manual smoke.
-  - The automated part of 10.4 is done: typecheck and test counts are recorded in `smoke.md`.
-  - The manual part is still pending: a TUI `spec_gate` approval, and a forge `/livespec approve` from a second writer account on a scratch GitHub repository.
-  - This session had no scratch repository, network forge or interactive TUI.
-  - The fallback evidence is `tests/e2e/gates-flow.test.ts` › `full gate flow over a memory forge`. It runs on an in-memory forge, so it is not real end-to-end verification.
+- **Completed**: `39 of 39`
+- **Remaining**: none. 10.4 manual smoke ran on real GitHub (`ttdua/superspecplan`, issue #12): in-session define gate (TUI), forge plan gate and forge amendment all pass; it found and fixed one bug (plan_units version conflict because GitHub bumps the issue `updated_at` on new comments). Not covered on the real forge: non-writer command (second account cannot read the private repo; unit-tested). See `smoke.md`.
 
 ---
 
@@ -85,7 +81,6 @@ Contract changes made during apply. The public ones are additive only.
 
 ## Open items for verify and the user
 
-- **10.4 manual smoke:** pending, as described under Tasks.
 - **User decision 2026-11-16 (final review I3): keep as specified (option a).** Context:
   - A forge approval that is read while the local working tree is dirty gets recorded as `superseded`, and the human has to approve again.
   - This follows the spec as written (phase-gates "Gate comment", design D2).

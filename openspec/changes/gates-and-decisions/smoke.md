@@ -9,26 +9,27 @@
 | Command | Result |
 |---|---|
 | `bun run typecheck` | pass (`tsc --noEmit`, no errors) |
-| `bun run test` | pass: 112 test files, 1518 tests |
+| `bun run test` | pass: 112 test files, 1541 tests (after the smoke fix) |
 
-## Manual smoke
+## Manual smoke (real GitHub, 2026-11-16)
 
-**Outcome: not run against a real forge.** No scratch GitHub repository was available in the implementation session, and that session made no network or real forge calls by design. It also could not drive an interactive pi TUI.
+- **Repository:** `ttdua/superspecplan` (private scratch). The work was on branch `ls05-smoke`, with `integrationBranch: ls05-smoke`; `main` was not touched.
+- **Account:** `ttdua` (admin). pi 1.5.2. The extension was loaded with `-e src/extension.ts` from `gates-and-decisions`.
+- **Issue:** #12 `smoke-greeting`.
 
-**Fallback evidence:** `tests/e2e/gates-flow.test.ts` › `full gate flow over a memory forge` passes. It runs the same flow through the real tools, the approver chain and forge polling over `MemoryWorld` and a local bare origin:
+| Step | How | Outcome |
+|---|---|---|
+| `/livespec init`, then `change_new` and `change_start` | `pi -p` | pass: issue #12 was created and branch `livespec/smoke-greeting` was cut from `ls05-smoke` |
+| Self gate `shape` | `pi -p`, `spec_gate shape` | pass: `gate` comment with `by: livespec`; phase `define` |
+| Define gate, in session | interactive TUI (tmux), `spec_gate define`; the human picked **approve**, then **No notes** | pass: the dialog showed Capabilities, Product impact, the Proposal, the spec diff stat and the changed files. The `gate` comment has `adapter: in-session` and `by: ttdua`; phase `plan` |
+| `plan_units` | `pi -p` | **failed first**, with a version conflict on every run. Cause: on GitHub, posting a comment bumps the issue's `updated_at`, which is part of the issue version, so the body write that follows the decision records always conflicted. Fixed in `125a0d8` (re-read after posting the records). The memory forge now bumps the version on a new comment (`9521505`), so tests cover this. After the fix: pass, U1 written with `Difficulty: low`, `Tags: []` and 2 decision records |
+| Plan gate, through the forge | `interaction.adapter: [forge]`, `spec_gate plan`; `ttdua` commented `/livespec approve smoke test approval from ttdua`; then `pi -p "/livespec next"` | pass: the `request` comment lists the units and decisions. The `gate` comment has `adapter: forge`, `outcome: approved_with_notes`, the notes, `answer_comment` (the id and author of that comment) and `locked.U1`. The phase moved to `build` |
+| Amendment, through the forge | `unit_amend U1`, then `/livespec approve`, then `/livespec next` | pass: the `amendment` comment holds the old and new digests, with `adapter: forge` |
 
-1. a define change with a spec diff, with `spec_gate define` approved in session, after which the phase is `plan`;
-2. `plan_units`, then `spec_gate plan` with `interaction.adapter: [forge]`, then a writer's `/livespec approve`, then `spec_status` polls, after which the phase is `build` and the units are locked;
-3. a web edit freezes U2, then `unit_amend U2` is approved through `/livespec approve` and U2 is no longer frozen;
-4. U1 is ticked, then `spec_question` is answered with `/livespec answer Q1 … --changes rate-limit/Requirement: Per-IP cap`, after which the change is back in define, U1 is unticked and stale, and `change_iterations` is 1 (cap 1);
-5. `spec_gate define` refuses and names `spec_stuck`; `spec_stuck` followed by `/livespec choose A` lifts the block, and `spec_gate define` is accepted again.
+**Not covered on the real forge:**
+- A command from a non-writer. `naicoi92` cannot read this private repository, so no comment could be posted from it; unit tests in `tests/interaction/forge.test.ts` cover the case.
+- The same-login gap. Every answer here came from `ttdua`, which is also the plugin's login. This is the known LS-06 gap.
 
-`tests/tools/no-answer-params.test.ts` › `Tool has no answer parameter` also passes.
+## In-memory end-to-end test
 
-### Pending for a human
-
-Run these on a scratch GitHub repository where the plugin account and a second writer account both have write access:
-
-1. **Interactive approval.** Run `/livespec init` in an interactive pi session in the scratch clone. Create a change with `change_new`, then `change_start`. Write a capability spec under `specs/<capability>/spec.md`, commit it, and fill `Capabilities` and `## Proposal`. Ask the agent to run `spec_gate define`, then choose **approve** in the dialog. Expect a `gate` comment on the issue with `adapter: in-session`, and the label `livespec:phase/plan`.
-2. **Forge approval.** Set `.pi/livespec/config.yaml` to `interaction: { adapter: [forge] }` and commit it. Run `pi -p "plan the units and request the plan gate"` so that `plan_units` and `spec_gate plan` run. Expect a `request` comment with subject `gate:plan`. From the second writer account, comment `/livespec approve` on the issue. Then run `pi -p "/livespec next"`. Expect a `gate` comment with `adapter: forge` and `answer_comment` naming that comment, and a next step in `build`.
-3. Record here the date, `pi --version`, the repository, and the outcome of each step.
+`tests/e2e/gates-flow.test.ts` › `full gate flow over a memory forge` also passes: question cascade, iteration cap, stuck report and `choose`.
