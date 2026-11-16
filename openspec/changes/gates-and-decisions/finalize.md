@@ -7,7 +7,7 @@
 
 **Change**: `gates-and-decisions`
 **Finalized at**: `2026-11-16 08:45`
-**Outcome**: `pr-updated` (the git-side closeout ran; push and PR are still pending, see "Deviation")
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,19 +15,12 @@
 
 - **Branch**: `ls-05`
 - **Base branch**: `main`
-- **Final state**: `pr-updated`. The worktree branch `gates-and-decisions` was fast-forward merged into `ls-05` locally; `ls-05` has not been pushed yet.
-- **PR URL**: N/A. No PR exists for `ls-05`, and none will be opened until the user approves the push.
+- **Final state**: `pr-open`. The worktree branch `gates-and-decisions` was fast-forward merged into `ls-05`, and `ls-05` was pushed with account `ttdua`.
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/21
 
 ### Deviation (project AGENTS.md policy)
 
-The project `AGENTS.md` says: "do not push, merge or open a PR without explicit user permission in chat". Finalize steps 10–12 (push `ls-05`, offer a PR, post the reviewer comment) therefore wait for the user's permission. The steps that ran:
-
-- 1–2: branch facts read from `apply.md`; tests run in the worktree.
-- 2b: code review gate.
-- 3–5: `git pull` was skipped because `ls-05` has no upstream; fast-forward merge; tests run again.
-- 8–9: this receipt was written and committed.
-
-The worktree and its branch were not removed (steps 6–7); see Workspace.
+The project `AGENTS.md` requires explicit user permission before a push or a PR. Finalize paused after step 9. The user then approved in chat, and steps 10–12 ran: push `ls-05`, open PR #21, post the reviewer comment. `git pull` was skipped because `ls-05` had no upstream before the push. The PR was created directly; the interactive PR prompt was answered by that chat approval.
 
 ---
 
@@ -40,7 +33,7 @@ The worktree and its branch were not removed (steps 6–7); see Workspace.
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`. The push and PR creation wait for the user's permission (AGENTS.md).
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/21#issuecomment-6905217885)
 
 ---
 
@@ -73,4 +66,4 @@ The warnings from verify (`PASS_WITH_WARNINGS`) are tracked as GitHub issues:
 
 ## Next step
 
-Once the user allows it, push `ls-05` and open a PR (suggested title: `feat(phase-gates): gates-and-decisions`), then post the code-reviewer orientation comment. After PR approval, run `/opsx-archive` on `ls-05`, push the archive commits, and merge the PR.
+Wait for the PR code review on #21. After approval, run `/opsx-archive` on `ls-05` (its commits land on this branch), push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge brings both the implementation and the archive into main.
