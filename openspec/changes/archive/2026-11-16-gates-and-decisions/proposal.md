@@ -30,9 +30,10 @@ Deviations from the issue text:
 - **Two decision records per unit**, one per decision point.
 - **Approving the ship gate does not move the phase.** LS-09's `change_ship` does that.
 
-Known gaps, closed by LS-06 guards:
+Known gaps (the first two closed by LS-06 guards):
 - the agent posting `/livespec …` command comments from the same login through `gh` or `tea` in bash;
-- the agent editing `.pi/livespec/flow.yaml` to lower a gate.
+- the agent editing `.pi/livespec/flow.yaml` to lower a gate;
+- two sessions or machines completing the same answer at once (polling is single-flight per session only).
 
 ## Capabilities
 
@@ -44,7 +45,7 @@ Known gaps, closed by LS-06 guards:
 - `decision-seam`: `decide()`, `registerRule`, decision records, human overrides, the `decisions` pack sub-schema, and the `tags` and `difficulty` rules.
 
 ### Modified Capabilities
-- `flow-engine`: **Next step precedence** gains the open stuck report, pending approver requests, the iteration cap, and frozen or stale units, and gives the ship-gate-approved sentence. **Change state from issue and git** gains gate, lock, request, stale and stuck facts read from own marked comments.
+- `flow-engine`: **Next step precedence** gains the open stuck report, pending approver requests, the iteration cap, and frozen or stale units, and gives the ship-gate-approved sentence. **Change state from issue and git** gains gate, lock, request, stale and stuck facts read from own marked comments. **Loop counters** gains `change_iterations`, derived from own `stale` comments with `after_plan: true`.
 - `flow-pack`:
   - **Default flow pack** now fills `decisions` with the `tags` and `difficulty` defaults and adds the `unit-classification` check to `plan`, so the canonical fixture changes.
   - **Project override** now merges `decisions` per point through the rule's own merge, so tags are merged per tag instead of being replaced.
@@ -57,3 +58,8 @@ Known gaps, closed by LS-06 guards:
 - `Git` gains a merge operation for `plan_units`. No new runtime dependency.
 - New marker kinds `request` and `answer`.
 - `docs/architecture.md` gains the interaction and decide details.
+
+## Errata (#20)
+
+- `flow-engine` Modified: **Loop counters** was missing from the list; it is added.
+- Known gaps: the cross-session answer race is listed; LS-06 does not close it (polling is single-flight per session only).

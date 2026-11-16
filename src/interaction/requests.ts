@@ -7,17 +7,41 @@ import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import {
 	ANSWER_KIND,
 	type Answered,
+	isSubject,
 	REQUEST_KIND,
 	type RequestKind,
 	type RequestMode,
 	type RequestOption,
 	type RequestRecord,
+	type AmendSnapshot,
+	type DecideSnapshot,
+	type GateSnapshot,
+	type QuestionSnapshot,
 	type RequestSnapshot,
+	type StuckSnapshot,
 	type Subject,
 } from "./approver.ts";
 
-/** The `answer` comment data: the full request, the human's answer and the validation verdict. */
-export type AnswerData = { request: RequestRecord; answer: Answered; verdict: "valid" | "superseded"; reason?: string };
+/**
+ * The `answer` comment data: the full request, the human's answer and the validation verdict. A superseded `reason`
+ * is already wrapped as untrusted where it was built when `reason_wrapped` is set; an answer without the field is
+ * legacy and its whole reason is wrapped when shown.
+ */
+export type AnswerData = { request: RequestRecord; answer: Answered; verdict: "valid" | "superseded"; reason?: string; reason_wrapped?: true };
+
+/** The snapshot of a request with its kind, derived from the subject prefix. */
+export type TypedSnapshot =
+	| { kind: "gate"; snapshot: GateSnapshot }
+	| { kind: "amend"; snapshot: AmendSnapshot }
+	| { kind: "question"; snapshot: QuestionSnapshot }
+	| { kind: "stuck"; snapshot: StuckSnapshot }
+	| { kind: "decide"; snapshot: DecideSnapshot };
+
+/** A typed view of the stored snapshot (design D5); the stored yaml is not validated. */
+export function snapshotOf(record: RequestRecord): TypedSnapshot {
+	const kind = record.subject.slice(0, record.subject.indexOf(":")) as TypedSnapshot["kind"];
+	return { kind, snapshot: record.snapshot } as TypedSnapshot;
+}
 
 export type PendingRequest = { id: string; subject: Subject; kind: RequestKind; mode: RequestMode; createdAt: string; data: RequestRecord };
 export type AppliedAnswer = { id: string; subject: Subject; record: AnswerData };
@@ -88,13 +112,13 @@ function createdAtOf(id: string): string {
 
 function asRequestRecord(m: MarkedComment): RequestRecord | undefined {
 	const d = m.data;
-	if (!isObject(d) || typeof d.subject !== "string" || typeof d.kind !== "string" || typeof d.mode !== "string") return undefined;
+	if (!isObject(d) || typeof d.subject !== "string" || !isSubject(d.subject) || typeof d.kind !== "string" || typeof d.mode !== "string") return undefined;
 	return { ...(d as Omit<RequestRecord, "id">), id: m.id };
 }
 
 function asAnswerData(m: MarkedComment): AnswerData | undefined {
 	const d = m.data;
-	if (!isObject(d) || !isObject(d.request) || typeof d.request.subject !== "string" || !isObject(d.answer)) return undefined;
+	if (!isObject(d) || !isObject(d.request) || typeof d.request.subject !== "string" || !isSubject(d.request.subject) || !isObject(d.answer)) return undefined;
 	return d as AnswerData;
 }
 

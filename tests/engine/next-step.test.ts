@@ -283,7 +283,7 @@ function requests(pending: PendingRequest[], applyingList: AppliedAnswer[] = [])
 }
 
 function lockWith(over: Partial<LockState>): LockState {
-	return { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: [], stalePhases: [], gates: {}, ...over };
+	return { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: [], gates: {}, ...over };
 }
 
 function iterations(over: Partial<IterationState>): IterationState {
@@ -342,7 +342,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 		expect(step.advance).toBe("plan");
 	});
 
-	test("waived failing check does not block the advance", () => {
+	test("Waived check does not hold the next step", () => {
 		const sizeLimits = [{ check: "size-limits", code: "size-limits", severity: "error" as const, message: "U3 touches too many files" }];
 		const waived = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", false, ["size-limits"]) } }) }));
 		expect(waived.next).toBe("The plan gate is approved: move to build.");

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
-import type { Answered, RequestRecord } from "../../src/interaction/approver.ts";
+import { type Answered, isSubject, type RequestRecord } from "../../src/interaction/approver.ts";
 import {
 	type AnswerData,
 	answerComment,
@@ -10,6 +10,7 @@ import {
 	readRequests,
 	type RequestsState,
 	requestComment,
+	snapshotOf,
 } from "../../src/interaction/requests.ts";
 
 const NOW = new Date("2026-11-15T10:00:00.000Z");
@@ -22,7 +23,7 @@ const RECORD: RequestRecord = {
 	mode: "blocking",
 	head_sha: "f".repeat(40),
 	gate_digest: "d".repeat(64),
-	snapshot: { target: "plan", digests: { U1: "a" }, failingWaivable: [] },
+	snapshot: { target: "plan", failingWaivable: [] },
 	summary: "Approve plan?",
 };
 
@@ -96,5 +97,28 @@ describe("open requests", () => {
 		expect(openRequests(state)).toEqual([{ id: "gate-plan.a", subject: "gate:plan" }, { id: "question-Q1.b", subject: "question:Q1" }]);
 		expect(openRequestFor(state, "question:Q1")).toBe("question-Q1.b");
 		expect(openRequestFor(state, "gate:define")).toBeUndefined();
+	});
+});
+
+describe("subjects and typed snapshots", () => {
+	test("old request comment with snapshot digests still parses", () => {
+		const old = { ...RECORD, snapshot: { target: "plan", digests: { U1: "a" }, failingWaivable: [] } };
+		const state = readRequests(comments(requestComment(ID, old as RequestRecord, "text")));
+		expect(state.pending.map((r) => r.id)).toEqual([ID]);
+	});
+
+	test("request with an unknown subject prefix is ignored", () => {
+		const unknown = { ...RECORD, subject: "deploy:x" } as unknown as RequestRecord;
+		expect(readRequests(comments(requestComment(ID, unknown, "text"))).pending).toEqual([]);
+	});
+
+	test("isSubject accepts every subject LS-05 writes and nothing else", () => {
+		for (const s of ["gate:plan", "gate:new-dependency", "amend:12", "question:Q3", "stuck:S1", "decide:difficulty.U1"]) expect(isSubject(s)).toBe(true);
+		for (const s of ["deploy:x", "amend:x", "question:3", "stuck:", "gate:", "decide:", "plan"]) expect(isSubject(s)).toBe(false);
+	});
+
+	test("snapshotOf discriminates by subject", () => {
+		const kinds = (["gate:plan", "amend:1", "question:Q1", "stuck:S1", "decide:tags.U1"] as const).map((subject) => snapshotOf({ ...RECORD, subject }).kind);
+		expect(kinds).toEqual(["gate", "amend", "question", "stuck", "decide"]);
 	});
 });

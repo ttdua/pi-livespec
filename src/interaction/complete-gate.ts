@@ -9,7 +9,7 @@ import { writeMarked } from "../forge/markers.ts";
 import type { AdapterName, Answered, GateSnapshot, RequestRecord } from "./approver.ts";
 import { type ApplyFn, phasesAfter, postOnce, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
-import type { AnswerData } from "./requests.ts";
+import { type AnswerData, snapshotOf } from "./requests.ts";
 import { WAIVE } from "./waive-rule.ts";
 
 const PLAN = "plan";
@@ -43,8 +43,10 @@ export function gateComment(id: string, g: GateCommentInput): string {
 	return writeMarked("gate", `${g.target}.${id}`, data);
 }
 
-function snapshotOf(request: RequestRecord): GateSnapshot {
-	return request.snapshot as GateSnapshot;
+function gateSnapshotOf(request: RequestRecord): GateSnapshot {
+	const typed = snapshotOf(request);
+	if (typed.kind !== "gate") throw new Error(`${request.subject} is not a gate request`);
+	return typed.snapshot;
 }
 
 async function writeStale(run: Run, request: RequestRecord, target: string): Promise<void> {
@@ -61,7 +63,7 @@ async function lockedDigests(run: Run): Promise<Record<string, string>> {
 
 export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const { request, answer } = record;
-	const target = snapshotOf(request).target;
+	const target = gateSnapshotOf(request).target;
 	const isPhase = run.ctx.pack.phases.some((p) => p.id === target);
 	const superseded = record.verdict === "superseded";
 	const approvedPlan = validApproval({ outcome: answer.outcome, superseded }) && target === PLAN;
@@ -73,7 +75,7 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 		isPhase,
 		answer,
 		headSha: request.head_sha,
-		waivers: !superseded && answer.choice === WAIVE ? [...snapshotOf(request).failingWaivable] : [],
+		waivers: !superseded && answer.choice === WAIVE ? [...gateSnapshotOf(request).failingWaivable] : [],
 	};
 	if (superseded) input.superseded = true;
 	if (approvedPlan) {

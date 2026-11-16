@@ -2,6 +2,7 @@
 // per-phase review payload providers and gate refusal. Nothing here does I/O.
 
 import { untrusted } from "../hooks/phase-card.ts";
+import { displayQuestionId, displayRequestId, displayStuckId, displaySubject, displayToken, displayUnitId } from "../interaction/display-ids.ts";
 import type { ReviewFacts } from "./gate-payload.ts";
 import type { Pack, Phase } from "./pack-types.ts";
 import { isWaivable } from "./registry.ts";
@@ -95,12 +96,12 @@ const noGate: RefusalRule = ({ target }) =>
 
 const blockingQuestion: StateRule = ({ state }) => {
 	const q = state.change.questions.find((x) => x.kind === "blocking" && !x.checked);
-	return q ? `Blocking question ${q.id} is open: answer it before requesting the gate.` : undefined;
+	return q ? `Blocking question ${displayQuestionId(q.id)} is open: answer it before requesting the gate.` : undefined;
 };
 
 const openStuck: StateRule = ({ state }) => {
 	const id = state.iterations.stuckOpen;
-	return id ? `Stuck report ${id} is unanswered: wait for the human's choice.` : undefined;
+	return id ? `Stuck report ${displayStuckId(id)} is unanswered: wait for the human's choice.` : undefined;
 };
 
 const capReached: StateRule = ({ state }) => {
@@ -111,7 +112,7 @@ const capReached: StateRule = ({ state }) => {
 const pendingRequest: RefusalRule = ({ state, subject, ignoreRequest }) => {
 	const pending = state.requests.pending.find((r) => r.subject === subject && r.id !== ignoreRequest);
 	return pending
-		? `A request for ${subject} is pending (${pending.id}): wait for its answer or end it with /livespec dismiss.`
+		? `A request for ${displaySubject(subject)} is pending (${displayRequestId(pending.id)}): wait for its answer or end it with /livespec dismiss.`
 		: undefined;
 };
 
@@ -125,14 +126,14 @@ const changedUnits: RefusalRule = ({ state, pack, target }) => {
 	if (lock.locked === undefined) return undefined;
 	const named = [...lock.frozen.map((u) => ({ u, why: "frozen" })), ...lock.staleUnits.map((u) => ({ u, why: "stale" }))];
 	if (named.length === 0) return undefined;
-	const list = named.map(({ u, why }) => `${u} (${why})`).join(", ");
+	const list = named.map(({ u, why }) => `${displayUnitId(u)} (${why})`).join(", ");
 	return `Amend the units changed since the plan was locked with unit_amend first: ${list}.`;
 };
 
 const failingCheck: RefusalRule = ({ state, target }) => {
 	const failure = failingChecks(state, target).find((r) => !isWaivable(r.check));
 	// The check message can quote forge text (unit titles, file names), so it is wrapped as untrusted.
-	return failure ? `Check ${failure.check} fails: ${untrusted(sentence(failure.message))}.` : undefined;
+	return failure ? `Check ${displayToken(failure.check)} fails: ${untrusted(sentence(failure.message))}.` : undefined;
 };
 
 type StateInput = { state: ChangeState };
@@ -157,7 +158,7 @@ export function gateRefusal(state: ChangeState, pack: Pack, target: string, igno
 	const resolved = resolveGateTarget(state, pack, target);
 	if (!resolved) {
 		const current = activePhase(state, pack)?.id ?? "none";
-		return `${target} is neither the current phase (${current}) nor a registered gate.`;
+		return `${displayToken(target)} is neither the current phase (${current}) nor a registered gate.`;
 	}
 	const input: RefusalInput = { state, pack, target: resolved, subject: `gate:${target}`, ignoreRequest };
 	for (const rule of REFUSALS) {

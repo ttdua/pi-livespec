@@ -7,10 +7,11 @@ import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
 import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
-import { runChecks } from "../../src/engine/checks.ts";
+import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { deriveLocks, validApproval } from "../../src/engine/locks.ts";
+import { registerCheck } from "../../src/engine/registry.ts";
 import { nextStep } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
@@ -19,11 +20,12 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { amendedBody } from "../../src/interaction/amend-body.ts";
-import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot } from "../../src/interaction/approver.ts";
+import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
-import { prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { answerComment, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
+import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN, OTHER_LOGIN } from "../forge/world.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
@@ -83,7 +85,7 @@ async function refresh(f: Fixture): Promise<ChangeState> {
 	return (await stateOf(f)).state;
 }
 
-async function prepare(f: Fixture, kind: RequestKind, subject: string, snapshot: RequestSnapshot, options?: { id: string; label: string }[]): Promise<RequestRecord> {
+async function prepare(f: Fixture, kind: RequestKind, subject: Subject, snapshot: RequestSnapshot, options?: { id: string; label: string }[]): Promise<RequestRecord> {
 	const body = await f.world.bodyOf(f.n);
 	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head: f.head, body, snapshot, summary: `Review ${subject}`, now: new Date(AT) });
 }
@@ -94,7 +96,7 @@ function envelope(record: RequestRecord): ApprovalRequest {
 
 const answer = (over: Partial<Answered> = {}): Answered => ({ status: "answered", outcome: "approved", notes: "", by: "alice", at: AT, adapter: "in-session", ...over });
 
-const gateSnapshot = (target: string) => ({ target, digests: {}, failingWaivable: [] });
+const gateSnapshot = (target: string) => ({ target, failingWaivable: [] });
 
 /** Posts the forge request, then a writer's command, and returns the polled answer. */
 async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): Promise<Answered> {
@@ -102,8 +104,8 @@ async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): 
 	await approver.request(envelope(record));
 	await f.world.setPermission("alice", "write");
 	await f.world.postComment(f.n, "alice", command);
-	const polled = await approver.poll(record.id);
-	if (polled.status !== "answered") throw new Error("not answered");
+	const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+	if (!polled) throw new Error("not answered");
 	return polled;
 }
 
@@ -181,8 +183,8 @@ describe("completion engine", () => {
 		await f.world.editBodyBehindBack(f.n, (await f.world.bodyOf(f.n)).replace("Limit each client IP.", "Limit each client IP and user."));
 		await f.world.setPermission("alice", "write");
 		await f.world.postComment(f.n, "alice", "/livespec approve");
-		const polled = await approver.poll(record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+		if (!polled) throw new Error("not answered");
 		const out = await completeAnswer(await ctxOf(f), record, polled);
 		expect(out.status).toBe("superseded");
 		expect((ofKind(await markedOf(f), "gate").at(-1)?.data as { superseded?: boolean }).superseded).toBe(true);
@@ -204,7 +206,7 @@ describe("completion engine", () => {
 	test("an approval that does not waive failing waivable checks is superseded", async () => {
 		const f = await fixture("define");
 		const options = [{ id: "waive", label: "Waive size-limits" }, { id: "accept", label: "accept" }];
-		const record = await prepare(f, "gate", "gate:define", { target: "define", digests: {}, failingWaivable: ["size-limits"] }, options);
+		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] }, options);
 		const out = await completeAnswer(await ctxOf(f), record, answer({ choice: "accept" }));
 		expect(out.status).toBe("superseded");
 		expect(out.result).toContain("choose waive");
@@ -290,8 +292,8 @@ describe("completion engine", () => {
 		await f.world.editBodyBehindBack(f.n, u3Done(await f.world.bodyOf(f.n)));
 		await f.world.setPermission("alice", "write");
 		await f.world.postComment(f.n, "alice", "/livespec approve");
-		const polled = await approver.poll(record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+		if (!polled) throw new Error("not answered");
 		const out = await completeAnswer(await ctxOf(f), record, polled);
 		expect(out.status).toBe("superseded");
 		const body = await f.world.bodyOf(f.n);
@@ -310,7 +312,7 @@ describe("completion engine", () => {
 		const other = renderUnit({ id: "U4", title: "Other", covers: [REQUIREMENT], difficulty: "low", tags: [], files: ["src/o.ts"], done_means: [{ label: "o", text: "other" }], scenarios: [{ label: "o", ref: "test/ratelimit.test.ts › rejects 101st request" }], depends: [], verify: "npm test" });
 		await f.world.editBodyBehindBack(f.n, amendedBody(before, { action: "add", unit: "U4", lines: other, records: [] }));
 		const out = await completeAnswer(await ctxOf(f), record, answer());
-		expect(out.result).toContain("U4 is already in the body");
+		expect(out.result).toContain(`${untrusted("U4")} is already in the body`);
 		const units = parseChange(await f.world.bodyOf(f.n)).units;
 		expect(units.find((u) => u.id === "U4")?.title).toBe("Other");
 	});
@@ -375,7 +377,7 @@ describe("completion engine", () => {
 		const polled = await forgeAnswer(f, record, "/livespec choose B");
 		await completeAnswer(await ctxOf(f), record, polled);
 		const answerComment = ofKind(await markedOf(f), "stuck", "S1-answer")[0];
-		expect(answerComment?.data).toMatchObject({ choice: "B", request: record.id });
+		expect(answerComment?.data).toMatchObject({ choice: "B", request: record.id, outcome: "approved" });
 		const { state, step } = await stateOf(f);
 		expect(state.iterations.stuckOpen).toBeUndefined();
 		expect(step.next).not.toContain("stuck report");
@@ -422,6 +424,81 @@ describe("completion engine", () => {
 		expect(ofKind(marked, "gate")[0]?.data).toMatchObject({ outcome: "changes_requested", request: record.id });
 		expect(readRequests(marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("superseded reason is wrapped once", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		registerCheck("spec-format", async () => [{ code: "x", severity: "error", message: "bad <b>title</b>" }]);
+		try {
+			const out = await completeAnswer(await ctxOf(f), record, answer());
+			expect(out.status).toBe("superseded");
+			expect(out.result.match(/<untrusted>/g)).toHaveLength(2); // the subject and the failing check message
+			expect(out.result).toContain(untrusted("bad <b>title</b>"));
+			expect(out.result).not.toContain("&lt;untrusted&gt;");
+		} finally {
+			registerBuiltinChecks();
+		}
+	});
+
+	test("a legacy superseded reason is wrapped whole when its applying answer finishes", async () => {
+		const f = await fixture("build");
+		await seedLock(f);
+		const record = await prepare(f, "gate", "amend:1", { action: "drop", unit: "U3", records: [] });
+		const legacy = { request: record, answer: answer(), verdict: "superseded" as const, reason: 'U3: Difficulty "<b>forge</b>" must be low' };
+		await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, legacy));
+		const out = await finishApplying(await ctxOf(f));
+		expect(out.errors).toEqual([]);
+		expect(out.finished[0]?.result).toContain(untrusted(legacy.reason));
+		expect(out.finished[0]?.result).not.toContain("<b>");
+	});
+
+	test("malformed own stale-unit text stays escaped in a superseded reason", async () => {
+		const f = await fixture("plan");
+		await seedLock(f);
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("stale", "s1", { phases: [], units: ["<b>forge-stale-text</b>"] }));
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.status).toBe("superseded");
+		expect(out.result).toContain("forge-stale-text");
+		expect(out.result.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("<b>");
+	});
+
+	test("legacy wrapped reason stays escaped", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		const legacy = { request: record, answer: answer(), verdict: "superseded" as const, reason: `Check x fails: ${untrusted("<b>forge</b>")}.` };
+		await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, legacy));
+		const out = await finishApplying(await ctxOf(f));
+		const text = out.finished[0]?.result ?? "";
+		expect(text).toContain("forge");
+		expect(text.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("<b>");
+	});
+
+	test("a newly recorded superseded answer marks its reason as already wrapped", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] });
+		await completeAnswer(await ctxOf(f), record, answer());
+		const [recorded] = ofKind(await markedOf(f), "answer", record.id);
+		expect(recorded?.data).toMatchObject({ verdict: "superseded", reason_wrapped: true });
+	});
+
+	test("applying answers of every subject kind still complete", async () => {
+		const f = await fixture("build");
+		const cases: [RequestKind, Subject, RequestSnapshot][] = [
+			["gate", "gate:define", gateSnapshot("define")],
+			["gate", "amend:1", { action: "drop", unit: "U9", records: [] }],
+			["question", "question:Q1", { id: "Q1", text: "header?", requirements: [] }],
+			["stuck", "stuck:S1", { id: "S1" }],
+			["stuck", "decide:difficulty.U1", { point: "difficulty", subject: "U1", facts: {}, digest: "d", proposal: true }],
+		];
+		for (const [kind, subject, snapshot] of cases) {
+			const record = await prepare(f, kind, subject, snapshot);
+			await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, { request: record, answer: answer({ choice: "A" }), verdict: "valid" }));
+		}
+		const out = await finishApplying(await ctxOf(f));
+		expect(out.errors).toEqual([]);
+		expect(out.finished).toHaveLength(cases.length);
 	});
 
 	test("completion result wraps forge text as untrusted", async () => {

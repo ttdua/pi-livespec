@@ -2,12 +2,14 @@
 // `source: human` is the result comment; no other effect.
 
 import { decisionComment, type DecisionRecord } from "../decide/records.ts";
-import type { DecideSnapshot } from "./approver.ts";
 import type { ApplyFn } from "./complete-effects.ts";
+import { snapshotOf } from "./requests.ts";
 
 export const applyDecide: ApplyFn = async (_run, record) => {
 	const { request, answer } = record;
-	const s = request.snapshot as DecideSnapshot;
+	const typed = snapshotOf(request);
+	if (typed.kind !== "decide") throw new Error(`${request.subject} is not a decision request`);
+	const s = typed.snapshot;
 	const chosen = answer.outcome !== "dismissed" && answer.choice !== undefined;
 	const decision: DecisionRecord = {
 		point: s.point,

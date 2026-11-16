@@ -155,16 +155,24 @@ describe("loadConfig", () => {
 		expect(adapterChain(config)).toEqual({ chain: ["forge"], source: "project" });
 	});
 
-	test("present project setting wins even when empty, and an empty chosen list falls back to the default source", async () => {
+	test("Project list with only unknown names", async () => {
+		projectFile("interaction: { adapter: [slack] }\n");
+		userFile("interaction: { adapter: [forge] }\n");
+		const config = await loadConfig(root, home);
+		expect(config.warnings.some((w) => w.includes("slack"))).toBe(true);
+		expect(adapterChain(config)).toEqual({ chain: ["forge"], source: "user" });
+	});
+
+	test("Empty project list", async () => {
 		projectFile("interaction: { adapter: [] }\n");
 		userFile("interaction: { adapter: [forge] }\n");
 		const config = await loadConfig(root, home);
-		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
+		expect(adapterChain(config)).toEqual({ chain: ["forge"], source: "user" });
 	});
 
-	test("project list of only unknown names falls back to the default source, not the user chain", async () => {
-		projectFile("interaction: { adapter: [plannotator] }\n");
-		userFile("interaction: { adapter: [forge] }\n");
+	test("Every list empty", async () => {
+		projectFile("interaction: { adapter: [] }\n");
+		userFile("interaction: { adapter: [] }\n");
 		const config = await loadConfig(root, home);
 		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
 	});

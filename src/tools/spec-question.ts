@@ -13,7 +13,7 @@ import { appendQuestion, reclassifyQuestion } from "../core/question-lines.ts";
 import { parseSpec } from "../core/spec.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
-import type { ApprovalRequest, QuestionClass, QuestionSnapshot } from "../interaction/approver.ts";
+import { type ApprovalRequest, isSubject, type QuestionClass, type QuestionSnapshot, type Subject } from "../interaction/approver.ts";
 import { openRequestFor, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -27,6 +27,12 @@ export type QuestionForm = { action: "ask"; text: string; class: QuestionClass }
 
 const TOOL = "spec_question";
 const SUBJECT_PREFIX = "question:";
+
+/** The subject of question `id`, or undefined when `id` is not a `Q<n>` id (tool input, so not an invariant). */
+function questionSubject(id: string): Subject | undefined {
+	const subject = `${SUBJECT_PREFIX}${id}`;
+	return isSubject(subject) ? subject : undefined;
+}
 const SPECS_PATH = "specs";
 /** The reclassify write of "answer later": the first try plus one retry after a version conflict. */
 const RECLASSIFY_TRIES = 2;
@@ -73,7 +79,8 @@ export function requirementNames(capability: string, specText: string): string[]
 
 /** The prepared question request; the mode follows the class. */
 export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass }, input: { body: string; requirements: string[]; now: Date }): ApprovalRequest {
-	const subject = `${SUBJECT_PREFIX}${q.id}`;
+	const subject = questionSubject(q.id);
+	if (subject === undefined) throw new Error(`not a question id: ${q.id}`);
 	const mode = q.class === "blocking" ? "blocking" : "async";
 	const snapshot: QuestionSnapshot = { id: q.id, text: q.text, requirements: input.requirements };
 	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${q.text}`;
@@ -154,7 +161,8 @@ export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): 
 	if (!change.ok) return toolResult(change.message, undefined, true);
 	const { state } = change;
 	if (form.action === "reask") {
-		const open = openRequestFor(state.requests, `${SUBJECT_PREFIX}${form.id}`);
+		const subject = questionSubject(form.id);
+		const open = subject === undefined ? undefined : openRequestFor(state.requests, subject);
 		if (open) return toolResult(refusal(`a request for ${form.id} is pending (${open}): wait for its answer or end it with /livespec dismiss.`).refused, undefined, true);
 	}
 	const q = await resolveQuestion(w, state, form);

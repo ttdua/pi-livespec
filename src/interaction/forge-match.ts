@@ -16,7 +16,7 @@ export type Permission = "none" | "read" | "write" | "admin";
 export type CommandMatch = { request: PendingRequest; answer: Answered };
 
 /** A `/livespec class` command for a question with a pending request. */
-export type ClassChange = { question: string; class: QuestionClass };
+export type ClassChange = { question: string; class: QuestionClass; commentId: string };
 
 export type MatchResult = { matches: CommandMatch[]; classes: ClassChange[]; warnings: string[] };
 
@@ -26,6 +26,8 @@ export type MatchOptions = {
 	 * and the comment that closed it, so targets are computed per command position.
 	 */
 	marked: MarkedComment[];
+	/** Ids of command comments whose `/livespec class` was applied and recorded; they are skipped silently. */
+	appliedClasses?: ReadonlySet<string>;
 };
 
 const WRITERS = new Set<Permission>(["write", "admin"]);
@@ -172,6 +174,8 @@ type Ctx = {
 	perms: ReadonlyMap<string, Permission>;
 	/** Command comments recorded answers used; they are skipped silently. */
 	consumed: ReadonlySet<string>;
+	/** Command comments whose `/livespec class` was already applied. */
+	appliedClasses: ReadonlySet<string>;
 	/** Request id → the command comment that answered it in this pass. */
 	answered: Map<string, string>;
 	overrides: Map<string, Map<string, Override>>;
@@ -252,7 +256,7 @@ function apply(ctx: Ctx, comment: Comment, index: number, request: PendingReques
 		return recordSet(ctx, request, command);
 	}
 	if (command.verb === "class") {
-		ctx.result.classes.push({ question: command.question, class: command.class });
+		ctx.result.classes.push({ question: command.question, class: command.class, commentId: comment.id });
 		return;
 	}
 	const answer = decisionAnswer(request, command, comment);
@@ -269,6 +273,7 @@ function matchOne(ctx: Ctx, comment: Comment, index: number): void {
 	const parsed = parseCommand(comment.body);
 	if (parsed === undefined || ctx.consumed.has(comment.id)) return;
 	if ("error" in parsed) return warn(ctx, comment, index, `cannot be parsed (${parsed.error})`);
+	if (parsed.verb === "class" && ctx.appliedClasses.has(comment.id)) return;
 	const target = targetOf(openAt(ctx, comment, index), parsed);
 	if ("warning" in target) return warn(ctx, comment, index, beforeRequest(ctx, parsed, index) ?? target.warning);
 	const first = parsed.verb === "set" || parsed.verb === "class" ? undefined : answeredBy(ctx, target.request);
@@ -307,6 +312,7 @@ export function matchCommands(
 		pendingIds,
 		perms,
 		consumed: consumedIds(placed),
+		appliedClasses: opts.appliedClasses ?? new Set(),
 		answered: new Map(),
 		overrides: new Map(),
 		result: { matches: [], classes: [], warnings: [] },

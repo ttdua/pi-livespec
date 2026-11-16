@@ -64,7 +64,7 @@ Each human decision has three steps: **request → answer → completion.**
 - **Forge answers.** The forge adapter writes an own marked comment `<!-- livespec:request:<id> -->`. Its yaml holds:
   - `kind`, `subject`, `mode` and `options`;
   - `head_sha`, the commit when the request was made;
-  - `snapshot`, everything completion needs, such as unit digests for the plan gate, the proposed unit text for an amendment, the question text, or the failing waivable checks.
+  - `snapshot`, everything completion needs, such as the gate target and failing waivable checks, the proposed unit text for an amendment, the question text, or the failing waivable checks.
 
   Below the yaml block, the comment explains in plain text what is asked and lists the accepted commands. The parser ignores that text.
 - **Request ids.** An id is `<subject-token>.<base36 epoch ms>`, for example `gate-plan.lx3k2a`. It is unique per issue and matches the marker id pattern.
@@ -97,7 +97,7 @@ Each human decision has three steps: **request → answer → completion.**
 
 ### D3. Polling
 
-`pollApprovals(session)` runs at `session_start` after the forge connects, at `/livespec next`, and at the start of every livespec tool, through a shared helper that `prepareWrite` and the read tools call.
+`pollApprovals(session)` runs at `session_start` after the forge connects, at `/livespec next`, and at the start of every livespec tool, through the `registerLivespecTool` wrapper (`src/tools/register.ts`).
 
 1. It skips when the forge is read-only or blocked.
 2. It returns at once when the snapshot shows no pending or applying request.
@@ -143,8 +143,8 @@ Only the first line of a comment that starts with `/livespec ` is read. Tokens a
 
 **Gate and amendment requests:**
 1. `ui.select(summary, labels)`. The labels are approve, request changes, dismiss, and `waive` options when waivable checks fail.
-2. For changes, `ui.input` collects notes. For approve, `ui.confirm` asks "Add notes?" and then `ui.input`.
-3. At the plan gate and amendment gates, the adapter asks "Adjust Difficulty or Tags?". If yes, the human picks a unit and edits the values through `select` and `input`.
+2. For changes, `ui.input` collects notes. For approve, `ui.select` asks "Add notes?" (yes/no as labels, since `confirm` cannot tell no from cancel), then `ui.input`.
+3. At the plan gate and amendment gates, the adapter asks "Adjust Difficulty or Tags?" as a `select`. If yes, the human picks a unit and edits the values through `select` and `input`.
 
 **Question requests:**
 1. `select`: answer now, or answer later (non-blocking).
@@ -153,7 +153,7 @@ Only the first line of a comment that starts with `/livespec ` is read. Tokens a
 
 **Stuck and decide requests.** `select` over the options.
 
-**Escape or cancel.** A cancelled dialog (`undefined` or `false`) is `dismissed`.
+**Escape or cancel.** A cancelled dialog (`undefined`) is `dismissed`.
 
 **"Answer later".** The question becomes non-blocking and the chain moves on to the next adapter. If there is none, the question stays open, and `spec_question` with `reask` sends it again.
 
@@ -161,7 +161,7 @@ Only the first line of a comment that starts with `/livespec ` is read. Tokens a
 
 ### D6. Adapter chain and config
 
-- **Where the setting comes from.** `interaction.adapter` is a list of `in-session` and `forge`. Project config wins over user config, and both default to `[in-session]`. Unknown names are config warnings and are dropped. An empty list falls back to the default.
+- **Where the setting comes from.** `interaction.adapter` is a list of `in-session` and `forge`. Project config wins over user config, and both default to `[in-session]`. Unknown names are config warnings and are dropped. An empty list counts as unset and falls through project → user → default.
 - **How the chain runs.** The chain tries the adapters in order and skips any that is unavailable: in-session without UI, or forge while it is unconnected, read-only or blocked. When none is available, the tool refuses and names the config key.
 - **Doctor.** The approver check reports the list, its source, and the adapter that would answer now.
 
@@ -250,7 +250,7 @@ The agent-skills commit is the basename of the active tree path.
 1. **Reconcile the base.** If the issue `Base` differs from the branch's `livespecBase` config and is an ancestor of HEAD, set the config to the issue `Base`. This finishes a previous run whose outcome was unknown.
 2. Run `decide("tags")` and then `decide("difficulty")` per unit. Both are pure computations, and nothing is posted yet.
 3. Render the complete units, with the computed `Difficulty` and `Tags`, then validate them with `validateUnits` and `checkDoneMapsScenarios`. Any error refuses with the LS-02 results.
-4. Fetch the integration branch, then run `git merge --no-edit origin/<integration>`. On a conflict, `git merge --abort` and refuse. The new `Base` is `rev-parse origin/<integration>`, which is an ancestor of HEAD after the merge.
+4. Fetch the integration branch, then run `git merge --no-ff --no-edit origin/<integration>` (fast-forward is disabled when a merge is needed; an already up-to-date branch gets no new commit). On a conflict, `git merge --abort` and refuse. The new `Base` is `rev-parse origin/<integration>`, which is an ancestor of HEAD after the merge.
 5. Post the decision records.
 6. Write `## Units` and `Base` in one version-checked body write.
 7. Set `branch.<branch>.livespecBase` to the new `Base`, only after the write succeeded.
@@ -320,7 +320,7 @@ The config and the issue `Base` therefore never disagree after a successful run,
 - **The cascade's `stale` comment.** It lists `define` and every phase after it in `phases`, so an old define approval cannot reopen define (D2, valid gate result).
 - **`after_plan`.** It is true only when the cascade actually moves the change back from a phase after define and an approved plan gate exists. A second answer while the change is already in define does not count.
 - **`change_iterations` is derived, not stored.** It is the number of own `stale` comments with `after_plan: true`. Deriving it means a retried completion cannot count twice. The card shows it with the cap like any other counter.
-- **Iteration cap blocking.** Blocking holds when the count is at least `loops.change_iterations` and no stuck answer is dated after the latest `after_plan` stale comment. The same predicate drives the next step, which asks for `spec_stuck`, and gate refusal. A stuck answer clears the block until the next increment.
+- **Iteration cap blocking.** Blocking holds when the count is at least `loops.change_iterations` and no stuck answer with outcome `approved` or `approved_with_notes` and a chosen option is dated after the latest `after_plan` stale comment. The same predicate drives the next step, which asks for `spec_stuck`, and gate refusal. Such a stuck answer clears the block until the next increment; a dismissed one does not.
 - **`spec_stuck`.**
   - Input: `{ where, tried: [{ text, link? }], hypothesis, options: [{ id, label }] (2–3), recommended }`.
   - It writes a `stuck` comment with id `S<n>`, then sends a blocking request with those options.
@@ -335,7 +335,7 @@ The new order is:
 2. not started;
 3. **open stuck report**: wait for the human's choice;
 4. **pending blocking request**: wait for the answer, naming the adapter;
-5. **iteration cap blocking** (the D12 predicate, which a later stuck answer lifts): send a stuck report;
+5. **iteration cap blocking** (the D12 predicate, which a later stuck answer with a chosen option lifts): send a stuck report;
 6. open blocking question;
 7. **frozen or stale units**, in the lock scope: amend them with `unit_amend`;
 8. missing output;
@@ -349,7 +349,7 @@ The gate sentence also covers the latest gate result for the current phase:
 - superseded: request it again;
 - `ship` approved: ready to ship.
 
-The `ChangeState` additions are `requests`, `gates`, `lock`, `stuckOpen` and `iterations`. They are all derived from own marked comments by pure functions. `NextStep` gains `pending`, `frozenUnits` and `staleUnits`. The card adds an `approvals` section: pending requests, frozen and stale units, the open stuck report, and ignored-command warnings. Forge text in it is wrapped as untrusted.
+The `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iterations` (with `iterations.stuckOpen`). They are all derived from own marked comments by pure functions. `NextStep` gains `pending`, `frozenUnits` and `staleUnits`. The card adds an `approvals` section: pending requests, frozen and stale units, the open stuck report, and ignored-command warnings. Forge text in it is wrapped as untrusted.
 
 ## Risks / Trade-offs
 
@@ -370,3 +370,14 @@ The `ChangeState` additions are `requests`, `gates`, `lock`, `stuckOpen` and `it
 ## Open Questions
 
 - The default tag map is still unconfirmed for target projects. It is not blocking.
+
+## Errata (#20)
+
+- D3: polling runs through the `registerLivespecTool` wrapper (`src/tools/register.ts`), not a `prepareWrite` helper.
+- D5: approve notes use a `select` ("Add notes?"), not `confirm`; "Adjust Difficulty or Tags?" is a `select`; a cancelled dialog is `undefined` only.
+- D9: the merge is `git merge --no-ff --no-edit`; an up-to-date branch gets no new commit.
+- D13: `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iterations` (with `iterations.stuckOpen`).
+- Removed in code: `Approver.poll`, `ApproverUI.confirm`, `GateSnapshot.digests`, `LockState.stalePhases`.
+- Where the setting comes from: an empty `interaction.adapter` list counts as unset and falls through project → user → default (not straight to the default).
+- D2 snapshot: a gate request snapshot holds the target and the failing waivable checks, not unit digests (the plan gate comment locks the digests).
+- D12 and D13: only a stuck answer approved with a chosen option lifts the iteration cap; a dismissed stuck answer does not.

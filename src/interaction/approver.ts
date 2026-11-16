@@ -12,7 +12,14 @@ export type AdapterName = (typeof ADAPTER_NAMES)[number];
 export type RequestKind = "gate" | "question" | "stuck";
 
 /** `gate:<phase|name>` | `amend:<n>` | `question:Q<n>` | `stuck:S<n>` | `decide:<point>.<subject>`. */
-export type Subject = string;
+export type Subject = `gate:${string}` | `amend:${number}` | `question:Q${number}` | `stuck:S${number}` | `decide:${string}`;
+
+const SUBJECT_PATTERNS = [/^gate:.+$/, /^amend:\d+$/, /^question:Q\d+$/, /^stuck:S\d+$/, /^decide:.+$/];
+
+/** Whether `s` is a subject LS-05 writes; forge text is parsed with this before it is trusted as a `Subject`. */
+export function isSubject(s: string): s is Subject {
+	return SUBJECT_PATTERNS.some((pattern) => pattern.test(s));
+}
 
 export type RequestMode = "blocking" | "async";
 export type QuestionClass = "blocking" | "non-blocking";
@@ -26,7 +33,6 @@ export interface RequestOption {
 
 export interface GateSnapshot {
 	target: string;
-	digests: Record<string, string>;
 	failingWaivable: string[];
 }
 
@@ -126,14 +132,12 @@ export interface Approver {
 	readonly name: AdapterName;
 	available(): boolean;
 	request(r: ApprovalRequest): Promise<Answered | Pending | Deferred>;
-	poll(requestId: string): Promise<Answered | { status: "pending" }>;
 }
 
 /** The subset of `ctx.ui` plus `ctx.hasUI` the in-session adapter uses. */
 export interface ApproverUI {
 	hasUI: boolean;
 	select(title: string, options: string[]): Promise<string | undefined>;
-	confirm(title: string, message: string): Promise<boolean>;
 	input(title: string, placeholder?: string): Promise<string | undefined>;
 }
 
@@ -141,5 +145,8 @@ export interface ApproverUI {
 export const REQUEST_KIND = "request";
 /** Marker kind of a validated answer: id = request id. */
 export const ANSWER_KIND = "answer";
+/** Marker kind of an applied `/livespec class` command: id = the command comment id. */
+export const CLASS_KIND = "class";
 registerKind(REQUEST_KIND);
 registerKind(ANSWER_KIND);
+registerKind(CLASS_KIND);

@@ -148,4 +148,41 @@ describe("gates and decisions", () => {
 		const reopened = await h.call("spec_gate", { target: "define" });
 		expect(reopened.isError, textOf(reopened)).toBe(false);
 	});
+
+	test("Stale before the first lock", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH, ui: { hasUI: true, select: approveAll } });
+		h.git("config", "user.name", "t");
+		h.git("config", "user.email", "t@t");
+		h.git("config", `branch.${CHANGE_BRANCH}.livespecBase`, h.head);
+		await h.world.setPermission("alice", "write");
+
+		await writeIn(h.root, "specs/rate-limit/spec.md", SPEC);
+		commitAll(h.root, "spec");
+		let body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", h.head), "Branch", CHANGE_BRANCH);
+		body = body.replace("Capabilities: new [], modified []", "Capabilities: new [rate-limit], modified []");
+		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
+		await h.session.refresh();
+		expect((await h.call("spec_gate", { target: "define" })).isError).toBe(false);
+		await h.call("spec_status");
+		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
+
+		await useAdapters(h, "forge");
+		// In plan, before any plan gate: the answer cascades, U1 goes stale and the change returns to define.
+		expect((await h.call("spec_question", { text: "Is the cap per IP or per token?" })).isError).toBe(false);
+		await writerSays(h, n, `/livespec answer Q1 per client token --changes ${PER_IP}`);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/define"]);
+		expect(card(h).state.lock.staleUnits).toContain("U1");
+
+		const define = await h.call("spec_gate", { target: "define" });
+		expect(define.isError, textOf(define)).toBe(false);
+		await writerSays(h, n, "/livespec approve");
+		const plan = await h.call("spec_gate", { target: "plan" });
+		expect(plan.isError, textOf(plan)).toBe(false);
+		await writerSays(h, n, "/livespec approve");
+
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
+		expect(card(h).state.lock.staleUnits).toEqual([]);
+		expect(card(h).step.next).not.toContain("unit_amend");
+	});
 });

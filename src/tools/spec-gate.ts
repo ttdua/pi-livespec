@@ -11,7 +11,7 @@ import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { ApprovalRequest, GateSnapshot, RequestOption } from "../interaction/approver.ts";
+import type { ApprovalRequest, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
@@ -87,8 +87,8 @@ export function gateRequest(
 	plan: GatePlan,
 	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date },
 ): ApprovalRequest {
-	const snapshot: GateSnapshot = { target, digests: unitDigests(state), failingWaivable: plan.failingWaivable };
-	const subject = `gate:${target}`;
+	const snapshot: GateSnapshot = { target, failingWaivable: plan.failingWaivable };
+	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";

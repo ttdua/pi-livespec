@@ -42,11 +42,11 @@ From own marked comments it SHALL derive pending approver requests, gate results
 2. change not started after `shape`;
 3. unanswered stuck report;
 4. pending blocking approver request, or an answered request whose effects are not yet fully applied;
-5. the `change_iterations` cap blocking, meaning the count is at the cap and no stuck report was answered after the latest counted cascade;
+5. the `change_iterations` cap blocking, as questions-and-stuck "Iteration cap" defines it;
 6. open blocking question;
 7. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
 8. missing phase output;
-9. failing check;
+9. failing check not waived by the phase's valid gate result;
 10. in `build`, the next pending unit whose `Depends` are done, or the blocked units when none is ready;
 11. the phase gate.
 
@@ -105,6 +105,10 @@ In the last phase of the flow, the sentence MUST say the flow has no further pha
 #### Scenario: Ship approved
 - **WHEN** the change is in `ship` and its ship gate is approved
 - **THEN** the next sentence says the change is ready to ship and no advance is reported
+
+#### Scenario: Waived check does not hold the next step
+- **WHEN** the `plan` gate was approved with `size-limits` waived and `size-limits` still fails
+- **THEN** the next step reports `build` as `advance` and does not ask to fix `size-limits`
 
 ### Requirement: Successor phase
 The successor of a phase SHALL be the first phase, in pack order, whose `requires` include it. A phase with no successor is the last phase. A `gate: none` phase SHALL report its successor as the phase to advance to only when no earlier rule of the precedence applies; for a `per: unit` phase that means every unit is done.

@@ -8,9 +8,10 @@ import { reclassifyQuestion } from "../core/question-lines.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
-import { filterMarked, type MarkedComment } from "../forge/markers.ts";
+import { filterMarked, type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
+import { CLASS_KIND } from "./approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "./complete.ts";
 import { type ClassChange, matchCommands } from "./forge-match.ts";
 import { commandAuthors, readPermissions } from "./forge-permissions.ts";
@@ -52,16 +53,31 @@ async function finishAll(t: Target): Promise<void> {
 	for (const e of finished.errors) t.session.record(STEP, e);
 }
 
-/** `/livespec class` commands rewrite the question's class token; a conflict is retried by the next poll. */
+/** Command comment ids whose `/livespec class` was applied, from the own `class` markers. */
+function appliedClassIds(marked: MarkedComment[]): Set<string> {
+	return new Set(marked.filter((m) => m.kind === CLASS_KIND).map((m) => m.id));
+}
+
+/**
+ * `/livespec class` commands rewrite the question's class token once; each handled command is then recorded
+ * as a `class` marker so later polls (and other sessions) skip it. A conflict records nothing and the next
+ * poll retries. Known gap (design D2): a failed marker write applies the command once more.
+ */
 async function applyClasses(t: Target, classes: ClassChange[]): Promise<void> {
 	if (classes.length === 0) return;
 	const n = t.state.issue.number;
 	const issue = await t.forge.getIssue(n);
 	const open = new Set(parseChange(issue.body).questions.filter((q) => !q.checked).map((q) => q.id));
-	const body = classes.filter((c) => open.has(c.question)).reduce((b, c) => reclassifyQuestion(b, c.question, c.class), issue.body);
-	if (body === issue.body) return;
-	const written = await t.forge.updateIssueBody(n, body, issue.version);
-	if (written.status === "conflict") t.session.record(STEP, "the issue changed while reclassifying a question; the next poll retries");
+	const handled = classes.filter((c) => open.has(c.question));
+	const body = handled.reduce((b, c) => reclassifyQuestion(b, c.question, c.class), issue.body);
+	if (body !== issue.body) {
+		const written = await t.forge.updateIssueBody(n, body, issue.version);
+		if (written.status === "conflict") {
+			t.session.record(STEP, "the issue changed while reclassifying a question; the next poll retries");
+			return;
+		}
+	}
+	for (const c of handled) await t.forge.createComment(n, writeMarked(CLASS_KIND, c.commentId, { question: c.question, class: c.class }));
 }
 
 /** Matches commands to pending requests and completes each match; returns the ignored-command warnings. */
@@ -69,8 +85,9 @@ async function answerPending(t: Target): Promise<string[]> {
 	const { comments, marked } = await readFresh(t);
 	const pending = readRequests(marked).pending;
 	if (pending.length === 0) return [];
-	const { perms, warnings } = await readPermissions(t.forge, commandAuthors(comments, pending));
-	const result = matchCommands(pending, comments, perms, { marked });
+	const appliedClasses = appliedClassIds(marked);
+	const { perms, warnings } = await readPermissions(t.forge, commandAuthors(comments, pending, appliedClasses));
+	const result = matchCommands(pending, comments, perms, { marked, appliedClasses });
 	await applyClasses(t, result.classes);
 	let current = marked;
 	for (const match of result.matches) {

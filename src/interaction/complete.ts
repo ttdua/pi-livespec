@@ -60,10 +60,18 @@ function humanLines(answer: Answered): string[] {
 	});
 }
 
+/** The reason to show: new reasons are wrapped where they are built, legacy ones (no `reason_wrapped`) as a whole. */
+function reasonText(record: AnswerData): string {
+	if (record.reason === undefined) return "superseded";
+	if (record.reason_wrapped === true) return record.reason;
+	// Decision: a legacy reason keeps its pre-#20 rendering, the whole reason wrapped once more (safe, even when it already holds a wrapper).
+	return untrusted(record.reason);
+}
+
 function summary(record: AnswerData): Completion {
 	const { request, answer } = record;
 	if (record.verdict === "superseded") {
-		return { status: "superseded", result: `${untrusted(request.subject)}: the answer no longer matches the change (${untrusted(record.reason ?? "superseded")}); request it again.` };
+		return { status: "superseded", result: `${untrusted(request.subject)}: the answer no longer matches the change (${reasonText(record)}); request it again.` };
 	}
 	const choice = answer.choice === undefined ? "" : ` (choice ${untrusted(answer.choice)})`;
 	const head = `${untrusted(request.subject)}: ${answer.outcome}${choice} by ${untrusted(answer.by)} via ${answer.adapter}.`;
@@ -74,7 +82,7 @@ function summary(record: AnswerData): Completion {
 export async function recordAnswer(run: Run, req: RequestRecord, ans: Answered): Promise<AnswerData> {
 	const verdict = await validateAnswer(run.ctx, req, ans);
 	const record: AnswerData = { request: req, answer: ans, verdict: verdict.verdict };
-	if (verdict.verdict === "superseded") record.reason = verdict.reason;
+	if (verdict.verdict === "superseded") Object.assign(record, { reason: verdict.reason, reason_wrapped: true });
 	await postComment(run, answerComment(req.id, record));
 	return record;
 }

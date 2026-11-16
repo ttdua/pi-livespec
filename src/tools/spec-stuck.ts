@@ -7,7 +7,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
-import type { ApprovalRequest, RequestOption, StuckSnapshot } from "../interaction/approver.ts";
+import { type ApprovalRequest, isSubject, type RequestOption, type StuckSnapshot, type Subject } from "../interaction/approver.ts";
 import { openRequestFor, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -23,6 +23,13 @@ export type StuckReport = { where: string; tried: StuckTried[]; hypothesis: stri
 const TOOL = "spec_stuck";
 const STUCK_KIND = "stuck";
 const SUBJECT_PREFIX = "stuck:";
+
+/** The subject of stuck report `id`; a report id is always `S<n>`, so anything else is a bug. */
+function stuckSubject(id: string): Subject {
+	const subject = `${SUBJECT_PREFIX}${id}`;
+	if (!isSubject(subject)) throw new Error(`not a stuck id: ${id}`);
+	return subject;
+}
 const REPORT_ID = /^S(\d+)(?:-answer)?$/;
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 3;
@@ -98,7 +105,7 @@ export function reportSummary(n: number, id: string, r: StuckReport): string {
 
 /** The blocking `stuck:S<n>` request with the report's options. */
 export function stuckRequest(state: ChangeState, id: string, report: StuckReport, now: Date): ApprovalRequest {
-	const subject = `${SUBJECT_PREFIX}${id}`;
+	const subject = stuckSubject(id);
 	const snapshot: StuckSnapshot = { id };
 	const summary = reportSummary(state.issue.number, id, report);
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options: report.options, head: state.git.head, body: "", snapshot, summary, now });
@@ -113,7 +120,7 @@ export function stuckRequest(state: ChangeState, id: string, report: StuckReport
 export function stuckPlan(state: ChangeState, report: StuckReport): { id: string; report: StuckReport; write: boolean } | { refused: string } {
 	const open = state.iterations.stuckOpen;
 	if (open === undefined) return { id: nextStuckId(state.marked), report, write: true };
-	const subject = `${SUBJECT_PREFIX}${open}`;
+	const subject = stuckSubject(open);
 	const requested = openRequestFor(state.requests, subject) !== undefined;
 	const stored = storedReport(state.marked, open);
 	if (requested || !stored) return refusal(`stuck report ${open} is unanswered; wait for the human's choice.`);

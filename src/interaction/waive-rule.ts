@@ -4,6 +4,7 @@
 
 import { validApproval } from "../engine/locks.ts";
 import type { Outcome } from "./approver.ts";
+import { displayToken } from "./display-ids.ts";
 
 export const WAIVE = "waive";
 
@@ -16,5 +17,5 @@ export function failingWaivableOf(snapshot: unknown): string[] {
 /** Why an answer cannot approve while `failing` checks fail, or undefined when it may. */
 export function unwaivedApproval(failing: string[], answer: { outcome: Outcome; choice?: string }): string | undefined {
 	if (!validApproval({ outcome: answer.outcome, superseded: false }) || failing.length === 0 || answer.choice === WAIVE) return undefined;
-	return `waivable checks fail (${failing.join(", ")}): they must be waived with choose ${WAIVE}`;
+	return `waivable checks fail (${failing.map(displayToken).join(", ")}): they must be waived with choose ${WAIVE}`;
 }

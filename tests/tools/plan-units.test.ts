@@ -345,7 +345,7 @@ describe("plan_units", () => {
 
 	test("refuses while a request is pending", async () => {
 		const h = await planning();
-		const request = { kind: "question", subject: "question:Q1", mode: "blocking", head_sha: h.head, snapshot: { id: "Q1", text: "?", requirements: [] }, summary: "?" };
+		const request = { kind: "question", subject: "question:Q1" as const, mode: "blocking", head_sha: h.head, snapshot: { id: "Q1", text: "?", requirements: [] }, summary: "?" };
 		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", "question-Q1.lx3k2a", request));
 		await h.session.comments?.invalidate(h.n);
 		const out = await h.plan();
@@ -396,7 +396,7 @@ describe("plan_units", () => {
 		const h = await planning();
 		await addQuestion(h, "- [ ] Q1 (non-blocking): x");
 		const requestId = "question-Q1.lx3k2a";
-		const record = { id: requestId, kind: "question" as const, subject: "question:Q1", mode: "async" as const, head_sha: h.head, snapshot: { id: "Q1", text: "?", requirements: [] }, summary: "?" };
+		const record = { id: requestId, kind: "question" as const, subject: "question:Q1" as const, mode: "async" as const, head_sha: h.head, snapshot: { id: "Q1", text: "?", requirements: [] }, summary: "?" };
 		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", requestId, record));
 		const answer = { status: "answered" as const, outcome: "approved" as const, notes: "", answer: "yes", by: "alice", at: "t", adapter: "in-session" as const };
 		await h.world.postComment(h.n, BOT_LOGIN, answerComment(requestId, { request: record, answer, verdict: "valid" }));

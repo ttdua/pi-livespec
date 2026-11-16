@@ -217,6 +217,5 @@ export function createInSessionApprover(ui: ApproverUI, login: () => Promise<str
 			const verdict = result === CANCELLED ? DISMISSED : result;
 			return { status: "answered", ...verdict, by: await login(), at: new Date().toISOString(), adapter: "in-session" };
 		},
-		poll: async () => ({ status: "pending" }),
 	};
 }
