@@ -228,3 +228,12 @@ Proceeding is allowed. Before finalize, the recommended course is one more `/ops
 > - FAIL, code-fixable: load `systematic-debugging`, re-run `/opsx-apply`, then verify again.
 > - FAIL, artifact-level: fix the artifact, then re-run `/opsx-apply`.
 > - Stop after 5 iterations and report to the user.
+
+## Follow-up issues (user decision, 2026-11-16)
+
+The warnings are tracked separately and do not block finalize:
+
+- **#17**: W8 and W9. Async questions must not block planning, and the amendment gate must respect blocking state. This is a spec change.
+- **#18**: W2 and W10. Add the issue link to the gate payload, and fix the stale `plan_units` sentence.
+- **#19**: W1. Wire the `decide()` ask into the approver chain.
+- **#20**: W3–W7 and W11, plus the minor findings from the spec and plan reviews. Sync the artifacts and specs with the implementation, and clean up the code.
