@@ -17,13 +17,13 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 3.1 Remove `Approver.poll` from `src/interaction/approver.ts`, the forge implementation in `src/interaction/forge.ts` and the in-session stub in `src/interaction/in-session.ts`; port the `approver.poll` tests in `tests/interaction/forge.test.ts` to `matchCommands` or `pollApprovals` so their command-matching assertions stay, and drop the in-session stub test (design D4)
-- [ ] 3.2 Remove `ApproverUI.confirm` from the type, `src/tools/approver-for.ts` and `src/hooks/session.ts` adapters and test doubles
-- [ ] 3.3 Remove `GateSnapshot.digests` from the type and `src/tools/spec-gate.ts`; a request comment still carrying `digests` parses
-- [ ] 3.4 `Subject` becomes the template-literal union; `asRequestRecord` in `src/interaction/requests.ts` rejects a subject with an unknown prefix (design D5)
-- [ ] 3.5 Add `snapshotOf(record)` in `src/interaction/requests.ts` returning a union discriminated by subject prefix; replace the `as XSnapshot` casts in `complete-gate.ts`, `complete-validate.ts`, `complete-amend.ts`, `complete-question.ts`, `complete-stuck.ts`, `complete-decide.ts`
-- [ ] 3.6 `summary` in `src/interaction/complete.ts` stops wrapping `record.reason`; `validateAmend` wraps unit validator text where it builds the reason (design D6); test that a superseded result holds exactly one `<untrusted>` around forge text
-- [ ] 3.7 Tests: "Amendment request kind" in `tests/tools/unit-amend.test.ts`, "Decide request kind" in `tests/tools/decide-ask.test.ts`; `bun run typecheck` and `bun run test` pass
+- [x] 3.1 Remove `Approver.poll` from `src/interaction/approver.ts`, the forge implementation in `src/interaction/forge.ts` and the in-session stub in `src/interaction/in-session.ts`; port the `approver.poll` tests in `tests/interaction/forge.test.ts` to `matchCommands` or `pollApprovals` so their command-matching assertions stay, and drop the in-session stub test (design D4)
+- [x] 3.2 Remove `ApproverUI.confirm` from the type, `src/tools/approver-for.ts` and `src/hooks/session.ts` adapters and test doubles
+- [x] 3.3 Remove `GateSnapshot.digests` from the type and `src/tools/spec-gate.ts`; a request comment still carrying `digests` parses
+- [x] 3.4 `Subject` becomes the template-literal union; `asRequestRecord` in `src/interaction/requests.ts` rejects a subject with an unknown prefix (design D5)
+- [x] 3.5 Add `snapshotOf(record)` in `src/interaction/requests.ts` returning a union discriminated by subject prefix; replace the `as XSnapshot` casts in `complete-gate.ts`, `complete-validate.ts`, `complete-amend.ts`, `complete-question.ts`, `complete-stuck.ts`, `complete-decide.ts`
+- [x] 3.6 `summary` in `src/interaction/complete.ts` stops wrapping `record.reason`; `validateAmend` wraps unit validator text where it builds the reason (design D6); test that a superseded result holds exactly one `<untrusted>` around forge text
+- [x] 3.7 Tests: "Amendment request kind" in `tests/tools/unit-amend.test.ts`, "Decide request kind" in `tests/tools/decide-ask.test.ts`; `bun run typecheck` and `bun run test` pass
 
 ## 4. `/livespec class` applied once
 
