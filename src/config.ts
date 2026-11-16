@@ -192,16 +192,15 @@ export async function loadConfig(root: string, home: string): Promise<LoadedConf
 export type ChainSource = "project" | "user" | "default";
 
 /**
- * The ordered adapter chain. The layer is chosen by presence of the setting:
- * project when it sets `interaction.adapter`, else user when it does. When the
- * chosen list is empty (after unknown names were dropped on load), or no layer
- * sets it, the chain is `[in-session]` with source `default`.
+ * The ordered adapter chain: the first non-empty list of project, then user.
+ * An empty list (written empty, or empty after unknown names were dropped on
+ * load) counts as unset. When neither layer has a non-empty list, the chain is
+ * `[in-session]` with source `default`.
  */
 export function adapterChain(config: LoadedConfig): { chain: AdapterName[]; source: ChainSource } {
-	const projectList = config.project?.interaction?.adapter;
-	const layer = projectList !== undefined
-		? { list: projectList, source: "project" as const }
-		: { list: config.user.interaction?.adapter ?? [], source: "user" as const };
-	if (layer.list.length > 0) return { chain: [...layer.list], source: layer.source };
+	const projectList = config.project?.interaction?.adapter ?? [];
+	if (projectList.length > 0) return { chain: [...projectList], source: "project" };
+	const userList = config.user.interaction?.adapter ?? [];
+	if (userList.length > 0) return { chain: [...userList], source: "user" };
 	return { chain: [...DEFAULT_CHAIN], source: "default" };
 }
