@@ -23,6 +23,7 @@ import type { ApproverCtx } from "./approver-for.ts";
 import { blockingStateRefusal } from "../engine/gates.ts";
 import { blockingRequests } from "../engine/request-mode.ts";
 import { classifyUnits, normalizeUnitInput } from "./classify-units.ts";
+import { createDecisionAsker, type DecisionAsker } from "./decide-ask.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest } from "./request-flow.ts";
@@ -66,12 +67,15 @@ export function stateRefusal(state: ChangeState): { refused: string } | undefine
 
 const UNIT_ID = /^U(\d+)$/;
 
-/** Unit ids named by own comments: decision subjects, amendment units and locked digests, so a dropped id stays taken. */
+/**
+ * Unit ids named by own comments: decision subjects, amendment units and locked digests, so a dropped id stays taken.
+ * The answer of a rule ask (a `decision` naming its `request`) reserves no id, so an add that asked a human keeps its id on rerun.
+ */
 export function historyUnitIds(marked: MarkedComment[]): string[] {
 	const ids: string[] = [];
 	for (const m of marked) {
 		const d = (typeof m.data === "object" && m.data !== null ? m.data : {}) as Record<string, unknown>;
-		if (m.kind === "decision" && typeof d.subject === "string") ids.push(d.subject);
+		if (m.kind === "decision" && typeof d.subject === "string" && typeof d.request !== "string") ids.push(d.subject);
 		if (m.kind === "amendment" && typeof d.unit === "string") ids.push(d.unit);
 		if (m.kind === "gate" && typeof d.locked === "object" && d.locked !== null) ids.push(...Object.keys(d.locked));
 	}
@@ -92,17 +96,17 @@ function dropRefusal(units: Unit[], target: Unit): { refused: string } | undefin
 }
 
 /** The snapshot of an edit or add: the classified, rendered unit; an edit keeps the unit's status line. */
-async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], history: string[], decisions: Pack["decisions"]): Promise<AmendSnapshot | { refused: string }> {
+async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], history: string[], decisions: Pack["decisions"], ask?: DecisionAsker): Promise<AmendSnapshot | { refused: string }> {
 	const existing = form.action === "edit" ? units.find((u) => u.id === form.unit) : undefined;
 	if (form.action === "edit" && !existing) return refusal(`${form.unit} is not in the body.`);
 	const id = existing?.id ?? nextUnitId(units, history);
 	let classified: Awaited<ReturnType<typeof classifyUnits>>;
 	try {
-		classified = await classifyUnits([{ id, input: form.replacement }], decisions);
+		classified = await classifyUnits([{ id, input: form.replacement }], decisions, ask);
 	} catch (error) {
 		return refusal(`${messageOf(error)}; no request was sent.`);
 	}
-	if (classified.status !== "classified") return refusal(`decision \`${classified.point}.${classified.subject}\` waits for a human answer; no request was sent.`);
+	if (classified.status !== "classified") return refusal(`decision \`${classified.point}.${classified.subject}\` waits for a human answer (request ${classified.requestId}); no amendment request was sent.`);
 	const lines = renderUnit(classified.units[0]!);
 	if (existing && existing.statusText !== "") lines[lines.length - 1] = existing.statusText;
 	const snapshot: AmendSnapshot = { action: form.action, unit: id, lines, records: classified.records };
@@ -133,7 +137,7 @@ function planErrors(body: string, s: AmendSnapshot): string | undefined {
 }
 
 /** Builds and validates the amendment; nothing is sent or written. */
-export async function planAmend(state: ChangeState, body: string, form: AmendForm, decisions: Pack["decisions"]): Promise<AmendPlan | { refused: string }> {
+export async function planAmend(state: ChangeState, body: string, form: AmendForm, decisions: Pack["decisions"], ask?: DecisionAsker): Promise<AmendPlan | { refused: string }> {
 	const units = parseChange(body).units;
 	let snapshot: AmendSnapshot | { refused: string };
 	if (form.action === "drop") {
@@ -143,7 +147,7 @@ export async function planAmend(state: ChangeState, body: string, form: AmendFor
 		if (refused) return refused;
 		snapshot = { action: "drop", unit: target.id, oldDigest: unitDigest(target), oldDone: target.done, records: [] };
 	} else {
-		snapshot = await contractSnapshot(form, units, historyUnitIds(state.marked), decisions);
+		snapshot = await contractSnapshot(form, units, historyUnitIds(state.marked), decisions, ask);
 	}
 	if ("refused" in snapshot) return snapshot;
 	const invalid = planErrors(body, snapshot);
@@ -188,7 +192,7 @@ export async function runUnitAmend(p: UnitAmendParams, ctx: ApproverCtx): Promis
 	const blocked = stateRefusal(state);
 	if (blocked) return toolResult(blocked.refused, undefined, true);
 	const body = (await w.forge.getIssue(state.issue.number)).body;
-	const plan = await planAmend(state, body, form, w.pack.decisions);
+	const plan = await planAmend(state, body, form, w.pack.decisions, createDecisionAsker(w, state, ctx));
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
 	const request = amendRequest(state, plan, body, new Date());
 	return sendRequest(w, state, request, ctx, { tool: TOOL, retry: "run unit_amend again" });

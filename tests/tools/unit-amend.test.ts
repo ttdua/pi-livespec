@@ -3,10 +3,12 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
+import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
+import { historyUnitIds } from "../../src/tools/unit-amend.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
 import { CHANGE_BRANCH } from "../hooks/helpers.ts";
@@ -14,11 +16,32 @@ import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts
 
 afterEach(async () => {
 	setSession(undefined);
+	resetRulesForTests();
+	registerBuiltinRules();
 	await cleanupDirs();
 });
 
 const COVERS = "rate-limit/Requirement: Per-IP cap";
 const AT = "2026-11-15T10:00:00.000Z";
+const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
+const LEVELS = [
+	{ id: "low", label: "Low" },
+	{ id: "medium", label: "Medium" },
+	{ id: "high", label: "High" },
+];
+const NO_SCHEMA = { validate() {} };
+
+/** Makes `point` ask a human instead of deciding by rule. */
+function askingRule(point: string, options = LEVELS): void {
+	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options } }));
+}
+
+/** A forge answer to the open decision: `/livespec choose`, then the status refresh that completes it. */
+async function answerOnForge(h: Amend, choice: string): Promise<void> {
+	await h.world.postComment(h.n, "alice", `/livespec choose ${choice}`);
+	const status = await h.call("spec_status");
+	expect(status.isError, textOf(status)).toBeFalsy();
+}
 
 function unit(title: string, file: string, label: string, extra: Partial<UnitInput> = {}): UnitInput {
 	return {
@@ -53,10 +76,10 @@ function humanUI(human: Human): { hasUI: true; select: SelectFn } {
 
 type Amend = ToolHarness & { n: number; human: Human; amend(params: unknown): ReturnType<ToolHarness["call"]> };
 
-/** A planned two-unit change (U1, U2) through plan_units, locked by an approved plan gate unless `locked` is false. */
-async function planned(o: { locked?: boolean; units?: UnitInput[] } = {}): Promise<Amend> {
+/** A planned two-unit change (U1, U2) through plan_units, locked by an approved plan gate unless `locked` is false. `config` sets the approver chain. */
+async function planned(o: { locked?: boolean; units?: UnitInput[]; config?: string } = {}): Promise<Amend> {
 	const human: Human = { summaries: [], pick: "approve" };
-	const h = await toolHarness({ branch: CHANGE_BRANCH, ui: humanUI(human) });
+	const h = await toolHarness({ branch: CHANGE_BRANCH, ui: humanUI(human), ...(o.config !== undefined ? { config: o.config } : {}) });
 	h.git("config", "user.name", "t");
 	h.git("config", "user.email", "t@t");
 	h.git("config", `branch.${CHANGE_BRANCH}.livespecBase`, h.head);
@@ -306,5 +329,67 @@ describe("unit_amend", () => {
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
 		await expectRefusal(h, { unit: "U1", replacement: U1 }, ["blocking request is pending", "question:Q3"]);
+	});
+
+	test("Amendment classification asks on the forge", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
+		await h.world.setPermission("alice", "write");
+		const out = await h.amend({ unit: "U1", replacement: U1 });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("difficulty.U1");
+		const decide = (await ofKind(h, "request")).find((m) => (m.data as { subject: string }).subject.startsWith("decide:"));
+		expect(textOf(out)).toContain(decide?.id ?? "no decide request");
+		expect((await ofKind(h, "request")).some((m) => (m.data as { subject: string }).subject.startsWith("amend:"))).toBe(false);
+		expect(await ofKind(h, "amendment")).toEqual([]);
+	});
+
+	test("Amendment rerun after a forge answer", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
+		await h.world.setPermission("alice", "write");
+		expect((await h.amend({ unit: "U1", replacement: U1 })).isError).toBe(true);
+		await answerOnForge(h, "high");
+		const out = await h.amend({ unit: "U1", replacement: U1 });
+		expect(out.isError, textOf(out)).toBe(false);
+		const gate = (await ofKind(h, "request")).find((m) => (m.data as { subject: string }).subject.startsWith("amend:"));
+		const snapshot = (gate?.data as { snapshot: { lines: string[]; records: { point: string }[] } }).snapshot;
+		expect(snapshot.lines).toContain("Difficulty: high");
+		expect(snapshot.records.map((r) => r.point)).toEqual(["tags"]);
+		expect((await ofKind(h, "request")).filter((m) => (m.data as { subject: string }).subject.startsWith("decide:"))).toHaveLength(1);
+	});
+
+	test("Added unit keeps its id across an ask", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
+		await h.world.setPermission("alice", "write");
+		const added = unit("Burst", "src/limits/burst.ts", "b");
+		expect((await h.amend({ add: true, replacement: added })).isError).toBe(true);
+		expect((await ofKind(h, "request")).some((m) => (m.data as { subject: string }).subject === "decide:difficulty.U3")).toBe(true);
+		await answerOnForge(h, "high");
+		const out = await h.amend({ add: true, replacement: added });
+		expect(out.isError, textOf(out)).toBe(false);
+		const gate = (await ofKind(h, "request")).find((m) => (m.data as { subject: string }).subject.startsWith("amend:"));
+		expect((gate?.data as { snapshot: { unit: string } }).snapshot.unit).toBe("U3");
+		expect((await ofKind(h, "request")).filter((m) => (m.data as { subject: string }).subject.startsWith("decide:"))).toHaveLength(1);
+		await h.world.postComment(h.n, "alice", "/livespec approve");
+		await h.call("spec_status");
+		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U2", "U3"]);
+		const card = h.session.card;
+		if (card.kind !== "change") throw new Error("no change card");
+		expect(card.state.checks.filter((c) => c.check === "unit-classification" && c.message.includes("U3"))).toEqual([]);
+	});
+});
+
+describe("historyUnitIds", () => {
+	const decision = (id: string, data: Record<string, unknown>): MarkedComment => ({ commentId: id, kind: "decision", id, author: BOT_LOGIN, data });
+
+	test("skips the answer of a rule ask, keeps rule records and overrides", () => {
+		const marked = [
+			decision("difficulty.U4", { subject: "U4", source: "human", request: "decide-difficulty-U4.x" }),
+			decision("tags.U5", { subject: "U5", source: "rule" }),
+			decision("difficulty.U6", { subject: "U6", source: "human" }),
+		];
+		expect(historyUnitIds(marked)).toEqual(["U5", "U6"]);
 	});
 });
