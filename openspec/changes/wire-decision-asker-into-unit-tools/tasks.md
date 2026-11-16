@@ -2,12 +2,12 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add optional `digest` to `DecideDeps` and `DecisionAsk` in `src/decide/seam.ts`; `decide` copies it into the ask intent
-- [ ] 1.2 Add an `AskRecorded` result (`{ status: "recorded", outcome, reason }`) to the ask contract; `decide` returns it as `source: human` (design D2)
-- [ ] 1.3 Add `sameFacts(record, facts)` and `reusableAnswer(marked, point, subject, digest, facts)` to `src/decide/records.ts` (the latest record for the digest, any source, is the candidate; only a `source: human` one with non-null outcome and the same facts is reused; `facts_hash` compared by hash) (design D2, D3)
-- [ ] 1.4 Add `digest?` to `DecideSnapshot` (`src/interaction/approver.ts`); `decisionRequest` stores it and `applyDecide` writes it into the human record
-- [ ] 1.5 `createDecisionAsker` returns a reusable answer before the open-request check and dispatch; no digest means no reuse
-- [ ] 1.6 Tests in `tests/decide/records.test.ts`, `tests/decide/seam.test.ts`, `tests/tools/decide-ask.test.ts` for the decision-seam scenarios (digest in record, reuse, changed facts, changed contract, dismissed, latest wins, `facts_hash`, rule decision ignores a human record)
+- [x] 1.1 Add optional `digest` to `DecideDeps` and `DecisionAsk` in `src/decide/seam.ts`; `decide` copies it into the ask intent
+- [x] 1.2 Add an `AskRecorded` result (`{ status: "recorded", outcome, reason }`) to the ask contract; `decide` returns it as `source: human` (design D2)
+- [x] 1.3 Add `sameFacts(record, facts)` and `reusableAnswer(marked, point, subject, digest, facts)` to `src/decide/records.ts` (the latest record for the digest, any source, is the candidate; only a `source: human` one with non-null outcome and the same facts is reused; `facts_hash` compared by hash) (design D2, D3)
+- [x] 1.4 Add `digest?` to `DecideSnapshot` (`src/interaction/approver.ts`); `decisionRequest` stores it and `applyDecide` writes it into the human record
+- [x] 1.5 `createDecisionAsker` returns a reusable answer before the open-request check and dispatch; no digest means no reuse
+- [x] 1.6 Tests in `tests/decide/records.test.ts`, `tests/decide/seam.test.ts`, `tests/tools/decide-ask.test.ts` for the decision-seam scenarios (digest in record, reuse, changed facts, changed contract, dismissed, latest wins, `facts_hash`, rule decision ignores a human record)
 
 ## 2. Classification and plan_units ask through the approver
 
