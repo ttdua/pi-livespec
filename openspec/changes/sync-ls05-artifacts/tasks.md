@@ -10,8 +10,8 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 `adapterChain` in `src/config.ts` uses a layer only when its list is non-empty: project, then user, then default (design D3)
-- [ ] 2.2 Replace the two tests in `tests/config.test.ts` that pin the old masking with "Project list with only unknown names" and "Empty project list" (chain `[forge]`, source `user`), and add "Every list empty" (chain `[in-session]`, source `default`)
+- [x] 2.1 `adapterChain` in `src/config.ts` uses a layer only when its list is non-empty: project, then user, then default (design D3)
+- [x] 2.2 Replace the two tests in `tests/config.test.ts` that pin the old masking with "Project list with only unknown names" and "Empty project list" (chain `[forge]`, source `user`), and add "Every list empty" (chain `[in-session]`, source `default`)
 
 ## 3. Approver contract cleanup
 
