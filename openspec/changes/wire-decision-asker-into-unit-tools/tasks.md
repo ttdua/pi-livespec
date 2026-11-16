@@ -13,10 +13,10 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `classifyUnits(units, config, ask?)` computes each unit's digest before deciding, passes `{ subject, digest, ask }`, and returns `classified` (rule records only) or `pending` with point, subject and request id (design D4)
-- [ ] 2.2 A human `tags` outcome that is not a string array refuses the classification
-- [ ] 2.3 `plan_units` takes the tool `ctx`, builds `createDecisionAsker`, and `classifyPlan` refuses on pending naming the decision and request id, before the merge (design D5)
-- [ ] 2.4 Replace the "built-in callers stay rule-only" `plan_units` test with the plan_units scenarios: forge ask refuses with nothing merged or written; rerun after `/livespec choose` finishes with no new request and only rule records posted; in-session answer writes one human `difficulty.U1` record; the answer survives a refused run; a non-list `tags` answer refuses; changed tags ask `difficulty` again; `unit-classification` accepts the human record
+- [x] 2.1 `classifyUnits(units, config, ask?)` computes each unit's digest before deciding, passes `{ subject, digest, ask }`, and returns `classified` (rule records only) or `pending` with point, subject and request id (design D4)
+- [x] 2.2 A human `tags` outcome that is not a string array refuses the classification
+- [x] 2.3 `plan_units` takes the tool `ctx`, builds `createDecisionAsker`, and `classifyPlan` refuses on pending naming the decision and request id, before the merge (design D5)
+- [x] 2.4 Replace the "built-in callers stay rule-only" `plan_units` test with the plan_units scenarios: forge ask refuses with nothing merged or written; rerun after `/livespec choose` finishes with no new request and only rule records posted; in-session answer writes one human `difficulty.U1` record; the answer survives a refused run; a non-list `tags` answer refuses; changed tags ask `difficulty` again; `unit-classification` accepts the human record
 
 ## 3. unit_amend asks through the approver
 
