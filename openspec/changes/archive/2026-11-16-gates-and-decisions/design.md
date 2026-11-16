@@ -161,7 +161,7 @@ Only the first line of a comment that starts with `/livespec ` is read. Tokens a
 
 ### D6. Adapter chain and config
 
-- **Where the setting comes from.** `interaction.adapter` is a list of `in-session` and `forge`. Project config wins over user config, and both default to `[in-session]`. Unknown names are config warnings and are dropped. An empty list falls back to the default.
+- **Where the setting comes from.** `interaction.adapter` is a list of `in-session` and `forge`. Project config wins over user config, and both default to `[in-session]`. Unknown names are config warnings and are dropped. An empty list counts as unset and falls through project → user → default.
 - **How the chain runs.** The chain tries the adapters in order and skips any that is unavailable: in-session without UI, or forge while it is unconnected, read-only or blocked. When none is available, the tool refuses and names the config key.
 - **Doctor.** The approver check reports the list, its source, and the adapter that would answer now.
 
@@ -378,3 +378,5 @@ The `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iter
 - D9: the merge is `git merge --no-ff --no-edit`; an up-to-date branch gets no new commit.
 - D13: `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iterations` (with `iterations.stuckOpen`).
 - Removed in code: `Approver.poll`, `ApproverUI.confirm`, `GateSnapshot.digests`, `LockState.stalePhases`.
+- Where the setting comes from: an empty `interaction.adapter` list counts as unset and falls through project → user → default (not straight to the default).
+
