@@ -215,6 +215,15 @@ describe("spec_question", () => {
 		expect(missing.isError).toBe(true);
 	});
 
+	test("a malformed reask is refused without a write", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = (await h.world.forge.listComments(h.n)).length;
+		const out = await h.ask({ reask: "not-an-id" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("not-an-id");
+		expect((await h.world.forge.listComments(h.n)).length).toBe(before);
+	});
+
 	test("answer later rewrites the question as non-blocking", async () => {
 		const forge = await change("define", { config: BOTH_CHAIN, ui: human({ later: true }) });
 		const out = await forge.ask({ text: "Which store keeps the counters?" });

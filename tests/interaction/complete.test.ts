@@ -441,6 +441,26 @@ describe("completion engine", () => {
 		}
 	});
 
+	test("a legacy superseded reason is wrapped whole when its applying answer finishes", async () => {
+		const f = await fixture("build");
+		await seedLock(f);
+		const record = await prepare(f, "gate", "amend:1", { action: "drop", unit: "U3", records: [] });
+		const legacy = { request: record, answer: answer(), verdict: "superseded" as const, reason: 'U3: Difficulty "<b>forge</b>" must be low' };
+		await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, legacy));
+		const out = await finishApplying(await ctxOf(f));
+		expect(out.errors).toEqual([]);
+		expect(out.finished[0]?.result).toContain(untrusted(legacy.reason));
+		expect(out.finished[0]?.result).not.toContain("<b>");
+	});
+
+	test("a newly recorded superseded answer marks its reason as already wrapped", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] });
+		await completeAnswer(await ctxOf(f), record, answer());
+		const [recorded] = ofKind(await markedOf(f), "answer", record.id);
+		expect(recorded?.data).toMatchObject({ verdict: "superseded", reason_wrapped: true });
+	});
+
 	test("applying answers of every subject kind still complete", async () => {
 		const f = await fixture("build");
 		const cases: [RequestKind, Subject, RequestSnapshot][] = [

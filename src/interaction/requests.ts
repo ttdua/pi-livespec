@@ -22,8 +22,12 @@ import {
 	type Subject,
 } from "./approver.ts";
 
-/** The `answer` comment data: the full request, the human's answer and the validation verdict. */
-export type AnswerData = { request: RequestRecord; answer: Answered; verdict: "valid" | "superseded"; reason?: string };
+/**
+ * The `answer` comment data: the full request, the human's answer and the validation verdict. A superseded `reason`
+ * is already wrapped as untrusted where it was built when `reason_wrapped` is set; an answer without the field is
+ * legacy and its whole reason is wrapped when shown.
+ */
+export type AnswerData = { request: RequestRecord; answer: Answered; verdict: "valid" | "superseded"; reason?: string; reason_wrapped?: true };
 
 /** The snapshot of a request with its kind, derived from the subject prefix. */
 export type TypedSnapshot =
