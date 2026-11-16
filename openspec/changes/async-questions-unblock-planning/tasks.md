@@ -17,5 +17,5 @@ Blocked by: 1
 
 Blocked by: 1
 
-- [ ] 3.1 In `src/tools/unit-amend.ts` `stateRefusal`, after the lock check add `blockingStateRefusal` prefixed `unit_amend refused: `, then replace `openRequests` with `blockingRequests` (design D3)
-- [ ] 3.2 In `tests/tools/unit-amend.test.ts`, add "Blocking question keeps the amendment gate closed", "Stuck report keeps the amendment gate closed", "Iteration cap keeps the amendment gate closed", "Non-blocking question does not block unit_amend" and "Applying answer blocks unit_amend", each asserting no request comment is posted when refused
+- [x] 3.1 In `src/tools/unit-amend.ts` `stateRefusal`, after the lock check add `blockingStateRefusal` prefixed `unit_amend refused: `, then replace `openRequests` with `blockingRequests` (design D3)
+- [x] 3.2 In `tests/tools/unit-amend.test.ts`, add "Blocking question keeps the amendment gate closed", "Stuck report keeps the amendment gate closed", "Iteration cap keeps the amendment gate closed", "Non-blocking question does not block unit_amend" and "Applying answer blocks unit_amend", each asserting no request comment is posted when refused
