@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
-import { type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
+import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 
 const TAGS_U3: DecisionRecord = {
@@ -162,6 +162,19 @@ describe("decision records", () => {
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts: { files: ["a.ts"], tags: ["ui"], n: 3 }, reason: "r" };
 		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
 		expect(reusableAnswer([parsed], "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
+	});
+
+	test("Proposal record is not current", () => {
+		const facts = { n: 1 };
+		const rule: DecisionRecord = { point: "difficulty", subject: "U1", digest: "d1", source: "rule", outcome: "low", facts, reason: "rule" };
+		const proposal: DecisionRecord = { ...rule, source: "human", outcome: "high", reason: "chosen by alice", request: "r1", proposal: true };
+		const all = [marked("difficulty.U1", rule), marked("difficulty.U1", proposal)];
+		expect(currentDecision(all, "difficulty", "U1", "d1")).toEqual(rule);
+		expect(reusableAnswer(all, "difficulty", "U1", "d1", facts)).toEqual(proposal);
+	});
+
+	test("a proposal flag that is not boolean is skipped", () => {
+		expect(latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", { ...TAGS_U3, proposal: "yes" })]).get("tags.U1")).toEqual(TAGS_U3);
 	});
 
 	test("malformed decision data is skipped", () => {

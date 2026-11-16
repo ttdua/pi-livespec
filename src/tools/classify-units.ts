@@ -1,8 +1,8 @@
 // Classification of planned units (design D9 step 2, D9a): the `tags` and then
 // the `difficulty` decision per unit. A rule may ask a human through the approver;
-// a pending answer stops classification. Records exist only for rule decisions
-// (human ones are already on the issue), keyed by the rendered unit's digest.
-// Nothing is posted here; the caller posts the records once the plan is valid.
+// a pending answer stops classification. Every decision becomes a record, keyed by
+// the rendered unit's digest. Nothing is posted here; the caller posts the records
+// it needs once the plan is valid (plan_units only rule ones, unit_amend all).
 
 import { parseChange, type Unit } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
@@ -73,9 +73,6 @@ function record(point: string, subject: string, digest: string, d: Decided): Dec
 	return r;
 }
 
-/** Only rule decisions are recorded here; a human answer is already a record on the issue. */
-const ruleRecords = (id: string, digest: string, decided: [string, Decided][]): DecisionRecord[] =>
-	decided.filter(([, d]) => d.source === "rule").map(([point, d]) => record(point, id, digest, d));
 
 async function classifyOne(id: string, input: UnitInput, config: Pack["decisions"], ask?: DecisionAsker): Promise<ClassifyResult> {
 	const digest = unitDigest(parsedUnit({ ...input, id, difficulty: "low", tags: [] }));
@@ -86,7 +83,7 @@ async function classifyOne(id: string, input: UnitInput, config: Pack["decisions
 	const difficulty = await settle("difficulty", { tags: tagNames, covers: input.covers, files: input.files }, config.difficulty, id, digest, ask);
 	if (difficulty.status === "pending") return difficulty;
 	const unit: RenderableUnit = { ...input, id, difficulty: String(difficulty.decided.outcome), tags: tagNames };
-	return { status: "classified", units: [unit], records: ruleRecords(id, digest, [["tags", tags.decided], ["difficulty", difficulty.decided]]) };
+	return { status: "classified", units: [unit], records: [record("tags", id, digest, tags.decided), record("difficulty", id, digest, difficulty.decided)] };
 }
 
 /** Classifies each unit under the id its caller allocated; stops at the first pending ask. Records come in unit order, `tags` before `difficulty`. */

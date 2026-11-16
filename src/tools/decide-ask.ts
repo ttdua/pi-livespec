@@ -22,9 +22,10 @@ export type DecisionAsker = NonNullable<DecideDeps["ask"]>;
  * The request for `intent`. Its kind is `stuck`: like a stuck report it is a choice among options, with
  * no gate digest and no waivable checks; adapters and completion route it by its `decide:` subject.
  */
-export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Date): ApprovalRequest {
+export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Date, proposal = false): ApprovalRequest {
 	const subject = `${SUBJECT_PREFIX}${intent.point}.${intent.subject}`;
 	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts, ...(intent.digest === undefined ? {} : { digest: intent.digest }) };
+	if (proposal) snapshot.proposal = true;
 	const { summary, options } = intent;
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
@@ -42,11 +43,13 @@ function reuseAnswer(comments: MarkedComment[], intent: DecisionAsk): AskRecorde
 /**
  * The `ask` a tool passes to `decide`. An open request for the same subject, read fresh from the
  * forge (the tool's snapshot may predate it), is pending, so no adapter asks twice for one subject. No available adapter, or a request deferred by every adapter, throws: the caller
- * refuses before writing, like any other rule failure.
+ * refuses before writing, like any other rule failure. `proposal` (set by `unit_amend`) marks the answer's
+ * record as a proposal, effective only once the amendment is approved.
  */
-export function createDecisionAsker(w: WriteContext, state: ChangeState, ctx: ApproverCtx, now: () => Date = () => new Date()): DecisionAsker {
+export function createDecisionAsker(w: WriteContext, state: ChangeState, ctx: ApproverCtx, o: { proposal?: boolean; now?: () => Date } = {}): DecisionAsker {
+	const now = o.now ?? (() => new Date());
 	return async (intent) => {
-		const request = decisionRequest(state, intent, now());
+		const request = decisionRequest(state, intent, now(), o.proposal === true);
 		const { comments } = await readMarkedComments(w.forge, state.issue.number);
 		const reused = reuseAnswer(comments, intent);
 		if (reused !== undefined) return reused;

@@ -50,12 +50,12 @@ async function change(o: { config: string; ui?: FakeUI; body?: (head: string) =>
 }
 
 /** Runs `decide("pick", …)` with the asker a tool would build; `digest` is set for unit subjects. */
-async function decidePick(h: Change, o: { facts?: unknown; digest?: string } = {}) {
+async function decidePick(h: Change, o: { facts?: unknown; digest?: string; proposal?: boolean } = {}) {
 	const w = await prepareWrite();
 	if (!w.ok) throw new Error(w.message);
 	const c = requireChange(w.session);
 	if (!c.ok) throw new Error(c.message);
-	return decide("pick", o.facts ?? FACTS, { config: { mode: "rule" }, subject: "U1", digest: o.digest, ask: createDecisionAsker(w, c.state, h.ctx) });
+	return decide("pick", o.facts ?? FACTS, { config: { mode: "rule" }, subject: "U1", digest: o.digest, ask: createDecisionAsker(w, c.state, h.ctx, { proposal: o.proposal }) });
 }
 
 async function marked(h: Change): Promise<MarkedComment[]> {
@@ -133,9 +133,9 @@ describe("decision asker", () => {
 describe("unit digest reuse", () => {
 	const BIG = { files: ["src/a.ts"], blob: "x".repeat(2001) };
 
-	async function answerInForge(h: Change, facts: unknown = FACTS, digest = "d1") {
+	async function answerInForge(h: Change, facts: unknown = FACTS, digest = "d1", proposal?: boolean) {
 		await h.world.setPermission("alice", "write");
-		const r = await decidePick(h, { facts, digest });
+		const r = await decidePick(h, { facts, digest, proposal });
 		await h.world.postComment(h.n, "alice", "/livespec choose y");
 		const status = await h.call("spec_status");
 		expect(status.isError, textOf(status)).toBeFalsy();
@@ -151,6 +151,13 @@ describe("unit digest reuse", () => {
 		await answerInForge(h);
 		const [record] = await ofKind(h, "decision");
 		expect(record?.data).toMatchObject({ source: "human", outcome: "y", digest: "d1" });
+	});
+
+	test("an amendment asker's answer is a proposal record", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h, FACTS, "d1", true);
+		const [record] = await ofKind(h, "decision");
+		expect(record?.data).toMatchObject({ source: "human", outcome: "y", digest: "d1", proposal: true });
 	});
 
 	test("Recorded answer reused", async () => {

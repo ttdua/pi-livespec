@@ -8,6 +8,7 @@ import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/m
 import { setSession } from "../../src/hooks/session-store.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
+import { unitClassification } from "../../src/engine/unit-classification.ts";
 import { historyUnitIds } from "../../src/tools/unit-amend.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
@@ -149,6 +150,33 @@ function lockState(h: Amend) {
 async function webEdit(h: Amend, edit: (body: string) => string): Promise<void> {
 	await h.world.editBodyBehindBack(h.n, edit(await h.world.bodyOf(h.n)));
 	await h.session.refresh();
+}
+
+/** The `unit-classification` results for `unit` over the issue as it is now (a locked plan is in build, where the card does not run the check). */
+async function classificationErrors(h: Amend, unit: string) {
+	const change = parseChange(await h.world.bodyOf(h.n));
+	const results = await unitClassification({ root: h.session.cwd, change, git: h.session.git, marked: await marked(h) });
+	return results.filter((r) => r.section === unit);
+}
+
+/**
+ * A locked plan with U1 `Difficulty: low` and no tags; `unit_amend U1` with an added extra tag (same digest)
+ * asks `difficulty.U1` on the forge, the human chooses `high`, and the rerun sends the amendment, still pending.
+ */
+async function askedAmendment(): Promise<Amend> {
+	const h = await planned({ config: FORGE_CHAIN });
+	expect((await units(h))[0]).toMatchObject({ difficulty: "low", tags: [] });
+	askingRule("difficulty");
+	await h.world.setPermission("alice", "write");
+	const replacement = { ...U1, extra_tags: ["docs"] };
+	expect((await h.amend({ unit: "U1", replacement })).isError).toBe(true);
+	await answerOnForge(h, "high");
+	expect(await classificationErrors(h, "U1")).toEqual([]);
+	const out = await h.amend({ unit: "U1", replacement });
+	expect(out.isError, textOf(out)).toBe(false);
+	await h.call("spec_status");
+	expect((await units(h))[0]?.difficulty).toBe("low");
+	return h;
 }
 
 const tickU1 = (body: string) => body.replace(/(### U1 — [\s\S]*?)- \[ \] pending/, "$1- [x] done");
@@ -353,10 +381,50 @@ describe("unit_amend", () => {
 		const out = await h.amend({ unit: "U1", replacement: U1 });
 		expect(out.isError, textOf(out)).toBe(false);
 		const gate = (await ofKind(h, "request")).find((m) => (m.data as { subject: string }).subject.startsWith("amend:"));
-		const snapshot = (gate?.data as { snapshot: { lines: string[]; records: { point: string }[] } }).snapshot;
+		const snapshot = (gate?.data as { snapshot: { lines: string[]; records: Record<string, unknown>[] } }).snapshot;
 		expect(snapshot.lines).toContain("Difficulty: high");
-		expect(snapshot.records.map((r) => r.point)).toEqual(["tags"]);
+		expect(snapshot.records.map((r) => r.point)).toEqual(["tags", "difficulty"]);
+		expect(snapshot.records[1]).toMatchObject({ source: "human", outcome: "high" });
+		expect(snapshot.records[1]).not.toHaveProperty("proposal");
+		expect(snapshot.records[1]).not.toHaveProperty("request");
 		expect((await ofKind(h, "request")).filter((m) => (m.data as { subject: string }).subject.startsWith("decide:"))).toHaveLength(1);
+	});
+
+	test("Dismissed amendment keeps the classification", async () => {
+		const h = await askedAmendment();
+		expect(await classificationErrors(h, "U1")).toEqual([]);
+		await h.world.postComment(h.n, "alice", "/livespec dismiss");
+		await h.call("spec_status");
+		expect(await h.world.bodyOf(h.n)).toContain("Difficulty: low");
+		expect((await units(h))[0]?.difficulty).toBe("low");
+		expect(await classificationErrors(h, "U1")).toEqual([]);
+	});
+
+	test("Approved amendment applies the answer", async () => {
+		const h = await askedAmendment();
+		await h.world.postComment(h.n, "alice", "/livespec approve");
+		await h.call("spec_status");
+		expect((await units(h))[0]).toMatchObject({ difficulty: "high", tags: ["docs"] });
+		const digest = unitDigest((await units(h))[0]!);
+		const records = (await ofKind(h, "decision")).filter((m) => m.id === "difficulty.U1" && (m.data as { digest?: string }).digest === digest);
+		const latest = records.at(-1)?.data;
+		expect(latest).toMatchObject({ source: "human", outcome: "high" });
+		expect(latest).not.toHaveProperty("proposal");
+		expect(await classificationErrors(h, "U1")).toEqual([]);
+	});
+
+	test("Rule outcome after a human answer is recorded", async () => {
+		const h = await planned();
+		const u1 = (await units(h))[0]!;
+		expect(u1.difficulty).toBe("low");
+		const digest = unitDigest(u1);
+		await seed(h, "decision", "difficulty.U1", { point: "difficulty", subject: "U1", digest, source: "human", outcome: "high", facts: {}, reason: "chosen by alice" });
+		const before = (await ofKind(h, "decision")).length;
+		const out = await h.amend({ unit: "U1", replacement: U1 });
+		expect(out.isError, textOf(out)).toBe(false);
+		const added = (await ofKind(h, "decision")).slice(before);
+		expect(added.map((m) => [m.id, (m.data as { source: string }).source, (m.data as { outcome: unknown }).outcome])).toEqual([["difficulty.U1", "rule", "low"]]);
+		expect(await classificationErrors(h, "U1")).toEqual([]);
 	});
 
 	test("Added unit keeps its id across an ask", async () => {
@@ -375,9 +443,7 @@ describe("unit_amend", () => {
 		await h.world.postComment(h.n, "alice", "/livespec approve");
 		await h.call("spec_status");
 		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U2", "U3"]);
-		const card = h.session.card;
-		if (card.kind !== "change") throw new Error("no change card");
-		expect(card.state.checks.filter((c) => c.check === "unit-classification" && c.message.includes("U3"))).toEqual([]);
+		expect(await classificationErrors(h, "U3")).toEqual([]);
 	});
 });
 

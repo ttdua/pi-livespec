@@ -5,7 +5,7 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
-import { decisionComment, latestDecisions } from "../../src/decide/records.ts";
+import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
 import { runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
@@ -259,6 +259,25 @@ describe("completion engine", () => {
 		expect((amendments[0]?.data as { superseded?: boolean }).superseded).toBeUndefined();
 		expect(ofKind(marked, "decision")).toHaveLength(2);
 		expect(deriveLocks(parseChange(await f.world.bodyOf(f.n)), marked).frozen).toEqual([]);
+	});
+
+	test("amendment retry keeps its override current", async () => {
+		const f = await fixture("build");
+		await seedLock(f);
+		const before = await f.world.bodyOf(f.n);
+		const u3 = parseChange(before).units[1]!;
+		const lines = renderUnit({ id: "U3", title: u3.title, covers: u3.covers, difficulty: "medium", tags: ["security", "api"], files: u3.files, done_means: u3.doneMeans, scenarios: u3.scenarios, depends: ["U1"], verify: "npm test -- ratelimit-v2" });
+		const snapshot: AmendSnapshot = { action: "edit", unit: "U3", oldDigest: unitDigest(u3), oldDone: false, lines, records: [] };
+		const newDigest = unitDigest(parseChange(amendedBody(before, snapshot)).units[1]!);
+		snapshot.records = [{ point: "difficulty", subject: "U3", digest: newDigest, source: "rule", outcome: "medium", reason: "rule" }];
+		const record = await prepare(f, "gate", "amend:1", snapshot);
+		const crashing = failingOnce(f.world.forge, commentOfKind("amendment"));
+		await expect(completeAnswer(await ctxOf(f, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
+
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		const marked = await markedOf(f);
+		expect(ofKind(marked, "decision", "difficulty.U3").map((m) => (m.data as { source: string }).source)).toEqual(["rule", "human"]);
+		expect(currentDecision(marked, "difficulty", "U3", newDigest)).toMatchObject({ source: "human", outcome: "high" });
 	});
 
 	test("Unit finished while the drop was pending", async () => {

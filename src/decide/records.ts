@@ -17,6 +17,8 @@ export type DecisionRecord = {
 	agent_additions?: string[];
 	overridden_by?: { by: string; at: string; from: unknown };
 	request?: string;
+	/** A human answer given during an amendment; not effective until the amendment is approved. */
+	proposal?: true;
 };
 
 const MAX_FACTS_YAML = 2000;
@@ -33,6 +35,7 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	if (has(r, "digest") && !isString(r.digest)) return false;
 	if (has(r, "facts_hash") && !isString(r.facts_hash)) return false;
 	if (has(r, "request") && !isString(r.request)) return false;
+	if (has(r, "proposal") && typeof r.proposal !== "boolean") return false;
 	if (has(r, "agent_additions") && !(Array.isArray(r.agent_additions) && r.agent_additions.every(isString))) return false;
 	if (has(r, "overridden_by")) {
 		const o = r.overridden_by;
@@ -71,17 +74,22 @@ export function latestDecisions(marked: MarkedComment[]): Map<string, DecisionRe
 	return latest;
 }
 
-/**
- * The latest `<point>.<subject>` record made for `digest` (the unit's current contract); records for
- * any other digest belong to an older contract and are skipped, even when newer.
- */
-export function currentDecision(marked: MarkedComment[], point: string, subject: string, digest: string): DecisionRecord | undefined {
-	const id = `${point}.${subject}`;
+/** The latest `<point>.<subject>` record for `digest` that `include` accepts. */
+function latestFor(marked: MarkedComment[], id: string, digest: string, include: (r: DecisionRecord) => boolean): DecisionRecord | undefined {
 	let found: DecisionRecord | undefined;
 	for (const m of marked) {
-		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest) found = m.data;
+		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest && include(m.data)) found = m.data;
 	}
 	return found;
+}
+
+/**
+ * The latest effective `<point>.<subject>` record made for `digest` (the unit's current contract); records for
+ * any other digest belong to an older contract and are skipped, even when newer. A proposal (an amendment's
+ * answer before approval) is not effective and is skipped too.
+ */
+export function currentDecision(marked: MarkedComment[], point: string, subject: string, digest: string): DecisionRecord | undefined {
+	return latestFor(marked, `${point}.${subject}`, digest, (r) => r.proposal !== true);
 }
 
 const sha256Hex = (yaml: string): string => createHash("sha256").update(yaml).digest("hex");
@@ -93,9 +101,12 @@ export function sameFacts(record: DecisionRecord, facts: unknown): boolean {
 	return record.facts !== undefined && stringify(record.facts) === yaml;
 }
 
-/** The latest `<point>.<subject>` record for `digest`, when it is a human answer (not dismissed) for the same facts. */
+/**
+ * The latest `<point>.<subject>` record for `digest`, proposals included (an amendment rerun reuses its own
+ * answer), when it is a human answer (not dismissed) for the same facts.
+ */
 export function reusableAnswer(marked: MarkedComment[], point: string, subject: string, digest: string, facts: unknown): DecisionRecord | undefined {
-	const record = currentDecision(marked, point, subject, digest);
+	const record = latestFor(marked, `${point}.${subject}`, digest, () => true);
 	if (record === undefined || record.source !== "human" || record.outcome === null || !sameFacts(record, facts)) return undefined;
 	return record;
 }

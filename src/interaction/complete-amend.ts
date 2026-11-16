@@ -4,7 +4,7 @@
 
 import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
-import { decisionComment, type DecisionRecord } from "../decide/records.ts";
+import { currentDecision, decisionComment, type DecisionRecord } from "../decide/records.ts";
 import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import { amendedBody } from "./amend-body.ts";
@@ -12,18 +12,30 @@ import type { AmendSnapshot } from "./approver.ts";
 import { type ApplyFn, editBody, postComment, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 
-/** Whether a record for the same unit contract (digest) and outcome exists. */
-function hasRecord(run: Run, r: DecisionRecord): boolean {
-	return run.marked.some((m) => {
-		const d = m.data as Partial<DecisionRecord> | null;
-		return m.kind === "decision" && m.id === `${r.point}.${r.subject}` && d?.digest === r.digest && JSON.stringify(d?.outcome) === JSON.stringify(r.outcome);
-	});
+/** Same point, subject, digest, outcome and source: posting `r` again would change nothing. */
+function sameRecord(d: Partial<DecisionRecord> | undefined, r: DecisionRecord): boolean {
+	return d?.point === r.point && d.subject === r.subject && d.digest === r.digest && d.source === r.source && JSON.stringify(d.outcome) === JSON.stringify(r.outcome);
 }
 
-/** The snapshot's rule records, each once; like overrides they carry no `request` (see `readRequests`). */
-async function postRecords(run: Run, records: DecisionRecord[]): Promise<void> {
-	for (const { request: _request, ...r } of records) {
-		if (!hasRecord(run, r)) await postComment(run, decisionComment(r));
+/** Whether `r` is already U's effective decision for its digest. */
+function isCurrent(run: Run, r: DecisionRecord): boolean {
+	return r.digest !== undefined && sameRecord(currentDecision(run.marked, r.point, r.subject, r.digest), r);
+}
+
+/** Whether a retry of this completion already posted `r`: a matching record after the request's `answer` comment. */
+function postedByThisAnswer(run: Run, requestId: string, r: DecisionRecord): boolean {
+	const answer = run.marked.findIndex((m) => m.kind === "answer" && m.id === requestId);
+	if (answer === -1) return false;
+	return run.marked.slice(answer + 1).some((m) => m.kind === "decision" && sameRecord(m.data as Partial<DecisionRecord> | undefined, r));
+}
+
+/**
+ * The snapshot's records (rule decisions and the amendment's human answers, now effective), each once; like
+ * overrides they carry no `request` (see `readRequests`) and no `proposal`.
+ */
+async function postRecords(run: Run, requestId: string, records: DecisionRecord[]): Promise<void> {
+	for (const { request: _request, proposal: _proposal, ...r } of records) {
+		if (!isCurrent(run, r) && !postedByThisAnswer(run, requestId, r)) await postComment(run, decisionComment(r));
 	}
 }
 
@@ -38,7 +50,7 @@ export const applyAmend: ApplyFn = async (run, record) => {
 	const apply = validApproval({ outcome: answer.outcome, superseded: record.verdict === "superseded" });
 	if (apply) {
 		await editBody(run, (body) => amendedBody(body, s));
-		await postRecords(run, s.records ?? []);
+		await postRecords(run, request.id, s.records ?? []);
 		await applyOverrides(run, answer);
 	}
 	const data: Record<string, unknown> = { request: request.id, action: s.action, unit: s.unit };

@@ -54,6 +54,8 @@ export interface DecideSnapshot {
 	subject: string;
 	facts: unknown;
 	digest?: string;
+	/** Set by `unit_amend`: the answer becomes effective only when the amendment is approved. */
+	proposal?: true;
 }
 
 export type RequestSnapshot = GateSnapshot | AmendSnapshot | QuestionSnapshot | StuckSnapshot | DecideSnapshot;

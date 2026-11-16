@@ -80,7 +80,8 @@ async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[], 
 	if (integration === undefined) return refuse("plan_units refused: the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml.");
 	const merged = await mergeIntegration(git, integration);
 	if (!merged.ok) return refuse(merged.message);
-	const unrecorded = await postDecisionRecords(w.forge, n, classified.records);
+	// Human decisions are already effective records on the issue (written when answered).
+	const unrecorded = await postDecisionRecords(w.forge, n, classified.records.filter((r) => r.source === "rule"));
 	if (unrecorded) {
 		await afterForgeWrite(w.session, n);
 		return refuse(unrecorded);

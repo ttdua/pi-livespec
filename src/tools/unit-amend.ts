@@ -195,7 +195,7 @@ export async function runUnitAmend(p: UnitAmendParams, ctx: ApproverCtx): Promis
 	const blocked = stateRefusal(state);
 	if (blocked) return toolResult(blocked.refused, undefined, true);
 	const body = (await w.forge.getIssue(state.issue.number)).body;
-	const plan = await planAmend(state, body, form, w.pack.decisions, createDecisionAsker(w, state, ctx));
+	const plan = await planAmend(state, body, form, w.pack.decisions, createDecisionAsker(w, state, ctx, { proposal: true }));
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
 	const request = amendRequest(state, plan, body, new Date());
 	return sendRequest(w, state, request, ctx, { tool: TOOL, retry: "run unit_amend again" });
