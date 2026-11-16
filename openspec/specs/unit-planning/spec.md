@@ -18,11 +18,13 @@ Defines how units are planned and locked: `plan_units` as the writer of `## Unit
 
 When the write outcome is unknown, the tool MUST re-read the issue and report success and set the config only if the issue shows both the new `Base` and exactly the rendered `## Units`. Before anything else, a run SHALL repair a config that differs from an issue `Base` that is an ancestor of HEAD.
 
+An open request SHALL be blocking when it is applying, when its subject starts with `gate:`, `amend:`, `stuck:` or `decide:` whatever its stored mode, or when it is a pending question request whose question is currently blocking or is no longer in `## Questions`. A pending question request whose question is currently non-blocking in `## Questions` MUST NOT be blocking, whatever its stored mode.
+
 It MUST refuse, writing nothing, when:
 - the change is not in the phase whose outputs include `issue#Units`;
 - the plan is already locked;
 - the tree is dirty;
-- a request is pending;
+- a blocking request is open;
 - validation fails.
 
 A merge conflict MUST be aborted and refused.
@@ -59,6 +61,26 @@ A merge conflict MUST be aborted and refused.
 - **WHEN** the plan gate was approved and `plan_units` runs
 - **THEN** it refuses and points to `unit_amend`
 
+#### Scenario: Non-blocking question does not block plan_units
+- **WHEN** `- [ ] Q1 (non-blocking): <text>` is open and its `question:Q1` request is pending on the forge, and `plan_units` runs in `plan`
+- **THEN** the units are written as if no request were open
+
+#### Scenario: Reclassified question follows its current class
+- **WHEN** a `question:Q1` request was stored with mode `blocking` and Q1 now reads `(non-blocking)`, and `plan_units` runs
+- **THEN** the units are written; and when instead a `question:Q2` request was stored with mode `async` and Q2 now reads `(blocking)`, `plan_units` refuses and names it
+
+#### Scenario: Applying non-blocking answer blocks plan_units
+- **WHEN** a non-blocking question's answer comment exists and its result comment does not, and `plan_units` runs
+- **THEN** `plan_units` refuses, names the request, and writes nothing
+
+#### Scenario: Non-question requests block whatever their stored mode
+- **WHEN** a `gate:`, `amend:`, `stuck:` or `decide:` request is pending with stored mode `async`, no stuck report is unanswered, and `plan_units` runs
+- **THEN** `plan_units` refuses, names the request, and writes nothing
+
+#### Scenario: Request for a missing question blocks
+- **WHEN** a `question:Q9` request is pending with stored mode `async` and `## Questions` has no Q9
+- **THEN** `plan_units` refuses and names the request
+
 ### Requirement: Digest lock and frozen units
 The lock SHALL be the digests in the latest approved, non-superseded plan `gate` comment, updated by every later approved amendment. Once a lock exists, a unit SHALL be frozen when its current `unitDigest` differs from its locked digest, or when it has no locked digest. This includes edits made on the web. `Difficulty`, `Tags` and the status line MUST NOT affect frozen state. The change state SHALL expose frozen units for LS-06's `unit_start` and `unit_finish`.
 
@@ -81,7 +103,17 @@ The tool SHALL re-run the `tags` and `difficulty` decisions for edited and added
 2. post decision records for edited and added units;
 3. write an `amendment` comment with the old and new digests.
 
-The new digests then become the locked ones. On any other outcome, nothing changes. When the answer is validated, before it is recorded, an amendment whose affected unit's digest or done state differs from the request snapshot MUST be marked superseded, with nothing applied. A recorded amendment answer MUST NOT be validated again while its effects are applied. `unit_amend` MUST refuse before a lock exists, for a done unit with `--drop`, and when a request is pending.
+The new digests then become the locked ones. On any other outcome, nothing changes. When the answer is validated, before it is recorded, an amendment whose affected unit's digest or done state differs from the request snapshot MUST be marked superseded, with nothing applied. A recorded amendment answer MUST NOT be validated again while its effects are applied.
+
+`unit_amend` MUST refuse, sending no request, in each of these cases:
+- before a lock exists;
+- for a done unit with `--drop`;
+- while a blocking question is open;
+- while a stuck report is unanswered;
+- while the `change_iterations` cap is blocking;
+- while a blocking request, as defined in "Plan units tool", is open.
+
+The refusals for blocking questions, stuck reports and the cap SHALL give the same reasons as `spec_gate`. A pending request for a question that is currently non-blocking MUST NOT make `unit_amend` refuse.
 
 #### Scenario: Amendment unfreezes
 - **WHEN** U2 is frozen after a web edit and `unit_amend U2` with the edited unit is approved
@@ -106,6 +138,26 @@ The new digests then become the locked ones. On any other outcome, nothing chang
 #### Scenario: Unit finished while the drop was pending
 - **WHEN** a forge request to drop U1 is pending and U1 is ticked done before a writer approves it
 - **THEN** the amendment is marked superseded and U1 stays in the body and the lock
+
+#### Scenario: Blocking question keeps the amendment gate closed
+- **WHEN** the plan is locked, `- [ ] Q2 (blocking): <text>` is open, and `unit_amend U1` runs with a valid replacement
+- **THEN** the tool refuses, naming Q2, and no request is sent
+
+#### Scenario: Stuck report keeps the amendment gate closed
+- **WHEN** the plan is locked, stuck report S1 is unanswered, and `unit_amend --add` runs with a valid unit
+- **THEN** the tool refuses, naming S1, and no request is sent
+
+#### Scenario: Iteration cap keeps the amendment gate closed
+- **WHEN** the plan is locked, `change_iterations` is at its cap with no stuck answer after the latest counted cascade, and `unit_amend U1` runs
+- **THEN** the tool refuses and says to send a stuck report with `spec_stuck`
+
+#### Scenario: Non-blocking question does not block unit_amend
+- **WHEN** the plan is locked, `- [ ] Q3 (non-blocking): <text>` is open with its request pending on the forge, and `unit_amend U1` runs with a valid replacement
+- **THEN** the light gate request is sent
+
+#### Scenario: Applying answer blocks unit_amend
+- **WHEN** the plan is locked, a non-blocking question's answer is applying, and `unit_amend U1` runs with a valid replacement
+- **THEN** the tool refuses, names the request, and no request is sent
 
 ### Requirement: Re-planning after the lock
 After the first lock, `plan_units` MUST refuse, and every unit change SHALL go through `unit_amend`. While a lock exists, the plan gate MUST refuse when any unit is frozen or stale. When the plan gate is approved again, its comment SHALL lock the digests of every unit in the body. Status lines of unchanged units MUST be kept.
