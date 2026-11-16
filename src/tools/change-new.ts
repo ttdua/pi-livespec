@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isKebabName } from "../core/names.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
 import { afterForgeWrite, prepareWrite, type ToolResult, toolResult } from "./guard.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type ChangeNewParams = { name: string };
 export type ChangeNewDetails = { number?: number };
@@ -45,7 +46,7 @@ export async function runChangeNew(p: ChangeNewParams): Promise<ToolResult<Chang
 }
 
 export function registerChangeNew(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "change_new",
 		label: "New livespec change",
 		description:

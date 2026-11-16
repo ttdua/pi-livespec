@@ -2,15 +2,20 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
+import { registerBuiltinRules } from "../../src/decide/registry.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import { createGit, type Git } from "../../src/engine/git.ts";
+import type { CheckResult } from "../../src/engine/state-types.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { checkNames, registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
+import { unitDigest } from "../../src/core/digest.ts";
+import { decisionComment, type DecisionRecord } from "../../src/decide/records.ts";
+import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff"];
+const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification"];
 const VALID_SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const EMPTY_SPEC = "# broken\n\n## Purpose\nNothing.\n\n## Requirements\n";
 
@@ -35,6 +40,7 @@ let pack: Pack;
 
 beforeEach(async () => {
 	resetRegistryForTests();
+	registerBuiltinRules();
 	registerBuiltinChecks();
 	const loaded = await loadPack("/nowhere", { readFile: async () => undefined });
 	if (!loaded.ok) throw new Error("default pack must load");
@@ -50,7 +56,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 describe("registerBuiltinChecks", () => {
-	test("registers the four LS-02 checks", () => {
+	test("registers the LS-02 checks and unit-classification", () => {
 		expect(checkNames().sort()).toEqual([...BUILTIN].sort());
 	});
 });
@@ -69,7 +75,7 @@ describe("runChecks", () => {
 		expect(await runChecks(pack, stateFor("shape"), { root: "/nowhere", git: NO_GIT })).toEqual([]);
 		expect(called).toEqual([]);
 		await runChecks(pack, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
-		expect(called).toEqual(["units-format", "done-maps-scenarios"]);
+		expect(called).toEqual(["units-format", "done-maps-scenarios", "unit-classification"]);
 	});
 
 	test("no check runs without a single phase", async () => {
@@ -159,5 +165,76 @@ describe("runChecks", () => {
 		expect(results[0]).toEqual({ check: "depends-merged", code: "dep-open", severity: "error", message: "Change #34 is not merged." });
 		expect(results.filter((r) => r.code === "units-format").every((r) => r.check === "units-format")).toBe(true);
 		expect(results.at(-1)).toEqual(expect.objectContaining({ check: "not-registered", code: "check-unregistered" }));
+	});
+});
+
+/** A `decision` comment as `filterMarked` returns it, from the real comment body. */
+function decisionMarked(r: DecisionRecord): MarkedComment {
+	const parsed = parseMarked(decisionComment(r));
+	if (!parsed) throw new Error("decision comment does not parse");
+	return { commentId: `c-${r.point}-${r.subject}`, author: "bot", ...parsed };
+}
+
+/** Rule records matching the fixture body: U1 low with no tags, U3 medium with `[security, api]`. */
+function fixtureRecords(body = FIXTURE_BODY): MarkedComment[] {
+	const units = parseChange(body).units;
+	const record = (point: string, unit: string, outcome: unknown): MarkedComment => {
+		const u = units.find((x) => x.id === unit);
+		if (!u) throw new Error(`no unit ${unit}`);
+		return decisionMarked({ point, subject: unit, digest: unitDigest(u), source: "rule", outcome, reason: `${point} rule` });
+	};
+	return [
+		record("tags", "U1", []),
+		record("difficulty", "U1", "low"),
+		record("tags", "U3", ["security", "api"]),
+		record("difficulty", "U3", "medium"),
+	];
+}
+
+async function classification(body: string, marked: MarkedComment[]): Promise<CheckResult[]> {
+	const state = stateFor("plan", { change: parseChange(body), marked });
+	const results = await runChecks(pack, state, { root: "/nowhere", git: NO_GIT });
+	return results.filter((r) => r.check === "unit-classification");
+}
+
+describe("unit-classification", () => {
+	test("matching records pass", async () => {
+		expect(await classification(FIXTURE_BODY, fixtureRecords())).toEqual([]);
+	});
+
+	test("Tag removed in the body", async () => {
+		const edited = FIXTURE_BODY.replace("Tags: [security, api]", "Tags: [api]");
+		const results = await classification(edited, fixtureRecords());
+		expect(results).toEqual([
+			{
+				check: "unit-classification",
+				code: "unit-classification",
+				severity: "error",
+				section: "U3",
+				message: "U3: Tags [api] does not match the tags decision [security, api]",
+			},
+		]);
+	});
+
+	test("unit without a record is an error", async () => {
+		const results = await classification(FIXTURE_BODY, fixtureRecords().filter((m) => m.id !== "difficulty.U1"));
+		expect(results.map((r) => [r.section, r.message])).toEqual([["U1", "U1: no difficulty decision record for its current contract"]]);
+	});
+
+	test("record for a digest not in the body is ignored", async () => {
+		const stale = decisionMarked({ point: "tags", subject: "U3", digest: "0".repeat(64), source: "human", outcome: ["perf"], reason: "older contract" });
+		expect(await classification(FIXTURE_BODY, [...fixtureRecords(), stale])).toEqual([]);
+		const onlyStale = fixtureRecords().filter((m) => m.id !== "tags.U3");
+		const results = await classification(FIXTURE_BODY, [...onlyStale, stale]);
+		expect(results.map((r) => r.message)).toEqual(["U3: no tags decision record for its current contract"]);
+	});
+
+	test("check context carries the own marked comments", async () => {
+		let seen: MarkedComment[] | undefined;
+		registerCheck("peek", async (ctx) => ((seen = ctx.marked), []));
+		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["peek"] } : p)) };
+		const marked = fixtureRecords();
+		await runChecks(custom, stateFor("plan", { marked }), { root: "/nowhere", git: NO_GIT });
+		expect(seen).toBe(marked);
 	});
 });

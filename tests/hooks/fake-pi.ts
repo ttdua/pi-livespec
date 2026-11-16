@@ -9,18 +9,28 @@ type Handler = (event: unknown, ctx: unknown) => unknown;
 export type SentMessage = { customType: string; content: string; display: boolean };
 
 export type SelectFn = (title: string, options: string[]) => Promise<string | undefined>;
+export type ConfirmFn = (title: string, message: string) => Promise<boolean>;
+export type InputFn = (title: string, placeholder?: string) => Promise<string | undefined>;
+
+/** Scripted dialog answers; a missing one cancels (`undefined`, or `false` for `confirm`). */
+export type FakeUI = { hasUI?: boolean; select?: SelectFn; confirm?: ConfirmFn; input?: InputFn };
 
 export type FakeCtx = {
 	cwd: string;
 	hasUI: boolean;
-	ui: { notify: ReturnType<typeof vi.fn>; select: ReturnType<typeof vi.fn<SelectFn>> };
+	ui: {
+		notify: ReturnType<typeof vi.fn>;
+		select: ReturnType<typeof vi.fn<SelectFn>>;
+		confirm: ReturnType<typeof vi.fn<ConfirmFn>>;
+		input: ReturnType<typeof vi.fn<InputFn>>;
+	};
 	isProjectTrusted: () => boolean;
 };
 
 export class FakePi {
 	readonly handlers = new Map<string, Handler[]>();
 	readonly commands = new Map<string, { description?: string; handler: (args: string, ctx: unknown) => unknown }>();
-	readonly tools = new Map<string, { name: string; execute: (...a: unknown[]) => Promise<unknown> }>();
+	readonly tools = new Map<string, { name: string; parameters?: unknown; execute: (...a: unknown[]) => Promise<unknown> }>();
 	readonly sent: SentMessage[] = [];
 	/** UI-only session entries from `appendEntry`; they never reach the LLM. */
 	readonly entries: { customType: string; data: unknown }[] = [];
@@ -36,7 +46,7 @@ export class FakePi {
 		registerCommand: (name: string, options: { description?: string; handler: (args: string, ctx: unknown) => unknown }) => {
 			this.commands.set(name, options);
 		},
-		registerTool: (tool: { name: string; execute: (...a: unknown[]) => Promise<unknown> }) => {
+		registerTool: (tool: { name: string; parameters?: unknown; execute: (...a: unknown[]) => Promise<unknown> }) => {
 			this.tools.set(tool.name, tool);
 		},
 		sendMessage: (message: SentMessage) => {
@@ -61,8 +71,10 @@ export class FakePi {
 	}
 }
 
-/** A ctx without UI by default; `ui.select` answers through `select`, or cancels when none is given. */
-export function fakeCtx(cwd: string, trusted = true, ui: { hasUI?: boolean; select?: SelectFn } = {}): FakeCtx {
+/** A ctx without UI by default; each dialog answers through the scripted function, or cancels when none is given. */
+export function fakeCtx(cwd: string, trusted = true, ui: FakeUI = {}): FakeCtx {
 	const select = vi.fn<SelectFn>(ui.select ?? (async () => undefined));
-	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select }, isProjectTrusted: () => trusted };
+	const confirm = vi.fn<ConfirmFn>(ui.confirm ?? (async () => false));
+	const input = vi.fn<InputFn>(ui.input ?? (async () => undefined));
+	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select, confirm, input }, isProjectTrusted: () => trusted };
 }

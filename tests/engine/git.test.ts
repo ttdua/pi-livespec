@@ -130,3 +130,67 @@ describe("createGit", () => {
 function currentBranch(root: string): string {
 	return git(root, "branch", "--show-current");
 }
+
+describe("diff over specs", () => {
+	test("diffStat diffNames over specs", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "specs/rate-limit/spec.md", "# rate-limit\n");
+		await writeIn(root, "specs/auth/spec.md", "# auth\n");
+		await writeIn(root, "src/x.ts", "x\n");
+		commitAll(root, "specs");
+		expect(await git.diffNames(base, "HEAD", "specs/")).toEqual(["specs/auth/spec.md", "specs/rate-limit/spec.md"]);
+		const stat = await git.diffStat(base, "HEAD", "specs/");
+		expect(stat).toContain("specs/rate-limit/spec.md | 1 +");
+		expect(stat).toContain("2 files changed, 2 insertions(+)");
+		expect(stat).not.toContain("src/x.ts");
+		expect(await git.diffNames("HEAD", "HEAD", "specs/")).toEqual([]);
+		expect(await git.diffStat("HEAD", "HEAD", "specs/")).toBe("");
+		await expect(git.diffNames("0".repeat(40), "HEAD", "specs/")).rejects.toBeInstanceOf(GitError);
+	});
+});
+
+describe("merge", () => {
+	/** A repo with `main` and a `side` branch that both changed README.md, or only `side` when `conflict` is false. */
+	async function divergent(conflict: boolean): Promise<{ root: string; git: Git; side: string }> {
+		const { root } = await committedRepo();
+		const start = currentBranch(root);
+		execFileSync("git", ["switch", "-q", "-c", "side"], { cwd: root });
+		await writeIn(root, conflict ? "README.md" : "side.txt", "side\n");
+		commitAll(root, "side");
+		const side = await createGit(root).head();
+		execFileSync("git", ["switch", "-q", start], { cwd: root });
+		await writeIn(root, "README.md", "main\n");
+		commitAll(root, "main");
+		execFileSync("git", ["config", "user.name", "t"], { cwd: root });
+		execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+		return { root, git: createGit(root), side };
+	}
+
+	test("merge reports conflict and mergeAbort restores the tree", async () => {
+		const { root, git } = await divergent(true);
+		const head = await git.head();
+		expect(await git.merge("side")).toBe("conflict");
+		await git.mergeAbort();
+		expect(await git.head()).toBe(head);
+		expect(await git.isDirty()).toBe(false);
+		expect(existsSync(`${root}/.git/MERGE_HEAD`)).toBe(false);
+	});
+
+	test("merge without a conflict makes a merge commit", async () => {
+		const { git, side } = await divergent(false);
+		const head = await git.head();
+		expect(await git.merge("side")).toBe("ok");
+		expect(await git.head()).not.toBe(head);
+		expect(await git.isAncestor(side, "HEAD")).toBe(true);
+		expect(await git.isAncestor(head, "HEAD")).toBe(true);
+	});
+
+	test("isAncestor", async () => {
+		const { git, side } = await divergent(false);
+		const head = await git.head();
+		expect(await git.isAncestor(side, head)).toBe(false);
+		expect(await git.isAncestor(head, head)).toBe(true);
+		await expect(git.isAncestor("0".repeat(40), head)).rejects.toBeInstanceOf(GitError);
+	});
+});

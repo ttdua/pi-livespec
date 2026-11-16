@@ -19,7 +19,7 @@ import { Session } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { registerChangeTools } from "../../src/tools/change-tools.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
-import { FakePi, fakeCtx } from "../hooks/fake-pi.ts";
+import { FakePi, type FakeUI, fakeCtx } from "../hooks/fake-pi.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
 export type ToolOut = { content: { type: string; text: string }[]; details: unknown; isError?: boolean };
@@ -46,6 +46,8 @@ export type ToolHarnessOptions = {
 	forge?: (world: MemoryWorld) => Forge;
 	/** Runs after the first commit and before the session is built (e.g. to add a `develop` branch). */
 	prepare?: (git: (...args: string[]) => string) => void;
+	/** Scripted dialogs of the tool `ctx`; without it the ctx has no UI. */
+	ui?: FakeUI;
 };
 
 const dirs: string[] = [];
@@ -94,7 +96,7 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 	const pi = new FakePi();
 	registerChangeTools(pi.api as never);
 	registerContextHooks(pi.api as never);
-	const ctx = fakeCtx(root);
+	const ctx = fakeCtx(root, true, o.ui);
 	const call = async (tool: string, params: unknown = {}) => {
 		const t = pi.tools.get(tool);
 		if (!t) throw new Error(`tool ${tool} is not registered`);

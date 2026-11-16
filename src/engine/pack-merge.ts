@@ -1,3 +1,4 @@
+import { mergeDecisions } from "../decide/registry.ts";
 import { type Document, type LineCounter, type Node, isMap, isScalar, isSeq } from "yaml";
 import type { Pack, Phase } from "./pack-types.ts";
 
@@ -11,7 +12,7 @@ export type Origin = { file: string; line: number; col: number };
 export type Merged = { pack: Pack; origins: Map<string, Origin> };
 
 type Raw = Record<string, unknown>;
-const MAP_KEYS = ["limits", "loops", "decisions", "init"] as const;
+const MAP_KEYS = ["limits", "loops", "init"] as const;
 
 function isRaw(v: unknown): v is Raw {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -125,6 +126,9 @@ export function mergePack(base: ParsedPack, override: ParsedPack): Merged {
 	const merged: Raw = { ...base.value };
 	for (const key of MAP_KEYS) {
 		if (key in override.value || key in base.value) merged[key] = mergeMap(base.value[key], override.value[key]);
+	}
+	if ("decisions" in override.value || "decisions" in base.value) {
+		merged.decisions = mergeDecisions(base.value.decisions, override.value.decisions);
 	}
 	const phases = mergePhases(rawPhases(base.value), rawPhases(override.value));
 	return { pack: assemble(merged, phases), origins };

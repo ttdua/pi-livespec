@@ -30,6 +30,7 @@ import { CachedForge } from "../forge/cache.ts";
 import { type DetectDeps, detectForge, type ForgeTarget, resolveForgeTarget } from "../forge/detect.ts";
 import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
+import { pollApprovals } from "../interaction/poll.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
@@ -95,6 +96,10 @@ export class Session {
 	accountBlock?: string;
 	/** The one-time line announcing a stored choice; cleared by `firstCardShown()`. */
 	accountNotice?: string;
+	/** Command comments the last approval poll ignored, with the reason; copied into the change state. */
+	commandWarnings: string[] = [];
+	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
+	pollInFlight?: Promise<void>;
 	private first = true;
 	private link?: SessionLink;
 
@@ -465,6 +470,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	if (!session.initialized) return suggestInit(session, ctx);
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
+	await pollApprovals(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
 	kickOffUpgrade(session, content, ctx);

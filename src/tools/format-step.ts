@@ -2,11 +2,13 @@
 // `/livespec next`), the change state of `spec_status`, and the open-changes
 // list. Forge text is wrapped as untrusted, like on the phase card.
 
-import type { Unit } from "../core/change.ts";
+import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import { pendingText } from "../interaction/card.ts";
+import { displayStuckId, displayUnitList } from "../interaction/display-ids.ts";
 
 const NO_CHANGE_NEXT = "Run change_start #N to start or switch to one of the open changes, or create a change with change_new.";
 const STALE_LINE = "Stale: built from cached forge data; it may be out of date.";
@@ -50,6 +52,10 @@ function stepLines(step: NextStep): string[] {
 		...inlineLine("Blocked units", step.blockedUnits.map((b) => `${b.id} (waits on ${b.waitingOn.join(", ")})`)),
 		...inlineLine("Counters", step.counters.map(counterText)),
 		...inlineLine("Incomplete", step.incomplete),
+		...listLines("Pending approvals", step.pending.map(pendingText)),
+		...inlineLine("Frozen units", displayUnitList(step.frozenUnits)),
+		...inlineLine("Stale units", displayUnitList(step.staleUnits)),
+		...(step.stuckOpen === undefined ? [] : [`Stuck report: ${displayStuckId(step.stuckOpen)}`]),
 		...(step.advance === undefined ? [] : [`Advance: ${step.advance}`]),
 	];
 }
@@ -63,8 +69,13 @@ function unitText(u: Unit): string {
 	return `${u.id} — ${untrusted(u.title)}: ${u.done ? "done" : "pending"}`;
 }
 
+function questionText(q: Question): string {
+	const answer = q.answer === undefined ? "" : ` — answer: ${untrusted(q.answer)}`;
+	return `${q.id} (${q.kind}, ${q.checked ? "answered" : "open"}): ${untrusted(q.text)}${answer}`;
+}
+
 function stateLines(state: ChangeState): string[] {
-	const questions = state.change.questions.map((q) => `${q.id} (${q.kind}, ${q.checked ? "answered" : "open"}): ${untrusted(q.text)}`);
+	const questions = state.change.questions.map(questionText);
 	const checks = state.checks.map((c) => `${c.severity} ${c.check}: ${untrusted(c.message)}`);
 	const counters = Object.keys(state.counters)
 		.sort()

@@ -47,7 +47,22 @@ The snapshot behind the phase card SHALL be rebuilt at `session_start`, at `befo
 - **THEN** the next card in that run no longer asks for the Proposal
 
 ### Requirement: Phase card content
-The card SHALL show the change and its phase, the next step and the required skills, the active phase's redirects, open blocking questions, counters with their caps, active units, `incomplete` markers, optional skills that still need a skill note, and the sections registered by other specs. Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be stated.
+The card SHALL show:
+- the change and its phase;
+- the next step and the required skills;
+- the active phase's redirects;
+- open blocking questions;
+- counters with their caps;
+- active units;
+- `incomplete` markers;
+- optional skills that still need a skill note;
+- pending approver requests, with subject and adapter;
+- frozen and stale units;
+- an unanswered stuck report;
+- forge command comments ignored by the last poll, with the reason;
+- the sections registered by other specs.
+
+Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be stated.
 
 #### Scenario: Card contents
 - **WHEN** the change is in `define` with redirects and an open blocking question
@@ -60,6 +75,14 @@ The card SHALL show the change and its phase, the next step and the required ski
 #### Scenario: Registered section
 - **WHEN** a test registers a card section
 - **THEN** its text appears in the card after the built-in sections
+
+#### Scenario: Pending approvals shown
+- **WHEN** a forge request for `gate:plan` is pending and U2 is frozen
+- **THEN** the card lists the pending `gate:plan` request with adapter `forge` and names U2 as frozen
+
+#### Scenario: Ignored command shown
+- **WHEN** the last poll ignored a `/livespec approve` comment from a user without write access
+- **THEN** the card names the comment's author and the reason, wrapped as untrusted
 
 ### Requirement: Cache evidence
 The change SHALL record a manual smoke run of at least five turns against a real model, listing per turn the uncached input and cache-read tokens with and without the livespec hooks, in the format of probe (c) in `docs/evidence/host-seams.md`. The run passes when, from turn 2 on, each hooked turn's cache-read tokens are within one cache block of the control turn, or the hooked turn reads more; an isolated full miss counts only if the control run shows none.

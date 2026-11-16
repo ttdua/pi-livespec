@@ -4,6 +4,7 @@ import {
 	checkNames,
 	getCheck,
 	getPackSchema,
+	isWaivable,
 	personasForPack,
 	registerCheck,
 	registerPackSchema,
@@ -41,6 +42,19 @@ describe("registry", () => {
 		expect(checkNames()).toEqual(["x-check"]);
 		expect(getCheck("x-check")).toBe(fn);
 		expect(getCheck("nope")).toBeUndefined();
+	});
+
+	test("waivable flag is stored", () => {
+		registerCheck("size-limits", async () => [], { waivable: true });
+		registerCheck("spec-format", async () => []);
+		expect(isWaivable("size-limits")).toBe(true);
+		expect(isWaivable("spec-format")).toBe(false);
+		expect(isWaivable("nope")).toBe(false);
+		registerCheck("size-limits", async () => []);
+		expect(isWaivable("size-limits")).toBe(false);
+		registerCheck("size-limits", async () => [], { waivable: true });
+		resetRegistryForTests();
+		expect(isWaivable("size-limits")).toBe(false);
 	});
 
 	test("resetRegistryForTests clears registered checks and schemas", () => {

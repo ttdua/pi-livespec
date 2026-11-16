@@ -9,6 +9,10 @@ export interface Git {
 	head(): Promise<string>;
 	isDirty(): Promise<boolean>;
 	diff(from: string, to: string, path: string): Promise<string>;
+	/** `git diff --stat <from>..<to> -- <path>`. */
+	diffStat(from: string, to: string, path: string): Promise<string>;
+	/** `git diff --name-only <from>..<to> -- <path>`, one path per entry. */
+	diffNames(from: string, to: string, path: string): Promise<string[]>;
 	/** Default branch of `origin` (e.g. `main`, without the remote prefix), or undefined when `origin/HEAD` is not set. */
 	originHead(): Promise<string | undefined>;
 	fetch(remote: string, ref: string): Promise<void>;
@@ -19,6 +23,12 @@ export interface Git {
 	branchExists(name: string): Promise<boolean>;
 	configGet(key: string): Promise<string | undefined>;
 	configSet(key: string, value: string): Promise<void>;
+	/** `git merge --no-edit --no-ff -- <ref>`; `conflict` when it stops with unmerged paths (the merge is left in progress). */
+	merge(ref: string): Promise<"ok" | "conflict">;
+	/** `git merge --abort`: restores the tree and HEAD from before a conflicted merge. */
+	mergeAbort(): Promise<void>;
+	/** `git merge-base --is-ancestor <a> <b>`. */
+	isAncestor(a: string, b: string): Promise<boolean>;
 }
 
 export class GitError extends Error {
@@ -36,6 +46,10 @@ export class GitError extends Error {
 const EXIT_NOT_SYMBOLIC = 128;
 /** `config --get` and `show-ref --verify --quiet` exit 1 when the key or ref is missing. */
 const EXIT_NOT_FOUND = 1;
+/** `merge` exits 1 when it stops, e.g. on a conflict. */
+const EXIT_MERGE_STOPPED = 1;
+/** `merge-base --is-ancestor` exits 1 when the first commit is not an ancestor of the second. */
+const EXIT_NOT_ANCESTOR = 1;
 const ORIGIN_PREFIX = "origin/";
 
 type Run = (args: string[], notFoundCode?: number) => Promise<string | undefined>;
@@ -68,6 +82,9 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		head: () => text(run, ["rev-parse", "HEAD"]),
 		isDirty: async () => (await text(run, ["status", "--porcelain"])) !== "",
 		diff: async (from, to, path) => (await run(["diff", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "",
+		diffStat: async (from, to, path) => (await run(["diff", "--stat", END_OF_OPTIONS, `${from}..${to}`, "--", path]))?.trimEnd() ?? "",
+		diffNames: async (from, to, path) =>
+			((await run(["diff", "--name-only", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "").split("\n").filter((l) => l !== ""),
 		originHead: async () => {
 			const ref = await run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], EXIT_NOT_SYMBOLIC);
 			if (ref === undefined) return undefined;
@@ -93,6 +110,16 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		configSet: async (key, value) => {
 			await run(["config", END_OF_OPTIONS, key, value]);
 		},
+		merge: async (ref) => {
+			const args = ["merge", "--no-edit", "--no-ff", "--", ref];
+			if ((await run(args, EXIT_MERGE_STOPPED)) !== undefined) return "ok";
+			if ((await text(run, ["diff", "--name-only", "--diff-filter=U"])) !== "") return "conflict";
+			throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
+		},
+		mergeAbort: async () => {
+			await run(["merge", "--abort"]);
+		},
+		isAncestor: async (a, b) => (await run(["merge-base", "--is-ancestor", END_OF_OPTIONS, a, b], EXIT_NOT_ANCESTOR)) !== undefined,
 	};
 }
 

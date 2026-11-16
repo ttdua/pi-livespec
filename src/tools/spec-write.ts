@@ -5,6 +5,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { applyWrite, planWrite, postconditionFailure, SPEC_WRITE_SECTIONS } from "./spec-write-rules.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type SpecWriteParams = { section: string; content: string };
 
@@ -36,7 +37,7 @@ export async function runSpecWrite(p: SpecWriteParams): Promise<ToolResult<SpecW
 }
 
 export function registerSpecWrite(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "spec_write",
 		label: "Write change section",
 		description:

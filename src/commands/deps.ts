@@ -87,6 +87,8 @@ export async function doctorDeps(ctx: ExtensionCommandContext, env: CommandEnv):
 		forge: () => forgeFor(ctx.cwd, env),
 		exists,
 		listDir,
+		config,
+		hasUI: ctx.hasUI,
 		...(session?.account ? { account: session.account } : {}),
 		...(session?.accountBlock !== undefined ? { accountBlock: session.accountBlock } : {}),
 	};

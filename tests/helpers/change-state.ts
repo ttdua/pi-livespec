@@ -20,6 +20,11 @@ export function stateFor(phase: string, overrides: Partial<ChangeState> = {}, bo
 		stale: false,
 		readOnly: false,
 		warnings: [],
+		marked: [],
+		requests: { pending: [], applying: [] },
+		lock: { locked: undefined, frozen: [], staleUnits: [], stalePhases: [], gates: {} },
+		iterations: { count: 0, cap: undefined, blocking: false, stuckOpen: undefined },
+		commandWarnings: [],
 		...overrides,
 	};
 }

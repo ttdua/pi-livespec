@@ -6,6 +6,7 @@ import type { NextStep } from "../engine/state-types.ts";
 import { formatOpenChanges, formatStep } from "./format-step.ts";
 import { requireSession, type ToolResult, toolResult } from "./guard.ts";
 import { readCurrentChange } from "./read-change.ts";
+import { registerLivespecTool } from "./register.ts";
 
 export type SpecNextDetails = { step: NextStep | null; open?: OpenChange[] };
 
@@ -19,7 +20,7 @@ export async function runSpecNext(): Promise<ToolResult<SpecNextDetails>> {
 }
 
 export function registerSpecNext(pi: ExtensionAPI): void {
-	pi.registerTool({
+	registerLivespecTool(pi, {
 		name: "spec_next",
 		label: "Next livespec step",
 		description: "Rebuild the change snapshot and return the next step of the livespec flow, with its required skills, redirects, questions and units.",

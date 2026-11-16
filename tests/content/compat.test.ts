@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { checkCompat } from "../../src/content/compat.ts";
+import { registerBuiltinRules } from "../../src/decide/registry.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { registerPackSchema, resetRegistryForTests } from "../../src/engine/registry.ts";
@@ -18,6 +19,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
 	resetRegistryForTests();
+	registerBuiltinRules();
 	registerBuiltinChecks();
 	await rm(tree, { recursive: true, force: true });
 });
