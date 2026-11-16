@@ -7,7 +7,7 @@
 
 **Change**: `sync-ls05-artifacts`
 **Finalized at**: `2026-11-16 15:10`
-**Outcome**: `pr-updated` (pending push, see "Policy deviation")
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,12 +15,12 @@
 
 - **Branch**: `ls-05-20`
 - **Base branch**: `main`
-- **Final state**: `pr-updated` (pending push). The worktree branch `sync-ls05-artifacts` was fast-forwarded into `ls-05-20` at `9cedcdd`. The branch has no remote yet, so pushing it will create the remote tracking branch.
-- **PR URL**: N/A. No PR exists yet; one is offered after the push.
+- **Final state**: `pr-open`. The worktree branch `sync-ls05-artifacts` was fast-forwarded into `ls-05-20` at `9cedcdd`, and `ls-05-20` was pushed to `origin`, which created the remote branch.
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/27 (`fix(approver-adapters): sync-ls05-artifacts`, closes #20)
 
 ### Policy deviation (project AGENTS.md)
 
-The global `AGENTS.md` says: "do not push, merge or open a PR without explicit user permission in chat". That rule overrides finalize steps 10–12. The local merge and this receipt are done. The push of `ls-05-20`, the PR creation and the reviewer comment wait for the user's explicit approval.
+The global `AGENTS.md` says: "do not push, merge or open a PR without explicit user permission in chat". That rule overrides finalize steps 10–12, so the local merge and the receipt were done first and the push waited. The user approved the push and PR in chat (option 1). The branch was then pushed, PR #27 was opened, and the orientation comment was posted.
 
 ---
 
@@ -35,7 +35,7 @@ The global `AGENTS.md` says: "do not push, merge or open a PR without explicit u
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`. Pending the user's push and PR decision.
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/27#issuecomment-6919874929)
 
 ---
 
@@ -64,7 +64,4 @@ The edits are docs only. The tests were re-run after them.
 
 ## Next step
 
-1. With the user's approval, push `ls-05-20` and open the PR. The suggested title is `docs(openspec): sync-ls05-artifacts`, or `fix(approver-adapters): sync-ls05-artifacts`, because the change also fixes behaviour.
-2. Post the reviewer orientation comment.
-3. Wait for PR code review. After approval, run `/opsx-archive` on `ls-05-20` and push the archive commits.
-4. Merge the PR, which lands the implementation and the archive into `main`.
+Wait for PR code review. After approval, run `/opsx-archive` on this feature branch (commits land here), push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or GitHub UI) — that single merge lands implementation + archive into main.
