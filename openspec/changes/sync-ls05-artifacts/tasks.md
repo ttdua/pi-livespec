@@ -29,9 +29,9 @@ Blocked by: 1
 
 Blocked by: 3
 
-- [ ] 4.1 Register marker kind `class` (`src/interaction/approver.ts`); after `applyClasses` rewrites the body, or finds the class already set, post an own `class` comment with id = command comment id and data `{ question, class }`; no marker on a write conflict (design D2)
-- [ ] 4.2 `matchCommands` takes the applied command ids (`MatchOptions`) and skips those `class` commands; `poll.ts` passes them from own `class` markers
-- [ ] 4.3 Tests in `tests/interaction/poll.test.ts`: "Class command applied once", "Class command recorded across sessions", "Class command already matching", "Class rewrite conflict retried", and the marker-write-failure known gap; "Human reclassifies" still passes
+- [x] 4.1 Register marker kind `class` (`src/interaction/approver.ts`); after `applyClasses` rewrites the body, or finds the class already set, post an own `class` comment with id = command comment id and data `{ question, class }`; no marker on a write conflict (design D2)
+- [x] 4.2 `matchCommands` takes the applied command ids (`MatchOptions`) and skips those `class` commands; `poll.ts` passes them from own `class` markers
+- [x] 4.3 Tests in `tests/interaction/poll.test.ts`: "Class command applied once", "Class command recorded across sessions", "Class command already matching", "Class rewrite conflict retried", and the marker-write-failure known gap; "Human reclassifies" still passes
 
 ## 5. Spec-gap scenarios on existing behaviour
 
