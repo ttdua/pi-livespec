@@ -37,9 +37,9 @@ Blocked by: 3
 
 Blocked by: 3
 
-- [ ] 5.1 Tests with the exact scenario names: "Answer later in session" (`tests/tools/spec-question.test.ts`), "Named gate option recorded" and "Dirty tree when the answer is read" (`tests/tools/spec-gate.test.ts`), "Waived check does not hold the next step" (`tests/engine/next-step.test.ts`), "Dismissed stuck answer keeps the cap" (`tests/tools/spec-gate.test.ts` or `tests/engine/iterations.test.ts`)
-- [ ] 5.2 Extend "Waive at the gate" to assert the move to `build`; add "Waived ship gate stays in ship"; rename the in-session named-option test to "Named gate option does not waive"; extend "Choice recorded" to assert the stuck answer comment's `outcome`; give "Stuck answer lifts the cap" outcome `approved` and choice `B`
-- [ ] 5.3 Fix any code the new tests show diverging from the deltas (expected none)
+- [x] 5.1 Tests with the exact scenario names: "Answer later in session" (`tests/tools/spec-question.test.ts`), "Named gate option recorded" and "Dirty tree when the answer is read" (`tests/tools/spec-gate.test.ts`), "Waived check does not hold the next step" (`tests/engine/next-step.test.ts`), "Dismissed stuck answer keeps the cap" (`tests/tools/spec-gate.test.ts` or `tests/engine/iterations.test.ts`)
+- [x] 5.2 Extend "Waive at the gate" to assert the move to `build`; add "Waived ship gate stays in ship"; rename the in-session named-option test to "Named gate option does not waive"; extend "Choice recorded" to assert the stuck answer comment's `outcome`; give "Stuck answer lifts the cap" outcome `approved` and choice `B`
+- [x] 5.3 Fix any code the new tests show diverging from the deltas (expected none)
 
 ## 6. Archived artifacts and docs
 
