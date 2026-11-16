@@ -4,6 +4,8 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { decisionComment } from "../../src/decide/records.ts";
 import { registerGate, resetGatesForTests } from "../../src/engine/gates.ts";
+import { pollApprovals } from "../../src/interaction/poll.ts";
+import { readRequests } from "../../src/interaction/requests.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
@@ -90,6 +92,12 @@ const longProposal = (b: string): string => b.replace("Limit each client IP.", [
 
 function issueUrl(h: Gate): string {
 	return `${MEMORY_WEB_URL}/issues/${h.n}`;
+}
+
+function card(h: Gate) {
+	const c = h.session.card;
+	if (c.kind !== "change") throw new Error(`no change card: ${c.kind}`);
+	return c;
 }
 
 function gateData(m: MarkedComment | undefined): Record<string, unknown> {
@@ -240,7 +248,18 @@ describe("spec_gate", () => {
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
 	});
 
-	test("in-session choice of a named gate option does not pass a failing waivable check", async () => {
+	test("Named gate option recorded", async () => {
+		registerGate("new-dependency", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
+		const h = await change("build", { ui: human("accept") });
+		const out = await h.call("spec_gate", { target: "new-dependency" });
+		expect(out.isError).toBe(false);
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", outcome: "approved", waivers: [] });
+		expect(gate.superseded).toBeUndefined();
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
+	});
+
+	test("Named gate option does not waive", async () => {
 		registerSizeLimits();
 		registerGate("new-dependency", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
@@ -249,6 +268,7 @@ describe("spec_gate", () => {
 		expect(textOf(out)).toContain("choose waive");
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", superseded: true, waivers: [] });
+		expect(gate.outcome).toBe("approved");
 	});
 
 	test("plan gate locks digests and offers overrides", async () => {
@@ -363,7 +383,7 @@ describe("spec_gate", () => {
 		expect(await h.world.forge.listComments(h.n)).toEqual([]);
 	});
 
-	test("cap reached after a dismissed stuck answer asks for a new stuck report", async () => {
+	test("Dismissed stuck answer keeps the cap", async () => {
 		const h = await change("define", { ui: human("approve") });
 		const stale = (id: string) => writeMarked("stale", id, { reason: id, phases: ["define"], units: [], after_plan: true });
 		for (const id of ["Q3", "Q4", "Q5", "Q6", "Q7"]) await seedMarked(h, stale(id));
@@ -372,7 +392,34 @@ describe("spec_gate", () => {
 		const out = await h.call("spec_gate", { target: "define" });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("new stuck report");
+		expect(card(h).step.next).toContain("spec_stuck");
 		expect(await ofKind(h, "gate")).toEqual([]);
+	});
+
+	test("Waived ship gate stays in ship", async () => {
+		registerSizeLimits();
+		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: ship\n    checks: [size-limits]\n" };
+		const h = await change("ship", { ui: human("waive"), edit: allDone, files: flow });
+		const out = await h.call("spec_gate", { target: "ship" });
+		expect(out.isError).toBe(false);
+		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "ship", outcome: "approved", waivers: ["size-limits"] });
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
+		expect(card(h).step.next).toContain("ready to ship");
+	});
+
+	test("Dirty tree when the answer is read", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.call("spec_gate", { target: "define" });
+		await writeIn(h.root, "scratch.txt", "x");
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec approve");
+		await pollApprovals(h.session);
+		expect(gateData((await ofKind(h, "gate"))[0]).superseded).toBe(true);
+		expect((await ofKind(h, "answer"))[0]?.data).toMatchObject({ verdict: "superseded", reason: expect.stringContaining("working tree is dirty") });
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
+		const requests = readRequests(await marked(h));
+		expect(requests.pending).toEqual([]);
+		expect(requests.applying).toEqual([]);
 	});
 
 	test("unknown target is refused", async () => {

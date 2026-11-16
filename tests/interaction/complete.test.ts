@@ -377,7 +377,7 @@ describe("completion engine", () => {
 		const polled = await forgeAnswer(f, record, "/livespec choose B");
 		await completeAnswer(await ctxOf(f), record, polled);
 		const answerComment = ofKind(await markedOf(f), "stuck", "S1-answer")[0];
-		expect(answerComment?.data).toMatchObject({ choice: "B", request: record.id });
+		expect(answerComment?.data).toMatchObject({ choice: "B", request: record.id, outcome: "approved" });
 		const { state, step } = await stateOf(f);
 		expect(state.iterations.stuckOpen).toBeUndefined();
 		expect(step.next).not.toContain("stuck report");

@@ -224,7 +224,7 @@ describe("spec_question", () => {
 		expect((await h.world.forge.listComments(h.n)).length).toBe(before);
 	});
 
-	test("answer later rewrites the question as non-blocking", async () => {
+	test("Answer later in session", async () => {
 		const forge = await change("define", { config: BOTH_CHAIN, ui: human({ later: true }) });
 		const out = await forge.ask({ text: "Which store keeps the counters?" });
 		expect(out.isError).toBe(false);
