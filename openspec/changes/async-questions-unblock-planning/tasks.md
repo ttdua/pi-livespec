@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Move `effectiveMode` from `src/engine/next-step.ts` to new `src/engine/request-mode.ts` unchanged, export it, and import it in `next-step.ts`; existing `tests/engine/next-step.test.ts` stays green
-- [ ] 1.2 Add `blockingRequests(state)` to `src/engine/request-mode.ts` per design D1 (applying always; pending non-question always whatever its stored mode; pending question blocks unless its question is in the body as non-blocking) with unit tests in new `tests/engine/request-mode.test.ts`
-- [ ] 1.3 Export `blockingStateRefusal(state)` from `src/engine/gates.ts` running `blockingQuestion`, `openStuck`, `capReached` in order (design D2), with tests in `tests/engine/gates.test.ts`; `gateRefusal` behaviour and messages unchanged
+- [x] 1.1 Move `effectiveMode` from `src/engine/next-step.ts` to new `src/engine/request-mode.ts` unchanged, export it, and import it in `next-step.ts`; existing `tests/engine/next-step.test.ts` stays green
+- [x] 1.2 Add `blockingRequests(state)` to `src/engine/request-mode.ts` per design D1 (applying always; pending non-question always whatever its stored mode; pending question blocks unless its question is in the body as non-blocking) with unit tests in new `tests/engine/request-mode.test.ts`
+- [x] 1.3 Export `blockingStateRefusal(state)` from `src/engine/gates.ts` running `blockingQuestion`, `openStuck`, `capReached` in order (design D2), with tests in `tests/engine/gates.test.ts`; `gateRefusal` behaviour and messages unchanged
 
 ## 2. plan_units refuses only on blocking requests
 
