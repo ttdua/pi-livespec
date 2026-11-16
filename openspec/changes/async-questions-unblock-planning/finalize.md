@@ -16,7 +16,7 @@
 - **Branch**: `ls-05-17`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: `PENDING`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/22`
 
 The worktree branch `async-questions-unblock-planning` was fast-forwarded into `ls-05-17` (HEAD `74d9efe`). No PR existed for `ls-05-17`, so the outcome is `pr-created` rather than `pr-updated`. The user approved the merge, the push and the PR in chat.
 
@@ -33,7 +33,7 @@ Deviation, per the project AGENTS.md: worktrees are created and removed only wit
 
 ## PR comment
 
-- **PR comment status**: `PENDING`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/22#issuecomment-6906544046)
 
 ---
 
