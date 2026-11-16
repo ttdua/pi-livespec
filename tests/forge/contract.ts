@@ -44,6 +44,12 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect(issue).toMatchObject({ number: n, title: "T", body: "B", labels: ["a"], state: "open" });
 			});
 
+			it("getIssue has the web url of the issue", async () => {
+				const w = await world();
+				const n = await w.seedIssue({ title: "T" });
+				expect((await w.forge.getIssue(n)).url).toMatch(new RegExp(`^https?://.+/issues/${n}$`));
+			});
+
 			it("createIssue returns the created issue", async () => {
 				const w = await world();
 				const created = await w.forge.createIssue({ title: "New", body: "Body", labels: ["x"] });

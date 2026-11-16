@@ -121,11 +121,9 @@ describe("nextStep", () => {
 		expect(nextStep(pack, state("define", NO_QUESTION, { sections })).next).toBe("Write Capabilities with spec_write.");
 	});
 
-	test("missing Units names LS-05", () => {
+	test("missing Units names plan_units", () => {
 		const sections = { Capabilities: true, Proposal: true, Design: true, Units: false };
-		expect(nextStep(pack, state("plan", NO_QUESTION, { sections })).next).toBe(
-			"Write Units (the plan_units tool arrives with LS-05).",
-		);
+		expect(nextStep(pack, state("plan", NO_QUESTION, { sections })).next).toBe("Write Units with plan_units.");
 	});
 
 	test("specs-diff output missing in define", () => {

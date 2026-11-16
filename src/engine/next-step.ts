@@ -42,7 +42,7 @@ const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> =
 	"issue#Units": "Units",
 };
 
-const UNITS_SENTENCE = "Write Units (the plan_units tool arrives with LS-05).";
+const UNITS_SENTENCE = "Write Units with plan_units.";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
 const SHIP_PHASE = "ship";
 const STUCK_SUBJECT = "stuck:";

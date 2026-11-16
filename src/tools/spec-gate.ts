@@ -109,7 +109,8 @@ async function passSelf(w: WriteContext, state: ChangeState, target: string): Pr
 async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan): Promise<ApprovalRequest> {
 	const facts = await collectReviewFacts(w.session.git, state.change.header.base);
 	const issue = await w.forge.getIssue(state.issue.number);
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: gatePayload(state, w.pack, target, facts), now: new Date() });
+	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: gatePayload(state, w.pack, target, withLink), now: new Date() });
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx): Promise<ToolResult<undefined>> {

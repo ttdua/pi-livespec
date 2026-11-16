@@ -8,7 +8,7 @@ import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import type { MemoryWorld } from "../forge/memory-forge.ts";
+import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
@@ -85,6 +85,13 @@ function human(pick: string | undefined, input?: string): FakeUI {
 	return { hasUI: true, select, ...(input !== undefined ? { input: async () => input } : {}) };
 }
 
+/** A Proposal longer than the payload shows, so the payload cuts it and links the issue. */
+const longProposal = (b: string): string => b.replace("Limit each client IP.", ["Limit each client IP.", "line 2", "line 3", "line 4", "line 5", "line 6"].join("\n"));
+
+function issueUrl(h: Gate): string {
+	return `${MEMORY_WEB_URL}/issues/${h.n}`;
+}
+
 function gateData(m: MarkedComment | undefined): Record<string, unknown> {
 	return (m?.data ?? {}) as Record<string, unknown>;
 }
@@ -143,7 +150,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Define approved", async () => {
-		const h = await change("define", { ui: human("approve") });
+		const h = await change("define", { ui: human("approve"), edit: longProposal });
 		const out = await h.call("spec_gate", { target: "define" });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
@@ -154,6 +161,16 @@ describe("spec_gate", () => {
 		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
 		expect(summary).toContain("Capabilities: new [], modified [rate-limit]");
 		expect(summary).toContain("specs/rate-limit/spec.md");
+		expect(summary).toContain(`…\nFull text: ${issueUrl(h)}`);
+	});
+
+	test("forge define request links the issue for a truncated Proposal", async () => {
+		const h = await change("define", { config: FORGE_CHAIN, edit: longProposal });
+		await h.call("spec_gate", { target: "define" });
+		const request = (await ofKind(h, "request"))[0];
+		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
+		expect(text).toContain(`…\nFull text: ${issueUrl(h)}`);
+		expect(text).toContain(`Links:\n- ${issueUrl(h)}`);
 	});
 
 	test("Relayed approval refused", async () => {

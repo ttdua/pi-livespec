@@ -371,6 +371,7 @@ function toIssue(json: IssueDto): Issue {
 		author: String(json.user?.login ?? ""),
 		updatedAt: String(json.updated_at ?? ""),
 		version: toVersion(json, body),
+		...(json.html_url ? { url: json.html_url } : {}),
 	};
 }
 
