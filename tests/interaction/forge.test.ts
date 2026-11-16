@@ -365,3 +365,12 @@ describe("forge adapter", () => {
 		expect((await world.forge.listComments(n)).length).toBe(before);
 	});
 });
+
+describe("recorded class commands", () => {
+	test("a recorded class command stays silent after its author lost write access", () => {
+		const q = pending("question:Q2", {}, "question");
+		const thread = [posted(q, 0), comment("c1", "alice", "/livespec class Q2 non-blocking", LATER)];
+		const out = matchCommands([q], thread, new Map([["alice", "read" as Permission]]), { marked: filterMarked(thread, BOT_LOGIN).comments, appliedClasses: new Set(["c1"]) });
+		expect(out).toEqual({ matches: [], classes: [], warnings: [] });
+	});
+});

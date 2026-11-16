@@ -256,7 +256,6 @@ function apply(ctx: Ctx, comment: Comment, index: number, request: PendingReques
 		return recordSet(ctx, request, command);
 	}
 	if (command.verb === "class") {
-		if (ctx.appliedClasses.has(comment.id)) return;
 		ctx.result.classes.push({ question: command.question, class: command.class, commentId: comment.id });
 		return;
 	}
@@ -274,6 +273,7 @@ function matchOne(ctx: Ctx, comment: Comment, index: number): void {
 	const parsed = parseCommand(comment.body);
 	if (parsed === undefined || ctx.consumed.has(comment.id)) return;
 	if ("error" in parsed) return warn(ctx, comment, index, `cannot be parsed (${parsed.error})`);
+	if (parsed.verb === "class" && ctx.appliedClasses.has(comment.id)) return;
 	const target = targetOf(openAt(ctx, comment, index), parsed);
 	if ("warning" in target) return warn(ctx, comment, index, beforeRequest(ctx, parsed, index) ?? target.warning);
 	const first = parsed.verb === "set" || parsed.verb === "class" ? undefined : answeredBy(ctx, target.request);
