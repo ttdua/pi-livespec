@@ -86,7 +86,7 @@ Contract changes made during apply. The public ones are additive only.
 ## Open items for verify and the user
 
 - **10.4 manual smoke:** pending, as described under Tasks.
-- **Design question for the user (final review I3):**
+- **User decision 2026-11-16 (final review I3): keep as specified (option a).** Context:
   - A forge approval that is read while the local working tree is dirty gets recorded as `superseded`, and the human has to approve again.
   - This follows the spec as written (phase-gates "Gate comment", design D2).
   - The alternative is to keep the request pending until the tree is clean. That would change the spec.
