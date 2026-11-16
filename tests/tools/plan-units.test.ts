@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
+import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
+import { unitDigest } from "../../src/core/digest.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
@@ -14,10 +16,13 @@ import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
+import type { FakeUI } from "../hooks/fake-pi.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
+	resetRulesForTests();
+	registerBuiltinRules();
 	await cleanupDirs();
 });
 
@@ -78,10 +83,10 @@ function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => For
 type Plan = ToolHarness & { n: number; base: string; fault: Fault; plan(units?: UnitInput[]): ReturnType<ToolHarness["call"]> };
 
 /** A started change on its branch: `Branch`, `Base` and the `livespecBase` config set as change_start leaves them. */
-async function planning(phase = "plan", config?: string): Promise<Plan> {
+async function planning(phase = "plan", config?: string, ui?: FakeUI): Promise<Plan> {
 	const fault: Fault = { next: "none" };
 	let n = 0;
-	const h = await toolHarness({ branch: CHANGE_BRANCH, forge: faultyForge(fault, () => n), ...(config !== undefined ? { config } : {}) });
+	const h = await toolHarness({ branch: CHANGE_BRANCH, forge: faultyForge(fault, () => n), ...(config !== undefined ? { config } : {}), ...(ui ? { ui } : {}) });
 	h.git("config", "user.name", "t");
 	h.git("config", "user.email", "t@t");
 	const base = h.head;
@@ -422,6 +427,121 @@ describe("plan_units", () => {
 		const out = await h.plan();
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("question:Q9");
+	});
+});
+
+const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
+const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
+const LEVELS = [
+	{ id: "low", label: "Low" },
+	{ id: "medium", label: "Medium" },
+	{ id: "high", label: "High" },
+];
+const NO_SCHEMA = { validate() {} };
+const selectingId = (id: string): FakeUI => ({ hasUI: true, select: async (_t, options) => options.find((o) => o.endsWith(`[${id}]`)) });
+
+/** Makes `point` ask a human instead of deciding by rule. */
+function askingRule(point: string, options = LEVELS): void {
+	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options } }));
+}
+
+const requestsOf = async (h: Plan) => (await marked(h)).filter((m) => m.kind === "request");
+const humanDecision = async (h: Plan, id: string) => (await decisions(h)).find((m) => m.id === id);
+
+async function answerOnForge(h: Plan, choice: string): Promise<void> {
+	await h.world.postComment(h.n, "alice", `/livespec choose ${choice}`);
+	const status = await h.call("spec_status");
+	expect(status.isError, textOf(status)).toBeFalsy();
+}
+
+describe("plan_units asks classification", () => {
+	test("Classification asks on the forge", async () => {
+		askingRule("difficulty");
+		const h = await planning("plan", FORGE_CHAIN);
+		await h.world.setPermission("alice", "write");
+		const before = await issueBody(h);
+		const head = h.git("rev-parse", "HEAD");
+		const out = await h.plan([U1]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("difficulty.U1");
+		expect(textOf(out)).toContain("decide-difficulty-U1.");
+		expect(h.git("rev-parse", "HEAD")).toBe(head);
+		expect(await issueBody(h)).toBe(before);
+		expect(await decisions(h)).toEqual([]);
+	});
+
+	test("Rerun after a forge answer", async () => {
+		askingRule("difficulty");
+		const h = await planning("plan", FORGE_CHAIN);
+		await h.world.setPermission("alice", "write");
+		expect((await h.plan([U1])).isError).toBe(true);
+		await answerOnForge(h, "high");
+		const out = await h.plan([U1]);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(parseChange(await issueBody(h)).units[0]).toMatchObject({ id: "U1", difficulty: "high" });
+		expect(await requestsOf(h)).toHaveLength(1);
+		const records = await decisions(h);
+		expect(records.map((m) => [m.id, (m.data as { source: string }).source]).sort()).toEqual([
+			["difficulty.U1", "human"],
+			["tags.U1", "rule"],
+		]);
+		const digest = unitDigest(parseChange(await issueBody(h)).units[0]!);
+		expect((await humanDecision(h, "difficulty.U1"))?.data).toMatchObject({ digest });
+		const { state } = h.session.card.kind === "change" ? h.session.card : { state: undefined };
+		expect(state?.checks.filter((c) => c.check === "unit-classification")).toEqual([]);
+	});
+
+	test("Classification answered in session", async () => {
+		askingRule("difficulty");
+		const h = await planning("plan", SESSION_CHAIN, selectingId("high"));
+		const out = await h.plan([U1]);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(parseChange(await issueBody(h)).units[0]).toMatchObject({ difficulty: "high" });
+		const difficulty = (await decisions(h)).filter((m) => m.id === "difficulty.U1");
+		expect(difficulty).toHaveLength(1);
+		expect(difficulty[0]?.data).toMatchObject({ source: "human", outcome: "high" });
+	});
+
+	test("Tags answer that is not a list of tags", async () => {
+		askingRule("tags", [{ id: "x", label: "X" }]);
+		const h = await planning("plan", SESSION_CHAIN, selectingId("x"));
+		const before = await issueBody(h);
+		const head = h.git("rev-parse", "HEAD");
+		const out = await h.plan([U1]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("tags.U1");
+		expect(textOf(out)).toContain("not a list of tags");
+		expect(h.git("rev-parse", "HEAD")).toBe(head);
+		expect(await issueBody(h)).toBe(before);
+	});
+
+	test("Answer kept across a refused run", async () => {
+		askingRule("difficulty");
+		const h = await planning("plan", SESSION_CHAIN, selectingId("high"));
+		await writeIn(h.root, "README.md", "branch\n");
+		commitAll(h.root, "branch readme");
+		await advanceIntegration(h, "README.md", "upstream\n");
+		const refused = await h.plan([U1]);
+		expect(textOf(refused)).toContain("conflicts");
+		expect(await humanDecision(h, "difficulty.U1")).toBeDefined();
+		h.git("reset", "-q", "--hard", "HEAD~1");
+		await h.session.refresh();
+		const out = await h.plan([U1]);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(h.ctx.ui.select).toHaveBeenCalledTimes(1);
+		expect(parseChange(await issueBody(h)).units[0]).toMatchObject({ difficulty: "high" });
+	});
+
+	test("Changed tags change the difficulty question", async () => {
+		askingRule("difficulty");
+		const h = await planning("plan", FORGE_CHAIN);
+		await h.world.setPermission("alice", "write");
+		expect((await h.plan([U1])).isError).toBe(true);
+		await answerOnForge(h, "high");
+		const out = await h.plan([{ ...U1, extra_tags: ["ui"] }]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("decide-difficulty-U1.");
+		expect(await requestsOf(h)).toHaveLength(2);
 	});
 });
 

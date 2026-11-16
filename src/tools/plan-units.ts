@@ -11,7 +11,9 @@ import { blockingRequests } from "../engine/request-mode.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import type { ApproverCtx } from "./approver-for.ts";
 import { normalizeUnitInput } from "./classify-units.ts";
+import { createDecisionAsker } from "./decide-ask.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import {
 	classifyPlan,
@@ -64,10 +66,10 @@ async function recordPlan(w: WriteContext, issue: Issue, body: string, base: str
 	return failed;
 }
 
-async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[]): Promise<ToolResult<undefined>> {
+async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[], ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const n = state.issue.number;
 	const git = w.session.git;
-	const classifiedOrRefusal = await classifyPlan(units, w.pack.decisions);
+	const classifiedOrRefusal = await classifyPlan(units, w.pack.decisions, createDecisionAsker(w, state, ctx));
 	if (!classifiedOrRefusal.ok) return refuse(classifiedOrRefusal.message);
 	const classified = classifiedOrRefusal.plan;
 	const issue = await w.forge.getIssue(n);
@@ -78,7 +80,8 @@ async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[]):
 	if (integration === undefined) return refuse("plan_units refused: the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml.");
 	const merged = await mergeIntegration(git, integration);
 	if (!merged.ok) return refuse(merged.message);
-	const unrecorded = await postDecisionRecords(w.forge, n, classified.records);
+	// Human decisions are already effective records on the issue (written when answered).
+	const unrecorded = await postDecisionRecords(w.forge, n, classified.records.filter((r) => r.source === "rule"));
 	if (unrecorded) {
 		await afterForgeWrite(w.session, n);
 		return refuse(unrecorded);
@@ -90,7 +93,7 @@ async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[]):
 	return toolResult(`Planned ${classified.units.length} units on #${n}: ${list}. Base is ${merged.base}.`, undefined);
 }
 
-export async function runPlanUnits(p: PlanUnitsParams): Promise<ToolResult<undefined>> {
+export async function runPlanUnits(p: PlanUnitsParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refuse(w.message);
 	const change = requireChange(w.session);
@@ -100,7 +103,7 @@ export async function runPlanUnits(p: PlanUnitsParams): Promise<ToolResult<undef
 	const refusal = planRefusal(w, state);
 	if (refusal) return refuse(refusal);
 	if (!Array.isArray(p.units) || p.units.length === 0) return refuse("plan_units refused: give at least one unit.");
-	return runPlan(w, state, p.units.map(normalizeUnitInput));
+	return runPlan(w, state, p.units.map(normalizeUnitInput), ctx);
 }
 
 const UNIT_SCHEMA = {
@@ -127,6 +130,6 @@ export function registerPlanUnits(pi: ExtensionAPI): void {
 			"Write the change's units before the plan is locked: assigns ids U1…Un, computes Difficulty and Tags by rule, validates, merges the integration branch and records Units and Base in the issue. After the plan gate, use unit_amend.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No Difficulty or Tags parameter.
 		parameters: { type: "object", properties: { units: { type: "array", items: UNIT_SCHEMA } }, required: ["units"] } as never,
-		execute: (_id, params) => runPlanUnits({ units: (params as PlanUnitsParams).units }),
+		execute: (_id, params, _signal, _update, ctx) => runPlanUnits({ units: (params as PlanUnitsParams).units }, ctx as ApproverCtx),
 	});
 }

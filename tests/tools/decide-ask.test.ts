@@ -49,13 +49,13 @@ async function change(o: { config: string; ui?: FakeUI; body?: (head: string) =>
 	return { ...h, n };
 }
 
-/** Runs `decide("pick", …)` with the asker a tool would build. */
-async function decidePick(h: Change) {
+/** Runs `decide("pick", …)` with the asker a tool would build; `digest` is set for unit subjects. */
+async function decidePick(h: Change, o: { facts?: unknown; digest?: string; proposal?: boolean } = {}) {
 	const w = await prepareWrite();
 	if (!w.ok) throw new Error(w.message);
 	const c = requireChange(w.session);
 	if (!c.ok) throw new Error(c.message);
-	return decide("pick", FACTS, { config: { mode: "rule" }, subject: "U1", ask: createDecisionAsker(w, c.state, h.ctx) });
+	return decide("pick", o.facts ?? FACTS, { config: { mode: "rule" }, subject: "U1", digest: o.digest, ask: createDecisionAsker(w, c.state, h.ctx, { proposal: o.proposal }) });
 }
 
 async function marked(h: Change): Promise<MarkedComment[]> {
@@ -130,8 +130,98 @@ describe("decision asker", () => {
 	});
 });
 
-describe("built-in callers stay rule-only", () => {
-	test("plan_units refuses before any write when a rule asks", async () => {
+describe("unit digest reuse", () => {
+	const BIG = { files: ["src/a.ts"], blob: "x".repeat(2001) };
+
+	async function answerInForge(h: Change, facts: unknown = FACTS, digest = "d1", proposal?: boolean) {
+		await h.world.setPermission("alice", "write");
+		const r = await decidePick(h, { facts, digest, proposal });
+		await h.world.postComment(h.n, "alice", "/livespec choose y");
+		const status = await h.call("spec_status");
+		expect(status.isError, textOf(status)).toBeFalsy();
+		return r;
+	}
+
+	async function recordDecision(h: Change, data: Record<string, unknown>) {
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("decision", "pick.U1", { point: "pick", subject: "U1", reason: "r", ...data }));
+	}
+
+	test("Human record carries the unit digest", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const [record] = await ofKind(h, "decision");
+		expect(record?.data).toMatchObject({ source: "human", outcome: "y", digest: "d1" });
+	});
+
+	test("an amendment asker's answer is a proposal record", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h, FACTS, "d1", true);
+		const [record] = await ofKind(h, "decision");
+		expect(record?.data).toMatchObject({ source: "human", outcome: "y", digest: "d1", proposal: true });
+	});
+
+	test("Recorded answer reused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const again = await decidePick(h, { digest: "d1" });
+		expect(again).toMatchObject({ status: "decided", source: "human", outcome: "y", facts: FACTS });
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("Changed facts ask again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const r = await decidePick(h, { facts: { files: ["src/b.ts"] }, digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Changed contract asks again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const r = await decidePick(h, { digest: "d2" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Dismissed answer not reused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		await recordDecision(h, { source: "human", outcome: null, digest: "d1", facts: FACTS, reason: "dismissed by alice" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Latest human record wins", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await recordDecision(h, { source: "human", outcome: "x", digest: "d1", facts: FACTS, reason: "chosen" });
+		await recordDecision(h, { source: "human", outcome: "y", digest: "d1", facts: { files: ["src/b.ts"] }, reason: "chosen" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("Newer rule record stops reuse", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		await recordDecision(h, { source: "rule", outcome: "x", digest: "d1", facts: FACTS, reason: "rule" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Large facts reused by hash", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h, BIG);
+		const again = await decidePick(h, { facts: BIG, digest: "d1" });
+		expect(again).toMatchObject({ status: "decided", source: "human", outcome: "y" });
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+});
+
+describe("built-in callers use the asker", () => {
+	test("plan_units refuses before any write when a rule asks on the forge", async () => {
 		registerRule("tags", tagsSchema, () => ({ ask: { summary: "Which tags?", options: OPTIONS } }));
 		const body = (head: string) => setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", head), "Branch", CHANGE_BRANCH);
 		const h = await change({ config: FORGE_CHAIN, body, phase: "plan" });
@@ -140,9 +230,11 @@ describe("built-in callers stay rule-only", () => {
 		const unit = { title: "T", covers: ["c/Requirement: R"], files: ["a.ts"], done_means: [{ label: "a", text: "a" }], scenarios: [{ label: "a", ref: "t › a" }], depends: [], verify: "bun test" };
 		const out = await h.call("plan_units", { units: [unit] });
 		expect(out.isError).toBe(true);
-		expect(textOf(out)).toContain("asks a human");
+		expect(textOf(out)).toContain("tags.U1");
+		expect(textOf(out)).toContain("waits for a human answer");
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 		expect(parseChange(before).units).toEqual([]);
-		expect(await marked(h)).toEqual([]);
+		expect(await ofKind(h, "decision")).toEqual([]);
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 });

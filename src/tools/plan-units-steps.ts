@@ -16,6 +16,7 @@ import type { CachedForge } from "../forge/cache.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { type ClassifiedUnits, classifyUnits } from "./classify-units.ts";
+import type { DecisionAsker } from "./decide-ask.ts";
 import { livespecBaseKey } from "./change-start.ts";
 
 const REMOTE = "origin";
@@ -48,11 +49,14 @@ export async function reconcileBase(git: Git, branch: string, issueBase: string 
 
 /**
  * Assigns `U1…Un` in input order and runs the `tags` then `difficulty` decision per unit; nothing is
- * posted. A rule that rejects its facts (e.g. a non-kebab-case extra tag) is a refusal.
+ * posted. A rule that rejects its facts (e.g. a non-kebab-case extra tag) is a refusal, and so is a
+ * decision that waits for a human answer.
  */
-export async function classifyPlan(units: UnitInput[], decisions: Pack["decisions"]): Promise<{ ok: true; plan: ClassifiedUnits } | { ok: false; message: string }> {
+export async function classifyPlan(units: UnitInput[], decisions: Pack["decisions"], ask?: DecisionAsker): Promise<{ ok: true; plan: ClassifiedUnits } | { ok: false; message: string }> {
 	try {
-		return { ok: true, plan: await classifyUnits(units.map((input, i) => ({ id: `U${i + 1}`, input })), decisions) };
+		const result = await classifyUnits(units.map((input, i) => ({ id: `U${i + 1}`, input })), decisions, ask);
+		if (result.status === "classified") return { ok: true, plan: result };
+		return { ok: false, message: `plan_units refused: decision \`${result.point}.${result.subject}\` waits for a human answer (request ${result.requestId}); nothing was merged or written. Rerun plan_units after it is answered.` };
 	} catch (error) {
 		return { ok: false, message: `plan_units refused: ${messageOf(error)}; nothing was merged or written.` };
 	}
