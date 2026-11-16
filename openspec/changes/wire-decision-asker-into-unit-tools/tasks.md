@@ -26,3 +26,13 @@ Blocked by: 2
 - [x] 3.2 `AmendSnapshot.records` holds rule records only; `applyAmend` posts them as today
 - [x] 3.4 `historyUnitIds` skips decision records that carry `request` (answers of a rule ask), so `--add` keeps its id across an ask (design D4a)
 - [x] 3.3 Tests in `tests/tools/unit-amend.test.ts`: forge ask refuses with no amendment request; rerun after the answer sends the light gate with the answered difficulty and no new `decide:` request; an added unit keeps its id across an ask
+
+## 4. Amendment answers are proposals; amendment record dedupe
+
+Blocked by: 3
+
+- [ ] 4.1 `createDecisionAsker` takes `{ proposal?: boolean }`; `DecideSnapshot.proposal` and `applyDecide` write `proposal: true` into the human record; `unit_amend` passes `{ proposal: true }` (design D4b)
+- [ ] 4.2 `currentDecision` skips proposal records; `reusableAnswer` reads the latest record including proposals
+- [ ] 4.3 `classifyUnits` returns human decisions as records too (no `proposal`, no `request`); `plan_units` posts only rule ones; `AmendSnapshot.records` keeps both and `applyAmend` posts them on approval
+- [ ] 4.4 `applyAmend` dedupes against the current decision (same outcome and source) or a record this amendment already posted (design D4c)
+- [ ] 4.5 Tests: "Proposal record is not current", "Dismissed amendment keeps the classification", "Approved amendment applies the answer", "Rule outcome after a human answer is recorded"; update "Amendment rerun after a forge answer" (records now hold the human `difficulty.U1`)

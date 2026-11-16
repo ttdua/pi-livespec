@@ -44,6 +44,11 @@
 | `planAmend` (`src/tools/unit-amend.ts`) | modified | `(state: ChangeState, body: string, form: AmendForm, decisions: Pack["decisions"], ask?: DecisionAsker) => Promise<AmendPlan \| { refused: string }>` | no |
 | `contractSnapshot` (`src/tools/unit-amend.ts`, module-private) | modified | `(form, units, history, decisions, ask?: DecisionAsker) => Promise<AmendSnapshot \| { refused: string }>` | no |
 | `historyUnitIds` (`src/tools/unit-amend.ts`) | modified | same signature; skips `decision` records whose data has a string `request` | no |
+| `createDecisionAsker` (`src/tools/decide-ask.ts`) | modified (Task 4) | `(w: WriteContext, state: ChangeState, ctx: ApproverCtx, o?: { proposal?: boolean; now?: () => Date }) => DecisionAsker` | no |
+| `DecideSnapshot.proposal` | new (Task 4) | `proposal?: true` | no (persisted, optional) |
+| `DecisionRecord.proposal` / `decision` comment | new (Task 4) | `proposal?: true`; validated as boolean when present | yes (issue comment format; additive) |
+| `currentDecision` | modified (Task 4) | same signature; skips records with `proposal: true` | no |
+| `ClassifyResult.records` | modified (Task 4) | every decision (rule and human); callers filter | no |
 
 ---
 
@@ -129,6 +134,35 @@
 
 ---
 
+## Task 4: Amendment answers are proposals; amendment record dedupe — implements 4
+
+**Covers:** 4.1, 4.2, 4.3, 4.4, 4.5
+**Difficulty:** Hard
+**Blocked by:** Task 3
+
+Added after the final whole-branch review (findings Important 1 and 2); design D4b, D4c.
+
+**Files:**
+- Modify: `src/decide/records.ts`, `src/interaction/approver.ts`, `src/interaction/complete-decide.ts`, `src/tools/decide-ask.ts`, `src/tools/classify-units.ts`, `src/tools/plan-units-steps.ts` (or `plan-units.ts`, wherever records are posted), `src/tools/unit-amend.ts`, `src/interaction/complete-amend.ts`
+- Test: `tests/decide/records.test.ts`, `tests/tools/decide-ask.test.ts`, `tests/tools/unit-amend.test.ts`, `tests/tools/plan-units.test.ts` (only if an existing assertion changes)
+
+**Interfaces:**
+- Produces: `createDecisionAsker(…, o?)`, `DecideSnapshot.proposal`, `DecisionRecord.proposal`, `currentDecision` (skips proposals), `ClassifyResult.records` (all decisions) — see Contracts.
+
+- [ ] **Step 1: failing tests**
+  - `records.test.ts` "Proposal record is not current": rule `low` then human `high` with `proposal: true`, same digest → `currentDecision` returns the rule record; `reusableAnswer` with the same facts returns the proposal record.
+  - `decide-ask.test.ts`: an asker built with `{ proposal: true }` → after `/livespec choose y` the human record has `proposal: true` and `digest`.
+  - `unit-amend.test.ts` "Dismissed amendment keeps the classification": locked U1 `Difficulty: low` (no tags); `difficulty` test rule asks; `unit_amend U1` with `extra_tags: [docs]` (same digest) → forge ask, choose `high`, rerun sends the amendment; dismiss it → body `Difficulty: low`, `unit-classification` no error for U1, and while it was pending too.
+  - "Approved amendment applies the answer": same, approve → body `Difficulty: high`; latest effective `difficulty.U1` record is `source: human`, `high`, no `proposal`; check clean.
+  - "Rule outcome after a human answer is recorded": history for U1's digest rule `low`, then human `high` (no proposal); rule decides `low` in an approved amendment with the same digest → new rule record `low` posted; check clean.
+  - Update "Amendment rerun after a forge answer": snapshot `records` now hold the rule `tags.U1` and the human `difficulty.U1` (`high`, no `proposal`).
+- [ ] **Step 2:** focused tests FAIL.
+- [ ] **Step 3:** implement per design D4b/D4c. `applyAmend` dedupe: skip a record when `currentDecision` for its point/subject/digest has equal outcome and source, or a `decision` comment equal in point/subject/digest/outcome/source was posted after this request's `answer` comment (find it in `run.marked`). Keep functions small.
+- [ ] **Step 4:** `bun run test && bun run typecheck` → PASS.
+- [ ] **Step 5:** commit `fix(unit-planning): keep amendment answers as proposals until approval (#24)`.
+
+---
+
 ## Scenario → test
 
 decision-seam / Decision seam:
@@ -141,6 +175,7 @@ decision-seam / Decision seam:
 - Dismissed answer not reused → `tests/tools/decide-ask.test.ts` "Dismissed answer not reused"
 - Newer rule record stops reuse → `tests/tools/decide-ask.test.ts` "Newer rule record stops reuse"; `tests/decide/records.test.ts` "newer rule record stops reuse"
 - Latest human record wins → `tests/tools/decide-ask.test.ts` "Latest human record wins"; `tests/decide/records.test.ts` "latest with other facts wins"
+- Proposal record is not current → `tests/decide/records.test.ts` "Proposal record is not current"
 - Large facts reused by hash → `tests/tools/decide-ask.test.ts` "Large facts reused by hash"; `tests/decide/records.test.ts` "reuses by facts_hash"
 - Rule decision ignores a human record → `tests/decide/seam.test.ts` "Rule decision ignores a human record"
 - Changed tags change the difficulty question → `tests/tools/plan-units.test.ts` "Changed tags change the difficulty question"
@@ -157,8 +192,11 @@ unit-planning / Unit amendments (existing scenarios keep their same-named tests 
 - Amendment unfreezes, Add and drop, Drop a done unit, Invalid replacement, Drop a depended-on unit, Unit finished while the drop was pending, Blocking question keeps the amendment gate closed, Stuck report keeps the amendment gate closed, Iteration cap keeps the amendment gate closed, Non-blocking question does not block unit_amend, Applying answer blocks unit_amend → existing tests
 - Amendment classification asks on the forge → `tests/tools/unit-amend.test.ts` "Amendment classification asks on the forge"
 - Amendment rerun after a forge answer → `tests/tools/unit-amend.test.ts` "Amendment rerun after a forge answer"
+- Dismissed amendment keeps the classification → `tests/tools/unit-amend.test.ts` "Dismissed amendment keeps the classification"
+- Approved amendment applies the answer → `tests/tools/unit-amend.test.ts` "Approved amendment applies the answer"
+- Rule outcome after a human answer is recorded → `tests/tools/unit-amend.test.ts` "Rule outcome after a human answer is recorded"
 - Added unit keeps its id across an ask → `tests/tools/unit-amend.test.ts` "Added unit keeps its id across an ask"
 
 unit-planning / Unit classification check:
 - Tag removed in the body → existing `unit-classification` test in `tests/engine/checks.test.ts`
-- Human answer satisfies the check → `tests/tools/plan-units.test.ts` "Human answer satisfies the check"
+- Human answer satisfies the check → `tests/tools/plan-units.test.ts` "Rerun after a forge answer" (assertion at its end)

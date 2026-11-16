@@ -104,12 +104,12 @@ After the lock, `unit_amend` SHALL change the plan in one of three forms:
 - `--add` with a new unit, which gets the next id;
 - `--drop U<n>`, which removes a unit that is not done.
 
-The tool SHALL re-run the `tags` and `difficulty` decisions for edited and added units, sending a rule's ask through the configured approver chain, and validate the whole resulting plan with the LS-02 unit validators. It MUST refuse on any error, and MUST refuse to drop a unit that a remaining unit lists in `Depends`. Otherwise it SHALL send a light gate request that shows only the affected units. On approval, the plugin SHALL:
+The tool SHALL re-run the `tags` and `difficulty` decisions for edited and added units, sending a rule's ask through the configured approver chain as a proposal (see "Decision seam"), and validate the whole resulting plan with the LS-02 unit validators. It MUST refuse on any error, and MUST refuse to drop a unit that a remaining unit lists in `Depends`. Otherwise it SHALL send a light gate request that shows only the affected units. On approval, the plugin SHALL:
 1. write the body change;
-2. post the rule-decided records for edited and added units (a decision answered by a human is already recorded by its answer);
+2. post decision records for edited and added units: the rule-decided ones, and for a decision answered by a human a `source: human` record of that answer without `proposal`; a record SHALL be posted unless the unit's current decision for that point and digest already has the same outcome and source, or this amendment already posted it;
 3. write an `amendment` comment with the old and new digests.
 
-The new digests then become the locked ones. On any other outcome, nothing changes. When the answer is validated, before it is recorded, an amendment whose affected unit's digest or done state differs from the request snapshot MUST be marked superseded, with nothing applied. A recorded amendment answer MUST NOT be validated again while its effects are applied.
+The new digests then become the locked ones. On any other outcome, nothing changes; a proposal answer recorded while the amendment was pending MUST NOT change any unit's current decision. When the answer is validated, before it is recorded, an amendment whose affected unit's digest or done state differs from the request snapshot MUST be marked superseded, with nothing applied. A recorded amendment answer MUST NOT be validated again while its effects are applied.
 
 `unit_amend` MUST refuse, sending no request, in each of these cases:
 - before a lock exists;
@@ -177,6 +177,18 @@ The refusals for blocking questions, stuck reports and the cap SHALL give the sa
 #### Scenario: Amendment rerun after a forge answer
 - **WHEN** that `decide:difficulty.U1` request was answered with `high` and `unit_amend U1` runs again with the same replacement
 - **THEN** the light gate request is sent with U1 `Difficulty: high` and no new `decide:` request is sent
+
+#### Scenario: Dismissed amendment keeps the classification
+- **WHEN** U1 reads `Difficulty: low`, `unit_amend U1` with the same contract and an added extra tag asks `difficulty.U1`, the human answers `high`, and the amendment is then dismissed
+- **THEN** U1 still reads `Difficulty: low` and `unit-classification` reports no error for U1
+
+#### Scenario: Approved amendment applies the answer
+- **WHEN** in that case the amendment is approved instead
+- **THEN** U1 reads `Difficulty: high`, its current `difficulty` decision is a `source: human` record `high` without `proposal`, and `unit-classification` reports no error for U1
+
+#### Scenario: Rule outcome after a human answer is recorded
+- **WHEN** U1's history for its digest is a rule record `low` then a human record `high`, and an approved amendment of U1 with the same digest has the rule decide `low`
+- **THEN** a new rule record `low` is posted, it is U1's current decision, and `unit-classification` reports no error for U1
 
 #### Scenario: Added unit keeps its id across an ask
 - **WHEN** the plan has U1 and U2, `unit_amend --add` asks `difficulty.U3` on the forge, the request is answered with `high`, and `unit_amend --add` runs again with the same unit

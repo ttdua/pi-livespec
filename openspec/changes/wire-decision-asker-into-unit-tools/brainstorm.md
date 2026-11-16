@@ -48,6 +48,7 @@ Alternative C, approved by the user in chat: the strictest rule, so an answer is
 
 - Reuse key: the latest decision record for the point, subject and unit digest (the one the classification check reads) is reused only when it is a human answer with the same facts (or `facts_hash` when the facts are large) and an outcome that is not `null`; a newer rule record for the same contract stops reuse. (Refined after plan review, so the reused answer and the checked record are always the same.)
 - An added unit keeps its id when its classification asked a human, so the rerun finds the answer. (Added after plan review.)
+- An answer given for an amendment is only a proposal until the amendment is approved: it is reused on rerun but does not change the unit's classification; approval makes it effective, any other outcome leaves the classification unchanged. (Decided by the user after the final code review.)
 - Dismissed (`outcome: null`) is not reused; a rerun asks again.
 - The rule runs first each time; reuse is consulted only when the rule asks.
 - A human-answered decision is recorded once (the human record, with digest); the tool posts no duplicate rule record for it.
