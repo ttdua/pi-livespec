@@ -6,7 +6,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
 import { gatePayload, type ReviewFacts } from "../../src/engine/gate-payload.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
-import { gateRefusal, registerGate, registerGatePayload, resetGatesForTests } from "../../src/engine/gates.ts";
+import { blockingStateRefusal, gateRefusal, registerGate, registerGatePayload, resetGatesForTests } from "../../src/engine/gates.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
@@ -213,5 +213,33 @@ describe("gatePayload", () => {
 	test("named gate payload is the header", () => {
 		registerGate("new-dependency", { checks: [] });
 		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [] });
+	});
+});
+
+describe("blockingStateRefusal", () => {
+	const Q1 = "Blocking question Q1 is open: answer it before requesting the gate.";
+	const S1 = "Stuck report S1 is unanswered: wait for the human's choice.";
+
+	test("no blocking state gives undefined", () => {
+		expect(blockingStateRefusal(ready("define"))).toBeUndefined();
+	});
+
+	test("an open blocking question refuses", () => {
+		expect(blockingStateRefusal(stateFor("define"))).toBe(Q1);
+	});
+
+	test("an open stuck report refuses", () => {
+		const iterations = { count: 0, cap: undefined, blocking: false, stuckOpen: "S1" };
+		expect(blockingStateRefusal(ready("define", { iterations }))).toBe(S1);
+	});
+
+	test("a reached cap refuses", () => {
+		const iterations = { count: 5, cap: 5, blocking: true, stuckOpen: undefined };
+		expect(blockingStateRefusal(ready("define", { iterations }))).toBe("change_iterations reached 5 of 5: send a stuck report with spec_stuck first.");
+	});
+
+	test("the first rule in order wins", () => {
+		const iterations = { count: 0, cap: undefined, blocking: false, stuckOpen: "S1" };
+		expect(blockingStateRefusal(stateFor("define", { iterations }))).toBe(Q1);
 	});
 });

@@ -88,21 +88,22 @@ function sentence(text: string): string {
 
 type RefusalInput = { state: ChangeState; pack: Pack; target: GateTarget; subject: string; ignoreRequest?: string };
 type RefusalRule = (i: RefusalInput) => string | undefined;
+type StateRule = (i: { state: ChangeState }) => string | undefined;
 
 const noGate: RefusalRule = ({ target }) =>
 	target.kind === "phase" && target.phase.gate === "none" ? `The ${target.phase.id} phase has no gate.` : undefined;
 
-const blockingQuestion: RefusalRule = ({ state }) => {
+const blockingQuestion: StateRule = ({ state }) => {
 	const q = state.change.questions.find((x) => x.kind === "blocking" && !x.checked);
 	return q ? `Blocking question ${q.id} is open: answer it before requesting the gate.` : undefined;
 };
 
-const openStuck: RefusalRule = ({ state }) => {
+const openStuck: StateRule = ({ state }) => {
 	const id = state.iterations.stuckOpen;
 	return id ? `Stuck report ${id} is unanswered: wait for the human's choice.` : undefined;
 };
 
-const capReached: RefusalRule = ({ state }) => {
+const capReached: StateRule = ({ state }) => {
 	const it = state.iterations;
 	return it.blocking ? `change_iterations reached ${it.count} of ${it.cap}: send a stuck report with spec_stuck first.` : undefined;
 };
@@ -133,6 +134,18 @@ const failingCheck: RefusalRule = ({ state, target }) => {
 	// The check message can quote forge text (unit titles, file names), so it is wrapped as untrusted.
 	return failure ? `Check ${failure.check} fails: ${untrusted(sentence(failure.message))}.` : undefined;
 };
+
+type StateInput = { state: ChangeState };
+
+/** The first of blocking question, open stuck report and reached cap that refuses, or undefined. */
+export function blockingStateRefusal(state: ChangeState): string | undefined {
+	const input: StateInput = { state };
+	for (const rule of [blockingQuestion, openStuck, capReached]) {
+		const refusal = rule(input);
+		if (refusal) return refusal;
+	}
+	return undefined;
+}
 
 const REFUSALS: RefusalRule[] = [noGate, blockingQuestion, openStuck, capReached, pendingRequest, dirtyTree, changedUnits, failingCheck];
 
