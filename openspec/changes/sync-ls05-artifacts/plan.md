@@ -13,7 +13,7 @@
 
 - Run Bun for every package and test command (`bun run test`, `bun run typecheck`); no npm/pnpm.
 - Every `#### Scenario:` name in `specs/` has a test with exactly that name under `tests/`.
-- Forge text shown to the agent is wrapped with `untrusted()` exactly once.
+- Forge text shown to the agent is wrapped with `untrusted()` exactly once (answers recorded before #20, without `reason_wrapped`, are wrapped whole at render; see design D6).
 - Own marked comments only: markers are read through `filterMarked(…, login)`.
 - Commit messages in English, conventional commits (`feat(…)`, `fix(…)`, `refactor(…)`, `docs(…)`, `test(…)`).
 - No new runtime dependency.
@@ -44,6 +44,8 @@
 | `CLASS_KIND` | new | `export const CLASS_KIND = "class"` in `src/interaction/approver.ts` | no |
 | `MatchOptions` | modified | `{ marked: MarkedComment[]; appliedClasses?: ReadonlySet<string> }` — command comment ids whose `class` command was applied | yes |
 | `ClassChange` | modified | `{ question: string; class: QuestionClass; commentId: string }` | yes |
+| `commandAuthors` | modified (apply, final fix wave) | `commandAuthors(comments: Comment[], pending: PendingRequest[], skip?: ReadonlySet<string>): string[]` in `src/interaction/forge-permissions.ts`; `skip` holds recorded `class` command ids, whose authors need no permission lookup. Optional, backward compatible | no |
+| `amendSubject` | modified (apply, Task 3) | `amendSubject(state: ChangeState): Subject` in `src/tools/unit-amend.ts` (was `string`); narrows the type only | no |
 | `adapterChain` | modified | same signature; a layer counts only when its list is non-empty (project → user → default) | yes |
 | Marker `stuck` answer data | modified (doc) | answer id `S<n>-answer`: `{ request; outcome: Outcome; choice: string; notes; by; at; adapter }`; a dismissed answer has `outcome: dismissed` and `choice: ""` | yes |
 | Request kind per subject | modified (doc) | `gate:` and `amend:` → `gate`; `question:` → `question`; `stuck:` and `decide:` → `stuck` | yes |

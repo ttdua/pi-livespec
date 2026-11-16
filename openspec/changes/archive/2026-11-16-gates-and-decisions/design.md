@@ -64,7 +64,7 @@ Each human decision has three steps: **request → answer → completion.**
 - **Forge answers.** The forge adapter writes an own marked comment `<!-- livespec:request:<id> -->`. Its yaml holds:
   - `kind`, `subject`, `mode` and `options`;
   - `head_sha`, the commit when the request was made;
-  - `snapshot`, everything completion needs, such as unit digests for the plan gate, the proposed unit text for an amendment, the question text, or the failing waivable checks.
+  - `snapshot`, everything completion needs, such as the gate target and failing waivable checks, the proposed unit text for an amendment, the question text, or the failing waivable checks.
 
   Below the yaml block, the comment explains in plain text what is asked and lists the accepted commands. The parser ignores that text.
 - **Request ids.** An id is `<subject-token>.<base36 epoch ms>`, for example `gate-plan.lx3k2a`. It is unique per issue and matches the marker id pattern.
@@ -320,7 +320,7 @@ The config and the issue `Base` therefore never disagree after a successful run,
 - **The cascade's `stale` comment.** It lists `define` and every phase after it in `phases`, so an old define approval cannot reopen define (D2, valid gate result).
 - **`after_plan`.** It is true only when the cascade actually moves the change back from a phase after define and an approved plan gate exists. A second answer while the change is already in define does not count.
 - **`change_iterations` is derived, not stored.** It is the number of own `stale` comments with `after_plan: true`. Deriving it means a retried completion cannot count twice. The card shows it with the cap like any other counter.
-- **Iteration cap blocking.** Blocking holds when the count is at least `loops.change_iterations` and no stuck answer is dated after the latest `after_plan` stale comment. The same predicate drives the next step, which asks for `spec_stuck`, and gate refusal. A stuck answer clears the block until the next increment.
+- **Iteration cap blocking.** Blocking holds when the count is at least `loops.change_iterations` and no stuck answer with outcome `approved` or `approved_with_notes` and a chosen option is dated after the latest `after_plan` stale comment. The same predicate drives the next step, which asks for `spec_stuck`, and gate refusal. Such a stuck answer clears the block until the next increment; a dismissed one does not.
 - **`spec_stuck`.**
   - Input: `{ where, tried: [{ text, link? }], hypothesis, options: [{ id, label }] (2–3), recommended }`.
   - It writes a `stuck` comment with id `S<n>`, then sends a blocking request with those options.
@@ -335,7 +335,7 @@ The new order is:
 2. not started;
 3. **open stuck report**: wait for the human's choice;
 4. **pending blocking request**: wait for the answer, naming the adapter;
-5. **iteration cap blocking** (the D12 predicate, which a later stuck answer lifts): send a stuck report;
+5. **iteration cap blocking** (the D12 predicate, which a later stuck answer with a chosen option lifts): send a stuck report;
 6. open blocking question;
 7. **frozen or stale units**, in the lock scope: amend them with `unit_amend`;
 8. missing output;
@@ -379,3 +379,5 @@ The `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iter
 - D13: `ChangeState` additions are `requests`, `lock` (with `lock.gates`) and `iterations` (with `iterations.stuckOpen`).
 - Removed in code: `Approver.poll`, `ApproverUI.confirm`, `GateSnapshot.digests`, `LockState.stalePhases`.
 - Where the setting comes from: an empty `interaction.adapter` list counts as unset and falls through project → user → default (not straight to the default).
+- D2 snapshot: a gate request snapshot holds the target and the failing waivable checks, not unit digests (the plan gate comment locks the digests).
+- D12 and D13: only a stuck answer approved with a chosen option lifts the iteration cap; a dismissed stuck answer does not.

@@ -59,7 +59,7 @@ Snapshots get a typed accessor `snapshotOf(record)` in `requests.ts` returning a
 
 ### D6. Superseded reason wrapped once
 
-Superseded reasons are plugin sentences whose forge parts are already wrapped by the refusal rules and validators that built them. `summary` stops wrapping `record.reason`; the subject keeps its wrapping. `validateAmend` messages that embed unit validator text wrap that text where they are built, so every superseded reason has forge text wrapped exactly once.
+Superseded reasons are plugin sentences whose forge parts are already wrapped by the refusal rules and validators that built them. `summary` stops wrapping `record.reason`; the subject keeps its wrapping. `validateAmend` messages that embed unit validator text wrap that text where they are built, so every superseded reason has forge text wrapped exactly once. Exception: an answer recorded before #20 has no `reason_wrapped` marker, so its whole reason is wrapped at render; that is safe but can double-escape a legacy reason that already held a wrapper (apply ruling, pinned by the test "legacy wrapped reason stays escaped").
 
 ### D7. Archived artifacts are corrected in place
 

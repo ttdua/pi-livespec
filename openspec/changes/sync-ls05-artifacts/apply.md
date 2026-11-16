@@ -44,6 +44,8 @@
   - **What it does:** `recordAnswer` writes it on new superseded verdicts, whose reason already wraps its forge text where the reason is built. Answers recorded before #20 lack the field, so their whole reason is wrapped at render.
   - **Why:** an applying legacy answer is never validated again, so its raw reason must still be wrapped once.
   - **Final fix wave:** made every reason producer wrap forge-derived parts, so the flag is truthful.
+- **`commandAuthors`** gains an optional `skip: ReadonlySet<string>`. It is internal and backward compatible, and was added in the final fix wave so recorded `class` commands need no permission lookup. It was recorded in `plan.md` Contracts after verify W1.
+- **`amendSubject`** now returns `Subject` instead of `string`. It is internal and only narrows the type (Task 3). It was recorded in `plan.md` Contracts after verify W1.
 
 ---
 
