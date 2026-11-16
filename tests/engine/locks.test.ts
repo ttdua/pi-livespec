@@ -91,7 +91,8 @@ describe("deriveLocks", () => {
 		expect(lock.locked).toEqual(relocked);
 		expect(lock.frozen).toEqual([]);
 		expect(lock.staleUnits).toEqual([]);
-		expect(lock.stalePhases).toEqual(["build", "review", "ship", "close"]);
+		expect(lock.gates.define?.outcome).toBe("approved");
+		expect(lock.gates.build).toBeUndefined();
 	});
 
 	test("amendment add and drop update the lock", () => {
@@ -123,17 +124,39 @@ describe("deriveLocks", () => {
 		expect(lock.staleUnits).toEqual(["U2"]);
 	});
 
+	test("Stale before the first lock", () => {
+		const change = parseChange(BODY);
+		const lock = deriveLocks(change, [stale("Q3", ["define", ...LATER], ["U2"]), planGate(digests(change))]);
+		expect(lock.staleUnits).toEqual([]);
+	});
+
+	test("Identical amendment clears a stale unit", () => {
+		const change = parseChange(BODY);
+		const locked = digests(change);
+		const lock = deriveLocks(change, [planGate(locked), stale("Q3", ["define", ...LATER], ["U3"], true), amendment("edit", "U3", { new: locked.U3 })]);
+		expect(lock.staleUnits).toEqual([]);
+	});
+
+	test("superseded plan gate does not clear a stale unit", () => {
+		const change = parseChange(BODY);
+		const lock = deriveLocks(change, [stale("Q3", ["define", ...LATER], ["U2"]), planGate(digests(change), { superseded: true })]);
+		expect(lock.staleUnits).toEqual(["U2"]);
+	});
+
+	test("stale after the plan approval stays stale", () => {
+		const change = parseChange(BODY);
+		const lock = deriveLocks(change, [planGate(digests(change)), stale("Q3", ["define", ...LATER], ["U2"], true)]);
+		expect(lock.staleUnits).toEqual(["U2"]);
+	});
+
 	test("valid gate result ignores results older than a stale listing the phase", () => {
 		const change = parseChange(BODY);
 		const lock = deriveLocks(change, [gate("define", "approved"), stale("Q3", ["define", ...LATER], [])]);
 		expect(lock.gates.define).toBeUndefined();
-		expect(lock.stalePhases).toEqual(["define", ...LATER]);
 		const again = deriveLocks(change, [gate("define", "approved"), stale("Q3", ["define", ...LATER], []), gate("define", "changes_requested")]);
 		expect(again.gates.define).toEqual({ outcome: "changes_requested", superseded: false, at: expect.any(String), waivers: [], notes: "" });
-		expect(again.stalePhases).toEqual(["define", ...LATER]);
 		const approved = deriveLocks(change, [stale("Q3", ["define"], []), gate("define", "approved_with_notes", { at: "2026-11-15T11:00:00Z" })]);
 		expect(approved.gates.define).toEqual({ outcome: "approved_with_notes", superseded: false, at: "2026-11-15T11:00:00Z", waivers: [], notes: "" });
-		expect(approved.stalePhases).toEqual([]);
 	});
 
 	test("valid gate result carries the human's notes", () => {
@@ -170,7 +193,7 @@ describe("deriveLocks", () => {
 	test("foreign or malformed comments are ignored", () => {
 		const change = parseChange(BODY);
 		const lock = deriveLocks(change, [marked("gate", "plan.x", "not an object"), marked("stale", "Q1", { phases: "define" })]);
-		expect(lock).toEqual({ locked: undefined, frozen: [], staleUnits: [], stalePhases: [], gates: {} });
+		expect(lock).toEqual({ locked: undefined, frozen: [], staleUnits: [], gates: {} });
 	});
 });
 

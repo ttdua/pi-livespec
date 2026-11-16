@@ -283,7 +283,7 @@ function requests(pending: PendingRequest[], applyingList: AppliedAnswer[] = [])
 }
 
 function lockWith(over: Partial<LockState>): LockState {
-	return { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: [], stalePhases: [], gates: {}, ...over };
+	return { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: [], gates: {}, ...over };
 }
 
 function iterations(over: Partial<IterationState>): IterationState {

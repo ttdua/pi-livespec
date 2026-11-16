@@ -1,4 +1,4 @@
-// The unit lock, frozen and stale units, stale phases and the valid gate result
+// The unit lock, frozen and stale units and the valid gate result
 // per phase (design D8, D2), derived purely from the body and own marked comments.
 // Comment order is time order: the forge lists comments oldest first.
 
@@ -20,7 +20,6 @@ export type LockState = {
 	locked: Record<string, string> | undefined;
 	frozen: string[];
 	staleUnits: string[];
-	stalePhases: string[];
 	gates: Record<string, GateResult | undefined>;
 };
 
@@ -131,26 +130,18 @@ function frozenOf(change: Change, locked: Record<string, string> | undefined): s
 	return change.units.filter((u) => locked[u.id] !== unitDigest(u)).map((u) => u.id);
 }
 
-/** Units named by a `stale` comment with no approved amendment for them after it, in first-named order. */
+/**
+ * Units named by a `stale` comment, in first-named order, until a later approved amendment for the unit
+ * or a later approved, non-superseded plan gate clears them (a plan approval re-locks every unit in the body).
+ */
 function staleUnitsOf(facts: Fact[]): string[] {
 	const amendments = amendmentsOf(facts);
+	const planApprovals = gatesOf(facts).filter((g) => g.data.name === PLAN_PHASE && validApproval(g.data));
 	const stale = new Set<string>();
 	for (const s of stalesOf(facts)) {
+		if (planApprovals.some((g) => g.at > s.at)) continue;
 		for (const unit of s.data.units) {
 			if (!amendments.some((a) => a.at > s.at && a.data.approved && a.data.unit === unit)) stale.add(unit);
-		}
-	}
-	return [...stale];
-}
-
-/** Phases listed by a `stale` comment with no approved, non-superseded gate for them after it. */
-function stalePhasesOf(facts: Fact[]): string[] {
-	const gates = gatesOf(facts);
-	const stale = new Set<string>();
-	for (const s of stalesOf(facts)) {
-		for (const phase of s.data.phases) {
-			const reopened = gates.some((g) => g.at > s.at && g.data.name === phase && validApproval(g.data));
-			if (!reopened) stale.add(phase);
 		}
 	}
 	return [...stale];
@@ -178,7 +169,6 @@ export function deriveLocks(change: Change, marked: MarkedComment[]): LockState 
 		locked,
 		frozen: frozenOf(change, locked),
 		staleUnits: staleUnitsOf(facts),
-		stalePhases: stalePhasesOf(facts),
 		gates: validGatesOf(facts),
 	};
 }

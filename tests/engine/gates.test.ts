@@ -74,7 +74,7 @@ describe("gateRefusal", () => {
 	});
 
 	test("Plan gate with a stale unit", () => {
-		const lock = { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: ["U3"], stalePhases: [], gates: {} };
+		const lock = { locked: { U1: "a", U3: "b" }, frozen: [], staleUnits: ["U3"], gates: {} };
 		expect(gateRefusal(ready("plan", { lock }), pack, "plan")).toBe("Amend the units changed since the plan was locked with unit_amend first: U3 (stale).");
 		const frozen = { ...lock, frozen: ["U1"], staleUnits: ["U3"] };
 		expect(gateRefusal(ready("plan", { lock: frozen }), pack, "plan")).toBe("Amend the units changed since the plan was locked with unit_amend first: U1 (frozen), U3 (stale).");
