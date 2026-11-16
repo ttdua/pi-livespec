@@ -19,6 +19,7 @@ export interface IssueDto {
 	user?: UserDto;
 	updated_at?: string;
 	content_version?: number;
+	html_url?: string;
 	labels?: LabelDto[];
 }
 export interface PullDto extends IssueDto {
@@ -110,6 +111,7 @@ function hasCommonFields(value: Json): boolean {
 		required(value.updated_at, "string") &&
 		optional(value.body, "string") &&
 		optional(value.content_version, "number") &&
+		optional(value.html_url, "string") &&
 		optionalObject(value.user, (u) => optional(u.login, "string"))
 	);
 }

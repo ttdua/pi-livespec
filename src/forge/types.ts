@@ -21,6 +21,8 @@ export interface Issue {
 	author: string;
 	updatedAt: string;
 	version: Version;
+	/** Web page of the issue, when the forge reports one. */
+	url?: string;
 	/** Set by CachedForge when the value comes from cache during read-only mode. */
 	stale?: boolean;
 }

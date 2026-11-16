@@ -40,9 +40,10 @@ function userJson(login: string): { login: string } {
 	return { login };
 }
 
-function issueJson(issue: IssueRec, isPull = false): unknown {
+function issueJson(data: FakeGhData, issue: IssueRec, isPull = false): unknown {
 	return {
 		number: issue.number,
+		html_url: `https://github.com/${data.repo}/${isPull ? "pull" : "issues"}/${issue.number}`,
 		title: issue.title,
 		body: issue.body,
 		labels: issue.labels.map((name) => ({ name })),
@@ -112,9 +113,9 @@ function listIssues(data: FakeGhData, req: ApiRequest): unknown {
 	const labels = (req.query.get("labels") ?? "").split(",").filter(Boolean);
 	const issues = Object.values(data.issues)
 		.filter((i) => stateOk(i.state) && labels.every((l) => i.labels.includes(l)))
-		.map((i) => issueJson(i));
+		.map((i) => issueJson(data, i));
 	// GitHub lists pull requests as issues too; callers must filter them.
-	const pulls = labels.length > 0 ? [] : Object.values(data.pulls).filter((p) => stateOk(p.state)).map((p) => issueJson(pullAsIssue(p), true));
+	const pulls = labels.length > 0 ? [] : Object.values(data.pulls).filter((p) => stateOk(p.state)).map((p) => issueJson(data, pullAsIssue(p), true));
 	return [...issues, ...pulls];
 }
 
@@ -134,7 +135,7 @@ function createIssue(data: FakeGhData, req: ApiRequest, actor: string): unknown 
 		updatedAt: now,
 	};
 	data.issues[String(number)] = issue;
-	return issueJson(issue);
+	return issueJson(data, issue);
 }
 
 function patchIssue(data: FakeGhData, n: string, req: ApiRequest): unknown {
@@ -143,7 +144,7 @@ function patchIssue(data: FakeGhData, n: string, req: ApiRequest): unknown {
 	if (typeof req.body.body === "string") issue.body = req.body.body;
 	if (req.body.state === "open" || req.body.state === "closed") issue.state = req.body.state;
 	issue.updatedAt = tick(data);
-	return issueJson(issue);
+	return issueJson(data, issue);
 }
 
 function addIssueLabels(data: FakeGhData, n: string, req: ApiRequest): unknown {
@@ -269,7 +270,7 @@ function routes(data: FakeGhData, actor: string): [string, RegExp, Handler][] {
 	return [
 		["GET", /^issues$/, (_m, req) => listIssues(data, req)],
 		["POST", /^issues$/, (_m, req) => createIssue(data, req, actor)],
-		["GET", /^issues\/(\d+)$/, (m) => issueJson(findIssue(data, m[1]))],
+		["GET", /^issues\/(\d+)$/, (m) => issueJson(data, findIssue(data, m[1]))],
 		["PATCH", /^issues\/(\d+)$/, (m, req) => patchIssue(data, m[1], req)],
 		["POST", /^issues\/(\d+)\/labels$/, (m, req) => addIssueLabels(data, m[1], req)],
 		["DELETE", /^issues\/(\d+)\/labels\/(.+)$/, (m) => removeIssueLabel(data, m[1], decodeURIComponent(m[2]))],

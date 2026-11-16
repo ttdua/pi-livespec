@@ -53,7 +53,8 @@ function isIssueShape(value: unknown, n: number): value is Issue {
 		isString(value.author) &&
 		isString(value.updatedAt) &&
 		isString(value.version) &&
-		value.version !== ""
+		value.version !== "" &&
+		(value.url === undefined || isString(value.url))
 	);
 }
 

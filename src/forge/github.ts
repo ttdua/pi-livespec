@@ -149,6 +149,7 @@ interface JsonIssue {
 	state: "open" | "closed";
 	user: JsonUser | null;
 	updated_at: string;
+	html_url?: string;
 	pull_request?: unknown;
 }
 interface JsonComment {
@@ -405,6 +406,7 @@ export class GitHubForge implements Forge, LabelRepo {
 			author: raw.user?.login ?? "",
 			updatedAt: raw.updated_at,
 			version: bodyVersion(raw.updated_at, body, "gh"),
+			...(raw.html_url ? { url: raw.html_url } : {}),
 		};
 		this.snapshots.remember("issue", issue.number, issue.version, issue);
 		return issue;

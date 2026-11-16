@@ -481,6 +481,7 @@ export class FakeGitea {
 	private issueJson(i: IssueRec): Record<string, unknown> {
 		return {
 			number: i.number,
+			html_url: `${this.url}/${this.prefix.replace("/api/v1/repos/", "")}/issues/${i.number}`,
 			title: i.title,
 			body: i.body,
 			state: i.state,

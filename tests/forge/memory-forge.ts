@@ -65,6 +65,9 @@ interface PullRecord {
 
 const toVersion = (rev: number): Version => `cv:${rev}` as Version;
 
+/** Web root of the memory repository; issue `n` lives at `${MEMORY_WEB_URL}/issues/n`. */
+export const MEMORY_WEB_URL = "https://forge.example/o/r";
+
 export class MemoryWorld implements ContractWorld {
 	readonly forge: Forge;
 	private readonly state = new MemoryState();
@@ -468,6 +471,7 @@ class MemoryForge implements Forge {
 			author: issue.author,
 			updatedAt: issue.updatedAt,
 			version,
+			url: `${MEMORY_WEB_URL}/issues/${issue.number}`,
 		};
 	}
 
