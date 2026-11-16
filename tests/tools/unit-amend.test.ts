@@ -443,6 +443,7 @@ describe("unit_amend", () => {
 		await h.world.postComment(h.n, "alice", "/livespec approve");
 		await h.call("spec_status");
 		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U2", "U3"]);
+		expect((await units(h))[2]).toMatchObject({ id: "U3", difficulty: "high" });
 		expect(await classificationErrors(h, "U3")).toEqual([]);
 	});
 });

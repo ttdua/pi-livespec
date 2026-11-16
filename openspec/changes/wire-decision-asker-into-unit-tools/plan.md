@@ -5,7 +5,7 @@
 
 **Goal:** `plan_units` and `unit_amend` ask a human when a classification rule asks, reuse a recorded human answer for the same unit digest and facts, and keep one decision record per decision.
 
-**Architecture:** The pure seam carries an optional unit digest into the ask and accepts a `recorded` answer. The forge-aware `createDecisionAsker` looks up a reusable human record (fresh comments) before checking open requests or dispatching. `classifyUnits` takes the asker, returns `pending` or rule-only records; the two tools turn `pending` into a refusal before any write.
+**Architecture:** The pure seam carries an optional unit digest into the ask and accepts a `recorded` answer. The forge-aware `createDecisionAsker` looks up a reusable human record (fresh comments) before checking open requests or dispatching. `classifyUnits` takes the asker and returns `pending` or a record for every decision (after D4b); `plan_units` posts only the rule records, `unit_amend` keeps all of them for approval; the two tools turn `pending` into a refusal before any write.
 
 **Tech Stack:** TypeScript, vitest (`bun run test`), `tsc --noEmit` (`bun run typecheck`).
 
@@ -33,7 +33,7 @@
 | `DecideDeps` (`src/decide/seam.ts`) | modified | `{ config: unknown; subject: string; digest?: string; ask?: (intent: DecisionAsk) => Promise<AskAnswered \| AskPending \| AskRecorded> }` | no |
 | `DecisionAsk` | modified | adds `digest?: string` | no |
 | `AskRecorded` | new | `{ status: "recorded"; outcome: unknown; reason: string }` | no |
-| `reusableAnswer` (`src/decide/records.ts`) | new | `(marked: MarkedComment[], point: string, subject: string, digest: string, facts: unknown) => DecisionRecord \| undefined` — `currentDecision(...)` filtered by `source === "human"`, `outcome !== null`, `sameFacts` | no |
+| `reusableAnswer` (`src/decide/records.ts`) | new | `(marked: MarkedComment[], point: string, subject: string, digest: string, facts: unknown) => DecisionRecord \| undefined` — the latest record for the digest including proposals (after D4b; `currentDecision` skips proposals), accepted only when `source === "human"`, `outcome !== null` and `sameFacts` | no |
 | `sameFacts` (`src/decide/records.ts`) | new | `(record: DecisionRecord, facts: unknown) => boolean` | no |
 | `DecideSnapshot` (`src/interaction/approver.ts`) | modified | `{ point; subject; facts; digest?: string }` | no (persisted in `request` comments; optional field, old comments stay valid) |
 | `decision` record of a human ask | modified | gains `digest` when the subject is a unit | yes (issue comment format; additive) |
