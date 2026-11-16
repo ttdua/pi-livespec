@@ -5,6 +5,7 @@ import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
@@ -83,6 +84,38 @@ async function marked(h: Amend): Promise<MarkedComment[]> {
 
 const ofKind = async (h: Amend, kind: string) => (await marked(h)).filter((m) => m.kind === kind);
 const units = async (h: Amend) => parseChange(await h.world.bodyOf(h.n)).units;
+
+/** Stores a marked comment on the issue and refreshes the comment cache. */
+async function seed(h: Amend, kind: string, id: string, data: unknown): Promise<void> {
+	await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data));
+	await h.session.comments?.invalidate(h.n);
+	await h.session.refresh();
+}
+
+/** Adds a question line under `## Questions` through a web edit. */
+const addQuestion = (h: Amend, line: string) => webEdit(h, (b) => b.replace("## Questions", `## Questions\n\n${line}`));
+
+/** A request record as plan_units stores it; `mode` is the stored mode, not the question's current class. */
+const requestRecord = (id: string, subject: string, mode: "async" | "blocking") => ({
+	id,
+	kind: "question" as const,
+	subject,
+	mode,
+	head_sha: "",
+	snapshot: { id: subject, text: "?", requirements: [] },
+	summary: "?",
+});
+
+/** A refusal: an error naming `text`, no new request comment, no select opened and no amendment written. */
+async function expectRefusal(h: Amend, params: unknown, text: string | string[]): Promise<void> {
+	const requestsBefore = await ofKind(h, "request");
+	const out = await h.amend(params);
+	expect(out.isError).toBe(true);
+	for (const part of Array.isArray(text) ? text : [text]) expect(textOf(out)).toContain(part);
+	expect(await ofKind(h, "request")).toEqual(requestsBefore);
+	expect(h.human.summaries).toEqual([]);
+	expect(await ofKind(h, "amendment")).toEqual([]);
+}
 
 function lockState(h: Amend) {
 	const card = h.session.card;
@@ -230,5 +263,48 @@ describe("unit_amend", () => {
 		await h.amend({ add: true, replacement: unit("Burst", "src/limits/burst.ts", "b") });
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 		expect(Object.keys(lockState(h).locked ?? {})).toEqual(["U1", "U2"]);
+	});
+
+	test("Blocking question keeps the amendment gate closed", async () => {
+		const h = await planned();
+		await addQuestion(h, "- [ ] Q2 (blocking): x");
+		await expectRefusal(h, { unit: "U1", replacement: U1 }, "unit_amend refused: Blocking question Q2 is open: answer it before requesting the gate.");
+	});
+
+	test("Stuck report keeps the amendment gate closed", async () => {
+		const h = await planned();
+		await seed(h, "stuck", "S1", { where: "x", tried: [], hypothesis: "h", options: [{ id: "A", label: "a" }, { id: "B", label: "b" }], recommended: "A" });
+		await expectRefusal(h, { add: true, replacement: unit("Extra", "src/x.ts", "x") }, "Stuck report S1 is unanswered");
+	});
+
+	test("Iteration cap keeps the amendment gate closed", async () => {
+		const h = await planned();
+		for (const id of ["Q3", "Q4", "Q5", "Q6", "Q7"]) {
+			await seed(h, "stale", id, { reason: id, phases: ["plan"], units: [], after_plan: true });
+		}
+		await expectRefusal(h, { unit: "U1", replacement: U1 }, "send a stuck report with spec_stuck");
+	});
+
+	test("Non-blocking question does not block unit_amend", async () => {
+		const h = await planned();
+		await addQuestion(h, "- [ ] Q3 (non-blocking): x");
+		await seed(h, "request", "question-Q3.lx3k2a", requestRecord("question-Q3.lx3k2a", "question:Q3", "async"));
+		const out = await h.amend({ unit: "U1", replacement: U1 });
+		expect(out.isError).toBe(false);
+		expect(h.human.summaries).toHaveLength(1);
+		expect(await ofKind(h, "amendment")).toHaveLength(1);
+	});
+
+	test("Applying answer blocks unit_amend", async () => {
+		const h = await planned();
+		await addQuestion(h, "- [ ] Q3 (non-blocking): x");
+		const requestId = "question-Q3.lx3k2a";
+		const record = requestRecord(requestId, "question:Q3", "async");
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", requestId, record));
+		const answer = { status: "answered" as const, outcome: "approved" as const, notes: "", answer: "yes", by: "alice", at: AT, adapter: "in-session" as const };
+		await h.world.postComment(h.n, BOT_LOGIN, answerComment(requestId, { request: record, answer, verdict: "valid" }));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		await expectRefusal(h, { unit: "U1", replacement: U1 }, ["blocking request is pending", "question:Q3"]);
 	});
 });

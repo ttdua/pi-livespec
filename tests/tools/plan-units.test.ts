@@ -7,6 +7,7 @@ import { ForgeError } from "../../src/forge/errors.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import { reconcileBase } from "../../src/tools/plan-units-steps.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
@@ -345,6 +346,82 @@ describe("plan_units", () => {
 		const out = await h.plan();
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("pending");
+	});
+
+	/** Adds `line` under `## Questions` in the issue body, behind the bot's back, then refreshes the session. */
+	async function addQuestion(h: Plan, line: string): Promise<void> {
+		await h.world.editBodyBehindBack(h.n, (await issueBody(h)).replace("## Questions", `## Questions\n\n${line}`));
+		await h.session.refresh();
+	}
+
+	/** Stores a request comment for `subject` with `mode` and refreshes the comment cache. */
+	async function storeRequest(h: Plan, id: string, subject: string, kind: string, mode: string): Promise<void> {
+		const request = { kind, subject, mode, head_sha: h.head, snapshot: { id: subject, text: "?", requirements: [] }, summary: "?" };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", id, request));
+		await h.session.comments?.invalidate(h.n);
+	}
+
+	test("Non-blocking question does not block plan_units", async () => {
+		const h = await planning();
+		await addQuestion(h, "- [ ] Q1 (non-blocking): x");
+		await storeRequest(h, "question-Q1.lx3k2a", "question:Q1", "question", "async");
+		const out = await h.plan();
+		expect(out.isError).toBe(false);
+		expect(parseChange(await issueBody(h)).units).toHaveLength(2);
+	});
+
+	test("Reclassified question follows its current class", async () => {
+		const h = await planning();
+		await addQuestion(h, "- [ ] Q1 (non-blocking): x");
+		await storeRequest(h, "question-Q1.lx3k2a", "question:Q1", "question", "blocking");
+		const written = await h.plan();
+		expect(written.isError).toBe(false);
+		expect(parseChange(await issueBody(h)).units).toHaveLength(2);
+
+		const g = await planning();
+		await addQuestion(g, "- [ ] Q2 (blocking): y");
+		await storeRequest(g, "question-Q2.lx3k2a", "question:Q2", "question", "async");
+		const out = await g.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("question:Q2");
+		expect(parseChange(await issueBody(g)).units).toEqual([]);
+	});
+
+	test("Applying non-blocking answer blocks plan_units", async () => {
+		const h = await planning();
+		await addQuestion(h, "- [ ] Q1 (non-blocking): x");
+		const requestId = "question-Q1.lx3k2a";
+		const record = { id: requestId, kind: "question" as const, subject: "question:Q1", mode: "async" as const, head_sha: h.head, snapshot: { id: "Q1", text: "?", requirements: [] }, summary: "?" };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", requestId, record));
+		const answer = { status: "answered" as const, outcome: "approved" as const, notes: "", answer: "yes", by: "alice", at: "t", adapter: "in-session" as const };
+		await h.world.postComment(h.n, BOT_LOGIN, answerComment(requestId, { request: record, answer, verdict: "valid" }));
+		await h.session.comments?.invalidate(h.n);
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("question:Q1");
+		expect(parseChange(await issueBody(h)).units).toEqual([]);
+	});
+
+	test.each([
+		["gate:plan", "gate"],
+		["amend:1", "gate"],
+		["stuck:S1", "stuck"],
+		["decide:tags.U1", "gate"],
+	])("Non-question request %s blocks whatever its stored mode", async (subject, kind) => {
+		const h = await planning();
+		await storeRequest(h, "req-1.lx3k2a", subject, kind, "async");
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(subject);
+		expect(parseChange(await issueBody(h)).units).toEqual([]);
+	});
+
+	test("Request for a missing question blocks", async () => {
+		const h = await planning();
+		await storeRequest(h, "question-Q9.lx3k2a", "question:Q9", "question", "async");
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("question:Q9");
 	});
 });
 

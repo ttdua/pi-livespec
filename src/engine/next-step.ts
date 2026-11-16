@@ -7,6 +7,7 @@ import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interactio
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
+import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
 type Decision = { next: string; advance?: string };
@@ -44,7 +45,6 @@ const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> =
 const UNITS_SENTENCE = "Write Units (the plan_units tool arrives with LS-05).";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
 const SHIP_PHASE = "ship";
-const QUESTION_SUBJECT = "question:";
 const STUCK_SUBJECT = "stuck:";
 const FORGE_ADAPTER: AdapterName = "forge";
 const ADAPTER_PLACE: Record<AdapterName, string> = { forge: "on the forge", "in-session": "in session" };
@@ -81,19 +81,6 @@ function countersWithCaps(pack: Pack, counters: Record<string, number>): NextSte
 			const cap = pack.loops[name.split(".")[0] as string];
 			return cap === undefined ? { name, value: counters[name] as number } : { name, value: counters[name] as number, cap };
 		});
-}
-
-/**
- * A question request blocks only while its question is blocking in the body (design D4), so a
- * reclassification takes effect at once; other requests keep their stored mode.
- */
-function effectiveMode(state: ChangeState, subject: string, stored: unknown): RequestMode {
-	const question = subject.startsWith(QUESTION_SUBJECT)
-		? state.change.questions.find((q) => q.id === subject.slice(QUESTION_SUBJECT.length))
-		: undefined;
-	if (question) return question.kind === "blocking" ? "blocking" : "async";
-	// Comment data is untyped at runtime: anything but `async` waits for the human.
-	return stored === "async" ? "async" : "blocking";
 }
 
 /** The adapter recorded in an answer, or `forge` when the comment data names no known adapter. */
