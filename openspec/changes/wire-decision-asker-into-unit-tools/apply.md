@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `wire-decision-asker-into-unit-tools`
-**Iteration**: `1`
-**Applied at**: `2026-11-16T08:04Z`
+**Iteration**: `2`
+**Applied at**: `2026-11-16T08:35Z`
 **Executor**: `subagent-driven-development` (implementer: `implementer` agent; task reviewer and final reviewer: `code-reviewer` agent)
 
 ---
@@ -22,8 +22,9 @@
 
 ## Commits
 
-- **Range**: `44534a9..HEAD` (the commit that adds this receipt; implementation through `8d496b9`)
-- **Count**: `11` (10 before this receipt, plus the receipt commit)
+- **Range**: `44534a9..HEAD` (the commit that adds this receipt; implementation through `762fc38`)
+- **Count**: `14` (13 before this receipt, plus the receipt commit)
+- **Iteration 2**: `5fc6f3b..762fc38`. It fixes verify iteration 1 (PASS_WITH_WARNINGS): warning 1 adds the missing `Difficulty: high` assertion to "Added unit keeps its id across an ask"; warning 2 syncs `plan.md` lines 8 and 36 with D4b. Done inline by the parent (a one-line test assertion plus text): mutation-checked (answering `medium` fails the new assertion); full suite 1611/1611, typecheck clean.
 
 ---
 
@@ -49,6 +50,7 @@
 | Task 2 | sequential | `5531fa4..80308c3` | approved | n/a (sequential) |
 | Task 3 | sequential | `92e1565..7a78a62` | approved (1 minor JSDoc fixed in `7a78a62`) | n/a (sequential) |
 | Task 4 (final-review fix wave) | sequential | `56e3ccd..a05fd64` | re-review: all 3 findings addressed | n/a (sequential) |
+| Iteration 2 (verify warnings) | sequential | `5fc6f3b..762fc38` | inline, mutation-checked | n/a (sequential) |
 
 Final whole-branch review over `44534a9..6e96ca0` found 2 Important issues and 1 Minor. Both Important issues were design gaps in amendments: an answer was effective before approval, and record dedupe compared against history instead of the current decision. The user chose the proposal approach, the artifacts were revised and approved at the gate, and Task 4 fixed all three; the scoped re-review confirmed this.
 

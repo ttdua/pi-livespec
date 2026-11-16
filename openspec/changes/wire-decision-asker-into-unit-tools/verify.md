@@ -6,8 +6,8 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `wire-decision-asker-into-unit-tools`
-**Verified at**: `2026-11-16 08:25 UTC`
-**Iteration**: `1`
+**Verified at**: `2026-11-16 08:40 UTC`
+**Iteration**: `2`
 **Verifier**: parent session ran checks 1, 2, 6 and the full test run. A read-only `code-reviewer` agent (verifier role) collected the evidence for checks 3–5, and the parent spot-checked it against the cited lines.
 
 Worktree: `/Users/naicoi/Projects/oss/pi-livespec.wire-decision-asker-into-unit-tools`
@@ -69,10 +69,10 @@ Ticked: 19 (`grep -c "^- \[x\]"`); open: 0. The `openspec instructions apply` pr
 - [x] The project test command was run fresh in this step
 
 **Test command**: `bun run test` (worktree cwd), plus `bun run typecheck`
-**Result**: exit 0. 114 test files passed (114), 1611 tests passed (1611). Typecheck exit 0.
+**Result** (iteration 2 run): exit 0. 114 test files passed (114), 1611 tests passed (1611). Typecheck exit 0. `openspec validate --strict` was re-run: valid.
 Verifier's focused run (same invocation): `bun run test tests/decide/seam.test.ts tests/decide/records.test.ts tests/tools/decide-ask.test.ts tests/tools/plan-units.test.ts tests/tools/unit-amend.test.ts tests/engine/checks.test.ts tests/interaction/complete.test.ts tests/tools/spec-gate.test.ts`: exit 0, 8 files, 175 tests passed.
 
-All 52 scenarios map to a test (15 decision-seam, 37 unit-planning). For 48 of them the test asserts every THEN clause. The four partial ones are under WARNING/SUGGESTION below.
+All 52 scenarios map to a test (15 decision-seam, 37 unit-planning). For 49 of them the test asserts every THEN clause. The three remaining partial ones are baseline scenarios whose tests predate this change (SUGGESTION 2).
 
 | Scenario | Test |
 |---|---|
@@ -103,7 +103,7 @@ All 52 scenarios map to a test (15 decision-seam, 37 unit-planning). For 48 of t
 | Dismissed amendment keeps the classification | `tests/tools/unit-amend.test.ts:393` |
 | Approved amendment applies the answer | `tests/tools/unit-amend.test.ts:403` |
 | Rule outcome after a human answer is recorded | `tests/tools/unit-amend.test.ts:416` |
-| Added unit keeps its id across an ask | `tests/tools/unit-amend.test.ts:430` (partial, see WARNING 1) |
+| Added unit keeps its id across an ask | `tests/tools/unit-amend.test.ts:430` (iteration 2 added the `Difficulty: high` assertion; mutation-checked) |
 | Tag removed in the body | `tests/engine/checks.test.ts:205` (partial, see SUGGESTION 2) |
 | Human answer satisfies the check | `tests/tools/plan-units.test.ts:473` "Rerun after a forge answer" (assertion at line 491) |
 
@@ -112,11 +112,11 @@ All 52 scenarios map to a test (15 decision-seam, 37 unit-planning). For 48 of t
 ## 5. Design and Contract Coherence (warning only)
 
 - [x] Decisions in design.md match the code
-- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code (2 drift warnings)
+- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code (the two text drifts were fixed in iteration 2)
 
 Design: D1, D2, D3, D4, D4a, D4b, D4c, D5 and D6 match the code (see the files in the check 3 table). D2 and D4 describe the state before D4b, and D4b explicitly supersedes them. The code follows D4b.
 
-Contracts (`plan.md`): these rows match the code: DecideDeps, DecisionAsk.digest, AskRecorded, sameFacts, DecideSnapshot.digest, human record digest, classifyUnits, ClassifyResult, classifyPlan, runPlanUnits, planAmend, contractSnapshot, historyUnitIds, createDecisionAsker options, DecideSnapshot.proposal, DecisionRecord.proposal, currentDecision skips proposals, ClassifyResult.records holding all decisions. The `reusableAnswer` row has drift: see warning 1.
+Contracts (`plan.md`): these rows match the code: DecideDeps, DecisionAsk.digest, AskRecorded, sameFacts, DecideSnapshot.digest, human record digest, classifyUnits, ClassifyResult, classifyPlan, runPlanUnits, planAmend, contractSnapshot, historyUnitIds, createDecisionAsker options, DecideSnapshot.proposal, DecisionRecord.proposal, currentDecision skips proposals, ClassifyResult.records holding all decisions. The `reusableAnswer` row now describes the D4b lookup (fixed in iteration 2).
 
 apply.md deviations:
 - `decisionRequest(..., proposal = false)` matches `src/tools/decide-ask.ts:25-28`.
@@ -124,8 +124,7 @@ apply.md deviations:
 
 **Drift warnings** (non-blocking):
 
-- `plan.md:36`: the `reusableAnswer` row says "`currentDecision(...)` filtered by …". Since D4b the code uses a latest-record lookup that includes proposals (`src/decide/records.ts:109`). The signature matches; only the description is stale.
-- `plan.md:8` (Architecture) still says `classifyUnits` returns "rule-only records". Since D4b it returns every decision, and `plan_units` filters to rule records (`src/tools/classify-units.ts:86`, `src/tools/plan-units.ts:84`).
+- None. The iteration 1 drifts in `plan.md:8` and `plan.md:36` were reworded to the D4b behaviour in `762fc38`.
 
 ---
 
@@ -133,7 +132,7 @@ apply.md deviations:
 
 - [x] Working tree is clean (`git status --porcelain` → 0 entries before writing this file)
 
-**Commit range**: `44534a9..5ba1c52` (this receipt is committed on top)
+**Commit range**: `44534a9..762fc38`, plus the receipts committed on top (iteration 2: `5fc6f3b..762fc38`)
 
 ---
 
@@ -145,8 +144,7 @@ None.
 
 ### WARNING
 
-1. **"Added unit keeps its id across an ask" does not assert `Difficulty: high`** (`tests/tools/unit-amend.test.ts:430-446`). The spec THEN (`specs/unit-planning/spec.md`, "Added unit keeps its id across an ask") requires U3 to be added with `Difficulty: high`. The test checks the id, the request count and a clean classification check, but a wrong outcome present in both the body and the record would also pass. Recommendation: add `expect((await units(h))[2]).toMatchObject({ id: "U3", difficulty: "high" })` after approval.
-2. **plan.md text drift after D4b**: lines 8 and 36, see check 5. Recommendation: reword both to the D4b behaviour before archive.
+None. Both iteration 1 warnings (the missing assertion and the plan.md drift) are fixed in `762fc38`.
 
 ### SUGGESTION
 
@@ -168,12 +166,12 @@ None.
 ## Overall Decision
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
-- [x] PASS_WITH_WARNINGS: proceed, noting: no CRITICAL issues; the fresh full suite is green (1611/1611) and typecheck is clean. Two warnings remain: one missing assertion in a new test, and stale plan.md text after D4b.
+- [x] PASS_WITH_WARNINGS: proceed, noting: no CRITICAL issues and no warnings; the fresh suite is green (1611/1611) and typecheck is clean. The suggestions remain open (parked follow-ups and partial baseline-scenario tests), and nothing was verified against a live forge.
 - [ ] FAIL: fix the cause, then re-apply (iteration N+1)
 
 **Next step**:
 
-Run `/opsx-continue` with the worktree as working directory to create the finalize artifact, then `/opsx-archive`. Warnings 1 and 2 can optionally be fixed in a fix iteration first.
+Run `/opsx-continue` with the worktree as working directory to create the finalize artifact, then `/opsx-archive`.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
