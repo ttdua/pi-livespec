@@ -22,7 +22,7 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 `planAmend`/`contractSnapshot` take the asker; `runUnitAmend` builds it with `createDecisionAsker`; pending refuses naming the decision and request id with no amendment request sent
-- [ ] 3.2 `AmendSnapshot.records` holds rule records only; `applyAmend` posts them as today
-- [ ] 3.4 `historyUnitIds` skips decision records that carry `request` (answers of a rule ask), so `--add` keeps its id across an ask (design D4a)
-- [ ] 3.3 Tests in `tests/tools/unit-amend.test.ts`: forge ask refuses with no amendment request; rerun after the answer sends the light gate with the answered difficulty and no new `decide:` request; an added unit keeps its id across an ask
+- [x] 3.1 `planAmend`/`contractSnapshot` take the asker; `runUnitAmend` builds it with `createDecisionAsker`; pending refuses naming the decision and request id with no amendment request sent
+- [x] 3.2 `AmendSnapshot.records` holds rule records only; `applyAmend` posts them as today
+- [x] 3.4 `historyUnitIds` skips decision records that carry `request` (answers of a rule ask), so `--add` keeps its id across an ask (design D4a)
+- [x] 3.3 Tests in `tests/tools/unit-amend.test.ts`: forge ask refuses with no amendment request; rerun after the answer sends the light gate with the answered difficulty and no new `decide:` request; an added unit keeps its id across an ask
