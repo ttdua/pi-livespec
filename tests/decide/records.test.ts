@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
-import { type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks } from "../../src/decide/records.ts";
+import { type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 
 const TAGS_U3: DecisionRecord = {
@@ -108,6 +108,60 @@ describe("decision records", () => {
 		const badAdditions = "<!-- livespec:decision:lane -->\n```yaml\npoint: lane\nsubject: pr-1\nsource: rule\noutcome: x\nreason: r\nagent_additions: api\n```";
 		const body = `${noOutcome}\n\n${badAdditions}\n\n${formatDecisionBlock("lane", good)}\n`;
 		expect(parseDecisionBlocks(body)).toEqual([good]);
+	});
+
+	test("reusableAnswer hits a human record with the same digest and facts", () => {
+		const facts = { files: ["a.ts"] };
+		const human: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "chosen" };
+		expect(reusableAnswer([marked("pick.U1", human)], "pick", "U1", "d1", facts)).toEqual(human);
+	});
+
+	test("reusableAnswer misses other digest, other facts, rule source and dismissed outcome", () => {
+		const facts = { files: ["a.ts"] };
+		const base: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
+		const misses: [string, unknown, DecisionRecord][] = [
+			["d2", facts, base],
+			["d1", { files: ["b.ts"] }, base],
+			["d1", facts, { ...base, source: "rule" }],
+			["d1", facts, { ...base, outcome: null }],
+		];
+		for (const [digest, f, record] of misses) {
+			expect(reusableAnswer([marked("pick.U1", record)], "pick", "U1", digest, f)).toBeUndefined();
+		}
+	});
+
+	test("reusableAnswer: latest dismissed wins", () => {
+		const facts = { n: 1 };
+		const chosen: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
+		const dismissed = { ...chosen, outcome: null };
+		expect(reusableAnswer([marked("pick.U1", chosen), marked("pick.U1", dismissed)], "pick", "U1", "d1", facts)).toBeUndefined();
+	});
+
+	test("reusableAnswer: latest with other facts wins", () => {
+		const facts = { n: 1 };
+		const older: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "x", facts, reason: "r" };
+		const newer = { ...older, outcome: "y", facts: { n: 2 } };
+		expect(reusableAnswer([marked("pick.U1", older), marked("pick.U1", newer)], "pick", "U1", "d1", facts)).toBeUndefined();
+	});
+
+	test("reusableAnswer: a newer rule record stops reuse", () => {
+		const facts = { n: 1 };
+		const human: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
+		const rule = { ...human, source: "rule" as const, reason: "rule" };
+		expect(reusableAnswer([marked("pick.U1", human), marked("pick.U1", rule)], "pick", "U1", "d1", facts)).toBeUndefined();
+	});
+
+	test("reusableAnswer reuses by facts_hash for large facts", () => {
+		const facts = { blob: "x".repeat(2001) };
+		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
+		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
+		expect(reusableAnswer([parsed], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
+	});
+
+	test("reusableAnswer reuses after a forge round-trip", () => {
+		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts: { files: ["a.ts"], tags: ["ui"], n: 3 }, reason: "r" };
+		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
+		expect(reusableAnswer([parsed], "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
 	});
 
 	test("malformed decision data is skipped", () => {

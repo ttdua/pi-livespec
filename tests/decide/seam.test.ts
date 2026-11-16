@@ -41,6 +41,39 @@ describe("decide", () => {
 		if (r.status === "decided") expect(r.reason).toContain("alice");
 	});
 
+	test("a recorded answer decides as human", async () => {
+		const facts = { n: 2 };
+		const r = await decide("pick", facts, {
+			config: { mode: "rule" },
+			subject: "U2",
+			ask: async () => ({ status: "recorded", outcome: "y", reason: "r" }),
+		});
+		expect(r).toEqual({ status: "decided", outcome: "y", source: "human", reason: "r", facts });
+	});
+
+	test("the digest reaches the ask", async () => {
+		const asked: DecisionAsk[] = [];
+		await decide("pick", { n: 1 }, {
+			config: { mode: "rule" },
+			subject: "U1",
+			digest: "d1",
+			ask: async (intent) => {
+				asked.push(intent);
+				return { status: "pending", requestId: "r1" };
+			},
+		});
+		expect(asked[0]).toMatchObject({ digest: "d1" });
+	});
+
+	test("Rule decision ignores a human record", async () => {
+		registerRule("deciding", { validate() {} }, () => ({ outcome: "x", reason: "rule" }));
+		const ask = async (): Promise<never> => {
+			throw new Error("ask must not run for a deciding rule");
+		};
+		const r = await decide("deciding", {}, { config: {}, subject: "U1", digest: "d1", ask });
+		expect(r).toMatchObject({ status: "decided", outcome: "x", source: "rule" });
+	});
+
 	test("pending ask returns the request id", async () => {
 		const r = await decide("pick", {}, { config: {}, subject: "U2", ask: async () => ({ status: "pending", requestId: "decide-pick-U2.abc" }) });
 		expect(r).toEqual({ status: "pending", requestId: "decide-pick-U2.abc" });

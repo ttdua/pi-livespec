@@ -4,10 +4,11 @@
 // An in-session answer is completed at once (the `decision` record with
 // `source: human`); a forge request stays pending until a `/livespec choose`.
 
-import type { DecisionAsk, DecideDeps } from "../decide/seam.ts";
+import { reusableAnswer } from "../decide/records.ts";
+import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, DecideSnapshot } from "../interaction/approver.ts";
-import { readMarkedComments } from "../forge/markers.ts";
+import { type MarkedComment, readMarkedComments } from "../forge/markers.ts";
 import { openRequestFor, prepareRequest, readRequests } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import type { WriteContext } from "./guard.ts";
@@ -23,11 +24,19 @@ export type DecisionAsker = NonNullable<DecideDeps["ask"]>;
  */
 export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Date): ApprovalRequest {
 	const subject = `${SUBJECT_PREFIX}${intent.point}.${intent.subject}`;
-	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts };
+	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts, ...(intent.digest === undefined ? {} : { digest: intent.digest }) };
 	const { summary, options } = intent;
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options };
+}
+
+/** A recorded human answer for the intent's unit digest and facts, as an `AskRecorded`; undefined when there is none to reuse. */
+function reuseAnswer(comments: MarkedComment[], intent: DecisionAsk): AskRecorded | undefined {
+	if (intent.digest === undefined) return undefined;
+	const record = reusableAnswer(comments, intent.point, intent.subject, intent.digest, intent.facts);
+	if (record === undefined) return undefined;
+	return { status: "recorded", outcome: record.outcome, reason: `reused ${record.reason}` };
 }
 
 /**
@@ -39,6 +48,8 @@ export function createDecisionAsker(w: WriteContext, state: ChangeState, ctx: Ap
 	return async (intent) => {
 		const request = decisionRequest(state, intent, now());
 		const { comments } = await readMarkedComments(w.forge, state.issue.number);
+		const reused = reuseAnswer(comments, intent);
+		if (reused !== undefined) return reused;
 		const open = openRequestFor(readRequests(comments), request.subject);
 		if (open !== undefined) return { status: "pending", requestId: open };
 		const result = await dispatchRequest(w, state, request, ctx, async () => {});

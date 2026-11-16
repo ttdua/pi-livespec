@@ -6,6 +6,7 @@ import { ruleFor } from "./registry.ts";
 export type DecisionAsk = {
 	point: string;
 	subject: string;
+	digest?: string;
 	facts: unknown;
 	summary: string;
 	options: { id: string; label: string }[];
@@ -15,10 +16,14 @@ export type DecisionAsk = {
 export type AskAnswered = { status: "answered"; outcome: string; choice?: string; by: string; at: string };
 export type AskPending = { status: "pending"; requestId: string };
 
+/** An answer the asker reused from a human record for the same unit digest and facts. */
+export type AskRecorded = { status: "recorded"; outcome: unknown; reason: string };
+
 export type DecideDeps = {
 	config: unknown;
 	subject: string;
-	ask?: (intent: DecisionAsk) => Promise<AskAnswered | AskPending>;
+	digest?: string;
+	ask?: (intent: DecisionAsk) => Promise<AskAnswered | AskPending | AskRecorded>;
 };
 
 export type Decided = {
@@ -41,8 +46,10 @@ export async function decide(point: string, facts: unknown, deps: DecideDeps): P
 		return decided;
 	}
 	if (!deps.ask) throw new Error(`decision point \`${point}\` asks a human but no approver was given`);
-	const answer = await deps.ask({ point, subject: deps.subject, facts, ...result.ask });
+	const digest = deps.digest === undefined ? {} : { digest: deps.digest };
+	const answer = await deps.ask({ point, subject: deps.subject, facts, ...digest, ...result.ask });
 	if (answer.status === "pending") return { status: "pending", requestId: answer.requestId };
+	if (answer.status === "recorded") return { status: "decided", outcome: answer.outcome, source: "human", reason: answer.reason, facts };
 	if (answer.choice === undefined) {
 		throw new Error(`decision \`${point}.${deps.subject}\` got answer \`${answer.outcome}\` without a choice`);
 	}

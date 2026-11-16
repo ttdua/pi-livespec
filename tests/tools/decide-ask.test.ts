@@ -49,13 +49,13 @@ async function change(o: { config: string; ui?: FakeUI; body?: (head: string) =>
 	return { ...h, n };
 }
 
-/** Runs `decide("pick", …)` with the asker a tool would build. */
-async function decidePick(h: Change) {
+/** Runs `decide("pick", …)` with the asker a tool would build; `digest` is set for unit subjects. */
+async function decidePick(h: Change, o: { facts?: unknown; digest?: string } = {}) {
 	const w = await prepareWrite();
 	if (!w.ok) throw new Error(w.message);
 	const c = requireChange(w.session);
 	if (!c.ok) throw new Error(c.message);
-	return decide("pick", FACTS, { config: { mode: "rule" }, subject: "U1", ask: createDecisionAsker(w, c.state, h.ctx) });
+	return decide("pick", o.facts ?? FACTS, { config: { mode: "rule" }, subject: "U1", digest: o.digest, ask: createDecisionAsker(w, c.state, h.ctx) });
 }
 
 async function marked(h: Change): Promise<MarkedComment[]> {
@@ -127,6 +127,89 @@ describe("decision asker", () => {
 		const h = await change({ config: SESSION_CHAIN });
 		await expect(decidePick(h)).rejects.toThrow(/no approval adapter is available/);
 		expect(await marked(h)).toEqual([]);
+	});
+});
+
+describe("unit digest reuse", () => {
+	const BIG = { files: ["src/a.ts"], blob: "x".repeat(2001) };
+
+	async function answerInForge(h: Change, facts: unknown = FACTS, digest = "d1") {
+		await h.world.setPermission("alice", "write");
+		const r = await decidePick(h, { facts, digest });
+		await h.world.postComment(h.n, "alice", "/livespec choose y");
+		const status = await h.call("spec_status");
+		expect(status.isError, textOf(status)).toBeFalsy();
+		return r;
+	}
+
+	async function recordDecision(h: Change, data: Record<string, unknown>) {
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("decision", "pick.U1", { point: "pick", subject: "U1", reason: "r", ...data }));
+	}
+
+	test("Human record carries the unit digest", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const [record] = await ofKind(h, "decision");
+		expect(record?.data).toMatchObject({ source: "human", outcome: "y", digest: "d1" });
+	});
+
+	test("Recorded answer reused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const again = await decidePick(h, { digest: "d1" });
+		expect(again).toMatchObject({ status: "decided", source: "human", outcome: "y", facts: FACTS });
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("Changed facts ask again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const r = await decidePick(h, { facts: { files: ["src/b.ts"] }, digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Changed contract asks again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		const r = await decidePick(h, { digest: "d2" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Dismissed answer not reused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		await recordDecision(h, { source: "human", outcome: null, digest: "d1", facts: FACTS, reason: "dismissed by alice" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Latest human record wins", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await recordDecision(h, { source: "human", outcome: "x", digest: "d1", facts: FACTS, reason: "chosen" });
+		await recordDecision(h, { source: "human", outcome: "y", digest: "d1", facts: { files: ["src/b.ts"] }, reason: "chosen" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("Newer rule record stops reuse", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h);
+		await recordDecision(h, { source: "rule", outcome: "x", digest: "d1", facts: FACTS, reason: "rule" });
+		const r = await decidePick(h, { digest: "d1" });
+		expect(r).toMatchObject({ status: "pending" });
+		expect(await ofKind(h, "request")).toHaveLength(2);
+	});
+
+	test("Large facts reused by hash", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await answerInForge(h, BIG);
+		const again = await decidePick(h, { facts: BIG, digest: "d1" });
+		expect(again).toMatchObject({ status: "decided", source: "human", outcome: "y" });
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 });
 

@@ -53,6 +53,7 @@ export interface DecideSnapshot {
 	point: string;
 	subject: string;
 	facts: unknown;
+	digest?: string;
 }
 
 export type RequestSnapshot = GateSnapshot | AmendSnapshot | QuestionSnapshot | StuckSnapshot | DecideSnapshot;

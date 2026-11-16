@@ -54,7 +54,7 @@ function compactFacts(r: DecisionRecord): DecisionRecord {
 	const yaml = stringify(r.facts);
 	if (yaml.length <= MAX_FACTS_YAML) return r;
 	const { facts: _facts, ...rest } = r;
-	return { ...rest, facts_hash: createHash("sha256").update(yaml).digest("hex") };
+	return { ...rest, facts_hash: sha256Hex(yaml) };
 }
 
 /** The `decision` marked comment body, id `<point>.<subject>`. */
@@ -82,6 +82,22 @@ export function currentDecision(marked: MarkedComment[], point: string, subject:
 		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest) found = m.data;
 	}
 	return found;
+}
+
+const sha256Hex = (yaml: string): string => createHash("sha256").update(yaml).digest("hex");
+
+/** True when `record` answers `facts`: the same canonical YAML, or the same `facts_hash` when the record holds one. */
+export function sameFacts(record: DecisionRecord, facts: unknown): boolean {
+	const yaml = stringify(facts);
+	if (record.facts_hash !== undefined) return record.facts_hash === sha256Hex(yaml);
+	return record.facts !== undefined && stringify(record.facts) === yaml;
+}
+
+/** The latest `<point>.<subject>` record for `digest`, when it is a human answer (not dismissed) for the same facts. */
+export function reusableAnswer(marked: MarkedComment[], point: string, subject: string, digest: string, facts: unknown): DecisionRecord | undefined {
+	const record = currentDecision(marked, point, subject, digest);
+	if (record === undefined || record.source !== "human" || record.outcome === null || !sameFacts(record, facts)) return undefined;
+	return record;
 }
 
 /** The small-fix PR body block: a marker line, then one fenced yaml block with the record. */
