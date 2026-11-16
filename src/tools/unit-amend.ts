@@ -136,7 +136,10 @@ function planErrors(body: string, s: AmendSnapshot): string | undefined {
 	return errors.length === 0 ? undefined : `${TOOL} refused: the amended plan is invalid, so no request was sent.\n${formatResults(errors)}`;
 }
 
-/** Builds and validates the amendment; nothing is sent or written. */
+/**
+ * Builds and validates the amendment. No amendment gate request is sent and nothing is applied; a classification
+ * decision may ask the approver (a `decide:` request, or a recorded human answer), as the asker does.
+ */
 export async function planAmend(state: ChangeState, body: string, form: AmendForm, decisions: Pack["decisions"], ask?: DecisionAsker): Promise<AmendPlan | { refused: string }> {
 	const units = parseChange(body).units;
 	let snapshot: AmendSnapshot | { refused: string };
