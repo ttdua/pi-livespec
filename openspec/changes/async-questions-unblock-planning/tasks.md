@@ -10,8 +10,8 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 In `src/tools/plan-units.ts` `planRefusal`, replace `openRequests` with `blockingRequests` and say "a blocking request is pending"
-- [ ] 2.2 In `tests/tools/plan-units.test.ts`, add "Non-blocking question does not block plan_units" and "Reclassified question follows its current class", "Applying non-blocking answer blocks plan_units", "Non-question requests block whatever their stored mode" and "Request for a missing question blocks"; keep the existing pending-request test
+- [x] 2.1 In `src/tools/plan-units.ts` `planRefusal`, replace `openRequests` with `blockingRequests` and say "a blocking request is pending"
+- [x] 2.2 In `tests/tools/plan-units.test.ts`, add "Non-blocking question does not block plan_units" and "Reclassified question follows its current class", "Applying non-blocking answer blocks plan_units", "Non-question requests block whatever their stored mode" and "Request for a missing question blocks"; keep the existing pending-request test
 
 ## 3. unit_amend respects blocking state
 
