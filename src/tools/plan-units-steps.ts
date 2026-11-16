@@ -112,10 +112,16 @@ export function plannedBody(unitsBody: string, base: string): string {
 	return setHeaderLine(unitsBody, BASE_KEY, base);
 }
 
-/** One version-checked body write; a thrown error is returned as an unknown outcome. */
-export async function writePlan(forge: CachedForge, issue: Issue, body: string): Promise<WriteOutcome> {
+/**
+ * One version-checked body write over the issue as `validated` read it. Posting the decision records
+ * bumps the issue's version on GitHub and Gitea, so the issue is re-read first: a body that changed since
+ * validation is a conflict; otherwise the write uses the fresh version. A thrown error is an unknown outcome.
+ */
+export async function writePlan(forge: CachedForge, validated: Issue, body: string): Promise<WriteOutcome> {
 	try {
-		const r = await forge.updateIssueBody(issue.number, body, issue.version);
+		const fresh = await forge.getIssue(validated.number);
+		if (fresh.body !== validated.body) return { kind: "conflict", changed: ["body"] };
+		const r = await forge.updateIssueBody(validated.number, body, fresh.version);
 		return r.status === "written" ? { kind: "written" } : { kind: "conflict", changed: r.changed };
 	} catch (error) {
 		return { kind: "thrown", error };

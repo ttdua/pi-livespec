@@ -43,7 +43,7 @@ const U2: UnitInput = {
 };
 
 /** `next` decides how the next `updateIssueBody` fails. */
-type Fault = { next: "none" | "conflict" | "lost"; comment?: boolean };
+type Fault = { next: "none" | "conflict" | "lost"; comment?: boolean; editOnComment?: boolean };
 
 function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => Forge {
 	return (world) =>
@@ -54,7 +54,12 @@ function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => For
 				if (prop === "createComment") {
 					return async (...args: unknown[]) => {
 						if (fault.comment) throw new ForgeError({ code: "http", operation: "createComment", message: "bad gateway", status: 502 });
-						return value.apply(target, args);
+						const created = await value.apply(target, args);
+						if (fault.editOnComment) {
+							fault.editOnComment = false;
+							await world.editBodyBehindBack(n(), `${await world.bodyOf(n())}edited elsewhere\n`);
+						}
+						return created;
 					};
 				}
 				if (prop !== "updateIssueBody") return value.bind(target);
@@ -269,6 +274,34 @@ describe("plan_units", () => {
 		expect(textOf(out)).toContain("integration branch is unknown");
 		expect(h.git("rev-parse", "HEAD")).toBe(head);
 		expect(await marked(h)).toEqual([]);
+	});
+
+	test("posting decision records bumps the issue version and the plan still writes Units and Base", async () => {
+		const h = await planning();
+		const upstream = await advanceIntegration(h);
+		const before = await h.world.forge.getIssue(h.n);
+		const out = await h.plan();
+		expect(textOf(out)).not.toContain("Version conflict");
+		expect(out.isError).toBe(false);
+		const change = parseChange(await issueBody(h));
+		expect(change.units.map((u) => u.id)).toEqual(["U1", "U2"]);
+		expect(change.header.base).toBe(upstream);
+		expect(baseConfig(h)).toBe(upstream);
+		expect((await h.world.forge.getIssue(h.n)).version).not.toBe(before.version);
+	});
+
+	test("a body edited while the records are posted refuses as a conflict", async () => {
+		const h = await planning();
+		await advanceIntegration(h);
+		h.fault.editOnComment = true;
+		const out = await h.plan();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("Version conflict");
+		const body = await issueBody(h);
+		expect(body).toContain("edited elsewhere");
+		expect(parseChange(body).header.base).toBe(h.base);
+		expect(parseChange(body).units).toEqual([]);
+		expect(baseConfig(h)).toBe(h.base);
 	});
 
 	test("a failed decision record after the merge refuses and asks for a rerun", async () => {
