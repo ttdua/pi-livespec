@@ -45,7 +45,7 @@ Blocked by: 3
 
 Blocked by: 1, 2, 3, 4
 
-- [ ] 6.1 Archived `2026-11-16-gates-and-decisions/design.md`: D3 (polling through the `registerLivespecTool` wrapper), D5 (`select` for yes/no, no `confirm`), D9 step 4 (`git merge --no-ff --no-edit`), D13 (`lock.gates`, `iterations.stuckOpen`); append `## Errata (#20)`
-- [ ] 6.2 Archived `plan.md` Contracts: `Approver` (no `poll`), `ApproverUI` (no `confirm`), `RequestRecord`/`GateSnapshot` (no `digests`), `LockState` (no `stalePhases`), `Subject`, marker `stuck` answer data (`outcome`), `interaction.adapter` fallback, kind per subject; drop the "Spec contract note"; append `## Errata (#20)`
-- [ ] 6.3 Archived `proposal.md`: add "Loop counters" to the `flow-engine` modified requirements and cross-session or cross-machine double completion to the known gaps; append `## Errata (#20)`
-- [ ] 6.4 `docs/architecture.md`: approver contract without `poll`, the `class` marker, adapter fallback
+- [x] 6.1 Archived `2026-11-16-gates-and-decisions/design.md`: D3 (polling through the `registerLivespecTool` wrapper), D5 (`select` for yes/no, no `confirm`), D9 step 4 (`git merge --no-ff --no-edit`), D13 (`lock.gates`, `iterations.stuckOpen`); append `## Errata (#20)`
+- [x] 6.2 Archived `plan.md` Contracts: `Approver` (no `poll`), `ApproverUI` (no `confirm`), `RequestRecord`/`GateSnapshot` (no `digests`), `LockState` (no `stalePhases`), `Subject`, marker `stuck` answer data (`outcome`), `interaction.adapter` fallback, kind per subject; drop the "Spec contract note"; append `## Errata (#20)`
+- [x] 6.3 Archived `proposal.md`: add "Loop counters" to the `flow-engine` modified requirements and cross-session or cross-machine double completion to the known gaps; append `## Errata (#20)`
+- [x] 6.4 `docs/architecture.md`: approver contract without `poll`, the `class` marker, adapter fallback
