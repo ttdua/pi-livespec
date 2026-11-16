@@ -7,14 +7,13 @@
 import { reusableAnswer } from "../decide/records.ts";
 import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { ApprovalRequest, DecideSnapshot } from "../interaction/approver.ts";
+import type { ApprovalRequest, DecideSnapshot, Subject } from "../interaction/approver.ts";
 import { type MarkedComment, readMarkedComments } from "../forge/markers.ts";
 import { openRequestFor, prepareRequest, readRequests } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import type { WriteContext } from "./guard.ts";
 import { dispatchRequest } from "./request-flow.ts";
 
-const SUBJECT_PREFIX = "decide:";
 
 export type DecisionAsker = NonNullable<DecideDeps["ask"]>;
 
@@ -23,7 +22,7 @@ export type DecisionAsker = NonNullable<DecideDeps["ask"]>;
  * no gate digest and no waivable checks; adapters and completion route it by its `decide:` subject.
  */
 export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Date, proposal = false): ApprovalRequest {
-	const subject = `${SUBJECT_PREFIX}${intent.point}.${intent.subject}`;
+	const subject: Subject = `decide:${intent.point}.${intent.subject}`;
 	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts, ...(intent.digest === undefined ? {} : { digest: intent.digest }) };
 	if (proposal) snapshot.proposal = true;
 	const { summary, options } = intent;

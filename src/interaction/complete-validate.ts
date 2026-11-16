@@ -12,9 +12,11 @@ import { gateDigest } from "../engine/locks.ts";
 import { deriveCommentFacts, phaseFromLabels, readGitFacts, sectionPresence } from "../engine/snapshot.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Issue } from "../forge/types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { amendedBody } from "./amend-body.ts";
-import type { AmendSnapshot, Answered, GateSnapshot, RequestRecord } from "./approver.ts";
+import type { Answered, RequestRecord } from "./approver.ts";
 import type { CompletionCtx } from "./complete-effects.ts";
+import { snapshotOf } from "./requests.ts";
 import { failingWaivableOf, unwaivedApproval } from "./waive-rule.ts";
 
 export type Verdict = { verdict: "valid" } | { verdict: "superseded"; reason: string };
@@ -47,23 +49,28 @@ async function validateGate(ctx: CompletionCtx, req: RequestRecord, ans: Answere
 	if (unwaived !== undefined) return superseded(unwaived);
 	if ((await ctx.git.head()) !== req.head_sha) return superseded("HEAD moved since the request");
 	if (req.gate_digest !== undefined && gateDigest(issue.body) !== req.gate_digest) return superseded("the issue changed since the request");
-	const target = (req.snapshot as GateSnapshot).target;
+	const typed = snapshotOf(req);
+	if (typed.kind !== "gate") throw new Error(`${req.subject} is not a gate request`);
+	const target = typed.snapshot.target;
 	const refusal = gateRefusal(await stateNow(ctx, issue), ctx.pack, target, req.id);
 	return refusal === undefined ? VALID : superseded(refusal);
 }
 
 function validateAmend(req: RequestRecord, issue: Issue): Verdict {
-	const s = req.snapshot as AmendSnapshot;
+	const typed = snapshotOf(req);
+	if (typed.kind !== "amend") throw new Error(`${req.subject} is not an amendment request`);
+	const s = typed.snapshot;
+	const name = untrusted(s.unit);
 	const unit = parseChange(issue.body).units.find((u) => u.id === s.unit);
-	if (s.action === "add" && unit) return superseded(`${s.unit} is already in the body`);
+	if (s.action === "add" && unit) return superseded(`${name} is already in the body`);
 	if (s.action !== "add") {
-		if (!unit) return superseded(`${s.unit} is no longer in the body`);
-		if (s.oldDigest !== undefined && unitDigest(unit) !== s.oldDigest) return superseded(`${s.unit} changed since the request`);
-		if (s.oldDone !== undefined && unit.done !== s.oldDone) return superseded(`${s.unit} was ${unit.done ? "ticked done" : "unticked"} since the request`);
+		if (!unit) return superseded(`${name} is no longer in the body`);
+		if (s.oldDigest !== undefined && unitDigest(unit) !== s.oldDigest) return superseded(`${name} changed since the request`);
+		if (s.oldDone !== undefined && unit.done !== s.oldDone) return superseded(`${name} was ${unit.done ? "ticked done" : "unticked"} since the request`);
 	}
 	const after = parseChange(amendedBody(issue.body, s));
 	const errors = [...validateUnits(after), ...checkDoneMapsScenarios(after)].filter((r) => r.severity === "error");
-	return errors.length === 0 ? VALID : superseded(`the amended plan is invalid: ${errors.map((e) => e.message).join("; ")}`);
+	return errors.length === 0 ? VALID : superseded(`the amended plan is invalid: ${untrusted(errors.map((e) => e.message).join("; "))}`);
 }
 
 /** Whether the human's answer still applies to what they saw. Run once, before the answer is recorded. */

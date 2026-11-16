@@ -12,7 +12,14 @@ export type AdapterName = (typeof ADAPTER_NAMES)[number];
 export type RequestKind = "gate" | "question" | "stuck";
 
 /** `gate:<phase|name>` | `amend:<n>` | `question:Q<n>` | `stuck:S<n>` | `decide:<point>.<subject>`. */
-export type Subject = string;
+export type Subject = `gate:${string}` | `amend:${number}` | `question:Q${number}` | `stuck:S${number}` | `decide:${string}`;
+
+const SUBJECT_PATTERNS = [/^gate:.+$/, /^amend:\d+$/, /^question:Q\d+$/, /^stuck:S\d+$/, /^decide:.+$/];
+
+/** Whether `s` is a subject LS-05 writes; forge text is parsed with this before it is trusted as a `Subject`. */
+export function isSubject(s: string): s is Subject {
+	return SUBJECT_PATTERNS.some((pattern) => pattern.test(s));
+}
 
 export type RequestMode = "blocking" | "async";
 export type QuestionClass = "blocking" | "non-blocking";

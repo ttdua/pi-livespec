@@ -177,7 +177,7 @@ describe("readChangeSnapshot", () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body, labels: BUILD_LABELS });
 		const [u1, , u3] = parseChange(body).units.map((u: Unit) => unitDigest(u));
 		await world.postComment(n, BOT_LOGIN, writeMarked("gate", "plan.gate-plan.a", { request: "gate-plan.a", phase: "plan", outcome: "approved", notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "f", waivers: [], locked: { U1: u1, U2: "0".repeat(64), U3: u3 } }));
-		const record = { id: "question-Q4.b", kind: "question" as const, subject: "question:Q4", mode: "blocking" as const, head_sha: "f", snapshot: { id: "Q4", text: "?", requirements: [] }, summary: "Q4?" };
+		const record = { id: "question-Q4.b", kind: "question" as const, subject: "question:Q4" as const, mode: "blocking" as const, head_sha: "f", snapshot: { id: "Q4", text: "?", requirements: [] }, summary: "Q4?" };
 		await world.postComment(n, BOT_LOGIN, requestComment(record.id, record, "Answer with /livespec answer Q4 <text>."));
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.lock.frozen).toEqual(["U2"]);

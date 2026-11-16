@@ -94,6 +94,18 @@ describe("decision asker", () => {
 		expect(record).toMatchObject({ id: "pick.U1", data: { source: "human", outcome: "y", request: request?.id } });
 	});
 
+	test("Decide request kind", async () => {
+		registerRule("difficulty", { validate() {} }, () => ({ ask: { summary: "Which difficulty for U1?", options: OPTIONS } }));
+		const h = await change({ config: FORGE_CHAIN });
+		const w = await prepareWrite();
+		if (!w.ok) throw new Error(w.message);
+		const c = requireChange(w.session);
+		if (!c.ok) throw new Error(c.message);
+		await decide("difficulty", FACTS, { config: { mode: "rule" }, subject: "U1", ask: createDecisionAsker(w, c.state, h.ctx, {}) });
+		const [request] = await ofKind(h, "request");
+		expect(request?.data).toMatchObject({ subject: "decide:difficulty.U1", kind: "stuck" });
+	});
+
 	test("an open request for the subject is reported pending, not asked again", async () => {
 		const h = await change({ config: FORGE_CHAIN });
 		const first = await decidePick(h);

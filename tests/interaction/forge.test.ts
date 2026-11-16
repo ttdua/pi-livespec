@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { filterMarked, parseMarked } from "../../src/forge/markers.ts";
 import type { Comment, Forge } from "../../src/forge/types.ts";
-import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot } from "../../src/interaction/approver.ts";
+import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
 import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
@@ -13,7 +13,7 @@ const DEFINE_LABELS = ["livespec", "livespec:phase/define"];
 const HEAD = "f".repeat(40);
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
-type Spec = { kind?: RequestKind; subject: string; mode?: RequestMode; options?: RequestOption[]; snapshot?: RequestSnapshot; now?: Date };
+type Spec = { kind?: RequestKind; subject: Subject; mode?: RequestMode; options?: RequestOption[]; snapshot?: RequestSnapshot; now?: Date };
 
 function approval(s: Spec): ApprovalRequest {
 	const kind = s.kind ?? "gate";
@@ -46,7 +46,7 @@ function comment(id: string, author: string, body: string, createdAt: string): C
 	return { id, author, body, createdAt, updatedAt: createdAt, version: "cv:1" as Comment["version"] };
 }
 
-function pending(subject: string, extra: Partial<PendingRequest["data"]> = {}, kind: RequestKind = "gate"): PendingRequest {
+function pending(subject: Subject, extra: Partial<PendingRequest["data"]> = {}, kind: RequestKind = "gate"): PendingRequest {
 	const r = approval({ subject, kind, ...(extra.options ? { options: extra.options } : {}) });
 	const data = { ...r.record, ...extra };
 	return { id: data.id, subject, kind, mode: data.mode, createdAt: NOW.toISOString(), data };

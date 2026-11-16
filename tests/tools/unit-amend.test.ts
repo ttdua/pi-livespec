@@ -6,6 +6,7 @@ import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import type { Subject } from "../../src/interaction/approver.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import { unitClassification } from "../../src/engine/unit-classification.ts";
@@ -120,7 +121,7 @@ async function seed(h: Amend, kind: string, id: string, data: unknown): Promise<
 const addQuestion = (h: Amend, line: string) => webEdit(h, (b) => b.replace("## Questions", `## Questions\n\n${line}`));
 
 /** A request record as plan_units stores it; `mode` is the stored mode, not the question's current class. */
-const requestRecord = (id: string, subject: string, mode: "async" | "blocking") => ({
+const requestRecord = (id: string, subject: Subject, mode: "async" | "blocking") => ({
 	id,
 	kind: "question" as const,
 	subject,
@@ -357,6 +358,15 @@ describe("unit_amend", () => {
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
 		await expectRefusal(h, { unit: "U1", replacement: U1 }, ["blocking request is pending", "question:Q3"]);
+	});
+
+	test("Amendment request kind", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		await h.world.setPermission("alice", "write");
+		const out = await h.amend({ unit: "U2", replacement: { ...U2, verify: "bun test readme" } });
+		expect(out.isError, textOf(out)).toBe(false);
+		const [request] = await ofKind(h, "request");
+		expect(request?.data).toMatchObject({ subject: "amend:1", kind: "gate" });
 	});
 
 	test("Amendment classification asks on the forge", async () => {

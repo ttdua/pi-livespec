@@ -8,7 +8,7 @@ import { currentDecision, decisionComment, type DecisionRecord } from "../decide
 import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import { amendedBody } from "./amend-body.ts";
-import type { AmendSnapshot } from "./approver.ts";
+import { snapshotOf } from "./requests.ts";
 import { type ApplyFn, editBody, postComment, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 
@@ -46,7 +46,9 @@ async function newDigest(run: Run, unit: string): Promise<string | undefined> {
 
 export const applyAmend: ApplyFn = async (run, record) => {
 	const { request, answer } = record;
-	const s = request.snapshot as AmendSnapshot;
+	const typed = snapshotOf(request);
+	if (typed.kind !== "amend") throw new Error(`${request.subject} is not an amendment request`);
+	const s = typed.snapshot;
 	const apply = validApproval({ outcome: answer.outcome, superseded: record.verdict === "superseded" });
 	if (apply) {
 		await editBody(run, (body) => amendedBody(body, s));

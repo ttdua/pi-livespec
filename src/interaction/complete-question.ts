@@ -11,7 +11,8 @@ import { deriveLocks } from "../engine/locks.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { PhaseState } from "../engine/state-types.ts";
 import { writeMarked } from "../forge/markers.ts";
-import type { Answered, QuestionClass, QuestionSnapshot } from "./approver.ts";
+import type { Answered, QuestionClass } from "./approver.ts";
+import { snapshotOf } from "./requests.ts";
 import { type ApplyFn, currentPhase, editBody, phasesAfter, postOnce, readIssue, type Run } from "./complete-effects.ts";
 
 const DEFINE = "define";
@@ -68,7 +69,9 @@ async function cascade(run: Run, id: string, requirement: string): Promise<void>
 
 export const applyQuestion: ApplyFn = async (run, record) => {
 	const { request, answer } = record;
-	const id = (request.snapshot as QuestionSnapshot).id;
+	const typed = snapshotOf(request);
+	if (typed.kind !== "question") throw new Error(`${request.subject} is not a question request`);
+	const id = typed.snapshot.id;
 	const answered = answer.outcome !== "dismissed";
 	if (answered) {
 		await editBody(run, (body) => answeredBody(body, id, answer));

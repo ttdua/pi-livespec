@@ -63,7 +63,7 @@ function humanLines(answer: Answered): string[] {
 function summary(record: AnswerData): Completion {
 	const { request, answer } = record;
 	if (record.verdict === "superseded") {
-		return { status: "superseded", result: `${untrusted(request.subject)}: the answer no longer matches the change (${untrusted(record.reason ?? "superseded")}); request it again.` };
+		return { status: "superseded", result: `${untrusted(request.subject)}: the answer no longer matches the change (${record.reason ?? "superseded"}); request it again.` };
 	}
 	const choice = answer.choice === undefined ? "" : ` (choice ${untrusted(answer.choice)})`;
 	const head = `${untrusted(request.subject)}: ${answer.outcome}${choice} by ${untrusted(answer.by)} via ${answer.adapter}.`;

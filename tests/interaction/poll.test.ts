@@ -6,7 +6,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
-import type { RequestRecord, RequestSnapshot } from "../../src/interaction/approver.ts";
+import type { RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
 import { answerComment, prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -33,7 +33,7 @@ async function postRequest(world: MemoryWorld, n: number, r: RequestRecord): Pro
 	await world.postComment(n, BOT_LOGIN, requestComment(r.id, r, "plain text"));
 }
 
-function request(kind: RequestRecord["kind"], subject: string, snapshot: RequestSnapshot, body: string, head: string, at: number, options?: RequestRecord["options"]): RequestRecord {
+function request(kind: RequestRecord["kind"], subject: Subject, snapshot: RequestSnapshot, body: string, head: string, at: number, options?: RequestRecord["options"]): RequestRecord {
 	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head, body, snapshot, summary: `Review ${subject}`, now: new Date(Date.UTC(2026, 0, 1, 0, 0, at)) });
 }
 

@@ -7,10 +7,11 @@ import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
 import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
-import { runChecks } from "../../src/engine/checks.ts";
+import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { deriveLocks, validApproval } from "../../src/engine/locks.ts";
+import { registerCheck } from "../../src/engine/registry.ts";
 import { nextStep } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
@@ -19,10 +20,10 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { amendedBody } from "../../src/interaction/amend-body.ts";
-import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot } from "../../src/interaction/approver.ts";
+import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
-import { prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { answerComment, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
@@ -84,7 +85,7 @@ async function refresh(f: Fixture): Promise<ChangeState> {
 	return (await stateOf(f)).state;
 }
 
-async function prepare(f: Fixture, kind: RequestKind, subject: string, snapshot: RequestSnapshot, options?: { id: string; label: string }[]): Promise<RequestRecord> {
+async function prepare(f: Fixture, kind: RequestKind, subject: Subject, snapshot: RequestSnapshot, options?: { id: string; label: string }[]): Promise<RequestRecord> {
 	const body = await f.world.bodyOf(f.n);
 	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head: f.head, body, snapshot, summary: `Review ${subject}`, now: new Date(AT) });
 }
@@ -311,7 +312,7 @@ describe("completion engine", () => {
 		const other = renderUnit({ id: "U4", title: "Other", covers: [REQUIREMENT], difficulty: "low", tags: [], files: ["src/o.ts"], done_means: [{ label: "o", text: "other" }], scenarios: [{ label: "o", ref: "test/ratelimit.test.ts › rejects 101st request" }], depends: [], verify: "npm test" });
 		await f.world.editBodyBehindBack(f.n, amendedBody(before, { action: "add", unit: "U4", lines: other, records: [] }));
 		const out = await completeAnswer(await ctxOf(f), record, answer());
-		expect(out.result).toContain("U4 is already in the body");
+		expect(out.result).toContain(`${untrusted("U4")} is already in the body`);
 		const units = parseChange(await f.world.bodyOf(f.n)).units;
 		expect(units.find((u) => u.id === "U4")?.title).toBe("Other");
 	});
@@ -423,6 +424,39 @@ describe("completion engine", () => {
 		expect(ofKind(marked, "gate")[0]?.data).toMatchObject({ outcome: "changes_requested", request: record.id });
 		expect(readRequests(marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("superseded reason is wrapped once", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		registerCheck("spec-format", async () => [{ code: "x", severity: "error", message: "bad <b>title</b>" }]);
+		try {
+			const out = await completeAnswer(await ctxOf(f), record, answer());
+			expect(out.status).toBe("superseded");
+			expect(out.result.match(/<untrusted>/g)).toHaveLength(2); // the subject and the failing check message
+			expect(out.result).toContain(untrusted("bad <b>title</b>"));
+			expect(out.result).not.toContain("&lt;untrusted&gt;");
+		} finally {
+			registerBuiltinChecks();
+		}
+	});
+
+	test("applying answers of every subject kind still complete", async () => {
+		const f = await fixture("build");
+		const cases: [RequestKind, Subject, RequestSnapshot][] = [
+			["gate", "gate:define", gateSnapshot("define")],
+			["gate", "amend:1", { action: "drop", unit: "U9", records: [] }],
+			["question", "question:Q1", { id: "Q1", text: "header?", requirements: [] }],
+			["stuck", "stuck:S1", { id: "S1" }],
+			["stuck", "decide:difficulty.U1", { point: "difficulty", subject: "U1", facts: {}, digest: "d", proposal: true }],
+		];
+		for (const [kind, subject, snapshot] of cases) {
+			const record = await prepare(f, kind, subject, snapshot);
+			await f.world.postComment(f.n, BOT_LOGIN, answerComment(record.id, { request: record, answer: answer({ choice: "A" }), verdict: "valid" }));
+		}
+		const out = await finishApplying(await ctxOf(f));
+		expect(out.errors).toEqual([]);
+		expect(out.finished).toHaveLength(cases.length);
 	});
 
 	test("completion result wraps forge text as untrusted", async () => {

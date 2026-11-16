@@ -41,7 +41,7 @@ function ready(phase: string, overrides: Partial<ChangeState> = {}, body = NO_QU
 }
 
 function pendingGate(target: string, id = `gate-${target}.abc`): PendingRequest {
-	const data = { id, kind: "gate" as const, subject: `gate:${target}`, mode: "blocking" as const, head_sha: "f", snapshot: { target, failingWaivable: [] }, summary: "s" };
+	const data = { id, kind: "gate" as const, subject: `gate:${target}` as const, mode: "blocking" as const, head_sha: "f", snapshot: { target, failingWaivable: [] }, summary: "s" };
 	return { id, subject: `gate:${target}`, kind: "gate", mode: "blocking", createdAt: "t", data };
 }
 
