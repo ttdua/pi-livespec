@@ -145,5 +145,8 @@ export interface ApproverUI {
 export const REQUEST_KIND = "request";
 /** Marker kind of a validated answer: id = request id. */
 export const ANSWER_KIND = "answer";
+/** Marker kind of an applied `/livespec class` command: id = the command comment id. */
+export const CLASS_KIND = "class";
 registerKind(REQUEST_KIND);
 registerKind(ANSWER_KIND);
+registerKind(CLASS_KIND);
