@@ -102,6 +102,7 @@ async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, un
 	} catch (error) {
 		return refusal(`${messageOf(error)}; no request was sent.`);
 	}
+	if (classified.status !== "classified") return refusal(`decision \`${classified.point}.${classified.subject}\` waits for a human answer; no request was sent.`);
 	const lines = renderUnit(classified.units[0]!);
 	if (existing && existing.statusText !== "") lines[lines.length - 1] = existing.statusText;
 	const snapshot: AmendSnapshot = { action: form.action, unit: id, lines, records: classified.records };

@@ -213,8 +213,8 @@ describe("unit digest reuse", () => {
 	});
 });
 
-describe("built-in callers stay rule-only", () => {
-	test("plan_units refuses before any write when a rule asks", async () => {
+describe("built-in callers use the asker", () => {
+	test("plan_units refuses before any write when a rule asks on the forge", async () => {
 		registerRule("tags", tagsSchema, () => ({ ask: { summary: "Which tags?", options: OPTIONS } }));
 		const body = (head: string) => setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", head), "Branch", CHANGE_BRANCH);
 		const h = await change({ config: FORGE_CHAIN, body, phase: "plan" });
@@ -223,9 +223,11 @@ describe("built-in callers stay rule-only", () => {
 		const unit = { title: "T", covers: ["c/Requirement: R"], files: ["a.ts"], done_means: [{ label: "a", text: "a" }], scenarios: [{ label: "a", ref: "t › a" }], depends: [], verify: "bun test" };
 		const out = await h.call("plan_units", { units: [unit] });
 		expect(out.isError).toBe(true);
-		expect(textOf(out)).toContain("asks a human");
+		expect(textOf(out)).toContain("tags.U1");
+		expect(textOf(out)).toContain("waits for a human answer");
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 		expect(parseChange(before).units).toEqual([]);
-		expect(await marked(h)).toEqual([]);
+		expect(await ofKind(h, "decision")).toEqual([]);
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 });
