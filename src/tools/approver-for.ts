@@ -22,7 +22,6 @@ function uiOf(ctx: ApproverCtx): ApproverUI {
 	return {
 		hasUI: ctx.hasUI,
 		select: (title, options) => ctx.ui.select(title, options),
-		confirm: (title, message) => ctx.ui.confirm(title, message),
 		input: (title, placeholder) => ctx.ui.input(title, placeholder),
 	};
 }

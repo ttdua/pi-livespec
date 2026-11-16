@@ -58,7 +58,6 @@ function fake(name: AdapterName, available: boolean, result: Answered | Pending 
 			received.push(r);
 			return result;
 		},
-		poll: async () => ({ status: "pending" }),
 	};
 }
 

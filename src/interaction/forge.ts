@@ -2,12 +2,9 @@
 // comment with plain-text instructions; answers are plain `/livespec …`
 // command comments from writers, matched purely by `matchCommands`.
 
-import { filterMarked, readMarkedComments } from "../forge/markers.ts";
+import { readMarkedComments } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
-import type { Answered, ApprovalRequest, Approver } from "./approver.ts";
-import { ANSWER_KIND } from "./approver.ts";
-import { matchCommands } from "./forge-match.ts";
-import { commandAuthors, readPermissions } from "./forge-permissions.ts";
+import type { ApprovalRequest, Approver } from "./approver.ts";
 import { openRequestFor, readRequests, requestComment } from "./requests.ts";
 
 export {
@@ -82,17 +79,6 @@ export function createForgeApprover(forge: Forge, issue: number, opts: ForgeAppr
 			if (open !== undefined) throw new DuplicateRequestError(open, r.subject);
 			await forge.createComment(issue, requestComment(r.record.id, r.record, plainText(r)));
 			return { status: "pending", requestId: r.record.id };
-		},
-		async poll(requestId) {
-			const [{ login }, comments] = await Promise.all([forge.whoami(), forge.listComments(issue)]);
-			const marked = filterMarked(comments, login).comments;
-			const answered = marked.find((m) => m.kind === ANSWER_KIND && m.id === requestId);
-			if (answered) return (answered.data as { answer: Answered }).answer;
-			const pending = readRequests(marked).pending.filter((p) => p.id === requestId);
-			if (pending.length === 0) return { status: "pending" };
-			const { perms } = await readPermissions(forge, commandAuthors(comments, pending));
-			const match = matchCommands(pending, comments, perms, { marked }).matches[0];
-			return match ? match.answer : { status: "pending" };
 		},
 	};
 }

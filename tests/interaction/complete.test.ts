@@ -24,6 +24,7 @@ import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/in
 import { createForgeApprover } from "../../src/interaction/forge.ts";
 import { prepareRequest, readRequests } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
+import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN, OTHER_LOGIN } from "../forge/world.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
@@ -94,7 +95,7 @@ function envelope(record: RequestRecord): ApprovalRequest {
 
 const answer = (over: Partial<Answered> = {}): Answered => ({ status: "answered", outcome: "approved", notes: "", by: "alice", at: AT, adapter: "in-session", ...over });
 
-const gateSnapshot = (target: string) => ({ target, digests: {}, failingWaivable: [] });
+const gateSnapshot = (target: string) => ({ target, failingWaivable: [] });
 
 /** Posts the forge request, then a writer's command, and returns the polled answer. */
 async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): Promise<Answered> {
@@ -102,8 +103,8 @@ async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): 
 	await approver.request(envelope(record));
 	await f.world.setPermission("alice", "write");
 	await f.world.postComment(f.n, "alice", command);
-	const polled = await approver.poll(record.id);
-	if (polled.status !== "answered") throw new Error("not answered");
+	const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+	if (!polled) throw new Error("not answered");
 	return polled;
 }
 
@@ -181,8 +182,8 @@ describe("completion engine", () => {
 		await f.world.editBodyBehindBack(f.n, (await f.world.bodyOf(f.n)).replace("Limit each client IP.", "Limit each client IP and user."));
 		await f.world.setPermission("alice", "write");
 		await f.world.postComment(f.n, "alice", "/livespec approve");
-		const polled = await approver.poll(record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+		if (!polled) throw new Error("not answered");
 		const out = await completeAnswer(await ctxOf(f), record, polled);
 		expect(out.status).toBe("superseded");
 		expect((ofKind(await markedOf(f), "gate").at(-1)?.data as { superseded?: boolean }).superseded).toBe(true);
@@ -204,7 +205,7 @@ describe("completion engine", () => {
 	test("an approval that does not waive failing waivable checks is superseded", async () => {
 		const f = await fixture("define");
 		const options = [{ id: "waive", label: "Waive size-limits" }, { id: "accept", label: "accept" }];
-		const record = await prepare(f, "gate", "gate:define", { target: "define", digests: {}, failingWaivable: ["size-limits"] }, options);
+		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] }, options);
 		const out = await completeAnswer(await ctxOf(f), record, answer({ choice: "accept" }));
 		expect(out.status).toBe("superseded");
 		expect(out.result).toContain("choose waive");
@@ -290,8 +291,8 @@ describe("completion engine", () => {
 		await f.world.editBodyBehindBack(f.n, u3Done(await f.world.bodyOf(f.n)));
 		await f.world.setPermission("alice", "write");
 		await f.world.postComment(f.n, "alice", "/livespec approve");
-		const polled = await approver.poll(record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+		if (!polled) throw new Error("not answered");
 		const out = await completeAnswer(await ctxOf(f), record, polled);
 		expect(out.status).toBe("superseded");
 		const body = await f.world.bodyOf(f.n);

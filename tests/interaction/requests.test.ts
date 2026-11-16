@@ -22,7 +22,7 @@ const RECORD: RequestRecord = {
 	mode: "blocking",
 	head_sha: "f".repeat(40),
 	gate_digest: "d".repeat(64),
-	snapshot: { target: "plan", digests: { U1: "a" }, failingWaivable: [] },
+	snapshot: { target: "plan", failingWaivable: [] },
 	summary: "Approve plan?",
 };
 

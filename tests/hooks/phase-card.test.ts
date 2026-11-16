@@ -196,7 +196,7 @@ describe("approvals section", () => {
 		kind: "gate",
 		mode: "blocking",
 		createdAt: "",
-		data: { id: "gate-plan.lx3k2a", kind: "gate", subject: "gate:plan", mode: "blocking", head_sha: "f", snapshot: { target: "plan", digests: {}, failingWaivable: [] }, summary: "s" },
+		data: { id: "gate-plan.lx3k2a", kind: "gate", subject: "gate:plan", mode: "blocking", head_sha: "f", snapshot: { target: "plan", failingWaivable: [] }, summary: "s" },
 	};
 	const lock = { locked: { U1: "a" }, frozen: ["U2"], staleUnits: [], gates: {} };
 

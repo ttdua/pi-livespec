@@ -5,13 +5,12 @@ import { createInSessionApprover } from "../../src/interaction/in-session.ts";
 
 type Call =
 	| { method: "select"; title: string; options: string[] }
-	| { method: "confirm"; title: string; message: string }
 	| { method: "input"; title: string; placeholder?: string };
 
 /** A fake `ApproverUI` that answers from a script, in order, and records every call. */
-function scriptedUI(answers: (string | boolean | undefined)[], hasUI = true): ApproverUI & { calls: Call[] } {
+function scriptedUI(answers: (string | undefined)[], hasUI = true): ApproverUI & { calls: Call[] } {
 	const calls: Call[] = [];
-	const next = (): string | boolean | undefined => {
+	const next = (): string | undefined => {
 		if (answers.length === 0) throw new Error(`unscripted UI call: ${JSON.stringify(calls.at(-1))}`);
 		return answers.shift();
 	};
@@ -20,15 +19,11 @@ function scriptedUI(answers: (string | boolean | undefined)[], hasUI = true): Ap
 		calls,
 		select: async (title, options) => {
 			calls.push({ method: "select", title, options });
-			return next() as string | undefined;
-		},
-		confirm: async (title, message) => {
-			calls.push({ method: "confirm", title, message });
-			return next() as boolean;
+			return next();
 		},
 		input: async (title, placeholder) => {
 			calls.push({ method: "input", title, placeholder });
-			return next() as string | undefined;
+			return next();
 		},
 	};
 }
@@ -46,7 +41,7 @@ function gateRequest(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
 			subject: "gate:define",
 			mode: "blocking",
 			head_sha: "deadbeef",
-			snapshot: { target: "define", digests: {}, failingWaivable: [] },
+			snapshot: { target: "define", failingWaivable: [] },
 			summary: "Approve define?",
 		},
 		change: 7,
@@ -132,7 +127,7 @@ describe("in-session approver", () => {
 	test("failing waivable checks remove plain approve", async () => {
 		const ui = scriptedUI(["Waive failing checks [waive]", "No notes"]);
 		const base = gateRequest({ options: [{ id: "waive", label: "Waive failing checks" }] });
-		const request = { ...base, record: { ...base.record, snapshot: { target: "define", digests: {}, failingWaivable: ["size-limits"] } } };
+		const request = { ...base, record: { ...base.record, snapshot: { target: "define", failingWaivable: ["size-limits"] } } };
 		const result = await createInSessionApprover(ui, login).request(request);
 		expect(ui.calls[0]).toMatchObject({ options: ["request changes", "dismiss", "Waive failing checks [waive]"] });
 		expect(result).toMatchObject({ outcome: "approved", choice: "waive" });
@@ -260,14 +255,6 @@ describe("in-session approver", () => {
 		expect(result).not.toHaveProperty("overrides");
 	});
 
-	test("confirm is never used, so a cancelled confirm cannot read as no", async () => {
-		const ui = scriptedUI(["approve", "No notes", "Keep classification"]);
-		await createInSessionApprover(ui, login).request(
-			gateRequest({ subject: "gate:plan", overridable: { units: ["U1"] } }),
-		);
-		expect(ui.calls.some((c) => c.method === "confirm")).toBe(false);
-	});
-
 	test("option label colliding with a built-in action maps to the option, not the action", async () => {
 		const request = gateRequest({ options: [{ id: "waive", label: "approve" }] });
 		const pickOption = scriptedUI(["approve [waive]", "No notes"]);
@@ -349,7 +336,6 @@ describe("in-session approver", () => {
 				received.push(r);
 				return { status: "pending", requestId: r.id };
 			},
-			poll: async () => ({ status: "pending" }),
 		};
 		const result = await runChain(["in-session", "forge"], { "in-session": inSession, forge }, gateRequest(), {
 			onDeferred: async () => {},
@@ -361,11 +347,5 @@ describe("in-session approver", () => {
 
 	test("available with UI", () => {
 		expect(createInSessionApprover(scriptedUI([]), login).available()).toBe(true);
-	});
-
-	test("poll is always pending", async () => {
-		const approver = createInSessionApprover(scriptedUI([]), login);
-		expect(approver.name).toBe("in-session");
-		await expect(approver.poll("gate-define.abc")).resolves.toEqual({ status: "pending" });
 	});
 });

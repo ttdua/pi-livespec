@@ -62,7 +62,7 @@ describe("pollApprovals", () => {
 		const head = rev(h.root);
 		const body = resumeBody(base);
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: DEFINE_LABELS });
-		const r = request("gate", "gate:define", { target: "define", digests: {}, failingWaivable: [] }, body, head, 1);
+		const r = request("gate", "gate:define", { target: "define", failingWaivable: [] }, body, head, 1);
 		await postRequest(h.world, n, r);
 		await h.world.setPermission("alice", "write");
 		await h.world.postComment(n, "alice", "/livespec approve");

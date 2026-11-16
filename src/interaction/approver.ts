@@ -26,7 +26,6 @@ export interface RequestOption {
 
 export interface GateSnapshot {
 	target: string;
-	digests: Record<string, string>;
 	failingWaivable: string[];
 }
 
@@ -126,14 +125,12 @@ export interface Approver {
 	readonly name: AdapterName;
 	available(): boolean;
 	request(r: ApprovalRequest): Promise<Answered | Pending | Deferred>;
-	poll(requestId: string): Promise<Answered | { status: "pending" }>;
 }
 
 /** The subset of `ctx.ui` plus `ctx.hasUI` the in-session adapter uses. */
 export interface ApproverUI {
 	hasUI: boolean;
 	select(title: string, options: string[]): Promise<string | undefined>;
-	confirm(title: string, message: string): Promise<boolean>;
 	input(title: string, placeholder?: string): Promise<string | undefined>;
 }
 

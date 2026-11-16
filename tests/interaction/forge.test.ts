@@ -5,6 +5,7 @@ import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestS
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
 import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
+import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 
@@ -23,7 +24,7 @@ function approval(s: Spec): ApprovalRequest {
 		...(s.options ? { options: s.options } : {}),
 		head: HEAD,
 		body: "body",
-		snapshot: s.snapshot ?? { target: s.subject.slice(5), digests: {}, failingWaivable: [] },
+		snapshot: s.snapshot ?? { target: s.subject.slice(5), failingWaivable: [] },
 		summary: `Review ${s.subject}`,
 		now: s.now ?? NOW,
 	});
@@ -92,7 +93,7 @@ describe("forge adapter", () => {
 		await approver.request(r);
 		await world.setPermission("alice", "write");
 		await world.postComment(n, "alice", "/livespec approve looks good");
-		const answer = await approver.poll(r.record.id);
+		const answer = await matchedAnswer(world.forge, n, r.record.id);
 		expect(answer).toMatchObject({ status: "answered", outcome: "approved_with_notes", notes: "looks good", by: "alice", adapter: "forge" });
 	});
 
@@ -118,8 +119,8 @@ describe("forge adapter", () => {
 		const define = approval({ subject: "gate:define" });
 		await approver.request(define);
 		await world.postComment(n, "alice", "/livespec approve");
-		const polled = await approver.poll(define.record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(world.forge, n, define.record.id);
+		if (!polled) throw new Error("not answered");
 		await world.postComment(n, BOT_LOGIN, answerComment(define.record.id, { request: define.record, answer: polled, verdict: "valid" }));
 		const late = await world.postComment(n, "alice", "/livespec approve");
 		await approver.request(approval({ subject: "gate:plan", now: new Date(NOW.getTime() + 5000) }));
@@ -171,7 +172,7 @@ describe("forge adapter", () => {
 	});
 
 	test("approve with failing waivable checks is ignored with a waive hint", () => {
-		const gate = pending("gate:plan", { options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", digests: {}, failingWaivable: ["size-limits"] } });
+		const gate = pending("gate:plan", { options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", failingWaivable: ["size-limits"] } });
 		const out = matchThread([gate], [comment("9", "alice", "/livespec approve", LATER)], writers("alice"));
 		expect(out.matches).toEqual([]);
 		expect(out.warnings[0]).toContain("choose waive");
@@ -181,7 +182,7 @@ describe("forge adapter", () => {
 
 	test("choose of a named gate option with failing waivable checks is ignored with a waive hint", () => {
 		const options = [{ id: "waive", label: "waive size-limits" }, { id: "accept", label: "accept the dependency" }];
-		const gate = pending("gate:new-dependency", { options, snapshot: { target: "new-dependency", digests: {}, failingWaivable: ["size-limits"] } });
+		const gate = pending("gate:new-dependency", { options, snapshot: { target: "new-dependency", failingWaivable: ["size-limits"] } });
 		const out = matchThread([gate], [comment("9", "alice", "/livespec choose accept", LATER)], writers("alice"));
 		expect(out.matches).toEqual([]);
 		expect(out.warnings[0]).toContain("choose waive");
@@ -222,24 +223,24 @@ describe("forge adapter", () => {
 		await world.postComment(n, "alice", "/livespec approve");
 		await world.postComment(n, "alice", "/livespec approve again");
 		await world.postComment(n, "bob", "/livespec dismiss");
-		await approver.poll(r.record.id);
+		await matchedAnswer(counting, n, r.record.id);
 		expect(calls).toEqual(["alice", "bob"]);
 	});
 
-	test("poll returns the matched answer", async () => {
+	test("the matched answer is returned", async () => {
 		const { world, n, approver } = await setup();
 		const r = approval({ subject: "gate:define" });
 		await approver.request(r);
-		expect(await approver.poll(r.record.id)).toEqual({ status: "pending" });
+		expect(await matchedAnswer(world.forge, n, r.record.id)).toBeUndefined();
 		await world.setPermission("alice", "admin");
 		const id = await world.postComment(n, "alice", "/livespec changes tighten the proposal");
-		const answer = await approver.poll(r.record.id);
+		const answer = await matchedAnswer(world.forge, n, r.record.id);
 		expect(answer).toMatchObject({ status: "answered", outcome: "changes_requested", notes: "tighten the proposal", answerComment: { id, author: "alice" } });
 	});
 
 	test("request comment round-trips the prepared record", async () => {
 		const { world, n, approver } = await setup();
-		const r = approval({ subject: "gate:plan", options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", digests: { U1: "abc" }, failingWaivable: ["size-limits"] } });
+		const r = approval({ subject: "gate:plan", options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", failingWaivable: ["size-limits"] } });
 		await approver.request(r);
 		const [posted] = await world.forge.listComments(n);
 		const parsed = parseMarked(posted?.body ?? "");
@@ -266,7 +267,7 @@ describe("forge adapter", () => {
 		const out = matchCommands(readRequests(marked).pending, all, writers("alice"), { marked });
 		expect(out.matches).toEqual([]);
 		expect(out.warnings[0]).toContain("ambiguous between gate:plan, amend:1");
-		expect(await approver.poll(plan.record.id)).toEqual({ status: "pending" });
+		expect(await matchedAnswer(world.forge, n, plan.record.id)).toBeUndefined();
 	});
 
 	test("a command after its target was answered in the same pass is warned", () => {
@@ -284,8 +285,8 @@ describe("forge adapter", () => {
 		await world.setPermission("bob", "write");
 		const first = await world.postComment(n, "alice", "/livespec approve");
 		await world.postComment(n, "bob", "/livespec changes no");
-		const polled = await approver.poll(r.record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(world.forge, n, r.record.id);
+		if (!polled) throw new Error("not answered");
 		await world.postComment(n, BOT_LOGIN, answerComment(r.record.id, { request: r.record, answer: polled, verdict: "valid" }));
 		const all = await world.forge.listComments(n);
 		const marked = filterMarked(all, BOT_LOGIN).comments;
@@ -302,8 +303,8 @@ describe("forge adapter", () => {
 		await world.setPermission("bob", "write");
 		const first = await world.postComment(n, "alice", "/livespec approve");
 		const late = await world.postComment(n, "bob", "/livespec approve");
-		const polled = await approver.poll(define.record.id);
-		if (polled.status !== "answered") throw new Error("not answered");
+		const polled = await matchedAnswer(world.forge, n, define.record.id);
+		if (!polled) throw new Error("not answered");
 		await world.postComment(n, BOT_LOGIN, answerComment(define.record.id, { request: define.record, answer: polled, verdict: "valid" }));
 		await approver.request(approval({ subject: "gate:plan", now: new Date(NOW.getTime() + 5000) }));
 
