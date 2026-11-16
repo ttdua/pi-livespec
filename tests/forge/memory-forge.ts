@@ -220,9 +220,11 @@ class MemoryState {
 		issue.updatedAt = this.tick();
 	}
 
+	/** Like GitHub and Gitea, a new comment bumps the issue's `updated_at`, so its version changes. */
 	addComment(n: number, author: string, body: string): CommentRecord {
-		this.issue(n);
-		const now = this.tick();
+		const issue = this.issue(n);
+		this.touch(issue);
+		const now = issue.updatedAt;
 		const record: CommentRecord = {
 			id: String(this.nextCommentId++),
 			issue: n,
