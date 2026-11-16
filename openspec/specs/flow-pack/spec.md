@@ -7,7 +7,12 @@ Defines the flow pack: its schema and validation errors with line and column, th
 ## Requirements
 
 ### Requirement: Default flow pack
-The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-skills.yaml` with `name: agent-skills`, `version: 1`, `content: agent-skills`, the `limits`, `loops`, `decisions` and `init` keys, and the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close` with the skills, outputs, redirects, checks and gates listed in issue #4. The pack MUST NOT name a model or a lane count.
+The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-skills.yaml` with:
+- `name: agent-skills`, `version: 1` and `content: agent-skills`;
+- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, each with `mode: rule`;
+- the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close`, with the skills, outputs, redirects, checks and gates listed in issue #4, plus the `unit-classification` check in `plan`.
+
+The pack MUST NOT name a model or a lane count.
 
 #### Scenario: Default pack loads
 - **WHEN** a project has no `.pi/livespec/flow.yaml`
@@ -15,11 +20,11 @@ The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-
 
 #### Scenario: Default pack contents
 - **WHEN** the default pack is loaded
-- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json` transcribed from issue #4, covering `limits`, `loops`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks and gate
+- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4 and #5, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks and gate
 
 #### Scenario: Spot check
 - **WHEN** the default pack is loaded
-- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`, and phase `build` has `per: unit`
+- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios` and `unit-classification`; and `decisions.difficulty.mode` is `rule`
 
 ### Requirement: Pack schema validation
 The loader SHALL validate a pack against a hand-written schema of the top-level keys `name`, `version`, `content`, `limits`, `loops`, `decisions`, `init`, `phases` and `extends`, and the phase keys `id`, `requires`, `per`, `skills.required`, `skills.optional`, `outputs`, `redirects`, `checks`, `gate` and `subagents`. Every error MUST carry the file, line and column of the offending node, and a YAML syntax error MUST be reported with its line and column.
@@ -63,7 +68,13 @@ When the effective pack has any validation error, the system SHALL NOT call `nex
 - **THEN** no skill path is returned
 
 ### Requirement: Project override
-A project MAY provide `.pi/livespec/flow.yaml`. When it contains `extends: agent-skills`, the loader SHALL merge it into the default pack: a phase whose `id` exists replaces only the keys the override sets, a phase with a new `id` is added, and the maps `limits`, `loops`, `decisions` and `init` merge one level deep. Errors in merged values MUST point at the file that supplied the value.
+A project MAY provide `.pi/livespec/flow.yaml`. When it contains `extends: agent-skills`, the loader SHALL merge it into the default pack:
+- a phase whose `id` exists replaces only the keys the override sets;
+- a phase with a new `id` is added;
+- the maps `limits`, `loops` and `init` merge one level deep;
+- `decisions` merges per point, through the merge that the point's registered rule provides, or one level deep when it provides none.
+
+Errors in merged values MUST point at the file that supplied the value.
 
 #### Scenario: Replace one key
 - **WHEN** the override sets phase `plan` to `gate: self` only
@@ -84,6 +95,10 @@ A project MAY provide `.pi/livespec/flow.yaml`. When it contains `extends: agent
 #### Scenario: Error points at override
 - **WHEN** the override sets an invalid `gate` value
 - **THEN** the error names `.pi/livespec/flow.yaml` and the override's line and column
+
+#### Scenario: Decisions merge through the rule
+- **WHEN** the override sets `decisions.tags.keywords.perf: [p99]`
+- **THEN** the effective `perf` keywords are the defaults plus `p99`, and `decisions.difficulty` is unchanged
 
 ### Requirement: Override limits
 An override with `extends` MUST NOT change `name`, `version` or `content`, and `extends` MUST name a known pack. An override without `extends` SHALL be validated and used as a complete pack.

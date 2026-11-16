@@ -1,0 +1,90 @@
+# questions-and-stuck Specification
+
+## Purpose
+
+Defines `spec_question` and the Questions ledger, answers and the cascade when an answer changes a requirement, the `change_iterations` cap, and `spec_stuck` reports.
+
+## Requirements
+
+### Requirement: Question tool
+`spec_question` SHALL append `- [ ] Q<n> (<class>): <text>` to `## Questions` with the next free number. The class is `blocking` by default, and the agent MAY propose `non-blocking`. The question SHALL then go through the approver with kind `question`: mode `blocking` for blocking questions and `async` for non-blocking ones. `spec_question` with `reask: Q<n>` SHALL send an open question again. The question text MUST be one line.
+
+#### Scenario: Blocking by default
+- **WHEN** `spec_question` runs with only text
+- **THEN** `## Questions` gains `- [ ] Q<n> (blocking): <text>` and a blocking request is sent
+
+#### Scenario: Non-blocking proposal
+- **WHEN** `spec_question` runs with class `non-blocking` and the chain is `[forge]`
+- **THEN** the request has mode `async` and the next step does not wait for it
+
+### Requirement: Question answers
+When a question is answered, the plugin SHALL:
+1. rewrite its line to `- [x] Q<n> (<class>): <text> — Answer: <answer>`, keeping every other line byte-identical, except the status lines that a cascade unticks;
+2. write a `question` comment with the class, the answer, `changes_requirement`, `by`, `at` and the adapter.
+
+The human MAY change the class when answering, or before answering with `/livespec class`. A pending question request SHALL take its effective mode from the question's current class. A dismissed question stays open. No gate SHALL open while a blocking question is open.
+
+#### Scenario: Answer written back
+- **WHEN** Q1 is answered `use 60s windows` without a requirement change
+- **THEN** its line reads `- [x] Q1 (blocking): <text> — Answer: use 60s windows` and parses back with that answer
+
+#### Scenario: Human reclassifies
+- **WHEN** a writer comments `/livespec class Q2 non-blocking` on an open blocking Q2
+- **THEN** Q2's line shows `(non-blocking)`, its pending request counts as async, and neither the next step nor `spec_gate` waits for it
+
+### Requirement: Requirement cascade
+When an answer changes a requirement, the plugin SHALL:
+1. move the change back to `define` when it is past define;
+2. write a `stale` comment that names the question, `define` and every phase after it, and the units whose `Covers` names that requirement;
+3. untick the stale units that are done, using `untickUnit`.
+
+Stale units MUST need an amendment before the plan gate opens again. The `change_iterations` count SHALL be the number of cascades that moved the change back to define from a later phase after a plan gate was approved. It is derived from own `stale` comments, so retrying a completion never counts twice. Completion MUST be idempotent: retrying a partly applied cascade SHALL finish the missing effects without repeating the applied ones.
+
+#### Scenario: Answer sends the change back
+- **WHEN** in `build`, Q3's answer changes `rate-limit/Requirement: Per-IP cap`, U3 covers it and is done, and U1 does not cover it
+- **THEN** the change is in `define`, U3 is unticked and stale, U1 is unchanged, and `change_iterations` is 1
+
+#### Scenario: Cascade before the plan
+- **WHEN** in `define`, an answer changes a requirement and no plan gate was ever approved
+- **THEN** a `stale` comment is written and `change_iterations` is not incremented
+
+#### Scenario: Second answer while in define
+- **WHEN** after a counted return to define, a second answer in `define` changes another requirement
+- **THEN** a second `stale` comment is written and `change_iterations` does not rise
+
+#### Scenario: Retried cascade counts once
+- **WHEN** a cascade's body write and `stale` comment succeed, the phase move fails, and the next poll completes the answer
+- **THEN** the change is in `define`, exactly one `stale` comment exists for the question, and `change_iterations` rose by one
+
+### Requirement: Iteration cap
+The cap SHALL block when `change_iterations` is at least `loops.change_iterations` and no stuck report was answered after the latest counted cascade. While it blocks, the next step SHALL ask for a stuck report, and every gate MUST refuse. A stuck answer SHALL lift the block until the next counted cascade.
+
+#### Scenario: Cap reached
+- **WHEN** `change_iterations` is 5 with cap 5 and no stuck answer follows it
+- **THEN** the next step asks to send a stuck report with `spec_stuck` and `spec_gate define` refuses
+
+#### Scenario: Stuck answer lifts the cap
+- **WHEN** `change_iterations` is 5 with cap 5 and a stuck report was answered after the fifth cascade
+- **THEN** the next step no longer asks for a stuck report, and a sixth cascade blocks again
+
+### Requirement: Stuck reports
+`spec_stuck` SHALL write a `stuck` comment containing:
+- where the work stopped;
+- what was tried, with links;
+- a hypothesis;
+- two or three options;
+- the recommended option.
+
+It SHALL then send a blocking request with kind `stuck` and those options. While a stuck report is unanswered, the next step MUST say to wait for the human's choice, and every gate MUST refuse. The answer SHALL be recorded as a `stuck` answer comment with the chosen option.
+
+#### Scenario: Stuck report waits for a choice
+- **WHEN** `spec_stuck` runs with options A, B and C (A recommended) and the chain is `[forge]`
+- **THEN** a `stuck` comment and a pending request are posted, and the next step says to wait for the human's choice
+
+#### Scenario: Option count enforced
+- **WHEN** `spec_stuck` runs with one option
+- **THEN** the tool refuses and writes nothing
+
+#### Scenario: Choice recorded
+- **WHEN** a writer comments `/livespec choose B` on the pending stuck request
+- **THEN** a stuck answer comment records choice `B` and the next step no longer waits
