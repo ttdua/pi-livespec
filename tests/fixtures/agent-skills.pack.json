@@ -63,6 +63,9 @@
 		},
 		"difficulty": {
 			"mode": "rule"
+		},
+		"progress": {
+			"mode": "rule"
 		}
 	},
 	"init": {
@@ -139,7 +142,8 @@
 			"checks": [
 				"units-format",
 				"done-maps-scenarios",
-				"unit-classification"
+				"unit-classification",
+				"verify-red-on-base"
 			],
 			"gate": "human",
 			"subagents": []

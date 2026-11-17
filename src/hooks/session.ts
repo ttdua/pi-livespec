@@ -18,6 +18,7 @@ import { advancePhase } from "../engine/advance.ts";
 import { CommentsCache } from "../engine/comments-cache.ts";
 import { defaultGitExec } from "../engine/git-exec.ts";
 import { createGit, type Git } from "../engine/git.ts";
+import { clearGateMemo } from "../engine/registry.ts";
 import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import { defaultAccountEnv } from "../accounts/env.ts";
@@ -515,6 +516,12 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 /** Kills running `Verify` processes, then waits until their temporary worktrees are removed. Never throws. */
 async function shutdownEvidence(): Promise<void> {
 	const session = getSession();
+	// Clearing is best effort: a failing listener must not keep the runs from being aborted and drained.
+	try {
+		clearGateMemo();
+	} catch (error) {
+		session?.record("shutdown", error);
+	}
 	if (!session) return;
 	try {
 		session.abortEvidence();
@@ -530,6 +537,7 @@ export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> =
 	pi.on("session_shutdown", shutdownEvidence);
 	pi.on("session_start", async (_event, ctx) => {
 		try {
+			clearGateMemo();
 			await startSession(pi, deps, ctx);
 		} catch (error) {
 			safeNotify(ctx, `livespec could not start: ${messageOf(error)}`, "warning");
