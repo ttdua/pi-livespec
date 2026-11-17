@@ -3,6 +3,7 @@
 // is compared by basename without a leading backslash (design D7). A wrapper
 // that runs a script (`env -S`, `flock -c`) yields that script for re-parsing.
 
+import { splitEnvString } from "./envsplit.ts";
 import { optionValues, type Scanned, scanOptions, set } from "./options.ts";
 import type { Word } from "./shell.ts";
 
@@ -21,6 +22,7 @@ type Wrapper = {
 const ASSIGNMENT_WORD = /^[A-Za-z_][A-Za-z0-9_]*=/;
 const ENV_SPLIT = set("-S", "--split-string");
 const FLOCK_COMMAND = set("-c", "--command");
+const FLOCK_VALUED = set("-w", "--wait", "--timeout", "-E", "--conflict-exit-code", ...FLOCK_COMMAND);
 
 const WRAPPERS: ReadonlyMap<string, Wrapper> = new Map<string, Wrapper>([
 	["env", { valued: set("-u", "--unset", "-C", "--chdir", ...ENV_SPLIT), skipOperands: (ops) => countWhile(ops, (w) => ASSIGNMENT_WORD.test(w.text)), script: envSplitScript }],
@@ -32,7 +34,7 @@ const WRAPPERS: ReadonlyMap<string, Wrapper> = new Map<string, Wrapper>([
 	["stdbuf", { valued: set("-i", "-o", "-e", "--input", "--output", "--error") }],
 	["ionice", { valued: set("-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid") }],
 	["doas", { valued: set("-u", "-a", "-C") }],
-	["flock", { valued: set("-w", "--wait", "--timeout", "-E", "--conflict-exit-code", ...FLOCK_COMMAND), skipOperands: () => 1, script: flockScript }],
+	["flock", { valued: FLOCK_VALUED, skipOperands: () => 1, script: flockScript }],
 	["time", { valued: set("-f", "-o", "--format", "--output") }],
 	["timeout", { valued: set("-s", "-k", "--signal", "--kill-after"), skipOperands: () => 1 }],
 	["sudo", { valued: set("-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--command-timeout", "--close-from") }],
@@ -61,20 +63,26 @@ export function stripWrappers(words: Word[]): Unwrapped {
 	return "too-deep";
 }
 
-/** `env -S <string> [args…]`: the string is split into words like a script, and the operands follow it. */
+/** `env -S <string> [args…]`: env splits the string by its own rules (not the shell's); the operands follow it. */
 function envSplitScript(scanned: Scanned): Word | undefined {
 	const split = optionValues(scanned, ENV_SPLIT).at(-1);
 	if (!split) return undefined;
 	const all = [split, ...scanned.operands];
-	return { text: [split.text, ...scanned.operands.map(quoteWord)].join(" "), quoted: true, expansion: all.some((w) => w.expansion) };
+	const words = split.expansion ? "unreadable" : splitEnvString(split.text);
+	// Unreadable text is handed over as an expansion, so it is obscured when it holds a dangerous token.
+	const expansion = words === "unreadable" || all.some((w) => w.expansion);
+	const parts = words === "unreadable" ? [split.text] : words.map((t) => quoteWord({ ...split, text: t, expansion: false }));
+	return { text: ["env", ...parts, ...scanned.operands.map(quoteWord)].join(" "), quoted: true, expansion };
 }
 
-/** `flock [opts] -c <script> <file>` or `flock [opts] <file> -c|--command <script>`. */
+/** `flock [opts] -c <script> <file>`, or the script in `-c`/`--command` anywhere after the lock operand. */
 function flockScript(scanned: Scanned): Word | undefined {
 	const option = optionValues(scanned, FLOCK_COMMAND).at(-1);
 	if (option) return option;
-	const [, flag, script] = scanned.operands;
-	return flag && FLOCK_COMMAND.has(flag.text) ? script : undefined;
+	const [lock, ...rest] = scanned.operands;
+	if (!lock || rest.length === 0) return undefined;
+	const after = scanOptions(rest, FLOCK_VALUED, false);
+	return optionValues(after, FLOCK_COMMAND).at(-1);
 }
 
 /** A word as shell text: an expansion keeps its raw text, anything else is single-quoted. */

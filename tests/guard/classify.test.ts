@@ -200,10 +200,28 @@ describe("classifyCommand", () => {
 			"env -S'git push'",
 			"env -S git push",
 			"env -i -S 'gh issue edit 6'",
-			"env -S 'echo x > .pi/livespec/flow.yaml'",
+			"env -S 'tee .pi/livespec/flow.yaml'",
 			'env -S "$CMD" push',
 		]);
 		expectAllowed(["env -S 'git status'", "env -S 'bun test'"]);
+	});
+
+	it("env -S splits its value the way env does, not the shell", () => {
+		expectBlocked([
+			"env -S 'git\\_push'",
+			"env --split-string='git\\_push'",
+			"env -S 'FOO=1 git push'",
+			"env -S 'git\\tpush'",
+			"env -S 'git\\_push' x",
+			"env -S '${X} git push'",
+			"env -S 'git \\q push'",
+		]);
+		expectAllowed(["env -S 'echo\\_hi'", "env -S '${X} echo hi'"]);
+	});
+
+	it("flock options may follow the lock operand", () => {
+		expectBlocked(["flock F --command='git push'", "flock F -x -c 'git push'", "flock F -w 5 -c 'git push'", "flock F --timeout=5 --command 'git push'"]);
+		expectAllowed(["flock F true", "flock F -x true", "flock F -w 5 -c 'bun test'"]);
 	});
 
 	it("setsid, stdbuf, doas, ionice and flock are unwrapped", () => {
