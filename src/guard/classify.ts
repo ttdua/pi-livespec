@@ -167,7 +167,7 @@ function checkShell(args: Word[], scan: Scan, dirs: DirectoryCandidates, depth: 
 
 /** A script word run by a child process (`sh -c`, `env -S`, `flock -c`): parsed again, or obscured when it is an expansion. */
 function checkChildScript(script: Word, scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
-	return script.expansion ? obscured(scan) : checkScript(script.text, scan, dirs.clone(), depth + 1);
+	return script.expansion ? obscured(nestedScan(scan, script.text)) : checkScript(script.text, scan, dirs.clone(), depth + 1);
 }
 
 // ---------------------------------------------------------------- git

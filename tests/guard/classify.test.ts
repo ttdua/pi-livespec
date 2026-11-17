@@ -215,8 +215,10 @@ describe("classifyCommand", () => {
 			"env -S 'git\\_push' x",
 			"env -S '${X} git push'",
 			"env -S 'git \\q push'",
+			"env -S 'git\\_push ${X}'",
+			"env --split-string='git\\_push ${X}'",
 		]);
-		expectAllowed(["env -S 'echo\\_hi'", "env -S '${X} echo hi'"]);
+		expectAllowed(["env -S 'echo\\_${X}'", "env -S 'echo\\_hi'", "env -S '${X} echo hi'"]);
 	});
 
 	it("flock options may follow the lock operand", () => {

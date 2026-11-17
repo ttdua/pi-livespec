@@ -71,8 +71,13 @@ function envSplitScript(scanned: Scanned): Word | undefined {
 	const words = split.expansion ? "unreadable" : splitEnvString(split.text);
 	// Unreadable text is handed over as an expansion, so it is obscured when it holds a dangerous token.
 	const expansion = words === "unreadable" || all.some((w) => w.expansion);
-	const parts = words === "unreadable" ? [split.text] : words.map((t) => quoteWord({ ...split, text: t, expansion: false }));
+	const parts = words === "unreadable" ? [decodeSureSeparators(split.text)] : words.map((t) => quoteWord({ ...split, text: t, expansion: false }));
 	return { text: ["env", ...parts, ...scanned.operands.map(quoteWord)].join(" "), quoted: true, expansion };
+}
+
+/** Unreadable `env -S` text with its sure separators (`\_`, `\t`, `\n`) as spaces and quotes and backslashes dropped, for the token scan. */
+function decodeSureSeparators(text: string): string {
+	return text.replace(/\\[_tn]/g, " ").replace(/['"\\]/g, "");
 }
 
 /** `flock [opts] -c <script> <file>`, or the script in `-c`/`--command` anywhere after the lock operand. */
