@@ -221,6 +221,16 @@ describe("classifyCommand", () => {
 		expectAllowed(["env -S 'echo\\_${X}'", "env -S 'echo\\_hi'", "env -S '${X} echo hi'"]);
 	});
 
+	it("an expansion script that mentions .pi/livespec fails closed", () => {
+		expectBlocked([
+			"env -S 'rm\\_.pi/livespec/flow.yaml ${X}'",
+			'sh -c "rm .pi/livespec/flow.yaml $X"',
+			'bash -c "rm .pi/livespec/flow.yaml ${X}"',
+			"flock F -c 'rm .pi/livespec/flow.yaml '\"$X\"",
+		]);
+		expectAllowed(["env -S 'echo\\_hi'", "env -S 'echo\\_${X}'", 'sh -c "echo $X"']);
+	});
+
 	it("flock options may follow the lock operand", () => {
 		expectBlocked(["flock F --command='git push'", "flock F -x -c 'git push'", "flock F -w 5 -c 'git push'", "flock F --timeout=5 --command 'git push'"]);
 		expectAllowed(["flock F true", "flock F -x true", "flock F -w 5 -c 'bun test'"]);

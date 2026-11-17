@@ -167,7 +167,10 @@ function checkShell(args: Word[], scan: Scan, dirs: DirectoryCandidates, depth: 
 
 /** A script word run by a child process (`sh -c`, `env -S`, `flock -c`): parsed again, or obscured when it is an expansion. */
 function checkChildScript(script: Word, scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
-	return script.expansion ? obscured(nestedScan(scan, script.text)) : checkScript(script.text, scan, dirs.clone(), depth + 1);
+	if (!script.expansion) return checkScript(script.text, scan, dirs.clone(), depth + 1);
+	// The script cannot be read in full; text that names .pi/livespec may hide a protected write.
+	const nested = nestedScan(scan, script.text);
+	return obscured({ ...nested, dangerous: nested.dangerous || nested.mentionsLivespec });
 }
 
 // ---------------------------------------------------------------- git
