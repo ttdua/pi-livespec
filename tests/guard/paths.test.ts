@@ -66,6 +66,8 @@ describe("protectedWrite", () => {
 			"rm -rf .pi": ".pi",
 			"mv .pi /tmp/x": ".pi",
 			"mv -t /tmp .pi": ".pi",
+			"mv -t/tmp .pi": ".pi",
+			"mv -t/tmp other": undefined,
 			"rmdir .pi/livespec": ".pi/livespec",
 			"rm -rf .pi/other": undefined,
 			"mv src .": undefined,

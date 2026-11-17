@@ -161,15 +161,19 @@ function operands(args: Word[], valued: string[] = []): Word[] {
 		const w = args[k] as Word;
 		if (w.text === "--") return [...out, ...args.slice(k + 1)];
 		if (!w.text.startsWith("-") || w.text === "-") out.push(w);
+		else if (valued.some((v) => isShort(v) && w.text.startsWith(v) && w.text.length > v.length && !/^-[a-zA-Z]+$/.test(w.text))) continue; // `-tDIR`: value attached
 		else if (valued.some((v) => w.text === v || (!v.startsWith("--") && /^-[a-zA-Z]+$/.test(w.text) && w.text.endsWith(v.slice(1))))) k++;
 	}
 	return out;
 }
 
+const isShort = (v: string): boolean => !v.startsWith("--");
+
 function optionArgument(args: Word[], short: string, long: string): Word | undefined {
 	for (let k = 0; k < args.length; k++) {
 		const w = args[k] as Word;
 		if (w.text === short || w.text === long) return args[k + 1];
+		if (w.text.startsWith(short) && !w.text.startsWith("--") && w.text.length > short.length) return { ...w, text: w.text.slice(short.length) };
 		if (w.text.startsWith(`${long}=`)) return { ...w, text: w.text.slice(long.length + 1) };
 	}
 	return undefined;
