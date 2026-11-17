@@ -190,3 +190,50 @@ describe("loadConfig", () => {
 		expect(adapterChain(config)).toEqual({ chain: ["in-session"], source: "default" });
 	});
 });
+
+describe("verify config", () => {
+	test("Verify settings", async () => {
+		projectFile('verify: { setup: "bun install --frozen-lockfile", timeout: 120 }\n');
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.verify).toEqual({ setup: "bun install --frozen-lockfile", timeoutS: 120 });
+		expect(warnings).toEqual([]);
+	});
+
+	test("Invalid verify timeout", async () => {
+		projectFile("verify: { timeout: -5 }\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.verify).toEqual({ timeoutS: 600 });
+		expect(warnings.some((w) => w.includes("verify.timeout"))).toBe(true);
+	});
+
+	test("a non-integer verify timeout warns and uses the default", async () => {
+		projectFile("verify: { timeout: 1.5 }\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.verify).toEqual({ timeoutS: 600 });
+		expect(warnings.some((w) => w.includes("verify.timeout"))).toBe(true);
+	});
+
+	test("a non-string verify setup warns and is ignored", async () => {
+		projectFile("verify: { setup: [a, b] }\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.verify).toEqual({ timeoutS: 600 });
+		expect(warnings.some((w) => w.includes("verify.setup"))).toBe(true);
+	});
+
+	test("verify must be a mapping and unknown verify keys warn", async () => {
+		projectFile("verify: 5\n");
+		const first = await loadConfig(root, home);
+		expect(first.project?.verify).toBeUndefined();
+		expect(first.warnings.some((w) => w.includes('"verify"'))).toBe(true);
+		projectFile("verify: { timout: 3 }\n");
+		const second = await loadConfig(root, home);
+		expect(second.project?.verify).toEqual({ timeoutS: 600 });
+		expect(second.warnings.some((w) => w.includes("verify.timout"))).toBe(true);
+	});
+
+	test("verify is absent when not set", async () => {
+		projectFile("forge: github\n");
+		const { project } = await loadConfig(root, home);
+		expect(project?.verify).toBeUndefined();
+	});
+});

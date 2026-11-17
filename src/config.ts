@@ -19,6 +19,12 @@ export interface ProjectConfig {
 	integrationBranch?: string;
 	agentSkillsChannelSet: boolean;
 	interaction?: InteractionConfig;
+	verify?: VerifyConfig;
+}
+
+export interface VerifyConfig {
+	setup?: string;
+	timeoutS: number;
 }
 
 export interface InteractionConfig {
@@ -36,7 +42,9 @@ export interface LoadedConfig {
 	warnings: string[];
 }
 
-const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction"];
+const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify"];
+const VERIFY_KEYS = ["setup", "timeout"];
+export const DEFAULT_VERIFY_TIMEOUT_S = 600;
 const USER_KEYS = ["agentSkills", "interaction"];
 const DEFAULT_CHAIN: readonly AdapterName[] = ["in-session"];
 const ADAPTERS: readonly string[] = ADAPTER_NAMES;
@@ -150,6 +158,31 @@ function readInteraction(file: string, doc: Doc, warnings: string[]): Interactio
 	return { adapter };
 }
 
+/** The `verify` section: `setup` is a shell command, `timeout` a positive integer of seconds (default 600). */
+function readVerify(file: string, doc: Doc, warnings: string[]): VerifyConfig | undefined {
+	const section = doc.verify;
+	if (section === undefined) return undefined;
+	if (section === null || typeof section !== "object" || Array.isArray(section)) {
+		warnings.push(`${file}: "verify" must be a mapping; ignored`);
+		return undefined;
+	}
+	const entry = section as Doc;
+	for (const key of Object.keys(entry)) {
+		if (!VERIFY_KEYS.includes(key)) warnings.push(`${file}: unknown key "verify.${key}"`);
+	}
+	const verify: VerifyConfig = { timeoutS: DEFAULT_VERIFY_TIMEOUT_S };
+	if (typeof entry.setup === "string") verify.setup = entry.setup;
+	else if (entry.setup !== undefined) warnings.push(`${file}: "verify.setup" must be a string; ignored`);
+	const timeout = entry.timeout;
+	if (typeof timeout === "number" && Number.isInteger(timeout) && timeout > 0) verify.timeoutS = timeout;
+	else if (timeout !== undefined) {
+		warnings.push(
+			`${file}: invalid verify.timeout "${describeValue(timeout)}" (expected a positive integer of seconds); using ${DEFAULT_VERIFY_TIMEOUT_S}`,
+		);
+	}
+	return verify;
+}
+
 function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig {
 	warnUnknownKeys(file, doc, PROJECT_KEYS, warnings);
 	const project: ProjectConfig = { githubHosts: stringList(file, doc, "githubHosts", warnings), agentSkillsChannelSet: false };
@@ -164,6 +197,8 @@ function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig
 	project.agentSkillsChannelSet = readChannel(file, doc, warnings).set;
 	const interaction = readInteraction(file, doc, warnings);
 	if (interaction !== undefined) project.interaction = interaction;
+	const verify = readVerify(file, doc, warnings);
+	if (verify !== undefined) project.verify = verify;
 	return project;
 }
 
