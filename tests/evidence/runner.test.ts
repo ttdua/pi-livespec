@@ -31,6 +31,9 @@ async function ran(command: string, o: Partial<RunOptions> = {}): Promise<Verify
 	return result;
 }
 
+/** A sleep duration unique to this run, so `running` cannot match another process on the machine. */
+const unique = (base: number): string => `${base}.${Math.floor(Math.random() * 1e9)}`;
+
 /** Whether any process command line matches `pattern`. */
 function running(pattern: string): boolean {
 	try {
@@ -60,11 +63,12 @@ describe("runVerify", () => {
 
 	test("Timeout", async () => {
 		const started = Date.now();
-		const r = await ran("sleep 5; echo done", { timeoutS: 1 });
+		const secs = unique(5);
+		const r = await ran(`sleep ${secs}; echo done`, { timeoutS: 1 });
 		expect(r.timedOut).toBe(true);
 		expect(r.output).not.toContain("done");
 		expect(Date.now() - started).toBeLessThan(7000);
-		expect(running("sleep 5")).toBe(false);
+		expect(running(`sleep ${secs}`)).toBe(false);
 	}, 10_000);
 
 	test("Blocked Verify is never run", async () => {
@@ -101,11 +105,12 @@ describe("runVerify", () => {
 
 	test("abort kills the run and removes the worktree", async () => {
 		const controller = new AbortController();
-		const pending = ran("sleep 30", { signal: controller.signal });
+		const secs = unique(30);
+		const pending = ran(`sleep ${secs}`, { signal: controller.signal });
 		setTimeout(() => controller.abort(), 300);
 		const r = await pending;
 		expect(r.aborted).toBe(true);
-		expect(running("sleep 30")).toBe(false);
+		expect(running(`sleep ${secs}`)).toBe(false);
 	}, 10_000);
 
 	test("an already aborted signal does not spawn", async () => {

@@ -80,7 +80,7 @@ async function seedChange(world: MemoryWorld, o: ToolHarnessOptions, head: strin
 const dirs: string[] = [];
 
 export async function cleanupDirs(): Promise<void> {
-	for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+	for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 
 function gitIn(cwd: string): (...args: string[]) => string {
