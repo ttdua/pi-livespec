@@ -203,6 +203,12 @@ describe("classifyCommand", () => {
 		expectBlocked(["git -c alias.x='!git push' x", "git -c alias.y=push y origin"]);
 	});
 
+	it("an unreadable alias body is scanned on its own text", () => {
+		expectBlocked(["git wipe"], { ...github, aliases: { wipe: "!rm .pi/livespec/config.yaml\necho ${" } });
+		expectBlocked(["git hide"], { ...github, aliases: { hide: "!gh issue edit 6 -b x\necho ${" } });
+		expectAllowed(["git broken"], { ...github, aliases: { broken: "!echo hello\necho ${" } });
+	});
+
 	it("unreadable input is blocked only when it mentions a dangerous token", () => {
 		expect(blocked(`echo "git push`).rule).toBe("obscured");
 		expectAllowed([`echo "hello`]);
