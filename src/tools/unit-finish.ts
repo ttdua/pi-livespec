@@ -141,7 +141,7 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	const cls = classifyRun(run);
 	const what = typeof cls === "object" ? invalidText(cls, run) : `Verify failed (exit ${run.exit}).`;
 	const head = `${what} Attempt ${attempt} of ${cap} for ${u.id}; signature ${signature.tests.length === 0 ? "without test names" : `tests ${untrusted(signature.tests.join(", "))}`}, hash ${signature.hash.slice(0, 12)}.`;
-	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${decided.reason}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, comment.id)].join("\n") : RETRY;
+	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${untrusted(decided.reason)}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, comment.id)].join("\n") : RETRY;
 	return { ...c.done(`${head}\n${next}\n${unitResult(run.output)}`), isError: true };
 }
 
