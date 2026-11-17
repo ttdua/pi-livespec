@@ -44,12 +44,12 @@ Blocked by: 2
 
 Blocked by: 1, 2, 3, 4
 
-- [ ] 5.1 Add `src/evidence/refusals.ts`: pure `unitStartRefusal`, `unitFinishRefusal` and `finishMode`, in design D10 order, covering both the reconcile and the run branch
-- [ ] 5.2 Add `src/evidence/verify-env.ts` `verifyEnv(session)`, which gives the guard, tokens, endpoints, aliases, git, root and config. Add `Session.redactionTokens()`, `forgeTarget()`, a session abort signal that `session_shutdown` aborts, and `drainEvidence()`, which the shutdown handler awaits so cleanup finishes first, in `src/hooks/session.ts`. Add `src/evidence/lock.ts` `withEvidenceLock`
-- [ ] 5.3 Add `src/tools/unit-start.ts`: lock, refresh, refusal, pending decision, pre run and classification, then the `unit-start` comment
-- [ ] 5.4 Add `src/tools/unit-finish.ts`. Under the lock: refresh, `finishMode` and refusal; the reconcile-only tick; the pending-commit check; the post run; the receipt, then a version-checked tick that handles a conflict; the failed attempt as a `progressRecord`; the blocked result with links
-- [ ] 5.5 Register both tools in `src/tools/change-tools.ts`, with only a `unit` parameter
-- [ ] 5.6 Tool tests over `MemoryWorld` and real git repositories for every scenario of the start, finish, receipt, valid-red, pending and attempts requirements, plus the decision-seam end-to-end, concurrency, conflict and abort cases
+- [x] 5.1 Add `src/evidence/refusals.ts`: pure `unitStartRefusal`, `unitFinishRefusal` and `finishMode`, in design D10 order, covering both the reconcile and the run branch
+- [x] 5.2 Add `src/evidence/verify-env.ts` `verifyEnv(session)`, which gives the guard, tokens, endpoints, aliases, git, root and config. Add `Session.redactionTokens()`, `forgeTarget()`, a session abort signal that `session_shutdown` aborts, and `drainEvidence()`, which the shutdown handler awaits so cleanup finishes first, in `src/hooks/session.ts`. Add `src/evidence/lock.ts` `withEvidenceLock`
+- [x] 5.3 Add `src/tools/unit-start.ts`: lock, refresh, refusal, pending decision, pre run and classification, then the `unit-start` comment
+- [x] 5.4 Add `src/tools/unit-finish.ts`. Under the lock: refresh, `finishMode` and refusal; the reconcile-only tick; the pending-commit check; the post run; the receipt, then a version-checked tick that handles a conflict; the failed attempt as a `progressRecord`; the blocked result with links
+- [x] 5.5 Register both tools in `src/tools/change-tools.ts`, with only a `unit` parameter
+- [x] 5.6 Tool tests over `MemoryWorld` and real git repositories for every scenario of the start, finish, receipt, valid-red, pending and attempts requirements, plus the decision-seam end-to-end, concurrency, conflict and abort cases
 
 ## 6. Verify-red-on-base check, spec_gate and the default pack
 
