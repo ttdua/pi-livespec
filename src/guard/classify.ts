@@ -16,8 +16,11 @@ export { UNWRAP_DEPTH };
 export type GuardDecision = { allow: true } | Block;
 export type GuardContext = { cwd: string; endpoints: string[]; aliases: Record<string, string> | "unknown" };
 
-/** What every check needs: the context and whether the whole command text holds a dangerous token. */
-type Scan = { ctx: GuardContext; dangerous: boolean };
+/**
+ * What every check needs: the context, whether the whole command text holds a
+ * dangerous token, and whether it mentions `livespec` (a possible protected write).
+ */
+type Scan = { ctx: GuardContext; dangerous: boolean; mentionsLivespec: boolean };
 
 const ALLOW: GuardDecision = { allow: true };
 const GITHUB_HOST = "github.com";
@@ -52,7 +55,7 @@ function normalizeHost(host: string): string {
 
 /** Decides whether the agent may run `command`. Pure apart from resolving symlinks of `.pi/livespec/` targets. */
 export function classifyCommand(command: string, ctx: GuardContext): GuardDecision {
-	const scan: Scan = { ctx, dangerous: hasDangerousToken(command, ctx.endpoints) };
+	const scan: Scan = { ctx, dangerous: hasDangerousToken(command, ctx.endpoints), mentionsLivespec: /livespec/i.test(command) };
 	return checkScript(command, scan, new DirectoryCandidates(ctx.cwd), 0);
 }
 
@@ -83,7 +86,8 @@ function firstBlock(checks: (() => GuardDecision)[]): GuardDecision {
 function checkScript(text: string, scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
 	if (depth > UNWRAP_DEPTH) return obscured(scan);
 	const commands = parseShell(text);
-	if (commands === "unreadable") return obscured(scan);
+	// Unreadable text may hide a protected write as well as a forge command.
+	if (commands === "unreadable") return obscured({ ...scan, dangerous: scan.dangerous || scan.mentionsLivespec });
 	for (const cmd of commands) {
 		const d = checkCommand(cmd, scan, dirs, depth);
 		if (!d.allow) return d;

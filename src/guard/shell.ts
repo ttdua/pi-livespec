@@ -64,7 +64,8 @@ class Lexer {
 	private heredocs: { delimiter: string; stripTabs: boolean; token: WordToken }[] = [];
 	private heredocOp: string | undefined;
 
-	constructor(private readonly s: string) {}
+	// Not readonly: line continuations after `$` are removed in place (dropContinuationsAfterDollar).
+	constructor(private s: string) {}
 
 	run(): Token[] {
 		while (this.i < this.s.length) this.step();
@@ -157,13 +158,14 @@ class Lexer {
 		this.i = end + 1;
 	}
 
+	/** A backslash-newline is a line continuation, removed before words are read; it quotes nothing. */
 	private readEscape(w: WordBuilder): void {
 		const next = this.s[this.i + 1];
+		this.i += 2;
+		if (next === "\n") return;
 		w.markSpecial();
 		w.escaped = true;
-		this.i += 2;
-		if (next === undefined) w.text += "\\";
-		else if (next !== "\n") w.text += next;
+		w.text += next ?? "\\";
 	}
 
 	private readDouble(w: WordBuilder): void {
@@ -189,6 +191,7 @@ class Lexer {
 	}
 
 	private readDollar(w: WordBuilder): void {
+		this.dropContinuationsAfterDollar();
 		const next = this.s[this.i + 1] ?? "";
 		if (next === "(") return this.readParenExpansion(w);
 		if (next === "{") return this.readBraceExpansion(w);
@@ -225,6 +228,11 @@ class Lexer {
 		this.expand(w, `\`${raw}\``, close + 1);
 	}
 
+	/** `$\\<newline>(` is `$(` to the shell: remove the line continuations right after `$`. */
+	private dropContinuationsAfterDollar(): void {
+		while (this.s.startsWith("\\\n", this.i + 1)) this.s = this.s.slice(0, this.i + 1) + this.s.slice(this.i + 3);
+	}
+
 	private expand(w: WordBuilder, raw: string, end: number): void {
 		w.markSpecial();
 		w.expansion = true;
@@ -249,7 +257,8 @@ function dollarSubstitutions(raw: string): string[] {
  * split into commands (here-document bodies, `${…}` operands, arithmetic).
  * Quotes are not special here, which can only find more substitutions, never fewer.
  */
-function substitutionsIn(text: string): string[] {
+function substitutionsIn(raw: string): string[] {
+	const text = joinContinuations(raw);
 	const found: string[] = [];
 	for (let j = 0; j < text.length; j++) {
 		const c = text[j];
@@ -267,13 +276,33 @@ function substitutionsIn(text: string): string[] {
 	return found;
 }
 
-/** Index of the `}` that closes the `{` at `open`, skipping escapes, double quotes and nested substitutions. */
+/** Removes backslash-newline line continuations; an escaped backslash stays escaped. */
+function joinContinuations(text: string): string {
+	let out = "";
+	for (let j = 0; j < text.length; j++) {
+		const c = text[j] as string;
+		if (c !== "\\") out += c;
+		else if (text[j + 1] === "\n") j++;
+		else {
+			out += text.slice(j, j + 2);
+			j++;
+		}
+	}
+	return out;
+}
+
+/**
+ * Index of the `}` that closes the `${` whose `{` is at `open`, skipping escapes,
+ * double quotes and nested substitutions. Only `${` nests; a bare `{` is literal.
+ */
 function scanBrace(s: string, open: number): number {
-	let depth = 0;
-	for (let j = open; j < s.length; j++) {
+	let depth = 1;
+	for (let j = open + 1; j < s.length; j++) {
 		const c = s[j];
-		if (c === "{") depth++;
-		else if (c === "}" && --depth === 0) return j;
+		if (c === "$" && s[j + 1] === "{") {
+			depth++;
+			j++;
+		} else if (c === "}" && --depth === 0) return j;
 		else if (c === "\\") j++;
 		else if (c === '"') j = scanDouble(s, j);
 		else if (c === "`") j = scanBacktick(s, j);

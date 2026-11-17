@@ -213,6 +213,19 @@ describe("classifyCommand", () => {
 		expectAllowed(["cat <<'EOF'\n$(git push)\nEOF", "echo $((1 + 2))", "echo ${HOME:-/tmp}"]);
 	});
 
+	it("backslash-newline in a here-document delimiter or body is a line continuation", () => {
+		expectBlocked(["cat <<EO\\\nF\n$(git push)\nEOF", "cat <<EOF\n$\\\n(git push)\nEOF"]);
+	});
+
+	it("a literal { inside ${…} does not hide later commands", () => {
+		expectBlocked(["echo ${X:-{}; rm .pi/livespec/config.yaml"]);
+		expectAllowed(["echo ${X:-{}; rm out.txt"]);
+	});
+
+	it("unreadable input mentioning livespec is blocked", () => {
+		expectBlocked([`echo "x > .pi/livespec/flow.yaml`, "rm .pi/livespec/x ${"]);
+	});
+
 	it("wrapped writes into .pi/livespec are blocked", () => {
 		expectBlocked([
 			"command rm .pi/livespec/config.yaml",

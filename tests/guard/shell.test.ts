@@ -70,6 +70,17 @@ describe("parseShell", () => {
 		expect(cmds.map(texts)).toEqual([["bash"], ["echo", "done"]]);
 	});
 
+	it("a backslash-newline is a line continuation, not quoting", () => {
+		expect(parsed("cat <<EO\\\nF\n$(git push)\nEOF")[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed("cat <<EOF\n$\\\n(git push)\nEOF")[0]?.substitutions).toEqual(["git push"]);
+	});
+
+	it("only ${ nests inside ${…}; a bare { is literal", () => {
+		const cmds = parsed("echo ${X:-{}; rm a");
+		expect(cmds.map(texts)).toEqual([["echo", "${X:-{}"], ["rm", "a"]]);
+		expect(parsed("echo ${X:-${Y:-$(git push)}}")[0]?.substitutions).toEqual(["git push"]);
+	});
+
 	it("unbalanced ${ is unreadable", () => {
 		expect(parseShell("echo ${X:-$(git push)")).toBe("unreadable");
 	});
