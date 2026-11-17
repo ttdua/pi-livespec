@@ -55,8 +55,20 @@ function normalizeHost(host: string): string {
 
 /** Decides whether the agent may run `command`. Pure apart from resolving symlinks of `.pi/livespec/` targets. */
 export function classifyCommand(command: string, ctx: GuardContext): GuardDecision {
-	const scan: Scan = { ctx, dangerous: hasDangerousToken(command, ctx.endpoints), mentionsLivespec: /livespec/i.test(command) };
-	return checkScript(command, scan, new DirectoryCandidates(ctx.cwd), 0);
+	return checkScript(command, scanOf(command, ctx), new DirectoryCandidates(ctx.cwd), 0);
+}
+
+function scanOf(text: string, ctx: GuardContext): Scan {
+	return { ctx, dangerous: hasDangerousToken(text, ctx.endpoints), mentionsLivespec: /livespec/i.test(text) };
+}
+
+/**
+ * The metadata of a nested text that the outer command does not contain (a git alias body): its own
+ * tokens count, and so do the outer ones, which reach it as arguments.
+ */
+function nestedScan(outer: Scan, text: string): Scan {
+	const own = scanOf(text, outer.ctx);
+	return { ctx: outer.ctx, dangerous: outer.dangerous || own.dangerous, mentionsLivespec: outer.mentionsLivespec || own.mentionsLivespec };
 }
 
 /** `push`, `gh`, `tea` or a forge endpoint as a whole word, ignoring case and quotes. */
@@ -191,7 +203,8 @@ function inlineAliases(global: Scanned): Record<string, string> {
 }
 
 /** A `!` alias is a shell script run by git in a child shell; any other alias is more git arguments. */
-function checkGitAlias(alias: string, rest: Word[], scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
+function checkGitAlias(alias: string, rest: Word[], outer: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
+	const scan = nestedScan(outer, alias);
 	if (alias.startsWith("!")) return mentionsPush(alias) ? pushBlock() : checkScript(alias.slice(1), scan, dirs.clone(), depth + 1);
 	const parsed = parseShell(alias);
 	if (parsed === "unreadable") return mentionsPush(alias) ? pushBlock() : ALLOW;

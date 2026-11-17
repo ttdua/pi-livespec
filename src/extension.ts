@@ -4,6 +4,8 @@ import "./accounts/card.ts";
 import "./accounts/doctor.ts";
 import "./interaction/card.ts";
 import "./interaction/doctor.ts";
+// The evidence card section.
+import "./evidence/card.ts";
 import { type CommandEnv } from "./commands/deps.ts";
 import { messageOf } from "./core/messages.ts";
 import {
@@ -18,9 +20,12 @@ import {
 } from "./commands/subcommands.ts";
 import { setRedOnBaseEnv } from "./evidence/red-on-base.ts";
 import { verifyEnv } from "./evidence/verify-env.ts";
+import { registerStartedUnitWorkInProgress } from "./evidence/wip.ts";
 import { registerContextHooks } from "./hooks/context.ts";
+import { registerGuardHook } from "./hooks/guard.ts";
 import { getSession } from "./hooks/session-store.ts";
 import { type SessionDeps, defaultSessionDeps, registerSessionHooks } from "./hooks/session.ts";
+import { registerSettleHooks } from "./hooks/settle.ts";
 import { registerChangeTools } from "./tools/change-tools.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
 import { readVersion } from "./version.ts";
@@ -97,16 +102,20 @@ async function handleCommand(pi: ExtensionAPI, args: string, ctx: ExtensionComma
 /** `deps` replaces the real home, forge detection or content manager, for tests. */
 export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> = {}): void {
 	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
+	// First: a blocked call must reach no other livespec `tool_call` handler.
+	registerGuardHook(pi);
 	pi.registerCommand("livespec", {
 		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, account, skills",
 		handler: (args, ctx) => handleCommand(pi, args, ctx, env),
 	});
 	registerSpecValidate(pi);
 	registerChangeTools(pi);
-	setRedOnBaseEnv(async () => {
-		const session = getSession();
-		return session === undefined ? undefined : verifyEnv(session);
-	});
 	registerSessionHooks(pi, env);
 	registerContextHooks(pi);
+	registerSettleHooks(pi);
+	registerStartedUnitWorkInProgress();
+	setRedOnBaseEnv(async () => {
+		const session = getSession();
+		return session?.initialized ? verifyEnv(session) : undefined;
+	});
 }
