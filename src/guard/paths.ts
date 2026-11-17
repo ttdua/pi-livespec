@@ -138,7 +138,10 @@ function isDescriptorDup(op: string, target: Word): boolean {
 }
 
 function commandTargets(name: string, args: Word[]): Word[] {
-	if (ALL_PATHS_WRITTEN.has(name)) return scanCommand(name, args).operands;
+	if (ALL_PATHS_WRITTEN.has(name)) {
+		const scanned = scanCommand(name, args);
+		return [...scanned.operands, ...optionValues(scanned, TARGET_DIR)];
+	}
 	if (LAST_PATH_WRITTEN.has(name)) return lastPathTargets(name, args);
 	if (name === "sed") return sedTargets(args);
 	if (name === "perl") return perlTargets(args);
@@ -160,7 +163,7 @@ function lastPathTargets(name: string, args: Word[]): Word[] {
 
 /** `sed -i` edits every file operand; the script is the first operand unless `-e`/`-f` gave it. */
 function sedTargets(args: Word[]): Word[] {
-	const scanned = scanOptions(args, VALUED_OPTIONS.sed as ReadonlySet<string>, false);
+	const scanned = scanOptions(args, VALUED_OPTIONS.sed as ReadonlySet<string>, false, set("-i"));
 	if (!scanned.options.some((o) => o.name === "-i" || isLongOption(o.name, "--in-place", 4))) return [];
 	const hasScript = scanned.options.some((o) => o.name === "-e" || o.name === "-f" || isLongOption(o.name, "--expression", 3) || isLongOption(o.name, "--file", 4));
 	return hasScript ? scanned.operands : scanned.operands.slice(1);
@@ -168,7 +171,7 @@ function sedTargets(args: Word[]): Word[] {
 
 /** `perl -i` edits every file operand; the program is the first operand unless `-e`/`-E` gave it. */
 function perlTargets(args: Word[]): Word[] {
-	const scanned = scanOptions(args, VALUED_OPTIONS.perl as ReadonlySet<string>, false);
+	const scanned = scanOptions(args, VALUED_OPTIONS.perl as ReadonlySet<string>, false, set("-i"));
 	if (!scanned.options.some((o) => o.name === "-i")) return [];
 	const hasProgram = scanned.options.some((o) => o.name === "-e" || o.name === "-E");
 	return hasProgram ? scanned.operands : scanned.operands.slice(1);

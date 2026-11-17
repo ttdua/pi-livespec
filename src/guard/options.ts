@@ -11,9 +11,10 @@ export const set = (...names: string[]): ReadonlySet<string> => new Set(names);
 /**
  * Splits arguments into options and operands. `valued` options take a value
  * (attached or the next word). With `stopAtOperand`, everything from the first
- * operand on is an operand, as for wrappers and global options.
+ * operand on is an operand, as for wrappers and global options. `attachedOnly`
+ * options (such as `sed -i`) take the rest of their word as a value, never the next word.
  */
-export function scanOptions(args: Word[], valued: ReadonlySet<string>, stopAtOperand: boolean): Scanned {
+export function scanOptions(args: Word[], valued: ReadonlySet<string>, stopAtOperand: boolean, attachedOnly: ReadonlySet<string> = set()): Scanned {
 	const options: Option[] = [];
 	const operands: Word[] = [];
 	for (let k = 0; k < args.length; k++) {
@@ -30,7 +31,7 @@ export function scanOptions(args: Word[], valued: ReadonlySet<string>, stopAtOpe
 			operands.push(w);
 			continue;
 		}
-		k += w.text.startsWith("--") ? readLong(w, args[k + 1], valued, options) : readShort(w, args[k + 1], valued, options);
+		k += w.text.startsWith("--") ? readLong(w, args[k + 1], valued, options) : readShort(w, args[k + 1], valued, options, attachedOnly);
 	}
 	return { options, operands };
 }
@@ -46,10 +47,14 @@ function readLong(w: Word, next: Word | undefined, valued: ReadonlySet<string>, 
 }
 
 /** Records a short cluster such as `-sXPOST`; returns 1 when it consumed the next word. */
-function readShort(w: Word, next: Word | undefined, valued: ReadonlySet<string>, out: Option[]): number {
+function readShort(w: Word, next: Word | undefined, valued: ReadonlySet<string>, out: Option[], attachedOnly: ReadonlySet<string>): number {
 	for (let j = 1; j < w.text.length; j++) {
 		const name = `-${w.text[j]}`;
 		const rest = w.text.slice(j + 1);
+		if (attachedOnly.has(name)) {
+			out.push(rest === "" ? { name } : { name, value: { ...w, text: rest } });
+			return 0;
+		}
 		if (!valued.has(name)) out.push({ name });
 		else if (rest !== "") {
 			out.push({ name, value: { ...w, text: rest } });
