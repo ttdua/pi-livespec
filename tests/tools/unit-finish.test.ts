@@ -163,6 +163,39 @@ describe("unit-evidence", () => {
 		await expectFinishRefusal(h, "U1", ["no commit"]);
 	});
 
+	test("pending unit with an empty first commit refuses", async () => {
+		const h = await unitHarness({ units: [PENDING_U1], scripts: SCRIPTS });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		h.git("commit", "-q", "--allow-empty", "-m", "empty");
+		await h.session.refresh();
+		await expectFinishRefusal(h, "U1", ["changes no file", "test/limit.test.ts"]);
+		expect(h.runs()).toBe(0);
+		expect(cardState(h).state.counters["unit_attempts.U1"]).toBeUndefined();
+	});
+
+	test("pending unit with a merge as first commit refuses", async () => {
+		const h = await unitHarness({ units: [PENDING_U1], scripts: SCRIPTS });
+		await h.commit({ "docs/a.md": "a\n" }, "before start");
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.commit({ "test/limit.test.ts": "t\n" }, "test");
+		const merge = h.git("commit-tree", "HEAD^{tree}", "-p", "HEAD~1", "-p", "HEAD~2", "-m", "merge");
+		h.git("reset", "-q", "--hard", merge);
+		await h.session.refresh();
+		await expectFinishRefusal(h, "U1", ["merge commit"]);
+		expect(h.runs()).toBe(0);
+		expect(cardState(h).state.counters["unit_attempts.U1"]).toBeUndefined();
+	});
+
+	test("pending unit whose first commit touches only a test file that is not pending refuses", async () => {
+		const unit: UnitSpec = { id: "U1", verify: "sh check.sh", files: ["src/u1.ts", "test/limit.test.ts", "test/old.test.ts"] };
+		const h = await unitHarness({ units: [unit], scripts: { ...SCRIPTS, "test/old.test.ts": "old\n" } });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.commit({ "test/old.test.ts": "changed\n" }, "test");
+		await expectFinishRefusal(h, "U1", ["test/limit.test.ts"]);
+		expect(h.runs()).toBe(0);
+		expect(cardState(h).state.counters["unit_attempts.U1"]).toBeUndefined();
+	});
+
 	test("Test-only commit becomes the pre", async () => {
 		const h = await unitHarness({ units: [PENDING_U1], scripts: SCRIPTS });
 		expect((await h.start("U1")).isError).toBeFalsy();

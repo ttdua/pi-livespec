@@ -14,9 +14,15 @@ export function pendingDecision(u: Unit, exists: (path: string) => boolean): boo
 	return u.files.some((path) => isTestFile(path) && !exists(path));
 }
 
-/** The first commit after a pending start may change only test files listed in the unit's `Files`. */
-export function testOnlyCommitCheck(u: Unit, changed: string[]): { ok: true } | { ok: false; extra: string[] } {
+export type TestOnlyCheck = { ok: true } | { ok: false; extra: string[] } | { ok: false; missing: string[] };
+
+/**
+ * The first commit after a pending start may change only test files listed in the unit's `Files`, and must
+ * add or change at least one of its `pending` test files (listed and missing at the start).
+ */
+export function testOnlyCommitCheck(u: Unit, changed: string[], pending: string[]): TestOnlyCheck {
 	const allowed = new Set(u.files.filter(isTestFile));
 	const extra = changed.filter((path) => !allowed.has(path));
-	return extra.length === 0 ? { ok: true } : { ok: false, extra };
+	if (extra.length > 0) return { ok: false, extra };
+	return changed.some((path) => pending.includes(path)) ? { ok: true } : { ok: false, missing: pending };
 }

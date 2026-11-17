@@ -246,6 +246,18 @@ describe("verify additions", () => {
 		expect(await git.changedPaths("HEAD")).toEqual(["src/a.ts", "tests/a.test.ts"]);
 	});
 
+	test("parents lists a commit's parents; a merge has two", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		expect(await git.parents(base)).toEqual([]);
+		await writeIn(root, "a.txt", "a\n");
+		commitAll(root, "a");
+		const a = await git.head();
+		expect(await git.parents(a)).toEqual([base]);
+		const merge = execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", "HEAD^{tree}", "-p", a, "-p", base, "-m", "m"], { cwd: root, encoding: "utf8" }).trim();
+		expect(await git.parents(merge)).toEqual([a, base]);
+	});
+
 	test("isIgnored follows .gitignore", async () => {
 		const { root, git } = await committedRepo();
 		await writeIn(root, ".gitignore", "node_modules/\n");

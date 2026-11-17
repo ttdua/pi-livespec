@@ -13,7 +13,7 @@ import type { CachedForge } from "../forge/cache.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { liftsCap } from "../engine/iterations.ts";
-import { testOnlyCommitCheck } from "../evidence/pending.ts";
+import { isTestFile, testOnlyCommitCheck } from "../evidence/pending.ts";
 import { previousSignature, progressRecord } from "../evidence/progress-rule.ts";
 import { newEvidenceId, type ReceiptData, receiptComment, type StartRecord } from "../evidence/records.ts";
 import { classifyRun, postOk } from "../evidence/red-green.ts";
@@ -69,16 +69,33 @@ type Pre = { sha: string; exit: number; pendingCommit?: string };
 /** A cancelled pending check: the same text as an aborted run. */
 const CANCELLED = { refused: invalidText({ invalid: "aborted" }, { exit: null }) };
 
-/** D5: the first commit after the start changes only listed test files and is red in a temporary worktree. */
+/** The unit's test files in `Files` that are missing at `sha`: the tests a pending unit must add. */
+async function pendingTests(c: UnitCall, sha: string): Promise<string[]> {
+	const missing: string[] = [];
+	for (const path of c.unit.files.filter(isTestFile)) if (!(await c.env.git.pathExistsAt(sha, path))) missing.push(path);
+	return missing;
+}
+
+/** Why the first commit after a pending start is not a test-only commit adding a pending test, or undefined. */
+async function testOnlyRefusal(c: UnitCall, start: StartRecord, first: string): Promise<string | undefined> {
+	const { env, unit: u } = c;
+	const short = first.slice(0, 7);
+	if ((await env.git.parents(first)).length > 1) return `the first commit after the start of ${u.id} (${short}) is a merge commit: commit the failing test alone first.`;
+	const only = testOnlyCommitCheck(u, await env.git.changedPaths(first), await pendingTests(c, start.pre.sha));
+	if (only.ok) return undefined;
+	if ("extra" in only) return `the first commit after the start of ${u.id} (${short}) must change only its test files, but it also changes ${only.extra.join(", ")}.`;
+	return `the first commit after the start of ${u.id} (${short}) changes no file of its pending tests (${only.missing.join(", ")}): commit the failing test alone first.`;
+}
+
+/** D5: the first commit after the start changes only listed test files, adds a pending one, and is red in a temporary worktree. */
 async function pendingPre(c: UnitCall, start: StartRecord): Promise<Pre | { refused: string }> {
 	const { env, unit: u } = c;
 	const first = (await env.git.revList(`${start.pre.sha}..HEAD`))[0];
 	if (c.cancelled() !== undefined) return CANCELLED;
 	if (first === undefined) return { refused: `${u.id} is verifier pending, but there is no commit after its start: commit the failing test alone first.` };
-	const changed = await env.git.changedPaths(first);
+	const refusal = await testOnlyRefusal(c, start, first);
 	if (c.cancelled() !== undefined) return CANCELLED;
-	const only = testOnlyCommitCheck(u, changed);
-	if (!only.ok) return { refused: `the first commit after the start of ${u.id} (${first.slice(0, 7)}) must change only its test files, but it also changes ${only.extra.join(", ")}.` };
+	if (refusal !== undefined) return { refused: refusal };
 	const prep = { ...(env.config?.verify?.setup !== undefined ? { setup: env.config.verify.setup } : {}), run: { ...env.run, tailBytes: RECEIPT_OUTPUT_BYTES } };
 	const run = await withTempWorktree(env.git, env.root, first, prep, (dir) => runVerify(start.verify, { ...env.run, cwd: dir, tailBytes: RECEIPT_OUTPUT_BYTES }));
 	if ("blocked" in run) return { refused: verifyBlocked(u.id, run.blocked) };

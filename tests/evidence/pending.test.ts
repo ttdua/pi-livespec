@@ -35,8 +35,17 @@ describe("verifier pending", () => {
 
 	test("testOnlyCommitCheck names src/limit.ts as extra", () => {
 		const u = unit(["src/limit.ts", "test/limit.test.ts"]);
-		expect(testOnlyCommitCheck(u, ["test/limit.test.ts", "src/limit.ts"])).toEqual({ ok: false, extra: ["src/limit.ts"] });
-		expect(testOnlyCommitCheck(u, ["test/limit.test.ts"])).toEqual({ ok: true });
-		expect(testOnlyCommitCheck(u, ["test/other.test.ts"])).toEqual({ ok: false, extra: ["test/other.test.ts"] });
+		const pending = ["test/limit.test.ts"];
+		expect(testOnlyCommitCheck(u, ["test/limit.test.ts", "src/limit.ts"], pending)).toEqual({ ok: false, extra: ["src/limit.ts"] });
+		expect(testOnlyCommitCheck(u, ["test/limit.test.ts"], pending)).toEqual({ ok: true });
+		expect(testOnlyCommitCheck(u, ["test/other.test.ts"], pending)).toEqual({ ok: false, extra: ["test/other.test.ts"] });
+	});
+
+	test("testOnlyCommitCheck refuses a commit that changes no pending test file", () => {
+		const u = unit(["src/limit.ts", "test/limit.test.ts", "test/old.test.ts"]);
+		const pending = ["test/limit.test.ts"];
+		expect(testOnlyCommitCheck(u, [], pending)).toEqual({ ok: false, missing: ["test/limit.test.ts"] });
+		expect(testOnlyCommitCheck(u, ["test/old.test.ts"], pending)).toEqual({ ok: false, missing: ["test/limit.test.ts"] });
+		expect(testOnlyCommitCheck(u, ["test/old.test.ts", "test/limit.test.ts"], pending)).toEqual({ ok: true });
 	});
 });

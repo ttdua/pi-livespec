@@ -39,8 +39,10 @@ export interface Git {
 	revList(range: string): Promise<string[]>;
 	/** `git cat-file -e <sha>:<path>`. */
 	pathExistsAt(sha: string, path: string): Promise<boolean>;
-	/** `git diff-tree --no-commit-id --name-only -r --root <commit>`. */
+	/** `git diff-tree --no-commit-id --name-only -r --root <commit>`; empty for an empty or a merge commit. */
 	changedPaths(commit: string): Promise<string[]>;
+	/** `git rev-list --parents -n 1 <commit>` without the commit itself: its parents, none for a root commit. */
+	parents(commit: string): Promise<string[]>;
 	/** `git check-ignore -q <path>`. */
 	isIgnored(path: string): Promise<boolean>;
 	/** `git config --get-regexp ^alias\.`: alias name to its expansion; `{}` when none is set. */
@@ -172,6 +174,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			(await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}:${path}`], EXIT_NO_OBJECT)) !== undefined,
 		changedPaths: async (commit) =>
 			lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit])),
+		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
 		aliases: async () => parseAliases((await run(["config", "-z", "--get-regexp", "^alias\\."], EXIT_NOT_FOUND)) ?? ""),
 	};
