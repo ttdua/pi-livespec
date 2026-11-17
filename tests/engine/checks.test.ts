@@ -279,6 +279,17 @@ describe("gate-only checks", () => {
 		expect(calls).toBe(0);
 	});
 
+	test("results of a check that finishes after clearGateMemo are not stored", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		registerCheck("slow", async () => (await gate, [slowResult]), { at: "gate", key: () => key });
+		const pending = run({ gate: true, target: "plan" });
+		clearGateMemo();
+		release();
+		await pending;
+		expect(await run()).toEqual([]);
+	});
+
 	test("clearGateMemo drops stored results, bumps the generation and calls listeners", async () => {
 		await run({ gate: true, target: "plan" });
 		let called = 0;

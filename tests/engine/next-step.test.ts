@@ -492,11 +492,11 @@ describe("unit evidence rules", () => {
 	});
 
 	test("Started unit before the next unit", () => {
-		const s = state("build", TWO_READY, { evidence: evidence({ started: { U1: startRec("U1") } }) });
+		const s = state("build", TWO_READY, { evidence: evidence({ started: { U3: startRec("U3") } }) });
 		const step = nextStep(pack, s);
-		expect(step.next).toBe("Finish U1 with unit_finish once Verify passes.");
-		expect(step.startedUnits).toEqual(["U1"]);
-		expect(step.activeUnits).toEqual(["U1", "U3"]);
+		expect(step.next).toBe("Finish U3 with unit_finish once Verify passes.");
+		expect(step.startedUnits).toEqual(["U3"]);
+		expect(step.activeUnits).toEqual(["U3", "U1"]);
 	});
 
 	test("Receipted, not ticked", () => {

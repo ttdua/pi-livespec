@@ -54,7 +54,7 @@ function stepLines(step: NextStep): string[] {
 		...inlineLine("Blocked units", step.blockedUnits.map((b) => `${b.id} (${b.reason})`)),
 		...inlineLine("Unticked receipts", step.untickedReceipts),
 		...inlineLine("Counters", step.counters.map(counterText)),
-		...inlineLine("Incomplete", step.incomplete),
+		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
 		...listLines("Pending approvals", step.pending.map(pendingText)),
 		...inlineLine("Frozen units", displayUnitList(step.frozenUnits)),
 		...inlineLine("Stale units", displayUnitList(step.staleUnits)),

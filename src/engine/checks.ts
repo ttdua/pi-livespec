@@ -13,7 +13,7 @@ import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts
 import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { resolveGateTarget } from "./gates.ts";
-import { type CheckContext, type CheckFn, gateKey, getCheck, isGateOnly, registerCheck, storedGateResults, storeGateResults } from "./registry.ts";
+import { type CheckContext, type CheckFn, gateKey, gateMemoGeneration, getCheck, isGateOnly, registerCheck, storedGateResults, storeGateResults } from "./registry.ts";
 import type { ChangeState, CheckResult } from "./state-types.ts";
 import { unitClassification } from "./unit-classification.ts";
 
@@ -110,8 +110,10 @@ async function resultsOf(name: string, ctx: CheckContext, gate: boolean): Promis
 	if (!isGateOnly(name)) return tag(name, await runOne(name, ctx));
 	const key = gateKey(name, ctx);
 	if (!gate) return storedGateResults(name, key);
+	const generation = gateMemoGeneration();
 	const results = tag(name, await runOne(name, ctx));
-	if (key !== undefined) storeGateResults(name, key, results);
+	// A memo cleared while the check ran must not get these results back.
+	if (key !== undefined && generation === gateMemoGeneration()) storeGateResults(name, key, results);
 	return results;
 }
 
