@@ -6,8 +6,9 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `unit-evidence-and-guards`
-**Verified at**: `2026-11-17 19:36`
+**Verified at**: `2026-11-17 19:36`. Re-scored at `2026-11-17 22:11` after the artifact amendment `de6fe63`.
 **Iteration**: `5` (last allowed; the fix loop stops here)
+**Amendment**: the user decided to stop the fix loop. CRITICAL 1–2 of the 19:36 run were accepted as known limits. `de6fe63` records them in `specs/command-guards/spec.md`, in `design.md` (Risks) and in `docs/architecture.md` (Accepted limits). Code is unchanged since `d6b4444`. The parent re-ran these on `de6fe63`: `openspec validate` (exit 0, 0 errors), `bun run typecheck` (exit 0) and `bun run test` (exit 0, 136 files, 1988 tests passed, 22:10).
 **Verifier**:
 - The parent session ran validate, the task count, typecheck, the fresh full test run, the clean-tree check and two runtime guard probes (99 and 18 commands).
 - A `code-reviewer` agent run read-only in this invocation (`84086362-fa53-43d`) produced independent static evidence for checks 3–5. It ran 4 focused test files (106 tests passed). Its instructions did not let it write a probe file, so it reported its bypass candidates from static analysis. The parent then confirmed them at runtime.
@@ -41,7 +42,7 @@ exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characte
 
 ## 3. Requirement Evidence
 
-- [ ] ADDED / MODIFIED: implementation evidence (file / line). 26 Pass, **2 Fail**.
+- [x] ADDED / MODIFIED: implementation evidence (file / line). After the amendment: 28 Pass. The two former Fail rows now pass with an accepted limit (WARNING 1–2). At 19:36 the result was 26 Pass, **2 Fail**.
 - [x] REMOVED: none in this change
 - [x] RENAMED: none in this change
 
@@ -57,9 +58,9 @@ It also added the fail-closed rule for unmodelled options on write commands. The
 | agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:19–35`; `src/content/manager.ts:60–78,108–142` |
 | command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–78`; `src/extension.ts:103–114` |
 | command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–218`; `src/guard/classify.ts:31–51,149–152` |
-| command-guards / Push and pull request commands | ADDED | **Fail** | `src/guard/classify.ts:125–227`; `src/guard/rules.ts:140–145,202–213`. The wrapper scanner `src/guard/unwrap.ts:23,31–43,72–77` does not resolve GNU abbreviated long options. **See CRITICAL 2.** |
+| command-guards / Push and pull request commands | ADDED | Pass with an accepted limit (was **Fail** at 19:36) | `src/guard/classify.ts:125–227`; `src/guard/rules.ts:140–145,202–213`. The wrapper scanner `src/guard/unwrap.ts:23,31–43,72–77` does not resolve GNU abbreviated long options. **See CRITICAL 2.** |
 | command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,98–108,125–174,190–195` |
-| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:37–152,172–240`. Recursive `cp` into an ancestor of `.pi/livespec` is missed (`src/guard/paths.ts:187–208`). **See CRITICAL 1.** |
+| command-guards / Livespec project files | ADDED | Pass with an accepted limit (was **Fail** at 19:36) | `src/guard/paths.ts:37–152,172–240`. Recursive `cp` into an ancestor of `.pi/livespec` is missed (`src/guard/paths.ts:187–208`). **See CRITICAL 1.** |
 | command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; `tests/guard/push-callers.test.ts` passed fresh; nothing under `src/tools/` imports it |
 | context-injection / Phase card content | MODIFIED | Pass | `src/hooks/phase-card.ts:47–49,75–88,124–138`; `src/evidence/card.ts:12–23` |
 | decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:17–39,66–103`; `src/evidence/signature.ts:8–55`; `src/decide/registry.ts:84` |
@@ -149,7 +150,7 @@ The BSD `nice` and `env` on this macOS host reject the abbreviations, and `timeo
 
 - [x] The working tree is clean: `git status --porcelain` printed 0 lines before and after every probe.
 
-**Commit range**: `af3e9f6..d6b4444`, 67 commits.
+**Commit range**: `af3e9f6..d6b4444`, 67 commits. The artifact amendment `de6fe63` comes after it.
 
 ---
 
@@ -157,23 +158,23 @@ The BSD `nice` and `env` on this macOS host reject the abbreviations, and `timeo
 
 **CRITICAL**
 
-1. **A recursive copy into an ancestor of `.pi/livespec` writes the protected tree.**
+None after the amendment. The two items below were CRITICAL at 19:36. They are now accepted limits and are listed under WARNING.
+
+**WARNING**
+
+1. **Accepted limit: a recursive copy into an ancestor of `.pi/livespec` writes the protected tree.**
    - **Where:** `src/guard/paths.ts:187–208` (`lastPathTargets`).
    - **What:** the guard checks only the destination operand (`.pi`, `.`) or the `-t` value, not the subtree that `cp -r SRC DEST` creates as `DEST/basename(SRC)`. `cp -r incoming/livespec .pi`, `cp -a incoming/.pi .` and `cp -r -t .pi incoming/livespec` are ALLOWed, and so is `mv incoming/livespec .pi`.
    - **Recommendation:** for `cp`/`mv`/`ln`/`install`, also check `DEST/basename(SRC)` for each source when the destination is an existing directory or ends in `/`. Or fail closed: block when the destination resolves to an ancestor of `.pi/livespec` (`isLivespecAncestor`) and a source basename is `livespec` or `.pi`, or when the copy is recursive. Add regressions for the four `cp` forms and the `mv` form, plus `cp -r src dst` (allowed).
-2. **GNU abbreviated long options on wrappers hide `git push`.**
+2. **Accepted limit: GNU abbreviated long options on wrappers hide `git push`.**
    - **Where:** `src/guard/unwrap.ts:23,31–43,72–77`.
    - **What:** iteration 5 resolved unique-prefix long options only for write commands. The wrapper table matches full names only, so the value of an abbreviated valued option is read as the wrapped command. `nice --adjust 5 git push`, `timeout --kill-a 1 5 git push`, `env --split-s 'git push'` and `xargs --max-a 1 git push` are ALLOWed.
    - **Recommendation:** reuse `normalizeLongOptions` from `src/guard/writeoptions.ts` per wrapper, with each wrapper's long-option list. Or fail closed: when a wrapper carries an unknown long option and the remaining words contain a dangerous token (`push`, `pr`), block. Add regressions for the four forms above and keep `nice -n 5 make` allowed.
 
-**Recurring pattern.** Five iterations in a row each found the next option-parsing corner of GNU CLIs in the same two requirements, so the denylist guard has not converged. A lasting fix is a design decision for the user. Options:
-- **(a)** A blanket fail-closed rule: any bash command whose words contain both a write command or wrapper and the token `livespec`, `.pi` or `push`, and that the guard cannot fully model, is blocked.
-- **(b)** Record the remaining classes as accepted limits in the spec and in `docs/architecture.md`. The guard is a guardrail against agent mistakes, not a sandbox.
-- **(c)** Both.
-
-**WARNING**
-
-None.
+**Recurring pattern and decision.** Five iterations in a row each found the next option-parsing corner of GNU CLIs, so the denylist guard has not converged. The user chose to accept the remaining classes as limits (`de6fe63`). The lasting fix goes to a follow-up change, a human-approval tier. When the guard cannot prove a command safe and the command mentions `.pi/livespec`, an ancestor of it, or `push`:
+- it asks the human through `ctx.ui`, showing the agent's stated reason and the parsed parts of the command;
+- the approver takes responsibility for the command;
+- a certain push stays blocked, and the guard blocks when there is no UI.
 
 **SUGGESTION**
 
@@ -184,12 +185,14 @@ None.
 ## Overall Decision
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
-- [ ] PASS_WITH_WARNINGS: proceed, noting: —
-- [x] FAIL: fix the cause, then re-apply (iteration N+1)
+- [x] PASS_WITH_WARNINGS: proceed, noting WARNING 1–2 (accepted guard limits, follow-up human-approval change) and SUGGESTION 1.
+- [ ] FAIL: fix the cause, then re-apply (iteration N+1)
+
+At 19:36 the outcome was FAIL. After the user-approved artifact amendment `de6fe63`, it is re-scored as PASS_WITH_WARNINGS.
 
 **Next step**:
 
-**The fix loop has reached its limit**: this is verify iteration 5 of 5, and the loop does not continue on its own. The user decides how to proceed with CRITICAL 1–2 and the recurring pattern above. See the options in the session report.
+Run `/opsx-continue` from the worktree to create the finalize artifact, then `/opsx-archive`. Afterwards, start the follow-up change for the guard's human-approval tier.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
