@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
-import { gateMemoGeneration } from "../../src/engine/registry.ts";
+import { gateMemoGeneration, onGateMemoClear } from "../../src/engine/registry.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { gitStatus } from "../helpers/repo.ts";
 import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
@@ -228,5 +228,26 @@ describe("gate memo scope", () => {
 		const started = gateMemoGeneration();
 		await h.pi.fire("session_shutdown", {}, h.ctx);
 		expect(gateMemoGeneration()).toBeGreaterThan(started);
+	});
+});
+
+describe("gate memo clearing is inside the error boundary", () => {
+	let failing = false;
+	onGateMemoClear(() => {
+		if (failing) throw new Error("listener failed");
+	});
+	afterEach(() => {
+		failing = false;
+	});
+
+	test("a throwing clear listener does not reject either hook and shutdown still aborts", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.start();
+		const session = getSession();
+		expect(session?.shutdownSignal.aborted).toBe(false);
+		failing = true;
+		await expect(h.pi.fire("session_shutdown", {}, h.ctx)).resolves.not.toThrow();
+		expect(session?.shutdownSignal.aborted).toBe(true);
+		await expect(h.start()).resolves.not.toThrow();
 	});
 });

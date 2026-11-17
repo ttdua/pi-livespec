@@ -515,8 +515,13 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 
 /** Kills running `Verify` processes, then waits until their temporary worktrees are removed. Never throws. */
 async function shutdownEvidence(): Promise<void> {
-	clearGateMemo();
 	const session = getSession();
+	// Clearing is best effort: a failing listener must not keep the runs from being aborted and drained.
+	try {
+		clearGateMemo();
+	} catch (error) {
+		session?.record("shutdown", error);
+	}
 	if (!session) return;
 	try {
 		session.abortEvidence();
@@ -531,8 +536,8 @@ export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> =
 	registerResumeRenderer(pi);
 	pi.on("session_shutdown", shutdownEvidence);
 	pi.on("session_start", async (_event, ctx) => {
-		clearGateMemo();
 		try {
+			clearGateMemo();
 			await startSession(pi, deps, ctx);
 		} catch (error) {
 			safeNotify(ctx, `livespec could not start: ${messageOf(error)}`, "warning");

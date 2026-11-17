@@ -61,17 +61,17 @@ function classResult(u: Unit, cls: RunClass, exit: number | null, output: string
 
 const tail = (output: string): string => (output === "" ? "" : `\n${untrusted(output)}`);
 
-/** Runs `Verify` of `u` on `base` in a temporary worktree; the result is cacheable unless the run was invalid. */
+/** Runs `Verify` of `u` on `base` in a temporary worktree; every result is cacheable except an aborted run, which says nothing about the unit. */
 async function runOnBase(env: VerifyEnv, base: string, u: Unit, verify: string): Promise<{ results: Result[]; cache: boolean }> {
 	const id = displayUnitId(u.id);
 	const run = { ...env.run, tailBytes: RECEIPT_OUTPUT_BYTES };
 	const setup = env.config?.verify?.setup;
 	const prep = { ...(setup !== undefined ? { setup } : {}), run };
 	const out = await withTempWorktree(env.git, env.root, base, prep, (dir) => runVerify(verify, { ...run, cwd: dir }));
-	if ("invalid" in out) return { results: [error(`${id}: the worktree on Base could not be prepared (${out.invalid}).${tail(out.output)}`)], cache: false };
+	if ("invalid" in out) return { results: [error(`${id}: the worktree on Base could not be prepared (${out.invalid}).${tail(out.output)}`)], cache: out.invalid !== "aborted" };
 	if ("blocked" in out) return { results: [error(`${id}: the Verify command is blocked, so it was not run: ${untrusted(out.blocked)} Fix Verify with unit_amend.`)], cache: false };
 	const cls = classifyRun(out);
-	return { results: classResult(u, cls, out.exit, out.output), cache: typeof cls !== "object" };
+	return { results: classResult(u, cls, out.exit, out.output), cache: !(typeof cls === "object" && cls.invalid === "aborted") };
 }
 
 async function checkUnit(env: VerifyEnv, ctx: CheckContext, base: string, u: Unit): Promise<Result[]> {

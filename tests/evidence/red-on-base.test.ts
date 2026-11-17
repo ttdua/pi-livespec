@@ -192,3 +192,30 @@ describe("gate-only check at the gate", () => {
 		expect(h.runs()).toBe(1);
 	});
 });
+
+describe("memo of invalid runs", () => {
+	test("a not-runnable Verify runs once across two gates", async () => {
+		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG; exit 127" }]);
+		await h.call("spec_gate", { target: GATE });
+		expect(h.runs()).toBe(1);
+		await h.call("spec_gate", { target: GATE });
+		expect(h.runs()).toBe(1);
+		const { text } = await requestOf(h);
+		expect(text).toContain("could not run");
+	});
+
+	test("an aborted run is retried", async () => {
+		const h = await planChange([{ id: "U1", verify: COUNT }]);
+		const aborted = new AbortController();
+		aborted.abort();
+		setRedOnBaseEnv(() => verifyEnv(h.session, aborted.signal));
+		await h.call("spec_gate", { target: GATE });
+		expect(h.runs()).toBe(0);
+		setRedOnBaseEnv(() => verifyEnv(h.session));
+		await h.call("spec_gate", { target: GATE });
+		expect(h.runs()).toBe(1);
+		// The result of the retry (red, so no error) is now memoized: a third gate does not run it again.
+		await h.call("spec_gate", { target: GATE });
+		expect(h.runs()).toBe(1);
+	});
+});

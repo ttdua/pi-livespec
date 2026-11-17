@@ -66,13 +66,12 @@ function planSections(state: ChangeState): string[][] {
 			(r): r is DecisionRecord => r !== undefined,
 		);
 	});
-	const gateChecks = gateCheckSection(state);
-	if (records.length === 0) return [units, gateChecks];
+	if (records.length === 0) return [units];
 	const lines = records.map((r) => {
 		const additions = r.agent_additions?.length ? ` (agent additions: ${r.agent_additions.join(", ")})` : "";
 		return `- ${r.point}.${r.subject}: ${r.reason}${additions}`;
 	});
-	return [units, ["Decisions:", ...lines], gateChecks];
+	return [units, ["Decisions:", ...lines]];
 }
 
 function shipSections(body: string): string[][] {
@@ -93,7 +92,8 @@ function phaseSections(state: ChangeState, target: string, facts: ReviewFacts): 
 export function gatePayload(state: ChangeState, pack: Pack, target: string, facts: ReviewFacts): GatePayload {
 	const isPhase = pack.phases.some((p) => p.id === target);
 	const head = [`Gate ${target} for #${state.issue.number} ${state.issue.title}.`];
-	const sections = isPhase ? [...phaseSections(state, target, facts), ...registeredPayload(target, state, facts).map((t) => [t])] : [];
+	const registered = isPhase ? registeredPayload(target, state, facts).map((t) => [t]) : [];
+	const sections = [...(isPhase ? phaseSections(state, target, facts) : []), gateCheckSection(state), ...registered];
 	const summary = [head, ...sections.filter((s) => s.length > 0)].map((s) => s.join("\n")).join("\n\n");
 	return {
 		summary,

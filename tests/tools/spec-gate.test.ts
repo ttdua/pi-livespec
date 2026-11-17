@@ -446,3 +446,15 @@ describe("spec_gate gate-only checks", () => {
 		expect(await ofKind(h, "gate")).toEqual([]);
 	});
 });
+
+describe("named gate payload", () => {
+	test("a named gate's review payload lists its gate-only check results", async () => {
+		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
+		registerGate("new-dependency", { checks: ["dep-audit"] });
+		const h = await change("build", { ui: human("approve") });
+		await h.call("spec_gate", { target: "new-dependency" });
+		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
+		expect(summary).toContain("Gate checks:");
+		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");
+	});
+});
