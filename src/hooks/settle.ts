@@ -18,7 +18,7 @@ export type SettleCondition = (state: ChangeState) => string | undefined;
 export const SETTLE_MESSAGE_TYPE = "livespec-settle";
 const INCOMPLETE_KIND = "incomplete";
 const STEP = "settle";
-const DIRTY_TREE = "the working tree has uncommitted changes: commit or discard them";
+const DIRTY_TREE = "uncommitted changes in the working tree";
 
 const conditions = new Map<string, SettleCondition>();
 /** Whether a continuation was requested since the session's agent last settled. */
@@ -45,14 +45,14 @@ function applies(state: ChangeState, pack: Pack): boolean {
 /** The unfinished items of a resolved change, in a fixed order; empty when settle does not apply. */
 export function settleItems(state: ChangeState, pack: Pack): string[] {
 	if (!applies(state, pack)) return [];
-	const started = Object.keys(state.evidence.started).map((id) => `${id} is started: make it pass, then run unit_finish ${id}`);
+	const started = Object.keys(state.evidence.started).map((id) => `${id} is started`);
 	const dirty = state.git.dirty ? [DIRTY_TREE] : [];
 	const registered = [...conditions.values()].flatMap((fn) => fn(state) ?? []);
 	return [...started, ...dirty, ...registered];
 }
 
 function continuationText(items: string[]): string {
-	return ["livespec: this work is unfinished. Finish it before stopping, or say why it cannot be finished:", ...items.map((i) => `- ${i}`)].join("\n");
+	return ["livespec: this work is unfinished. Finish it before stopping (make a started unit pass, then run unit_finish; commit or discard changes), or say why it cannot be finished:", ...items.map((i) => `- ${i}`)].join("\n");
 }
 
 // ---------------------------------------------------------------- incomplete comment

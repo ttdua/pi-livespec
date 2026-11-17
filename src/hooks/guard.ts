@@ -43,7 +43,7 @@ const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
  * The path as pi's `write` and `edit` tools read it (their path resolution is not exported): unicode
  * spaces become spaces, a leading `@` is dropped, `~` is the home directory and a `file://` URL is a path.
  */
-export function toolPath(raw: string): string {
+function toolPath(raw: string): string {
 	const path = raw.replace(UNICODE_SPACES, " ").replace(/^@/, "");
 	if (path === "~") return homedir();
 	if (path.startsWith("~/")) return join(homedir(), path.slice(2));
