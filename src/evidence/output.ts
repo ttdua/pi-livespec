@@ -1,7 +1,9 @@
 // Captured `Verify` output: streaming token redaction and the bounded tail
 // shown in comments and tool results.
 
-const REDACTED = Buffer.from("***");
+import { redactTokens } from "../accounts/redact.ts";
+
+const BYTE_ENCODING = "latin1";
 const UTF8_CONTINUATION_MASK = 0xc0;
 const UTF8_CONTINUATION_TAG = 0x80;
 const MAX_UTF8_CONTINUATIONS = 3;
@@ -12,11 +14,14 @@ const MAX_UTF8_CONTINUATIONS = 3;
  */
 export class StreamRedactor {
 	private readonly tokens: Buffer[];
+	private readonly tokenStrings: string[];
 	private readonly hold: number;
 	private pending: Buffer = Buffer.alloc(0);
 
 	constructor(tokens: string[]) {
-		this.tokens = [...new Set(tokens.filter((t) => t !== ""))].map((t) => Buffer.from(t));
+		const known = [...new Set(tokens.filter((t) => t !== ""))];
+		this.tokens = known.map((t) => Buffer.from(t));
+		this.tokenStrings = this.tokens.map((t) => t.toString(BYTE_ENCODING));
 		this.hold = Math.max(0, ...this.tokens.map((t) => t.length - 1));
 	}
 
@@ -30,30 +35,29 @@ export class StreamRedactor {
 		return this.drain(this.pending, 0);
 	}
 
-	/** Replaces every token that starts before `buf.length - hold`; returns what is safe to emit and keeps the rest. */
+	/** Emits the redacted bytes before the boundary and keeps the rest; replacement is `redactTokens`. */
 	private drain(buf: Buffer, hold: number): Buffer {
-		const limit = buf.length - hold;
-		const out: Buffer[] = [];
-		let cursor = 0;
-		for (let match = this.firstMatch(buf, cursor); match && match.at < limit; match = this.firstMatch(buf, cursor)) {
-			out.push(buf.subarray(cursor, match.at), REDACTED);
-			cursor = match.at + match.length;
-		}
-		const emitTo = Math.max(cursor, limit);
-		out.push(buf.subarray(cursor, emitTo));
+		const emitTo = this.boundary(buf, buf.length - hold);
 		this.pending = Buffer.from(buf.subarray(emitTo));
-		return Buffer.concat(out);
+		// Latin-1 maps each byte to one char, so byte-exact matching and redaction survive binary data.
+		const text = buf.subarray(0, emitTo).toString(BYTE_ENCODING);
+		return Buffer.from(redactTokens(text, this.tokenStrings), BYTE_ENCODING);
 	}
 
-	/** The earliest token occurrence at or after `from`; the longest token wins a tie. */
-	private firstMatch(buf: Buffer, from: number): { at: number; length: number } | undefined {
-		let best: { at: number; length: number } | undefined;
-		for (const token of this.tokens) {
-			const at = buf.indexOf(token, from);
-			if (at < 0) continue;
-			if (!best || at < best.at || (at === best.at && token.length > best.length)) best = { at, length: token.length };
+	/** `limit`, moved past the end of any token that starts before it, so no token is cut in two. */
+	private boundary(buf: Buffer, limit: number): number {
+		let emitTo = Math.max(0, limit);
+		for (let moved = true; moved; ) {
+			moved = false;
+			for (const token of this.tokens) {
+				const at = buf.indexOf(token, Math.max(0, emitTo - token.length + 1));
+				if (at >= 0 && at < emitTo && at + token.length > emitTo) {
+					emitTo = at + token.length;
+					moved = true;
+				}
+			}
 		}
-		return best;
+		return emitTo;
 	}
 }
 
@@ -72,6 +76,7 @@ function alignStart(buf: Buffer, start: number): number {
 /** Decodes `buf` from `start` (aligned), replacing invalid bytes with U+FFFD. */
 const decodeFrom = (buf: Buffer, start: number): string => decoder.decode(buf.subarray(alignStart(buf, start)));
 
+const ELLIPSIS = "…";
 const markFor = (dropped: number): string => `…[truncated ${dropped} bytes]\n`;
 
 /**
@@ -83,8 +88,10 @@ export function outputTail(tail: Buffer, totalBytes: number, maxBytes: number): 
 	const whole = decoder.decode(tail);
 	if (totalBytes <= tail.length && Buffer.byteLength(whole) <= maxBytes) return whole;
 	// `N` never exceeds `totalBytes`, so a mark sized for it leaves room for the real one.
-	const budget = Math.max(0, maxBytes - Buffer.byteLength(markFor(totalBytes)));
-	const start = firstStartWithin(tail, budget);
+	const room = maxBytes - Buffer.byteLength(markFor(totalBytes));
+	// A budget below the mark holds no tail: a bare ellipsis if it fits, otherwise nothing.
+	if (room < 0) return Buffer.byteLength(ELLIPSIS) <= maxBytes ? ELLIPSIS : "";
+	const start = firstStartWithin(tail, room);
 	const text = start < tail.length ? decodeFrom(tail, start) : "";
 	const shown = tail.length - alignStart(tail, start);
 	return markFor(Math.max(0, totalBytes - shown)) + text;

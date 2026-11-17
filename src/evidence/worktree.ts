@@ -6,6 +6,7 @@ import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Git } from "../engine/git.ts";
+import { classifyRun } from "./red-green.ts";
 import { type RunOptions, runVerify } from "./runner.ts";
 
 const TEMP_PREFIX = "livespec-verify-";
@@ -47,9 +48,9 @@ async function prepare(git: Git, root: string, dir: string, prep: Prep): Promise
 	}
 	const result = await runVerify(prep.setup, { ...prep.run, cwd: dir });
 	if ("blocked" in result) return { invalid: "setup", output: result.blocked };
-	if (result.aborted) return { invalid: "aborted", output: result.output };
-	if (result.exit !== 0) return { invalid: "setup", output: result.output };
-	return undefined;
+	const verdict = classifyRun(result);
+	if (verdict === "green") return undefined;
+	return { invalid: typeof verdict === "object" && verdict.invalid === "aborted" ? "aborted" : "setup", output: result.output };
 }
 
 async function linkDependencies(git: Git, root: string, dir: string): Promise<void> {

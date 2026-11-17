@@ -43,6 +43,16 @@ describe("StreamRedactor", () => {
 });
 
 describe("outputTail", () => {
+	test("whole result stays within a budget at or below the mark size", () => {
+		const buf = Buffer.from("x".repeat(100));
+		for (const max of [0, 1, 5, 16, 25]) {
+			expect(Buffer.byteLength(outputTail(buf, 100, max))).toBeLessThanOrEqual(max);
+		}
+		const multi = Buffer.from("é".repeat(50));
+		expect(Buffer.byteLength(outputTail(multi, 100, 16))).toBeLessThanOrEqual(16);
+		expect(outputTail(multi, 100, 16)).not.toContain("\uFFFD");
+	});
+
 	test("Output tail", () => {
 		const buf = Buffer.from("x".repeat(20480));
 		const tail = outputTail(buf, 20480, MAX);

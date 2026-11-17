@@ -36,8 +36,10 @@ function running(pattern: string): boolean {
 	try {
 		execFileSync("pgrep", ["-f", pattern]);
 		return true;
-	} catch {
-		return false;
+	} catch (error) {
+		// pgrep exits 1 when nothing matches; any other failure must not read as "not running".
+		if ((error as { status?: number }).status === 1) return false;
+		throw error;
 	}
 }
 

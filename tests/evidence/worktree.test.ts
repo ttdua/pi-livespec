@@ -72,6 +72,20 @@ describe("withTempWorktree", () => {
 		});
 	});
 
+	test("setup that times out but exits 0 is invalid", async () => {
+		const { root, git, sha } = await repoWithDeps();
+		const before = verifyDirs();
+		let ran = false;
+		const setup = `trap "exit 0" TERM; while :; do :; done`;
+		const r = await withTempWorktree(git, root, sha, { setup, run: { ...RUN, timeoutS: 1 } }, async () => {
+			ran = true;
+			return "ran";
+		});
+		expect(r).toMatchObject({ invalid: "setup" });
+		expect(ran).toBe(false);
+		expectCleaned(root, before);
+	}, 15_000);
+
 	test("temporary worktree is removed after error, timeout and failed setup", async () => {
 		const { root, git, sha } = await repoWithDeps();
 		const before = verifyDirs();
