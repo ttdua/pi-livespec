@@ -158,14 +158,14 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 **Attempts and `BLOCKED`.** Each `unit_finish` that is not green posts a `progress` decision record with the attempt number and a failure signature (failing test names plus a normalized error hash). The `progress` rule stops early when two attempts in a row fail the same way. The unit is `BLOCKED` when the rule says stop or `loops.unit_attempts` is reached, and only a chosen stuck answer restarts its budget.
 
-**`verify-red-on-base`.** A gate-only check of the plan gate. It runs every non-pending unit's `Verify` on `Base` in a temporary worktree and fails when a normal unit is already green there. Pending and refactor units are exempt, and a missing toolchain is not red. Results are memoized for the session, keyed by the root, `Base` and the unit digests.
+**`verify-red-on-base`.** A gate-only check of the plan gate. It runs every non-pending unit's `Verify` on `Base` in a temporary worktree and fails when a normal unit is already green there. Pending (non-refactor) units are exempt. A refactor unit must be green on `Base`, and it is an error when its test is missing. A missing toolchain is not red. Results are memoized for the session, keyed by the root, `Base` and the unit digests.
 
 **`verify.setup`.** A temporary worktree normally symlinks `node_modules`, `.venv` and `vendor` from the main checkout. When the project config sets `verify.setup`, that command prepares the worktree instead. `verify.timeout` bounds each run, 600 seconds by default. The worktree is always removed.
 
 **Guard.** A `tool_call` handler, registered before every other livespec handler, checks each `bash`, `write` and `edit` call of an initialized project. It blocks:
 
 - forge writes through `gh`, `tea`, `gh api` and `curl`/`wget` to the forge host;
-- `git push` in any form, including aliases (read from git config on every call that mentions git) and pull request commands;
+- `git push` in any form, including aliases (read from git config on every bash call) and pull request commands;
 - writes to `.pi/livespec/`, through `write`, `edit` or a shell redirect, tracking `cd` within one command;
 - obscured forms (`eval`, a variable command word, an unreadable command) that contain a dangerous token.
 
