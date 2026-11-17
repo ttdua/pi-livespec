@@ -33,6 +33,10 @@ export function blockedRefusal(state: ChangeState, unit: string): string | undef
 
 const blockedUnit: Rule = ({ state, unit }) => blockedRefusal(state, unit);
 
+/** A stale state may miss the latest evidence; deciding from it could double-start or double-count. */
+const staleState: Rule = ({ state }) =>
+	state.stale ? "the change state is stale (forge unreachable or login unknown); retry when the forge is reachable" : undefined;
+
 const dirtyTree: Rule = ({ state }) => (state.git.dirty ? "The working tree is dirty: commit your changes first, then call the tool again." : undefined);
 
 // --- unit_start -----------------------------------------------------------------------
@@ -66,7 +70,7 @@ const otherStarted: Rule = ({ state, unit }) => {
 	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time.`;
 };
 
-const START_RULES: Rule[] = [notPerUnit, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, dirtyTree, otherStarted];
+const START_RULES: Rule[] = [notPerUnit, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, staleState, dirtyTree, otherStarted];
 
 function firstRefusal(rules: Rule[], state: ChangeState, pack: Pack, unit: string): string | undefined {
 	const input: Input = { state, pack, unit, target: state.change.units.find((u) => u.id === unit) };
@@ -105,7 +109,7 @@ const digestChanged: Rule = ({ state, unit, target }) => {
 	return `${displayUnitId(unit)} changed since unit_start: ${AMEND}, then run unit_start ${displayUnitId(unit)} again.`;
 };
 
-const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, changedSinceLock, digestChanged, blockedUnit, dirtyTree];
+const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
 const RECONCILE_RULES: Rule[] = [dirtyTree, changedSinceLock];
 
 /** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the clean-tree, frozen and stale rules. */

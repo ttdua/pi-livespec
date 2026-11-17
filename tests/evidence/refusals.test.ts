@@ -62,13 +62,14 @@ const receipt = (unit: string): ReceiptRecord => ({
 	index: 1,
 });
 
-type Patch = { dirty?: boolean; frozen?: string[]; stale?: string[]; started?: Record<string, StartRecord>; blocked?: Record<string, "attempts" | "progress">; unticked?: string[]; locked?: boolean; phase?: string };
+type Patch = { dirty?: boolean; frozen?: string[]; stale?: string[]; started?: Record<string, StartRecord>; blocked?: Record<string, "attempts" | "progress">; unticked?: string[]; locked?: boolean; phase?: string; staleState?: boolean };
 
 /** A build-phase state over BODY with every unit locked; `p` sets what a row needs. */
 function state(p: Patch = {}): ChangeState {
 	const base = stateFor(p.phase ?? "build", {}, BODY);
 	return {
 		...base,
+		stale: p.staleState ?? false,
 		git: { ...base.git, dirty: p.dirty ?? false },
 		lock: { locked: p.locked === false ? undefined : LOCKED, frozen: p.frozen ?? [], staleUnits: p.stale ?? [], gates: {} },
 		evidence: { started: p.started ?? {}, receipts: p.unticked ? Object.fromEntries(p.unticked.map((u) => [u, [receipt(u)]])) : {}, attempts: {}, blocked: p.blocked ?? {}, untickedReceipts: p.unticked ?? [] },
@@ -90,6 +91,7 @@ describe("unitStartRefusal", () => {
 		["Dirty tree", "U1", { dirty: true }, "commit"],
 		["One started unit at a time", "U2", { started: { U1: start("U1") } }, "U1"],
 		["restart after an amendment is allowed", "U1", { started: { U1: start("U1", "old-digest") } }, undefined],
+		["stale change state", "U1", { staleState: true }, "the change state is stale (forge unreachable or login unknown); retry when the forge is reachable"],
 		["a ready unit starts", "U1", {}, undefined],
 	];
 
@@ -132,6 +134,7 @@ describe("unitFinishRefusal", () => {
 		["frozen started unit", "U1", { started: { U1: start("U1") }, frozen: ["U1"] }, "run", "unit_amend"],
 		["blocked started unit", "U1", { started: { U1: start("U1") }, blocked: { U1: "attempts" } }, "run", "spec_stuck"],
 		["dirty tree in run mode", "U1", { started: { U1: start("U1") }, dirty: true }, "run", "commit"],
+		["stale change state in run mode", "U1", { started: { U1: start("U1") }, staleState: true }, "run", "the change state is stale (forge unreachable or login unknown); retry when the forge is reachable"],
 		["a started unit runs", "U1", { started: { U1: start("U1") } }, "run", undefined],
 		["reconcile: dirty tree refuses", "U1", { unticked: ["U1"], dirty: true }, "reconcile", "commit"],
 		["reconcile: frozen unit refuses", "U1", { unticked: ["U1"], frozen: ["U1"] }, "reconcile", "unit_amend"],
