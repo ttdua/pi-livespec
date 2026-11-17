@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the `agent_before_settle` hook. When a run settles with unfinished items, the hook requests one continuation. If items still remain at the next settle, it records an `incomplete` marker on the change issue. It also defines the seam that lets other modules register settle conditions.
 
 ## Requirements
 

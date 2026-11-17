@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the `tool_call` guard. It checks every `bash`, `write` and `edit` call of an initialized livespec project and blocks: forge writes; pushes and pull requests outside livespec tools; obscured commands that carry a dangerous token; and agent writes to `.pi/livespec/`. It also defines `guardedPush`, the only code path that runs `git push`.
 
 ## Requirements
 

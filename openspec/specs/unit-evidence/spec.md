@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the build evidence the parent session owns: the `unit_start` and `unit_finish` tools, which run each unit's `Verify` command and record red-before and green-after receipts on the change issue; verifier-pending units; attempts and `BLOCKED` units; the `verify-red-on-base` plan check; and the work-in-progress signal derived from started units.
 
 ## Requirements
 
