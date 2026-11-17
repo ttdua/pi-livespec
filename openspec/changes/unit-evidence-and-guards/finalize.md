@@ -7,7 +7,7 @@
 
 **Change**: `unit-evidence-and-guards`
 **Finalized at**: `2026-11-18 06:47`
-**Outcome**: `pr-updated`, with the push and the PR step pending. Steps 1–9 of the canonical git-side closeout ran. Steps 10–12 (push, PR, PR comment) are held: under the project `AGENTS.md` git-approval policy, nothing is pushed and no PR is opened until the user explicitly allows it in chat. That policy overrides the finalize steps.
+**Outcome**: `pr-created`. The canonical git-side closeout ran steps 1–9. Under the project `AGENTS.md` git-approval policy, the push and the PR (steps 10–12) waited until the user explicitly allowed them in chat; that policy overrides the finalize steps. No PR existed before, so step 11 created one.
 
 ---
 
@@ -15,21 +15,21 @@
 
 - **Branch**: `ls-06`
 - **Base branch**: `main`
-- **Final state**: `pr-updated` (pending). `ls-06` was fast-forwarded locally to `844980f` and is not pushed yet; it has no remote tracking branch.
-- **PR URL**: `N/A` (no PR yet; a PR is opened after the user allows the push)
+- **Final state**: `pr-open`. `ls-06` was fast-forwarded to `844980f` and pushed to `origin/ls-06` over HTTPS as `ttdua`.
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/29` (`Closes #6`)
 
 ---
 
 ## Workspace
 
 - **Worktree**: `/Users/naicoi/Projects/oss/pi-livespec.unit-evidence-and-guards`
-- **Cleanup**: `preserved (harness-owned)`. The worktree is a sibling Worktrunk worktree, outside `<main root>/.worktrees/`, so the provenance guard leaves it in place. Step 7 (`git branch -d unit-evidence-and-guards`) is deferred, because git cannot delete a branch that a worktree has checked out. After the merge into `main`, remove it with `wt remove unit-evidence-and-guards`. The eight lane branches `unit-evidence-and-guards--task-1..8` are also still there; they need `-D`, which is the user's call.
+- **Cleanup**: `preserved (harness-owned)`. The worktree is a sibling Worktrunk worktree, outside `<main root>/.worktrees/`, so the provenance guard leaves it in place. Step 7 (`git branch -d unit-evidence-and-guards`) is deferred, because git cannot delete a branch that a worktree has checked out. After the merge into `main`, remove it with `wt remove unit-evidence-and-guards`. The user approved deleting the eight lane branches `unit-evidence-and-guards--task-1..8` with `-D`.
 
 ---
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`. Pending until the push and PR are allowed.
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/29#issuecomment-6964453561)
 
 ---
 
@@ -60,7 +60,4 @@ An earlier gate session opened on 2026-11-17 got no decision and was stopped. Th
 
 ## Next step
 
-1. With the user's explicit permission, push `ls-06` (`git push -u origin ls-06`).
-2. Open the PR (suggested title: `feat(command-guards): unit-evidence-and-guards`).
-3. Post the code-reviewer orientation comment, and update this receipt's PR fields.
-4. After PR review, run `/opsx-archive` on `ls-06`, push the archive commits, then merge the PR (`gh pr merge --squash --delete-branch`).
+Wait for PR code review. After approval, run `/opsx-archive` on `ls-06`, push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive in `main`. Afterwards, run `wt remove unit-evidence-and-guards`.
