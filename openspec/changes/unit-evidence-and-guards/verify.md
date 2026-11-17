@@ -6,11 +6,11 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `unit-evidence-and-guards`
-**Verified at**: `2026-11-17 15:34`
-**Iteration**: `2`
+**Verified at**: `2026-11-17 16:58`
+**Iteration**: `3`
 **Verifier**:
-- The parent session ran validate, the task count, typecheck, the fresh test runs, the clean-tree check and the guard probe.
-- A `code-reviewer` agent run read-only in this invocation (`cb23c75a-56b4-4eb`) gave independent static evidence for checks 3–5. It also ran its own probe, then deleted the probe file.
+- The parent session ran validate, the task count, typecheck, the fresh full test run and the clean-tree check. It also ran both runtime guard probes.
+- A `code-reviewer` agent (`46201ab7-bd61-41c`), run read-only in this invocation, gave independent static evidence for checks 3–5 and two focused test runs (50/50). It flagged the `sed` bypass candidate by static trace; the parent's probe then confirmed it at runtime.
 
 ---
 
@@ -21,7 +21,7 @@
 **Result**:
 
 ```text
-$ openspec validate unit-evidence-and-guards   (cwd: worktree, HEAD 201572e)
+$ openspec validate unit-evidence-and-guards   (cwd: worktree, HEAD 4732189)
 exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characters)" (accepted project style)
 ```
 
@@ -31,7 +31,7 @@ exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characte
 
 - [x] Every box is ticked, or each open box has a recorded reason
 
-`openspec instructions apply` reports progress `{"total":40,"complete":40,"remaining":0}`. `grep` counts 40 ticked boxes and 0 open boxes.
+`openspec instructions apply` reports progress `{"total":40,"complete":40,"remaining":0}`. `grep` counts 40 ticked and 0 open.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -45,77 +45,97 @@ exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characte
 - [x] REMOVED: none in this change
 - [x] RENAMED: none in this change
 
-Iteration 2 closed the iteration-1 items: `env -S` escapes, `flock` options, attached `mv -tDIR` and the stale docs lines. A fresh probe found a new bypass of the same family.
+The two iteration-2 CRITICALs are closed: the `env -S`/`sh -c`/`flock -c` expansion carrying a livespec path, and suite stability. A further bypass of the same requirement was found and confirmed at runtime.
 
 | Requirement | Operation | Status | Evidence (file:line) or reason |
 |---|---|---|---|
-| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:21–35`; `src/extension.ts:116` |
-| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–37,60–78`; registered first at `src/extension.ts:106` |
-| command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–177,201–218`; endpoints `src/guard/classify.ts:31–51` |
-| command-guards / Push and pull request commands | ADDED | Pass | `src/guard/classify.ts:119–170,184–214`; `src/guard/unwrap.ts:27–92`; `src/guard/rules.ts:140–145,202–213`. Probe: every listed form, and the iteration-1 bypasses, are BLOCKed |
-| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,99–108,125–170,184–196` |
-| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:22–36,73–181`; `src/hooks/guard.ts:46–63`. **Bypass:** `env -S 'rm\_.pi/livespec/flow.yaml ${X}'` is ALLOWed. See CRITICAL 1 |
-| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; nothing under `src/` imports it |
+| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:19–35`; `src/extension.ts:116` |
+| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–37,60–78`; `src/extension.ts:103–106` |
+| command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–177,201–218`; `src/guard/classify.ts:31–51` |
+| command-guards / Push and pull request commands | ADDED | Pass | `src/guard/classify.ts:125–174,187–227`; `src/guard/unwrap.ts:27–92`; `src/guard/rules.ts:140–145,202–213`; probe below |
+| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,98–108,169–174` |
+| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:73–181`; `src/hooks/guard.ts:46–63`. **Bypass:** `sed -i -es/human/self/ .pi/livespec/flow.yaml` is ALLOWed (see CRITICAL 1) |
+| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; no importer under `src/` |
 | context-injection / Phase card content | MODIFIED | Pass | `src/hooks/phase-card.ts:47–49,75–88`; `src/evidence/card.ts:12–23` |
-| decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:17–38,66–103`; `src/evidence/signature.ts:8–55`; `src/decide/registry.ts:84` |
+| decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:17–39,66–103`; `src/evidence/signature.ts:8–55`; `src/decide/registry.ts:84` |
 | flow-engine / Change state from issue and git | MODIFIED | Pass | `src/engine/snapshot.ts:55–61,84–110` |
-| flow-engine / Next step | MODIFIED | Pass | `src/engine/state-types.ts:47–64`; `src/engine/next-step.ts:345–366` |
-| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:232,239,246` |
+| flow-engine / Next step | MODIFIED | Pass | `src/engine/state-types.ts:47–73`; `src/engine/next-step.ts:334–365` |
+| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:149–215,221–308` |
 | flow-engine / Named checks over LS-02 validators | MODIFIED | Pass | `src/engine/checks.ts:88–142`; `src/engine/registry.ts:50–86` |
 | flow-engine / Loop counters | MODIFIED | Pass | `src/engine/counters.ts:9–29`; `src/evidence/unit-state.ts:45–99` |
-| flow-pack / Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:20,43`; `tests/fixtures/agent-skills.pack.json:67–69,141–146` |
-| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:14–47,161–183` |
-| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:125–141`; `src/interaction/complete-validate.ts:47–57` |
+| flow-pack / Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:20,43` |
+| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:14–47,137–183` |
+| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:118–141`; `src/interaction/complete-validate.ts:28–57` |
 | settle-continuation / Settle conditions | ADDED | Pass | `src/hooks/settle.ts:39–51,103–119,128–139` |
 | settle-continuation / One continuation | ADDED | Pass | `src/hooks/settle.ts:24–25,119–125,141–144` |
 | settle-continuation / Incomplete marker | ADDED | Pass | `src/hooks/settle.ts:60–84,103–121` |
-| unit-evidence / Unit start tool | ADDED | Pass | `src/tools/unit-start.ts:29–67`; `src/evidence/refusals.ts:43–85`; `src/tools/unit-tool.ts:45–69` |
+| unit-evidence / Unit start tool | ADDED | Pass | `src/tools/unit-start.ts:29–67`; `src/evidence/refusals.ts:43–86` |
 | unit-evidence / Valid red | ADDED | Pass | `src/evidence/red-green.ts:11–17`; `src/evidence/runner.ts:60–112` |
 | unit-evidence / Verifier pending | ADDED | Pass | `src/evidence/pending.ts:6–27`; `src/tools/unit-finish.ts:73–108` |
-| unit-evidence / Unit finish tool | ADDED | Pass | `src/tools/unit-finish.ts:51–62,113–134,145–200` |
+| unit-evidence / Unit finish tool | ADDED | Pass | `src/tools/unit-finish.ts:50–62,111–134,144–200` |
 | unit-evidence / Receipt | ADDED | Pass | `src/evidence/records.ts:19–34,67–73`; `src/evidence/output.ts:88–99` |
-| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:45–99`; `src/tools/unit-finish.ts:139–162,190–200` |
-| unit-evidence / Verify red on base check | ADDED | Pass | `src/evidence/red-on-base.ts:37–103`; `src/evidence/worktree.ts:24–73` |
+| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:38–99`; `src/tools/unit-finish.ts:137–162` |
+| unit-evidence / Verify red on base check | ADDED | Pass | `src/evidence/red-on-base.ts:25–103`; `src/evidence/worktree.ts:24–73` |
 | unit-evidence / Work in progress from started units | ADDED | Pass | `src/evidence/wip.ts:15–33` |
 
-**Guard probe.** The parent called `classifyCommand` from a throwaway test with a GitHub target, deleted it, and `git status` showed 0 lines afterwards:
+**Guard probes.** The parent ran these at runtime through a throwaway test calling `classifyCommand` with a GitHub target. The test file was deleted, and `git status` showed 0 lines afterwards.
+
+Probe 1, the forms fixed in iterations 2 and 3:
 
 ```text
-env -S 'rm\_.pi/livespec/flow.yaml ${X}' => ALLOW              <-- bypass
-env -S 'rm\_.pi/livespec/flow.yaml'      => BLOCK(livespec-files)
-env -S 'git\_push ${X}'                  => BLOCK(obscured)
-env -S 'echo\_hi'                        => ALLOW
+BLOCK(obscured):       env -S 'rm\_.pi/livespec/flow.yaml ${X}' · sh -c "rm .pi/livespec/flow.yaml $X"
+                       flock /tmp/l -c "rm .pi/livespec/flow.yaml $X" · env -S 'git\_push ${X}'
+BLOCK(livespec-files): env -S 'rm\_.pi/livespec/flow.yaml' · mv -t/tmp .pi · cp -- -tfoo .pi/livespec/flow.yaml
+BLOCK(push):           env -S 'git\_push' · flock /tmp/l --command='git push' · git push
+BLOCK(gh-issue):       gh issue edit 6 --body x
+ALLOW:                 env -S 'echo\_hi' · env -S 'echo\_${X}' · sh -c "echo $X" · gh issue view 6 · git status
 ```
 
-The verifier's own probe gave the same results. It also confirmed these iteration-1 fixes:
-- BLOCK: `env -S 'git\_push'`, `env --split-string='git\_push'`, `flock /tmp/l --command='git push'`, `flock /tmp/l -x -c 'git push'`, `mv -t/tmp .pi`, `cp -- -tfoo .pi/livespec/flow.yaml`.
-- ALLOW: `mv -t/tmp other`, `flock /tmp/l true`.
+Probe 2, the sed candidate flagged by the verifier:
+
+```text
+sed -i.bak -es/human/self/ .pi/livespec/flow.yaml => ALLOW   <-- bypass
+sed -i -es/human/self/ .pi/livespec/flow.yaml     => ALLOW   <-- bypass
+sed -i -f/tmp/x.sed .pi/livespec/flow.yaml        => ALLOW   <-- bypass
+sed -i -e s/human/self/ .pi/livespec/flow.yaml    => BLOCK(livespec-files)
+sed -i s/human/self/ .pi/livespec/flow.yaml       => BLOCK(livespec-files)
+sed -n p .pi/livespec/flow.yaml                   => ALLOW   (read, correct)
+sed -i -es/a/b/ other.txt                         => ALLOW   (not protected, correct)
+```
 
 ---
 
 ## 4. Scenario Coverage
 
-- [x] Every scenario maps to a test: the verifier found the quoted exact title of all 125 scenarios under `tests/`, with none missing.
+- [x] Every scenario maps to a test. The verifier found an exact quoted title for all 125 scenarios under `tests/`, with 0 MISSING.
 - [x] The project test command was run fresh in this step.
 
-**Test command**: `bun run test` (vitest run), run fresh with cwd = worktree, HEAD `201572e`
-**Result**: **exit 1 on both full runs.** Every failure is in `tests/e2e/gates-flow.test.ts`. That file is unchanged by this change, and it fails the same way on the base:
+**Test command**: `bun run test` (vitest run), fresh, cwd = worktree, HEAD `4732189`, started at 16:41 at load average 20, ending at load 71.
 
-| Run | Load avg | Result |
+**Result**: exit 0. 136 files and 1949 tests passed, with 0 failed (`/tmp/ls06/v3-test.log`). `bun run typecheck` also exited 0. The verifier's focused runs of `tests/guard/classify.test.ts` and `tests/guard/paths.test.ts` passed 50/50.
+
+Scenarios mapped per capability:
+
+| Capability | Scenarios | Mapped |
 |---|---|---|
-| Full #1, 15:25 | 48 | 1 failed / 1947 passed. `full gate flow over a memory forge` timed out at 5089 ms. |
-| Full #2, 15:26–15:28 | 67 | 2 failed / 1946 passed. The same test timed out at 5048 ms. `Stale before the first lock` then failed with `expected true to be false` at `gates-flow.test.ts:169`, after `ENOTEMPTY rmdir …/ls-tools-*/home/cache/…` left by the timed-out test. |
-| `gates-flow.test.ts` alone, 6 runs | 55–67 | 2/2 pass on every run, 1290–2451 ms per test |
-| **Base `af3e9f6`** (`ls-06` checkout), full | 56 | **Same 2 failures**, both 5 s timeouts (5410 ms, 5088 ms); 113 files passed |
-
-`bun run typecheck` exited 0. The failures come from the machine's load against a fixed 5 s timeout, and they reproduce on the base before this change. This change did not introduce them. Still, by the rule, the fresh full suite did not pass, so the outcome cannot be PASS. See CRITICAL 2.
+| agent-skills-content | 4 | 4 |
+| command-guards | 23 | 23 |
+| context-injection | 6 | 6 |
+| decision-seam | 5 | 5 |
+| flow-engine | 30 | 30 |
+| flow-pack | 3 | 3 |
+| init-and-doctor | 5 | 5 |
+| phase-gates | 8 | 8 |
+| settle-continuation | 8 | 8 |
+| unit-evidence | 33 | 33 |
 
 ---
 
 ## 5. Design and Contract Coherence (warning only)
 
-- [x] Decisions in design.md match the code. D2, D3, D7, D9, D10 and D13 were checked; the docs at `docs/architecture.md:161,168` now match the code.
-- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code: **41/41 matched**, with 0 drift and 0 not verified. The deviations recorded in apply.md each match the code, for example `withEvidenceLock(fn)`, `testOnlyCommitCheck` with three parameters, `Git.parents`, `settleItems(state, pack)`, the iteration-2 env split-string splitter and `optionArgument`.
+- [x] Decisions in design.md match the code.
+- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code: **41/41 matched**, with 0 drift and 0 not verified. The deviations recorded in apply.md match the code (`withEvidenceLock(fn)`, the 3-parameter `testOnlyCommitCheck`, `Git.parents`, the Session additions, the child-script handling).
+- Iteration-3 test infrastructure: `vitest.config.ts:5` sets `testTimeout`/`hookTimeout` to 30_000. Cleanup in `tests/helpers/repo.ts:10–11` and `tests/tools/helpers.ts:82–83` retries 5 times with a 50 ms delay, and cleanup is still awaited and still propagates errors. The runner tests use unique markers. None of this adds a network path, so it matches the Global Constraints.
 
 **Drift warnings** (non-blocking): None.
 
@@ -123,9 +143,9 @@ The verifier's own probe gave the same results. It also confirmed these iteratio
 
 ## 6. Clean Tree and Commit Range
 
-- [x] The working tree is clean: `git status --porcelain` printed 0 lines before and after every probe.
+- [x] The working tree is clean (`git status --porcelain`: 0 lines before and after every probe).
 
-**Commit range**: `af3e9f6..201572e`, 53 commits.
+**Commit range**: `af3e9f6..4732189`. That is 59 commits.
 
 ---
 
@@ -133,14 +153,11 @@ The verifier's own probe gave the same results. It also confirmed these iteratio
 
 **CRITICAL**
 
-1. **`env -S` with an expansion bypasses the `.pi/livespec/` write guard.**
-   - **Where:** `src/guard/classify.ts:169–170`, with `src/guard/unwrap.ts:66–79`.
-   - **What happens:** when the `-S` value contains `${…}`, `splitEnvString` returns unreadable. `checkChildScript` then only calls `obscured(nestedScan(...))`. `obscured` looks at the dangerous tokens (push, gh, tea, forge host) but not at a livespec path. So `env -S 'rm\_.pi/livespec/flow.yaml ${X}'` is ALLOWed, and it deletes the flow file when `X` is unset. This breaks command-guards "Livespec project files".
-   - **Recommendation:** make the unreadable and expansion child-script branch fail closed when the decoded text mentions `livespec`, as the existing unreadable-input rule in `classify.ts:58,90` already does. Alternatively, run `protectedWrite` on the words that can be split before the expansion. Add a regression test with the bypass command above, and keep `env -S 'echo\_hi'` and `env -S 'echo\_${X}'` allowed.
-2. **The fresh full suite did not pass, from a pre-existing test timeout under machine load.**
-   - **Where:** `tests/e2e/gates-flow.test.ts`. It uses the 5 s default timeout, and a timed-out run leaves its temporary `home/cache` behind, which then breaks the next test.
-   - **Why it counts:** it fails the same way on base `af3e9f6` and passes when run alone, but the rule says failing fresh tests are FAIL.
-   - **Recommendation:** give the two `gates-flow` tests an explicit timeout, for example 20 s, and make the harness cleanup tolerate `ENOTEMPTY` (`rm` with `force`, retried), so the suite is deterministic under load.
+1. **`sed -i` with an attached `-e<script>` or `-f<file>` bypasses the `.pi/livespec/` guard.**
+   - **Where:** `src/guard/paths.ts:141–146`, `sedTargets`.
+   - **Cause:** `hasScriptOption` only recognises `-e`/`-f` as a whole word (`/^-[a-zA-Z]*[ef]$/`). For `-es/human/self/`, the attached script therefore goes unnoticed. `operands()` drops the option word, and `files.slice(1)` then drops the protected file as if it were the script.
+   - **Effect:** `sed -i -es/human/self/ .pi/livespec/flow.yaml`, `sed -i.bak -es/…/ …` and `sed -i -f/tmp/x.sed …` are ALLOWed. This breaks command-guards "Livespec project files", which lists `sed -i`.
+   - **Recommendation:** treat a script option as given whenever a short option cluster contains `e` or `f`, attached value included (for example `/^-[a-zA-Z]*[ef]/`), or `--expression=`/`--file=`. Make `operands()` skip attached values the same way. Add regression tests for the three bypass commands, and keep `sed -n p …`, `sed -i -es/a/b/ other.txt` and `sed -i -e s/…/ …` behaving as they do now.
 
 **WARNING**
 
@@ -148,7 +165,7 @@ None.
 
 **SUGGESTION**
 
-1. The `pgrep -f` process checks in `tests/evidence/runner.test.ts` still match processes across the whole system. Track the process group the test owns instead.
+1. The guard bugs found across iterations 2 and 3 share a root cause: each command's option parser handles attached or clustered short-option values differently (`mv -tDIR`, `sed -eSCRIPT`, `env -S`). One shared option scanner in `src/guard/options.ts`, used by `paths.ts` for every write command, would close this family instead of patching one command at a time.
 
 ---
 
@@ -160,7 +177,7 @@ None.
 
 **Next step**:
 
-Run `/opsx-apply`, which runs fix iteration 3 in this worktree. It should fix CRITICAL 1, the guard bypass. It should also fix CRITICAL 2, the `gates-flow` timeout and cleanup: that touches a test file outside this change's scope, and it is needed for a deterministic fresh run. Then run `/opsx-verify` again. This is iteration 2 of 5.
+Run `/opsx-apply`, which runs fix iteration 4 in this worktree. It should fix CRITICAL 1, and it is worth doing SUGGESTION 1 in the same pass, so the remaining attached-option forms are closed in one place. Then run `/opsx-verify` again. This is iteration 3 of 5.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
