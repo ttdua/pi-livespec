@@ -1,24 +1,25 @@
-// The per-process evidence lock (design D10 "Serialization"): one promise chain per
-// issue, so two `unit_start`/`unit_finish` calls never decide from the same stale state.
+// The evidence lock (design D10 "Serialization"): one stable promise chain for the
+// session's process, so two `unit_start`/`unit_finish` calls never decide from the
+// same stale state. It needs no key: a refresh inside the lock may switch the change,
+// and a key read before that refresh could put two calls on different chains.
 
-const chains = new Map<number, Promise<void>>();
+let tail: Promise<void> | undefined;
 
-/** Runs `fn` after every earlier call for `issue` has settled; a failure does not break the chain. */
-export function withEvidenceLock<T>(issue: number, fn: () => Promise<T>): Promise<T> {
-	const previous = chains.get(issue) ?? Promise.resolve();
-	const run = previous.then(fn);
-	const tail = run.then(
+/** Runs `fn` after every earlier evidence call has settled; a failure does not break the chain. */
+export function withEvidenceLock<T>(fn: () => Promise<T>): Promise<T> {
+	const run = (tail ?? Promise.resolve()).then(fn);
+	const next = run.then(
 		() => undefined,
 		() => undefined,
 	);
-	chains.set(issue, tail);
-	void tail.then(() => {
-		if (chains.get(issue) === tail) chains.delete(issue);
+	tail = next;
+	void next.then(() => {
+		if (tail === next) tail = undefined;
 	});
 	return run;
 }
 
 /** Resolves once no evidence call is queued or running, including calls queued while waiting. */
 export async function drainEvidenceLocks(): Promise<void> {
-	while (chains.size > 0) await Promise.all(chains.values());
+	while (tail !== undefined) await tail;
 }

@@ -4,7 +4,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
-import { cardState, type UnitSpec, unitHarness } from "./unit-helpers.ts";
+import { cardState, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -170,5 +170,29 @@ describe("unit-evidence", () => {
 		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
 		await h.start("U1");
 		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
+	});
+});
+
+describe("fix round 1", () => {
+	test("I3: unit_start aborted while deciding pending writes nothing", async () => {
+		const h = await unitHarness({ units: [{ id: "U1", verify: "sh check.sh", files: ["src/u1.ts", "test/limit.test.ts"] }], scripts: SCRIPTS });
+		const pathExistsAt = h.session.git.pathExistsAt.bind(h.session.git);
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let entered = false;
+		h.session.git.pathExistsAt = async (sha, path) => {
+			entered = true;
+			await held;
+			return pathExistsAt(sha, path);
+		};
+		const controller = new AbortController();
+		const call = h.start("U1", controller.signal);
+		await waitFor(() => entered);
+		controller.abort();
+		release();
+		const out = await call;
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("aborted");
+		expect(await h.ofKind("unit-start")).toHaveLength(0);
 	});
 });

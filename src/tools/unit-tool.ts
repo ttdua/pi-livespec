@@ -10,9 +10,8 @@ import type { RunClass } from "../evidence/red-green.ts";
 import type { VerifyRun } from "../evidence/runner.ts";
 import { type VerifyEnv, verifyEnv } from "../evidence/verify-env.ts";
 import { untrusted } from "../hooks/phase-card.ts";
-import { getSession } from "../hooks/session-store.ts";
 import { displayUnitId } from "../interaction/display-ids.ts";
-import { currentChange, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { withStep } from "./request-flow.ts";
 
 /** The only parameter of both tools: no outcome, verdict, pending flag, attempt count or exit code. */
@@ -28,6 +27,8 @@ export type UnitCall = {
 	unit: Unit;
 	env: VerifyEnv;
 	refuse(message: string): ToolResult<undefined>;
+	/** The refusal to return when the call was cancelled; checked after each async step and before each write. */
+	cancelled(): ToolResult<undefined> | undefined;
 	/** A successful result, followed by the card's next step. */
 	done(text: string): ToolResult<undefined>;
 };
@@ -36,13 +37,6 @@ export type UnitCall = {
 export type Precheck = { refused: string } | { ok: true };
 
 export const startable = (refusal: string | undefined): Precheck => (refusal === undefined ? { ok: true } : { refused: refusal });
-
-/** The issue the lock serializes on: the card's change before the refresh, or 0 without one. */
-function lockKey(): number {
-	const session = getSession();
-	const current = session === undefined ? undefined : currentChange(session);
-	return current?.kind === "change" ? current.state.issue.number : 0;
-}
 
 /**
  * Runs `body` for `unit` under the evidence lock, after `prepareWrite` (which refreshes), `requireChange`,
@@ -56,7 +50,7 @@ export function lockedEvidenceCall(
 	body: (c: UnitCall) => Promise<ToolResult<undefined>>,
 ): Promise<ToolResult<undefined>> {
 	const refuse = (message: string): ToolResult<undefined> => toolResult(message.startsWith(`${tool} refused`) ? message : `${tool} refused: ${message}`, undefined, true);
-	return withEvidenceLock(lockKey(), async () => {
+	return withEvidenceLock(async () => {
 		const w = await prepareWrite();
 		if (!w.ok) return refuse(w.message);
 		const change = requireChange(w.session);
@@ -67,9 +61,11 @@ export function lockedEvidenceCall(
 		const target = state.change.units.find((u) => u.id === unit);
 		if (target === undefined) return refuse(`${displayUnitId(unit)} is not a unit of this change.`);
 		const env = await verifyEnv(w.session, signal);
-		if (env.run.signal?.aborted) return refuse(ABORTED);
+		const cancelled = (): ToolResult<undefined> | undefined => (env.run.signal?.aborted ? refuse(ABORTED) : undefined);
+		const stop = cancelled();
+		if (stop !== undefined) return stop;
 		const done = (text: string): ToolResult<undefined> => toolResult(withStep(w.session, text), undefined);
-		return body({ w, state, pack: w.pack, unit: target, env, refuse, done });
+		return body({ w, state, pack: w.pack, unit: target, env, refuse, cancelled, done });
 	});
 }
 

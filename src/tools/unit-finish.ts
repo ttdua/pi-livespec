@@ -5,16 +5,19 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { unitDigest } from "../core/digest.ts";
-import { tickUnit } from "../core/tick.ts";
+import { parseChange } from "../core/change.ts";
+import { TickError, tickUnit } from "../core/tick.ts";
 import { decisionComment } from "../decide/records.ts";
 import { decide } from "../decide/seam.ts";
 import type { CachedForge } from "../forge/cache.ts";
+import type { ChangeState } from "../engine/state-types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { liftsCap } from "../engine/iterations.ts";
 import { testOnlyCommitCheck } from "../evidence/pending.ts";
 import { previousSignature, progressRecord } from "../evidence/progress-rule.ts";
 import { newEvidenceId, type ReceiptData, receiptComment, type StartRecord } from "../evidence/records.ts";
 import { classifyRun, postOk } from "../evidence/red-green.ts";
-import { finishMode, unitFinishRefusal } from "../evidence/refusals.ts";
+import { blockedRefusal, finishMode, unitFinishRefusal } from "../evidence/refusals.ts";
 import { runVerify, type VerifyRun } from "../evidence/runner.ts";
 import { failureSignature } from "../evidence/signature.ts";
 import { RECEIPT_OUTPUT_BYTES } from "../evidence/verify-env.ts";
@@ -28,42 +31,53 @@ const RETRY = "Debug the failure with the debugging-and-error-recovery skill, co
 
 // --- tick ---------------------------------------------------------------------------------
 
-const isDone = (body: string, unit: string): boolean => {
-	try {
-		tickUnit(body, unit);
-		return false;
-	} catch {
-		return true;
-	}
-};
+const DONE_STATUS = "- [x] done";
+
+/** Whether the body shows `unit` ticked with a well-formed status line; a missing unit throws. */
+function isDone(body: string, unit: string): boolean {
+	const found = parseChange(body).units.find((u) => u.id === unit);
+	if (found === undefined) throw new TickError(`unit ${unit} not found`);
+	return found.statusText === DONE_STATUS;
+}
+
+type TickOutcome = "ticked" | "already" | "conflict" | "cancelled";
 
 /**
- * Ticks `unit` with a version-checked write. On a conflict, re-reads once: an already ticked unit is left
- * alone, else it ticks again. A transport error propagates; the receipted, unticked unit is reconciled later.
+ * Ticks `unit` with a version-checked write. On a conflict, re-reads once: a unit already ticked is left
+ * alone, else it ticks again. A missing unit, a missing or malformed status line and a transport error
+ * propagate; the receipted, unticked unit is reconciled later. A cancellation stops before each write.
  */
-async function tick(forge: CachedForge, issue: number, unit: string): Promise<"ticked" | "already" | "conflict"> {
+async function tick(forge: CachedForge, issue: number, unit: string, cancelled: () => boolean): Promise<TickOutcome> {
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const current = await forge.getIssue(issue);
 		if (attempt > 0 && isDone(current.body, unit)) return "already";
-		const result = await forge.updateIssueBody(issue, tickUnit(current.body, unit), current.version);
+		const body = tickUnit(current.body, unit);
+		if (cancelled()) return "cancelled";
+		const result = await forge.updateIssueBody(issue, body, current.version);
 		if (result.status === "written") return "ticked";
 	}
 	return "conflict";
 }
 
-const tickText = (unit: string, r: Awaited<ReturnType<typeof tick>>): string =>
+const tickText = (unit: string, r: Exclude<TickOutcome, "cancelled">): string =>
 	r === "conflict" ? `The tick of ${unit} conflicted twice with another edit; run unit_finish ${unit} again to tick it.` : `${unit} is ticked done.`;
 
 // --- pending unit -------------------------------------------------------------------------
 
 type Pre = { sha: string; exit: number; pendingCommit?: string };
 
+/** A cancelled pending check: the same text as an aborted run. */
+const CANCELLED = { refused: invalidText({ invalid: "aborted" }, { exit: null }) };
+
 /** D5: the first commit after the start changes only listed test files and is red in a temporary worktree. */
 async function pendingPre(c: UnitCall, start: StartRecord): Promise<Pre | { refused: string }> {
 	const { env, unit: u } = c;
 	const first = (await env.git.revList(`${start.pre.sha}..HEAD`))[0];
+	if (c.cancelled() !== undefined) return CANCELLED;
 	if (first === undefined) return { refused: `${u.id} is verifier pending, but there is no commit after its start: commit the failing test alone first.` };
-	const only = testOnlyCommitCheck(u, await env.git.changedPaths(first));
+	const changed = await env.git.changedPaths(first);
+	if (c.cancelled() !== undefined) return CANCELLED;
+	const only = testOnlyCommitCheck(u, changed);
 	if (!only.ok) return { refused: `the first commit after the start of ${u.id} (${first.slice(0, 7)}) must change only its test files, but it also changes ${only.extra.join(", ")}.` };
 	const prep = { ...(env.config?.verify?.setup !== undefined ? { setup: env.config.verify.setup } : {}), run: { ...env.run, tailBytes: RECEIPT_OUTPUT_BYTES } };
 	const run = await withTempWorktree(env.git, env.root, first, prep, (dir) => runVerify(start.verify, { ...env.run, cwd: dir, tailBytes: RECEIPT_OUTPUT_BYTES }));
@@ -89,22 +103,25 @@ async function green(c: UnitCall, start: StartRecord, pre: Pre, run: VerifyRun):
 		start: start.id,
 	};
 	if (pre.pendingCommit !== undefined) data.pending_commit = pre.pendingCommit;
+	const beforeReceipt = c.cancelled();
+	if (beforeReceipt !== undefined) return beforeReceipt;
 	await w.forge.createComment(state.issue.number, receiptComment(newEvidenceId(u.id, new Date()), data));
 	// Before the tick: when the tick throws, the next refresh must still see the receipt to reconcile.
 	await w.session.comments?.invalidate(state.issue.number);
-	const ticked = await tick(w.forge, state.issue.number, u.id);
+	const ticked = await tick(w.forge, state.issue.number, u.id, () => c.cancelled() !== undefined);
 	await afterForgeWrite(w.session, state.issue.number);
+	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was posted, before the tick; run unit_finish ${u.id} again to tick it.`);
 	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt posted for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
 }
 
 const commentLink = (url: string | undefined, commentId: string): string => (url === undefined ? `comment ${commentId}` : `${url}#issuecomment-${commentId}`);
 
-/** Links to the unit's receipts and failed-attempt records, for a stuck report. */
-function evidenceLinks(c: UnitCall, posted: string): string[] {
-	const url = c.state.issue.url;
-	const receipts = (c.state.evidence.receipts[c.unit.id] ?? []).map((r) => `- receipt ${r.id}: ${commentLink(url, r.commentId)}`);
-	const attempts = c.state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${c.unit.id}`).map((m) => `- failed attempt: ${commentLink(url, m.commentId)}`);
-	return [...receipts, ...attempts, `- failed attempt: ${commentLink(url, posted)}`];
+/** Links to the unit's receipts and failed-attempt records in `state`, plus a record just `posted`, for a stuck report. */
+function evidenceLinks(state: ChangeState, unit: string, posted?: string): string[] {
+	const url = state.issue.url;
+	const receipts = (state.evidence.receipts[unit] ?? []).map((r) => `- receipt ${r.id}: ${commentLink(url, r.commentId)}`);
+	const attempts = state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${unit}`).map((m) => `- failed attempt: ${commentLink(url, m.commentId)}`);
+	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ${commentLink(url, posted)}`])];
 }
 
 async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<ToolResult<undefined>> {
@@ -116,13 +133,15 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	const facts = { attempt, cap, signature, ...(previous === undefined ? {} : { previous }) };
 	const decided = await decide("progress", facts, { config: w.pack.decisions.progress ?? { mode: "rule" }, subject: u.id, digest: unitDigest(u) });
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
+	const beforeRecord = c.cancelled();
+	if (beforeRecord !== undefined) return beforeRecord;
 	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha: state.git.head, signature, outputTail: run.output, decided });
 	const comment = await w.forge.createComment(state.issue.number, decisionComment(record));
 	await afterForgeWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
 	const what = typeof cls === "object" ? invalidText(cls, run) : `Verify failed (exit ${run.exit}).`;
-	const head = `${what} Attempt ${attempt} of ${cap} for ${u.id}; signature ${signature.tests.length === 0 ? "without test names" : `tests [${signature.tests.join(", ")}]`}, hash ${signature.hash.slice(0, 12)}.`;
-	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${decided.reason}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(c, comment.id)].join("\n") : RETRY;
+	const head = `${what} Attempt ${attempt} of ${cap} for ${u.id}; signature ${signature.tests.length === 0 ? "without test names" : `tests ${untrusted(signature.tests.join(", "))}`}, hash ${signature.hash.slice(0, 12)}.`;
+	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${decided.reason}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, comment.id)].join("\n") : RETRY;
 	return { ...c.done(`${head}\n${next}\n${unitResult(run.output)}`), isError: true };
 }
 
@@ -136,7 +155,8 @@ function budgetStart(c: UnitCall, start: StartRecord): number {
 // --- flow ---------------------------------------------------------------------------------
 
 async function reconcile(c: UnitCall): Promise<ToolResult<undefined>> {
-	const ticked = await tick(c.w.forge, c.state.issue.number, c.unit.id);
+	const ticked = await tick(c.w.forge, c.state.issue.number, c.unit.id, () => c.cancelled() !== undefined);
+	if (ticked === "cancelled") return c.refuse(invalidText({ invalid: "aborted" }, { exit: null }));
 	await afterForgeWrite(c.w.session, c.state.issue.number);
 	return c.done(`${c.unit.id} already has a receipt; no Verify was run. ${tickText(c.unit.id, ticked)}`);
 }
@@ -157,8 +177,13 @@ async function runFinish(c: UnitCall): Promise<ToolResult<undefined>> {
 	return postOk(cls) ? green(c, start, pre, run) : failed(c, start, run);
 }
 
-function precheck(unit: string): (state: Parameters<typeof finishMode>[0], pack: Parameters<typeof unitFinishRefusal>[1]) => Precheck {
-	return (state, pack) => startable(unitFinishRefusal(state, pack, unit, finishMode(state, unit)));
+/** The D10 refusal; a blocked unit's refusal links its receipts and failed attempts from the refreshed state. */
+function precheck(unit: string): (state: ChangeState, pack: Parameters<typeof unitFinishRefusal>[1]) => Precheck {
+	return (state, pack) => {
+		const refusal = unitFinishRefusal(state, pack, unit, finishMode(state, unit));
+		if (refusal === undefined || refusal !== blockedRefusal(state, unit)) return startable(refusal);
+		return { refused: [`${refusal} Link this evidence:`, ...evidenceLinks(state, unit)].join("\n") };
+	};
 }
 
 export function runUnitFinish(unit: string, signal?: AbortSignal): Promise<ToolResult<undefined>> {

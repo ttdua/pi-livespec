@@ -49,10 +49,14 @@ async function startUnit(c: UnitCall): Promise<ToolResult<undefined>> {
 	if (blocked !== undefined) return c.refuse(verifyBlocked(u.id, blocked));
 	const head = state.git.head;
 	const pending = await isPending(env, u, head);
+	const afterPending = c.cancelled();
+	if (afterPending !== undefined) return afterPending;
 	const refactor = refactorPendingRefusal(u, pending);
 	if (refactor !== undefined) return c.refuse(refactor);
 	const data = pending ? ({ unit: u.id, digest: unitDigest(u), verify, pre: { sha: head }, pending: true } as StartData) : await preRun(env, u, verify, head);
 	if ("refused" in data) return c.refuse(data.refused);
+	const beforeWrite = c.cancelled();
+	if (beforeWrite !== undefined) return beforeWrite;
 	await w.forge.createComment(state.issue.number, startComment(newEvidenceId(u.id, new Date()), data));
 	await afterForgeWrite(w.session, state.issue.number);
 	const how = pending ? "verifier pending: commit the failing test alone first; unit_finish checks it" : `Verify was ${data.pre.verdict} (exit ${data.pre.exit})`;

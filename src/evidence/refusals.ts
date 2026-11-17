@@ -25,10 +25,13 @@ const changedSinceLock: Rule = ({ state, unit }) => {
 	return why === undefined ? undefined : `${displayUnitId(unit)} is ${why} since the plan was locked: ${AMEND}.`;
 };
 
-const blockedUnit: Rule = ({ state, unit }) => {
+/** The refusal of a blocked unit, or undefined; exported so `unit_finish` can add its evidence links. */
+export function blockedRefusal(state: ChangeState, unit: string): string | undefined {
 	const reason = state.evidence.blocked[unit];
 	return reason === undefined ? undefined : `${displayUnitId(unit)} is BLOCKED (${reason}): send a stuck report with spec_stuck.`;
-};
+}
+
+const blockedUnit: Rule = ({ state, unit }) => blockedRefusal(state, unit);
 
 const dirtyTree: Rule = ({ state }) => (state.git.dirty ? "The working tree is dirty: commit your changes first, then call the tool again." : undefined);
 

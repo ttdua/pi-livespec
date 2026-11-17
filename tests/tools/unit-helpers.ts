@@ -3,6 +3,7 @@
 // repo, a scripted forge wrapper and readers for the posted evidence.
 
 import { execFileSync } from "node:child_process";
+import { randomInt } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,6 +88,8 @@ export function scriptedForge(inner: Forge, writes: BodyWrites, script: UpdateSc
 export type UnitHarness = ToolHarness & {
 	/** A file outside the repo that the scripts append one line to per run. */
 	log: string;
+	/** Whether this harness's `$SLEEP` command is running. */
+	sleeping(): boolean;
 	runs(): number;
 	writes: BodyWrites;
 	start(unit: string, signal?: AbortSignal): ReturnType<ToolHarness["call"]>;
@@ -102,7 +105,10 @@ export type UnitHarness = ToolHarness & {
 
 export type UnitHarnessOptions = {
 	units: UnitSpec[];
-	/** Script files keyed by path; `$LOG` is replaced by the run log path. */
+	/**
+	 * Script files keyed by path; `$LOG` is replaced by the run log path, and `$SLEEP` by a long `sleep`
+	 * whose argument is unique to this harness, so `sleeping()` never matches another process.
+	 */
 	scripts?: Record<string, string>;
 	config?: string;
 	update?: UpdateScript;
@@ -112,7 +118,8 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 	const logDir = mkdtempSync(join(tmpdir(), "ls-unit-log-"));
 	logDirs.push(logDir);
 	const log = join(logDir, "runs.log");
-	const files = Object.fromEntries(Object.entries(o.scripts ?? {}).map(([path, text]) => [path, text.replaceAll("$LOG", log)]));
+	const sleep = `sleep 30.${randomInt(100_000_000, 999_999_999)}`;
+	const files = Object.fromEntries(Object.entries(o.scripts ?? {}).map(([path, text]) => [path, text.replaceAll("$LOG", log).replaceAll("$SLEEP", sleep)]));
 	const writes: BodyWrites = { calls: 0, written: 0 };
 	const options: ToolHarnessOptions = {
 		files,
@@ -126,6 +133,7 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 	return {
 		...h,
 		log,
+		sleeping: () => running(sleep.replaceAll(".", "\\.")),
 		writes,
 		runs: () => {
 			try {
@@ -160,7 +168,7 @@ export function cardState(h: ToolHarness) {
 	return { state: card.state, step: card.step };
 }
 
-/** Whether any process command line matches `pattern`. */
+/** Whether any process command line matches `pattern`; only pgrep's "no match" exit (1) means no. */
 export function running(pattern: string): boolean {
 	try {
 		execFileSync("pgrep", ["-f", pattern]);
