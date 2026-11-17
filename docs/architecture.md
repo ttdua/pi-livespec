@@ -180,6 +180,10 @@ Every reason starts with `livespec guard:`, names the rule and names the livespe
 - **Script files.** `sh script.sh` and a script run by its own path are not read; a forbidden command inside a script file runs.
 - **Pushes outside pi.** A human, a git hook or another program can still push or write to the forge; the guard only sees the agent's tool calls.
 - **Executors without the extension.** An agent in a harness that does not load pi-livespec is not guarded. LS-07 restricts write roles.
+- **Unlisted runners.** `watch`, `chronic`, `script -c`, `busybox sh -c` and `find -exec` run commands the guard does not unwrap.
+- **Other push and forge paths.** `git lfs push`, `tea` aliases and `tea api` are not recognized.
+- **Other writers.** Writes to `.pi/livespec/` through `git checkout`/`git restore`, `truncate`, `dd of=`, `rsync`, `patch` or an interpreter (`python -c`, `node -e`) are not caught.
+- **Two sessions on one change.** The evidence lock is per process; two pi sessions can run `unit_start`/`unit_finish` on the same change at once.
 
 ## Forge accounts
 
