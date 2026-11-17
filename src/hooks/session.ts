@@ -30,11 +30,12 @@ import { CachedForge } from "../forge/cache.ts";
 import { type DetectDeps, detectForge, type ForgeTarget, resolveForgeTarget } from "../forge/detect.ts";
 import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
+import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
-import { setSession } from "./session-store.ts";
+import { getSession, setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
 
 export type SessionDeps = {
@@ -102,6 +103,9 @@ export class Session {
 	pollInFlight?: Promise<void>;
 	private first = true;
 	private link?: SessionLink;
+	/** Every token the forge adapter can send, as the `RedactingForge` uses them; set by `connect`. */
+	private tokens: string[] = [];
+	private readonly shutdown = new AbortController();
 
 	constructor(
 		readonly cwd: string,
@@ -112,6 +116,36 @@ export class Session {
 
 	get initialized(): boolean {
 		return this.config.project !== null;
+	}
+
+	/** The tokens redacted from forge errors and from captured `Verify` output. */
+	redactionTokens(): string[] {
+		return [...this.tokens];
+	}
+
+	/** Kept by `connectForge`; never rendered. */
+	setRedactionTokens(tokens: string[]): void {
+		this.tokens = [...tokens];
+	}
+
+	/** The forge endpoint of `origin`, for the guard's endpoint list. */
+	forgeTarget(): ForgeTarget | undefined {
+		return this.target;
+	}
+
+	/** Aborted by `session_shutdown`; every `Verify` run listens to it. */
+	get shutdownSignal(): AbortSignal {
+		return this.shutdown.signal;
+	}
+
+	/** Aborts running `Verify` processes; called by the `session_shutdown` handler. */
+	abortEvidence(): void {
+		this.shutdown.abort();
+	}
+
+	/** Resolves once every queued or running evidence call has finished, cleanup included. */
+	drainEvidence(): Promise<void> {
+		return drainEvidenceLocks();
 	}
 
 	/** Keeps the last MAX_RECORDED_ERRORS, so a long session with the forge down does not grow without bound. */
@@ -332,8 +366,10 @@ async function connectWithAccount(
 	d: SessionDeps,
 ): Promise<Connection | undefined> {
 	let tokens = knownTokens(target, resolved, d);
+	session.setRedactionTokens(tokens);
 	try {
 		tokens = await redactionTokens(target, resolved, d);
+		session.setRedactionTokens(tokens);
 		const account = detectAccount(target, resolved);
 		const inner = await d.detect(session.cwd, { ...detectDepsOf(d.accounts), ...(account ? { account } : {}) });
 		const { host, owner, repo } = target;
@@ -476,9 +512,22 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	kickOffUpgrade(session, content, ctx);
 }
 
+/** Kills running `Verify` processes, then waits until their temporary worktrees are removed. Never throws. */
+async function shutdownEvidence(): Promise<void> {
+	const session = getSession();
+	if (!session) return;
+	try {
+		session.abortEvidence();
+		await session.drainEvidence();
+	} catch (error) {
+		session.record("shutdown", error);
+	}
+}
+
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
 	const deps: SessionDeps = { ...defaultSessionDeps(), ...d };
 	registerResumeRenderer(pi);
+	pi.on("session_shutdown", shutdownEvidence);
 	pi.on("session_start", async (_event, ctx) => {
 		try {
 			await startSession(pi, deps, ctx);
