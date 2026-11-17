@@ -6,11 +6,11 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `unit-evidence-and-guards`
-**Verified at**: `2026-11-17 17:55`
-**Iteration**: `4`
+**Verified at**: `2026-11-17 19:36`
+**Iteration**: `5` (last allowed; the fix loop stops here)
 **Verifier**:
-- The parent session ran validate, the task count, typecheck, the fresh full test run, the clean-tree check and two runtime guard probes (56 and 13 commands).
-- A `code-reviewer` agent run read-only in this invocation (`b9d88fb4-1273-483`) produced independent static evidence for checks 3–5 and a 137-case runtime probe. Its probe file was deleted afterwards.
+- The parent session ran validate, the task count, typecheck, the fresh full test run, the clean-tree check and two runtime guard probes (99 and 18 commands).
+- A `code-reviewer` agent run read-only in this invocation (`84086362-fa53-43d`) produced independent static evidence for checks 3–5. It ran 4 focused test files (106 tests passed). Its instructions did not let it write a probe file, so it reported its bypass candidates from static analysis. The parent then confirmed them at runtime.
 
 ---
 
@@ -21,7 +21,7 @@
 **Result**:
 
 ```text
-$ openspec validate unit-evidence-and-guards   (cwd: worktree, HEAD a2cee35)
+$ openspec validate unit-evidence-and-guards   (cwd: worktree, HEAD d6b4444)
 exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characters)" (accepted project style)
 ```
 
@@ -41,31 +41,36 @@ exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characte
 
 ## 3. Requirement Evidence
 
-- [ ] ADDED / MODIFIED: implementation evidence (file / line). 27 Pass, **1 Fail**.
+- [ ] ADDED / MODIFIED: implementation evidence (file / line). 26 Pass, **2 Fail**.
 - [x] REMOVED: none in this change
 - [x] RENAMED: none in this change
 
-Iteration 4 closed the iteration-3 CRITICAL (`sed -i` with an attached `-e`/`-f`). It also moved write-command option parsing to the shared `scanOptions`. The fresh probes found three further bypass groups in the same requirement; the parent confirmed all three at runtime.
+Iteration 5 closed all three CRITICAL items from iteration 4:
+- the `--target-dir` and `--target` abbreviations;
+- `install -d`;
+- `env -C`/`--chdir` and `sudo -D`, including inside nested scripts.
+
+It also added the fail-closed rule for unmodelled options on write commands. The parent re-ran 99 regression probes and all gave the expected result. Two new bypass groups remain, see CRITICAL 1 and 2.
 
 | Requirement | Operation | Status | Evidence (file:line) or reason |
 |---|---|---|---|
-| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:19–35`; `src/extension.ts:116` |
-| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–37,54–78`; `src/extension.ts:103–114` |
-| command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–177,201–218`; `src/guard/classify.ts:31–51` |
-| command-guards / Push and pull request commands | ADDED | Pass | `src/guard/classify.ts:125–174,187–227`; `src/guard/unwrap.ts:27–92`; `src/guard/rules.ts:140–145,202–213`. All 45 push and PR probe forms were BLOCKed, including `env -C .pi git push`. |
-| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,98–108,125–150,169–174` |
-| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:20–30,85–96,140–178`; `src/guard/unwrap.ts:28,52–63`. **9 ALLOWed bypasses, see CRITICAL 1–3.** |
-| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; nothing under `src/tools/` imports or calls it |
-| context-injection / Phase card content | MODIFIED | Pass | `src/hooks/phase-card.ts:47–49,75–88`; `src/evidence/card.ts:12–23` |
+| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:19–35`; `src/content/manager.ts:60–78,108–142` |
+| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–78`; `src/extension.ts:103–114` |
+| command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–218`; `src/guard/classify.ts:31–51,149–152` |
+| command-guards / Push and pull request commands | ADDED | **Fail** | `src/guard/classify.ts:125–227`; `src/guard/rules.ts:140–145,202–213`. The wrapper scanner `src/guard/unwrap.ts:23,31–43,72–77` does not resolve GNU abbreviated long options. **See CRITICAL 2.** |
+| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,98–108,125–174,190–195` |
+| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:37–152,172–240`. Recursive `cp` into an ancestor of `.pi/livespec` is missed (`src/guard/paths.ts:187–208`). **See CRITICAL 1.** |
+| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; `tests/guard/push-callers.test.ts` passed fresh; nothing under `src/tools/` imports it |
+| context-injection / Phase card content | MODIFIED | Pass | `src/hooks/phase-card.ts:47–49,75–88,124–138`; `src/evidence/card.ts:12–23` |
 | decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:17–39,66–103`; `src/evidence/signature.ts:8–55`; `src/decide/registry.ts:84` |
-| flow-engine / Change state from issue and git | MODIFIED | Pass | `src/engine/snapshot.ts:55–61,84–111` |
+| flow-engine / Change state from issue and git | MODIFIED | Pass | `src/engine/snapshot.ts:55–62,84–111,117–160` |
 | flow-engine / Next step | MODIFIED | Pass | `src/engine/state-types.ts:47–80`; `src/engine/next-step.ts:334–365` |
-| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:149–215,221–308` |
-| flow-engine / Named checks over LS-02 validators | MODIFIED | Pass | `src/engine/checks.ts:72–142`; `src/engine/registry.ts:50–86` |
-| flow-engine / Loop counters | MODIFIED | Pass | `src/engine/counters.ts:9–47`; `src/evidence/unit-state.ts:45–99` |
+| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:149–308` |
+| flow-engine / Named checks over LS-02 validators | MODIFIED | Pass | `src/engine/checks.ts:72–142`; `src/engine/registry.ts:50–108` |
+| flow-engine / Loop counters | MODIFIED | Pass | `src/engine/counters.ts:9–49`; `src/evidence/unit-state.ts:38–104` |
 | flow-pack / Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:20,43` |
-| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:14–47,137–183` |
-| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:118–141`; `src/interaction/complete-validate.ts:28–57` |
+| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:14–47,137–183,186–242` |
+| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:40–56,118–141`; `src/interaction/complete-validate.ts:28–57` |
 | settle-continuation / Settle conditions | ADDED | Pass | `src/hooks/settle.ts:39–51,103–119,128–139` |
 | settle-continuation / One continuation | ADDED | Pass | `src/hooks/settle.ts:24–25,119–125,141–144` |
 | settle-continuation / Incomplete marker | ADDED | Pass | `src/hooks/settle.ts:60–84,103–121` |
@@ -73,36 +78,32 @@ Iteration 4 closed the iteration-3 CRITICAL (`sed -i` with an attached `-e`/`-f`
 | unit-evidence / Valid red | ADDED | Pass | `src/evidence/red-green.ts:11–17`; `src/evidence/runner.ts:60–112` |
 | unit-evidence / Verifier pending | ADDED | Pass | `src/evidence/pending.ts:6–27`; `src/tools/unit-finish.ts:73–108` |
 | unit-evidence / Unit finish tool | ADDED | Pass | `src/tools/unit-finish.ts:50–62,111–129,144–200` |
-| unit-evidence / Receipt | ADDED | Pass | `src/evidence/records.ts:19–34,67–73`; `src/evidence/output.ts:88–99` |
-| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:38–99`; `src/tools/unit-finish.ts:137–162` |
+| unit-evidence / Receipt | ADDED | Pass | `src/evidence/records.ts:19–34,67–73`; `src/evidence/output.ts:88–118` |
+| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:38–104`; `src/tools/unit-finish.ts:137–162` |
 | unit-evidence / Verify red on base check | ADDED | Pass | `src/evidence/red-on-base.ts:25–103`; `src/evidence/worktree.ts:24–73` |
 | unit-evidence / Work in progress from started units | ADDED | Pass | `src/evidence/wip.ts:15–33` |
 
-**Guard probes (runtime).** The probes call `classifyCommand` with a GitHub target. Their files were deleted, and `git status` showed 0 lines afterwards.
+**Guard probes (parent, runtime).** The probes call `classifyCommand` with a GitHub target. Their files were deleted, and `git status` showed 0 lines afterwards.
 
-- Parent probe 1 (56 commands): all 47 protected or push forms were BLOCKed, and all 9 harmless forms were ALLOWed. The protected forms covered:
-  - redirects;
-  - `tee`, `cp`, `mv`, `rm`, `rmdir`, `ln`, `touch` and `install` in separate, attached and long-option variants;
-  - every `sed -i` and `perl -i` variant;
-  - `env -S` and `sh -c`/`flock -c` expansions;
-  - `cd` tracking.
-- Verifier probe (137 cases): 110 were BLOCKed and 27 ALLOWed. Of the ALLOWs, 8 were writes into the protected area.
-- Parent probe 2, confirming the verifier's candidates:
+- Probe 1, regression (99 commands): every command gave the expected result. 67 protected or push forms were BLOCKed, including every bypass fixed in iterations 1–5. 32 harmless or read-only forms were ALLOWed.
+- Probe 2, the verifier's candidates:
 
 ```text
-ALLOW  cp --target-dir=.pi/livespec other            <-- bypass (GNU long-option abbreviation)
-ALLOW  mv --target-dir=.pi/livespec other            <-- bypass
-ALLOW  ln --target-dir=.pi/livespec other            <-- bypass
-ALLOW  install --target-dir=.pi/livespec other       <-- bypass
-ALLOW  cp --target=.pi/livespec other                <-- bypass
-ALLOW  install -d .pi/livespec/new /tmp/other        <-- bypass (directory mode writes every operand)
-ALLOW  install --directory .pi/livespec/new /tmp/other  <-- bypass
-ALLOW  env -C .pi rm livespec/flow.yaml              <-- bypass (wrapper changes cwd)
-ALLOW  env --chdir=.pi tee livespec/flow.yaml        <-- bypass
-BLOCK  env -C .pi git push                           (push rule unaffected)
-BLOCK  cp --target-directory=.pi/livespec other
-ALLOW  install -d /tmp/a /tmp/b · env -C /tmp rm x   (harmless, correct)
+ALLOW  cp -r incoming/livespec .pi        <-- bypass: creates or overwrites .pi/livespec/*
+ALLOW  cp -a incoming/.pi .               <-- bypass
+ALLOW  cp -r -t .pi incoming/livespec     <-- bypass
+ALLOW  cp -R x/livespec .pi/              <-- bypass
+ALLOW  mv incoming/livespec .pi           <-- bypass when .pi/livespec is absent or empty (writes the folder)
+ALLOW  nice --adjust 5 git push           <-- bypass on GNU nice (prefix of --adjustment)
+ALLOW  timeout --kill-a 1 5 git push      <-- bypass on GNU timeout (prefix of --kill-after)
+ALLOW  env --split-s 'git push'           <-- bypass on GNU env (prefix of --split-string)
+ALLOW  xargs --max-a 1 git push           <-- bypass on GNU xargs (prefix of --max-args)
+BLOCK  nice --adjustment=5 git push · timeout --kill-after 1 5 git push · env --split-string='git push' · sudo --user me git push
+BLOCK  env --ch=.pi rm livespec/flow.yaml (write-command normalization covers env's chdir)
+ALLOW  cp -r src dst · nice -n 5 make · cp -a .pi/livespec /tmp/backup   (harmless, correct)
 ```
+
+The BSD `nice` and `env` on this macOS host reject the abbreviations, and `timeout` is not installed here. The spec does not limit the guard to one platform, and GNU coreutils accept these forms on Linux. So, consistent with iteration 4 (where the `--target-dir` abbreviation was CRITICAL), they are bypasses. `rsync` is outside the spec's command list, so it is not a finding.
 
 ---
 
@@ -111,8 +112,8 @@ ALLOW  install -d /tmp/a /tmp/b · env -C /tmp rm x   (harmless, correct)
 - [x] Every scenario maps to a test. The verifier found an exact quoted title under `tests/` for all 125 scenarios; none are missing.
 - [x] The project test command was run fresh in this step.
 
-**Test command**: `bun run test` (vitest run), fresh, cwd = worktree, HEAD `a2cee35`. It ran from 17:44 to 17:45, at load averages 75 to 125.
-**Result**: exit 0, 136 files and 1949 tests passed, 0 failed (`/tmp/ls06/v4-test.log`). `bun run typecheck` also exited 0.
+**Test command**: `bun run test` (vitest run), fresh, cwd = worktree, HEAD `d6b4444`. It ran from 19:15 to 19:16, at load averages 6 to 26.
+**Result**: exit 0, 136 files and 1988 tests passed, 0 failed (`/tmp/ls06/v5-test.log`). `bun run typecheck` also exited 0.
 
 | Capability | Scenarios | Mapped |
 |---|---|---|
@@ -132,7 +133,13 @@ ALLOW  install -d /tmp/a /tmp/b · env -C /tmp rm x   (harmless, correct)
 ## 5. Design and Contract Coherence (warning only)
 
 - [x] Decisions in design.md match the code.
-- [x] Contracts in plan.md, together with the Contract deviations recorded in apply.md, match the code: **41/41 matched**, with 0 drift and 0 not verified. This includes the iteration-4 deviation: the fourth `scanOptions` parameter `attachedOnly` (`src/guard/options.ts:17,50–59`), which only sed and perl use (`src/guard/paths.ts:165–178`). `protectedWrite` and `isLivespecPath` keep their signatures (`src/guard/paths.ts:36,44`).
+- [x] Contracts in plan.md, together with the Contract deviations recorded in apply.md, match the code: **41/41 matched**, with 0 drift and 0 not verified. The iteration-5 deviations also match:
+  - `src/guard/writeoptions.ts:10–51` (`normalizeLongOptions`, `hasUnknownOption`);
+  - `chdirValues` at `src/guard/unwrap.ts:61–79`;
+  - `DirectoryCandidates.scoped` at `src/guard/paths.ts:102–109`, used at `src/guard/classify.ts:126`;
+  - the unmodelled-option fallback at `src/guard/paths.ts:112–121,194–198`.
+
+`protectedWrite`, `isLivespecPath` and `classifyCommand` keep their signatures.
 
 **Drift warnings** (non-blocking): None.
 
@@ -142,7 +149,7 @@ ALLOW  install -d /tmp/a /tmp/b · env -C /tmp rm x   (harmless, correct)
 
 - [x] The working tree is clean: `git status --porcelain` printed 0 lines before and after every probe.
 
-**Commit range**: `af3e9f6..a2cee35`, 63 commits.
+**Commit range**: `af3e9f6..d6b4444`, 67 commits.
 
 ---
 
@@ -150,20 +157,19 @@ ALLOW  install -d /tmp/a /tmp/b · env -C /tmp rm x   (harmless, correct)
 
 **CRITICAL**
 
-1. **A GNU long-option abbreviation of `--target-directory` bypasses the guard.**
-   - **Where:** `src/guard/paths.ts:20–27,157–161`.
-   - **What:** `cp`, `mv`, `ln` and `install` with `--target-dir=…` or `--target=…` are ALLOWed. `TARGET_DIR` matches only the exact `--target-directory`. GNU getopt accepts any unambiguous prefix.
-   - **Recommendation:** these commands write, so treat any long option of theirs that is a prefix of `--target-directory` as the target directory. Also see the structural recommendation below.
-2. **`install -d` / `--directory` bypasses the guard.**
-   - **Where:** `src/guard/paths.ts:18,145,157–161`.
-   - **What:** in directory mode `install` creates every operand, but the guard always treats only the last operand as the destination. So `install -d .pi/livespec/new /tmp/other` is ALLOWed.
-   - **Recommendation:** when `-d` or `--directory` (or a prefix of it) is present, treat every operand as written.
-3. **`env -C DIR` / `env --chdir=DIR` bypass the cwd tracking.**
-   - **Where:** `src/guard/unwrap.ts:28,52–63` and `src/guard/paths.ts:55–57,94–96`.
-   - **What:** the unwrapper drops `env` and its chdir option, but path analysis keeps the original cwd. So `env -C .pi rm livespec/flow.yaml` is ALLOWed.
-   - **Recommendation:** make the wrapper's chdir a candidate directory for the wrapped command only, scoped to that child invocation. Fail closed when the directory is an expansion.
+1. **A recursive copy into an ancestor of `.pi/livespec` writes the protected tree.**
+   - **Where:** `src/guard/paths.ts:187–208` (`lastPathTargets`).
+   - **What:** the guard checks only the destination operand (`.pi`, `.`) or the `-t` value, not the subtree that `cp -r SRC DEST` creates as `DEST/basename(SRC)`. `cp -r incoming/livespec .pi`, `cp -a incoming/.pi .` and `cp -r -t .pi incoming/livespec` are ALLOWed, and so is `mv incoming/livespec .pi`.
+   - **Recommendation:** for `cp`/`mv`/`ln`/`install`, also check `DEST/basename(SRC)` for each source when the destination is an existing directory or ends in `/`. Or fail closed: block when the destination resolves to an ancestor of `.pi/livespec` (`isLivespecAncestor`) and a source basename is `livespec` or `.pi`, or when the copy is recursive. Add regressions for the four `cp` forms and the `mv` form, plus `cp -r src dst` (allowed).
+2. **GNU abbreviated long options on wrappers hide `git push`.**
+   - **Where:** `src/guard/unwrap.ts:23,31–43,72–77`.
+   - **What:** iteration 5 resolved unique-prefix long options only for write commands. The wrapper table matches full names only, so the value of an abbreviated valued option is read as the wrapped command. `nice --adjust 5 git push`, `timeout --kill-a 1 5 git push`, `env --split-s 'git push'` and `xargs --max-a 1 git push` are ALLOWed.
+   - **Recommendation:** reuse `normalizeLongOptions` from `src/guard/writeoptions.ts` per wrapper, with each wrapper's long-option list. Or fail closed: when a wrapper carries an unknown long option and the remaining words contain a dangerous token (`push`, `pr`), block. Add regressions for the four forms above and keep `nice -n 5 make` allowed.
 
-**Structural recommendation for iteration 5** (the last allowed). Four iterations have each found the next option-parsing edge case in the same requirement. A denylist parser keeps chasing GNU CLI corners. To converge, add one fail-closed rule in `src/guard/paths.ts`: for a write command (`tee`, `cp`, `mv`, `rm`, `rmdir`, `ln`, `touch`, `install`, `sed -i`, `perl -i`, and `env`/wrappers that change cwd), when any argument mentions `livespec` or an ancestor of `.pi/livespec` and the command has an option the per-command table does not model, block the command. Then fix CRITICAL 1–3 explicitly, with regression tests for each command above and its harmless counterparts. Read-only uses stay allowed, for example `cp .pi/livespec/flow.yaml /tmp/x`, `sed -n p …` and `cat …`.
+**Recurring pattern.** Five iterations in a row each found the next option-parsing corner of GNU CLIs in the same two requirements, so the denylist guard has not converged. A lasting fix is a design decision for the user. Options:
+- **(a)** A blanket fail-closed rule: any bash command whose words contain both a write command or wrapper and the token `livespec`, `.pi` or `push`, and that the guard cannot fully model, is blocked.
+- **(b)** Record the remaining classes as accepted limits in the spec and in `docs/architecture.md`. The guard is a guardrail against agent mistakes, not a sandbox.
+- **(c)** Both.
 
 **WARNING**
 
@@ -171,7 +177,7 @@ None.
 
 **SUGGESTION**
 
-None.
+1. `env -C /tmp cd .pi/livespec; rm flow.yaml` is blocked although it is safe. The cause is `src/guard/classify.ts:104–108` and `src/guard/paths.ts:126–128`: `follow(effectiveWords(cmd))` treats a wrapped `cd` as changing the outer shell's directory. This over-blocking is fail-closed and predates iteration 5. Skip `follow` when `effectiveWords` differs from `cmd.words`.
 
 ---
 
@@ -183,7 +189,7 @@ None.
 
 **Next step**:
 
-Run `/opsx-apply` for fix iteration 5, the last one allowed. Fix CRITICAL 1–3 and add the structural fail-closed rule above. Then run `/opsx-verify`. This was iteration 4 of 5. If verify at iteration 5 still returns FAIL, the loop stops and the remaining items go to the user.
+**The fix loop has reached its limit**: this is verify iteration 5 of 5, and the loop does not continue on its own. The user decides how to proceed with CRITICAL 1–2 and the recurring pattern above. See the options in the session report.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
