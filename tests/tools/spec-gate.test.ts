@@ -434,3 +434,15 @@ describe("spec_gate", () => {
 		expect(textOf(out)).toContain("neither the current phase");
 	});
 });
+
+describe("spec_gate gate-only checks", () => {
+	test("a gate-only check runs before the refusals and its result reaches the refusal", async () => {
+		registerCheck("verify-red-on-base", async () => [{ code: "verify-red-on-base", severity: "error", message: "U1 is green on Base" }], { at: "gate", key: () => "k" });
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("verify-red-on-base");
+		expect(await ofKind(h, "gate")).toEqual([]);
+	});
+});

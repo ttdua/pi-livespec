@@ -1,6 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
+import { gateMemoGeneration } from "../../src/engine/registry.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { gitStatus } from "../helpers/repo.ts";
 import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
@@ -215,5 +216,17 @@ describe("resume entry renderer", () => {
 			expect(lines.length).toBeGreaterThan(1);
 			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
+	});
+});
+
+describe("gate memo scope", () => {
+	test("session_start and session_shutdown clear the gate memo", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		const before = gateMemoGeneration();
+		await h.start();
+		expect(gateMemoGeneration()).toBeGreaterThan(before);
+		const started = gateMemoGeneration();
+		await h.pi.fire("session_shutdown", {}, h.ctx);
+		expect(gateMemoGeneration()).toBeGreaterThan(started);
 	});
 });
