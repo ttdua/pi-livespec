@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `unit-evidence-and-guards`
-**Iteration**: `4`
-**Applied at**: `2026-11-17 17:41`
+**Iteration**: `5`
+**Applied at**: `2026-11-17 18:54`
 **Executor**: `subagent-driven-development`. Implementer seats used the `implementer` agent, and task and final reviews used the `code-reviewer` agent. Models came from the agent config, with no override.
 
 ---
@@ -22,8 +22,11 @@
 
 ## Commits
 
-- **Range**: `af3e9f6..9c71c53`. This covers the lane merges, the `tasks.md` ticks, the final-review fix wave, every verify and apply receipt, and the fixes from iterations 2–4. The `apply.md` commit itself comes after `9c71c53`.
-- **Count**: `62`
+- **Range**: `af3e9f6..c6812cf`. This covers the lane merges, the `tasks.md` ticks, the final-review fix wave, every verify and apply receipt, and the fixes from iterations 2–5. The `apply.md` commit itself comes after `c6812cf`.
+- **Count**: `66`
+- **Iteration 5 range**: `9c01953..c6812cf`, 2 commits. They fixed verify iteration 4 (FAIL):
+  - `ed6b882` resolves GNU long-option abbreviations for write commands. It also makes `install -d`/`--directory` write every operand, applies the `env -C`/`--chdir` and `sudo -D`/`--chdir` directory to the command they wrap, and blocks a write command when it has an option the guard does not model and an argument that mentions livespec.
+  - `c6812cf` carries the wrapper directory into nested scripts (`sh -c`, `env -S`). It also lists perl's known options explicitly, so the unknown `-x` triggers the block above, and checks redirects against the outer working directory.
 - **Iteration 4 range**: `3b8204f..9c71c53`, 2 commits. They fixed verify iteration 3 (FAIL):
   - `0342836` moves write-command option parsing in `src/guard/paths.ts` to the shared `scanOptions`.
   - `9c71c53` makes the `-i` suffix attached-only for sed and perl, and makes the `mv`/`cp`/`ln`/`install` target directory count as a write target.
@@ -58,6 +61,11 @@ These are all internal contracts (`public: no`) unless noted. No public contract
 - `testOnlyCommitCheck`: gains a third parameter (the pending test files) and a `missing` result, so a commit that touches no pending test is refused.
 - `Git.parents()`: added to refuse a merge commit as the pending first commit.
 - `stripWrappers`: may return `{ script }`, for `env -S` and `flock -c`.
+- Iteration 5 changes. All are internal; `protectedWrite`, `isLivespecPath` and `classifyCommand` keep their signatures.
+  - New module `src/guard/writeoptions.ts`. It exports `normalizeLongOptions`, which resolves GNU unique-prefix long options, and `hasUnknownOption`. Each write command has a list of known options.
+  - `src/guard/unwrap.ts` exports `chdirValues`, the `env`/`sudo` directory options met along a wrapper chain. `stripWrappers` is unchanged.
+  - `DirectoryCandidates` gets a public `scoped(words)` method that returns directory candidates for one wrapped invocation. `classify.ts` `checkWords` uses it for nested scripts.
+  - The guard blocks a write command (`tee`, `rm`, `rmdir`, `touch`, `mv`, `cp`, `ln`, `install`, `sed -i`, `perl -i`) when it has an unmodelled option and an argument that mentions livespec or is an ancestor of `.pi/livespec`. For `perl -i`, an argument that mentions `.pi` also counts. Read-only uses stay allowed.
 - Iteration 4 changes:
   - `scanOptions` in `src/guard/options.ts` gains an optional fourth parameter, `attachedOnly: ReadonlySet<string>`, which defaults to an empty set. A name in that set takes the rest of its word as its value, scans no further and never consumes the next word. Every existing caller behaves as before.
   - `src/guard/paths.ts` drops its ad-hoc `operands()`, `optionArgument()` and `isShort`. Every write command now uses `scanOptions`, with a valued-option table per command.
@@ -105,6 +113,14 @@ Iteration 3 (fix iteration after verify iteration 2 FAIL):
 |---|---|---|---|---|
 | CRITICAL 1 (`env -S` expansion with a livespec path), CRITICAL 2 (suite stability under load), SUGGESTION (pgrep marker) | `sequential` | `878d376..bd4fe09` | approved, 1 round (scoped re-review `fa735f56`) | — (committed on `unit-evidence-and-guards`) |
 
+Iteration 5 (fix iteration after verify iteration 4 FAIL):
+
+| Item | Lane | Range | Review | Merge commit |
+|---|---|---|---|---|
+| CRITICAL 1 (`--target-dir` abbreviations), CRITICAL 2 (`install -d`), CRITICAL 3 (`env -C`/`--chdir`), plus the structural block on unmodelled options. Round 1 review found three gaps: the nested wrapper directory, perl's catch-all option list (`-xDIR`) and redirects resolved in the wrapper directory. | `sequential` | `9c01953..c6812cf` | approved after 2 rounds; scoped re-reviews `6b4807a1` and `12f48ccd` | — (committed on `unit-evidence-and-guards`) |
+
+The controller probed `classifyCommand` at runtime on c6812cf with 99 cases, and every case gave the expected result. 67 protected or push forms are BLOCKed. 32 harmless or read-only forms are ALLOWed. One remaining case is non-blocking and predates this change: `env -C /tmp cd .pi/livespec; rm flow.yaml` is blocked although it is safe, because the guard treats a wrapped `cd` as changing the outer shell's directory.
+
 Iteration 4 (fix iteration after verify iteration 3 FAIL):
 
 | Item | Lane | Range | Review | Merge commit |
@@ -115,12 +131,12 @@ The controller probed `classifyCommand` at runtime on 3b8204f, 0342836 and 9c71c
 
 Final whole-branch review: **With fixes**, with 2 Important and 6 Minor findings. One fix wave followed on `unit-evidence-and-guards` (`4b4c771..d18db6d`, sequential). The scoped re-review found I1 and M3–M7 addressed. It left three guard gaps open: `env -S` split-string escapes, `flock` options after the lock operand, and an attached `mv -tDIR .pi`. Verify iteration 1 reported them, and iteration 2 closed all three.
 
-Integration evidence on `9c71c53`, from the controller at 17:39–17:41:
+Integration evidence on `c6812cf`, from the controller at 18:52–18:54:
 - `bun run typecheck` exited 0.
-- `bun run test` passed twice in a row. Both runs exited 0, with 136 files and 1949 tests passed. Load averages were 29 for the first run and 106 for the second.
+- `bun run test` passed twice in a row. Both runs exited 0, with 136 files and 1988 tests passed. Load averages were 8 for the first run and 26 for the second.
 
 ---
 
 ## Next step
 
-Run `/opsx-verify` (iteration 4).
+Run `/opsx-verify` (iteration 5, the last allowed).
