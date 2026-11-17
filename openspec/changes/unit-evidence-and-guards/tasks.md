@@ -12,12 +12,12 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 Add `src/evidence/records.ts`: register kind `unit-start`, and build and parse the `unit-start` and `receipt` data (design D2) with their marker ids
-- [ ] 2.2 Add `src/evidence/signature.ts`: failing test names (vitest/jest, go test, pytest, TAP) and the normalized sha256 hash
-- [ ] 2.3 Add `src/evidence/progress-rule.ts`, the `progressRecord` builder, and `progress` in `registerBuiltinRules`. Add the optional `signature` and `attempt` fields to `DecisionRecord` and keep them in `compactFacts`
-- [ ] 2.4 Add `src/evidence/unit-state.ts` `deriveUnitEvidence(change, marked, cap)`, which gives started, receipts, attempts, blocked with a reason, and unticked receipts. Export `liftsCap` from `src/engine/iterations.ts` and reuse it
-- [ ] 2.5 Add `src/evidence/pending.ts`: test-file patterns, the pending decision, and the test-only commit check over git facts
-- [ ] 2.6 Unit tests for each pure module
+- [x] 2.1 Add `src/evidence/records.ts`: register kind `unit-start`, and build and parse the `unit-start` and `receipt` data (design D2) with their marker ids
+- [x] 2.2 Add `src/evidence/signature.ts`: failing test names (vitest/jest, go test, pytest, TAP) and the normalized sha256 hash
+- [x] 2.3 Add `src/evidence/progress-rule.ts`, the `progressRecord` builder, and `progress` in `registerBuiltinRules`. Add the optional `signature` and `attempt` fields to `DecisionRecord` and keep them in `compactFacts`
+- [x] 2.4 Add `src/evidence/unit-state.ts` `deriveUnitEvidence(change, marked, cap)`, which gives started, receipts, attempts, blocked with a reason, and unticked receipts. Export `liftsCap` from `src/engine/iterations.ts` and reuse it
+- [x] 2.5 Add `src/evidence/pending.ts`: test-file patterns, the pending decision, and the test-only commit check over git facts
+- [x] 2.6 Unit tests for each pure module
 
 ## 3. Verify runner, temporary worktrees, run classification, Git additions and config
 
