@@ -7,6 +7,8 @@ import type { Forge } from "../forge/types.ts";
 export const COUNTER_KIND = "counter";
 /** Derived from own `stale` comments (src/engine/iterations.ts); a counter comment for it is ignored. */
 const DERIVED_COUNTERS = new Set(["change_iterations"]);
+/** Derived from `progress` decision records (src/evidence/unit-state.ts); a counter comment for it is ignored. */
+const DERIVED_PREFIX = "unit_attempts.";
 
 function counterValue(data: unknown): number | undefined {
 	if (typeof data !== "object" || data === null) return undefined;
@@ -21,7 +23,7 @@ function counterValue(data: unknown): number | undefined {
 export function readCounters(marked: MarkedComment[]): Record<string, number> {
 	const counters: Record<string, number> = {};
 	for (const m of marked) {
-		if (m.kind !== COUNTER_KIND || DERIVED_COUNTERS.has(m.id)) continue;
+		if (m.kind !== COUNTER_KIND || DERIVED_COUNTERS.has(m.id) || m.id.startsWith(DERIVED_PREFIX)) continue;
 		const value = counterValue(m.data);
 		if (value !== undefined) counters[m.id] = value;
 	}

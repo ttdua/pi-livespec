@@ -25,6 +25,7 @@ export function stateFor(phase: string, overrides: Partial<ChangeState> = {}, bo
 		lock: { locked: undefined, frozen: [], staleUnits: [], gates: {} },
 		iterations: { count: 0, cap: undefined, blocking: false, stuckOpen: undefined },
 		commandWarnings: [],
+		evidence: { started: {}, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
 		...overrides,
 	};
 }

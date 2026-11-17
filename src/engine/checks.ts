@@ -12,7 +12,8 @@ import { validateSpec } from "../core/validate-spec.ts";
 import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts";
 import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
-import { type CheckContext, type CheckFn, getCheck, registerCheck } from "./registry.ts";
+import { resolveGateTarget } from "./gates.ts";
+import { type CheckContext, type CheckFn, gateKey, gateMemoGeneration, getCheck, isGateOnly, registerCheck, storedGateResults, storeGateResults } from "./registry.ts";
 import type { ChangeState, CheckResult } from "./state-types.ts";
 import { unitClassification } from "./unit-classification.ts";
 
@@ -92,26 +93,48 @@ async function runOne(name: string, ctx: CheckContext): Promise<Result[]> {
 	}
 }
 
+/** The names of the checks to run: those of `target` for a gate request, else those of the active phase. */
+function checkNamesToRun(pack: Pack, state: Omit<ChangeState, "checks">, target: string | undefined): string[] {
+	if (state.phase.kind !== "ok") return [];
+	const phaseId = state.phase.id;
+	const phase = pack.phases.find((p) => p.id === phaseId);
+	if (!phase) return [];
+	if (target === undefined) return phase.checks;
+	const resolved = resolveGateTarget({ ...state, checks: [] }, pack, target);
+	if (resolved === undefined) return [];
+	return resolved.kind === "phase" ? resolved.phase.checks : resolved.gate.checks;
+}
+
+/** One check's tagged results: a gate-only check runs on a gate request and otherwise reports its stored results. */
+async function resultsOf(name: string, ctx: CheckContext, gate: boolean): Promise<CheckResult[]> {
+	if (!isGateOnly(name)) return tag(name, await runOne(name, ctx));
+	const key = gateKey(name, ctx);
+	if (!gate) return storedGateResults(name, key);
+	const generation = gateMemoGeneration();
+	const results = tag(name, await runOne(name, ctx));
+	// A memo cleared while the check ran must not get these results back.
+	if (key !== undefined && generation === gateMemoGeneration()) storeGateResults(name, key, results);
+	return results;
+}
+
+// The registered name is applied last, so a result cannot claim another check's name.
+const tag = (name: string, produced: Result[]): CheckResult[] => produced.map((r) => ({ ...r, check: name }));
+
 /**
  * Runs the checks the active phase lists, in pack order, and concatenates their results.
  * Each result is tagged with the name of the check that produced it. No check runs without a single
  * known phase. A listed name that is not registered, or a check that throws, is an error Result.
+ * With `gate`, the checks of `target` (the phase or a named gate) run, gate-only ones included.
  */
 export async function runChecks(
 	pack: Pack,
 	state: Omit<ChangeState, "checks">,
 	ctx: { root: string; git: Git },
+	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
-	if (state.phase.kind !== "ok") return [];
-	const phaseId = state.phase.id;
-	const phase = pack.phases.find((p) => p.id === phaseId);
-	if (!phase) return [];
+	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);
 	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked };
 	const results: CheckResult[] = [];
-	for (const name of phase.checks) {
-		const produced = await runOne(name, checkCtx);
-		// The registered name is applied last, so a result cannot claim another check's name.
-		for (const result of produced) results.push({ ...result, check: name });
-	}
+	for (const name of names) results.push(...(await resultsOf(name, checkCtx, opts.gate === true)));
 	return results;
 }

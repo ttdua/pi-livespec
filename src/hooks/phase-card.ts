@@ -84,7 +84,7 @@ function changeLines(step: NextStep, state: ChangeState): string[] {
 		...listLines("Blocking questions", step.blockingQuestions.map((q) => `${q.id}: ${untrusted(q.text)}`)),
 		...inlineLine("Counters", step.counters.map(counterText)),
 		...inlineLine("Active units", step.activeUnits),
-		...inlineLine("Incomplete", step.incomplete),
+		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
 	];
 }
 
