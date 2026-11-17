@@ -71,9 +71,9 @@ Blocked by: 2
 
 Blocked by: 1, 4, 5, 6, 7
 
-- [ ] 8.1 Add `src/guard/push.ts` `guardedPush`, unused by tools, and a test that no file under `src/tools/` imports it
-- [ ] 8.2 Add `src/hooks/guard.ts`: the `tool_call` handler for `bash`, `write` and `edit`, with forge endpoints and git aliases from the session. It fails closed and is registered before the context hook. Make `tests/hooks/fake-pi.ts` stop at a blocking `tool_call` result, as pi does
-- [ ] 8.3 Add `src/hooks/settle.ts`: `agent_before_settle` and `agent_settled`, `registerSettleCondition`, one continuation, the `incomplete` comment written and cleared in place in every phase, and read-only handling
-- [ ] 8.4 Wire the hooks, tools, rule, card, check and predicate in `src/extension.ts`
-- [ ] 8.5 Hook tests with `tests/hooks/fake-pi.ts` for every command-guards hook scenario and every settle-continuation scenario, plus an end-to-end build test: start red, finish green, receipt, tick, a blocked `gh issue edit` and a blocked `git push`
-- [ ] 8.6 Update `docs/architecture.md`: evidence, guards, settle, the accepted limits (script files, pushes outside pi, executors without the extension), and the two closed known gaps
+- [x] 8.1 Add `src/guard/push.ts` `guardedPush`, unused by tools, and a test that no file under `src/tools/` imports it
+- [x] 8.2 Add `src/hooks/guard.ts`: the `tool_call` handler for `bash`, `write` and `edit`, with forge endpoints and git aliases from the session. It fails closed and is registered before the context hook. Make `tests/hooks/fake-pi.ts` stop at a blocking `tool_call` result, as pi does
+- [x] 8.3 Add `src/hooks/settle.ts`: `agent_before_settle` and `agent_settled`, `registerSettleCondition`, one continuation, the `incomplete` comment written and cleared in place in every phase, and read-only handling
+- [x] 8.4 Wire the hooks, tools, rule, card, check and predicate in `src/extension.ts`
+- [x] 8.5 Hook tests with `tests/hooks/fake-pi.ts` for every command-guards hook scenario and every settle-continuation scenario, plus an end-to-end build test: start red, finish green, receipt, tick, a blocked `gh issue edit` and a blocked `git push`
+- [x] 8.6 Update `docs/architecture.md`: evidence, guards, settle, the accepted limits (script files, pushes outside pi, executors without the extension), and the two closed known gaps
