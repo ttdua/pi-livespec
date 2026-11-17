@@ -1,6 +1,6 @@
 // A fake ExtensionAPI: records `pi.on` handlers, commands, tools and sent
 // messages, and fires events the way pi does (handlers in registration order,
-// the last defined result wins).
+// the last defined result wins; a blocking `tool_call` result stops the chain).
 
 import { vi } from "vitest";
 
@@ -60,12 +60,17 @@ export class FakePi {
 		},
 	};
 
-	/** Runs every handler of `event` in order and returns the last defined result. */
+	/**
+	 * Runs every handler of `event` in order and returns the last defined result. As in pi's runner,
+	 * a `tool_call` handler returning `block: true` stops the chain: later handlers never see the call.
+	 */
 	async fire(event: string, payload: unknown, ctx: unknown): Promise<unknown> {
 		let result: unknown;
 		for (const handler of this.handlers.get(event) ?? []) {
 			const out = await handler(payload, ctx);
-			if (out !== undefined) result = out;
+			if (out === undefined) continue;
+			result = out;
+			if (event === "tool_call" && (out as { block?: unknown }).block === true) return out;
 		}
 		return result;
 	}
