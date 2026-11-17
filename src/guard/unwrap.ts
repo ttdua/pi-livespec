@@ -24,8 +24,12 @@ const ENV_SPLIT = set("-S", "--split-string");
 const FLOCK_COMMAND = set("-c", "--command");
 const FLOCK_VALUED = set("-w", "--wait", "--timeout", "-E", "--conflict-exit-code", ...FLOCK_COMMAND);
 
+const CHDIR_LONG = ["--ch", "--chd", "--chdi", "--chdir"];
+/** Per wrapper, the options that change the directory the wrapped command runs in. */
+const CHDIR_OPTIONS: Record<string, ReadonlySet<string>> = { env: set("-C", ...CHDIR_LONG), sudo: set("-D", ...CHDIR_LONG) };
+
 const WRAPPERS: ReadonlyMap<string, Wrapper> = new Map<string, Wrapper>([
-	["env", { valued: set("-u", "--unset", "-C", "--chdir", ...ENV_SPLIT), skipOperands: (ops) => countWhile(ops, (w) => ASSIGNMENT_WORD.test(w.text)), script: envSplitScript }],
+	["env", { valued: set("-u", "--unset", "-C", ...CHDIR_LONG, ...ENV_SPLIT), skipOperands: (ops) => countWhile(ops, (w) => ASSIGNMENT_WORD.test(w.text)), script: envSplitScript }],
 	["command", { valued: set() }],
 	["exec", { valued: set("-a") }],
 	["nice", { valued: set("-n", "--adjustment") }],
@@ -37,7 +41,7 @@ const WRAPPERS: ReadonlyMap<string, Wrapper> = new Map<string, Wrapper>([
 	["flock", { valued: FLOCK_VALUED, skipOperands: () => 1, script: flockScript }],
 	["time", { valued: set("-f", "-o", "--format", "--output") }],
 	["timeout", { valued: set("-s", "-k", "--signal", "--kill-after"), skipOperands: () => 1 }],
-	["sudo", { valued: set("-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--command-timeout", "--close-from") }],
+	["sudo", { valued: set("-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", ...CHDIR_LONG, "--role", "--type", "--other-user", "--command-timeout", "--close-from") }],
 	["xargs", { valued: set("-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a", "--max-args", "--max-procs", "--max-chars", "--delimiter", "--arg-file", "--max-lines", "--replace", "--eof") }],
 ]);
 
@@ -50,17 +54,29 @@ export function commandName(w: Word | undefined): string {
 
 /** The words of the command a wrapper chain runs, or the script a wrapper runs; "too-deep" beyond UNWRAP_DEPTH. */
 export function stripWrappers(words: Word[]): Unwrapped {
+	return walkWrappers(words).result;
+}
+
+/** The directory values of `env -C`/`--chdir` and `sudo -D`/`--chdir` met along the wrapper chain, outermost first. */
+export function chdirValues(words: Word[]): Word[] {
+	return walkWrappers(words).chdirs;
+}
+
+function walkWrappers(words: Word[]): { result: Unwrapped; chdirs: Word[] } {
+	const chdirs: Word[] = [];
 	let current = words;
 	for (let level = 0; level <= UNWRAP_DEPTH; level++) {
 		const head = current[0];
 		const wrapper = head && !head.expansion ? WRAPPERS.get(commandName(head)) : undefined;
-		if (!wrapper) return current;
+		if (!wrapper) return { result: current, chdirs };
 		const scanned = scanOptions(current.slice(1), wrapper.valued, true);
+		const chdir = CHDIR_OPTIONS[commandName(head)];
+		if (chdir) chdirs.push(...optionValues(scanned, chdir));
 		const script = wrapper.script?.(scanned);
-		if (script) return { script };
+		if (script) return { result: { script }, chdirs };
 		current = scanned.operands.slice(wrapper.skipOperands?.(scanned.operands) ?? 0);
 	}
-	return "too-deep";
+	return { result: "too-deep", chdirs };
 }
 
 /** `env -S <string> [args…]`: env splits the string by its own rules (not the shell's); the operands follow it. */

@@ -109,3 +109,42 @@ describe("protectedWrite", () => {
 		}
 	});
 });
+
+describe("protectedWrite option modelling", () => {
+	const cases: Record<string, string | undefined> = {
+		"cp --target-dir=.pi/livespec other": ".pi/livespec",
+		"mv --target-dir=.pi/livespec other": ".pi/livespec",
+		"ln --target-dir=.pi/livespec other": ".pi/livespec",
+		"install --target-dir=.pi/livespec other": ".pi/livespec",
+		"cp --target=.pi/livespec other": ".pi/livespec",
+		"cp --target-dir .pi/livespec other": ".pi/livespec",
+		"install -d .pi/livespec/new /tmp/other": ".pi/livespec/new",
+		"install --directory .pi/livespec/new /tmp/other": ".pi/livespec/new",
+		"install --dir .pi/livespec/new /tmp/other": ".pi/livespec/new",
+		"env -C .pi rm livespec/flow.yaml": "livespec/flow.yaml",
+		"env --chdir=.pi tee livespec/flow.yaml": "livespec/flow.yaml",
+		"env --chdir .pi touch livespec/x": "livespec/x",
+		"sudo -D .pi rm livespec/flow.yaml": "livespec/flow.yaml",
+		"sudo --chdir=.pi rm livespec/flow.yaml": "livespec/flow.yaml",
+		'env -C "$D" rm livespec/flow.yaml': "livespec/flow.yaml",
+		"env -C ~/x rm livespec/flow.yaml": "livespec/flow.yaml",
+		"cp --some-unknown-opt x .pi/livespec/flow.yaml": ".pi/livespec/flow.yaml",
+		"sed -i --zzz s/a/b/ .pi/livespec/flow.yaml": ".pi/livespec/flow.yaml",
+		"install -d /tmp/a /tmp/b": undefined,
+		"env -C /tmp rm x": undefined,
+		"env -C .pi cat livespec/flow.yaml": undefined,
+		"cp --target-dir=/tmp other": undefined,
+		"cp -a .pi/livespec /tmp/backup": undefined,
+		"cp -r .pi/livespec /tmp/backup": undefined,
+		"cp --preserve=mode .pi/livespec/flow.yaml /tmp/x": undefined,
+		"sed -n p .pi/livespec/flow.yaml": undefined,
+		"perl -ne print .pi/livespec/flow.yaml": undefined,
+	};
+	for (const [text, expected] of Object.entries(cases)) {
+		it(text, () => expect(protectedWrite(commands(text), root)).toBe(expected));
+	}
+
+	it("a wrapper directory does not leak into the next command", () => {
+		expect(protectedWrite(commands("env -C .pi true; rm livespec/x"), root)).toBeUndefined();
+	});
+});

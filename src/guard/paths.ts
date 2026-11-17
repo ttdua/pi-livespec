@@ -6,7 +6,8 @@ import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ShellCommand, Word } from "./shell.ts";
 import { optionValues, type Scanned, scanOptions, set } from "./options.ts";
-import { commandName, stripWrappers } from "./unwrap.ts";
+import { chdirValues, commandName, stripWrappers } from "./unwrap.ts";
+import { hasUnknownOption, normalizeLongOptions } from "./writeoptions.ts";
 
 const LIVESPEC_DIR = join(".pi", "livespec");
 const CD_COMMANDS = new Set(["cd", "pushd"]);
@@ -85,10 +86,33 @@ export class DirectoryCandidates {
 
 	/** The first write target of `cmd` (whose effective words are `words`) under `.pi/livespec/`. */
 	protectedTarget(cmd: ShellCommand, words: Word[]): string | undefined {
+		const chdirs = chdirValues(cmd.words);
+		if (chdirs.length > 0) return this.withChdirs(chdirs).targetIn(cmd, words);
+		return this.targetIn(cmd, words);
+	}
+
+	private targetIn(cmd: ShellCommand, words: Word[]): string | undefined {
 		const name = commandName(words[0]);
-		const targets = [...redirectTargets(cmd), ...commandTargets(name, words.slice(1))];
-		const removed = TREE_REMOVERS.has(name) ? removedTargets(name, words.slice(1)) : [];
-		return (targets.find((t) => this.protects(t)) ?? removed.find((t) => this.containsLivespec(t)))?.text;
+		const args = words.slice(1);
+		const targets = [...redirectTargets(cmd), ...commandTargets(name, args)];
+		const removed = TREE_REMOVERS.has(name) ? removedTargets(name, args) : [];
+		const hit = targets.find((t) => this.protects(t)) ?? removed.find((t) => this.containsLivespec(t)) ?? this.unmodelledOptionTarget(name, args);
+		return hit?.text;
+	}
+
+	/** A copy for one command that a wrapper runs in other directories (`env -C`, `sudo -D`); `cd`s of the script are unaffected. */
+	private withChdirs(chdirs: Word[]): DirectoryCandidates {
+		const scoped = this.clone();
+		for (const dir of chdirs) scoped.enter(dir);
+		return scoped;
+	}
+
+	/** An argument that touches livespec when a write command carries an option this guard does not model. */
+	private unmodelledOptionTarget(name: string, args: Word[]): Word | undefined {
+		if (!hasUnmodelledOption(name, args)) return undefined;
+		const scanned = scanCommand(name, args);
+		const words = [...args, ...scanned.options.flatMap((o) => (o.value ? [o.value] : []))];
+		return words.find((w) => w.text.includes("livespec") || this.protects(w) || this.containsLivespec(w));
 	}
 
 	/** Applies a `cd`/`pushd` given by the effective words; other commands change nothing. */
@@ -98,6 +122,11 @@ export class DirectoryCandidates {
 
 	private change(args: Word[]): void {
 		const arg = args.find((w) => !w.text.startsWith("-") || w.text === "-");
+		this.enter(arg);
+	}
+
+	/** Moves into `arg`; a missing, expanded, `-` or `~` directory makes the directory unknown. */
+	private enter(arg: Word | undefined): void {
 		if (!arg || arg.expansion || arg.text === "-" || arg.text.startsWith("~")) {
 			this.unknown = true;
 			return;
@@ -150,7 +179,15 @@ function commandTargets(name: string, args: Word[]): Word[] {
 
 /** Scans `args` with the options of `name` that take a value; other commands treat every non-option word as an operand. */
 function scanCommand(name: string, args: Word[]): Scanned {
-	return scanOptions(args, VALUED_OPTIONS[name] ?? set(), false);
+	return scanOptions(normalizeLongOptions(name, args), VALUED_OPTIONS[name] ?? set(), false);
+}
+
+/** True for a write command (`sed`/`perl` only with `-i`) that carries an option outside its known list. */
+function hasUnmodelledOption(name: string, args: Word[]): boolean {
+	if (name === "sed") return inPlaceSed(args) && hasUnknownOption(name, scanSed(args));
+	if (name === "perl") return inPlacePerl(args) && hasUnknownOption(name, scanPerl(args));
+	if (!ALL_PATHS_WRITTEN.has(name) && !LAST_PATH_WRITTEN.has(name)) return false;
+	return hasUnknownOption(name, scanCommand(name, args));
 }
 
 /** The `-t DIR` value when given (it is the only write target), else the last operand. */
@@ -158,28 +195,41 @@ function lastPathTargets(name: string, args: Word[]): Word[] {
 	const scanned = scanCommand(name, args);
 	const dirs = optionValues(scanned, TARGET_DIR);
 	if (dirs.length > 0) return dirs;
+	// `install -d` creates every operand as a directory.
+	if (name === "install" && scanned.options.some((o) => o.name === "-d" || o.name === "--directory")) return scanned.operands;
 	return scanned.operands.slice(-1);
+}
+
+function scanSed(args: Word[]): Scanned {
+	return scanOptions(normalizeLongOptions("sed", args), VALUED_OPTIONS.sed as ReadonlySet<string>, false, set("-i"));
+}
+
+function inPlaceSed(args: Word[]): boolean {
+	return scanSed(args).options.some((o) => o.name === "-i" || o.name === "--in-place");
 }
 
 /** `sed -i` edits every file operand; the script is the first operand unless `-e`/`-f` gave it. */
 function sedTargets(args: Word[]): Word[] {
-	const scanned = scanOptions(args, VALUED_OPTIONS.sed as ReadonlySet<string>, false, set("-i"));
-	if (!scanned.options.some((o) => o.name === "-i" || isLongOption(o.name, "--in-place", 4))) return [];
-	const hasScript = scanned.options.some((o) => o.name === "-e" || o.name === "-f" || isLongOption(o.name, "--expression", 3) || isLongOption(o.name, "--file", 4));
+	const scanned = scanSed(args);
+	if (!inPlaceSed(args)) return [];
+	const hasScript = scanned.options.some((o) => ["-e", "-f", "--expression", "--file"].includes(o.name));
 	return hasScript ? scanned.operands : scanned.operands.slice(1);
+}
+
+function scanPerl(args: Word[]): Scanned {
+	return scanOptions(args, VALUED_OPTIONS.perl as ReadonlySet<string>, false, set("-i"));
+}
+
+function inPlacePerl(args: Word[]): boolean {
+	return scanPerl(args).options.some((o) => o.name === "-i");
 }
 
 /** `perl -i` edits every file operand; the program is the first operand unless `-e`/`-E` gave it. */
 function perlTargets(args: Word[]): Word[] {
-	const scanned = scanOptions(args, VALUED_OPTIONS.perl as ReadonlySet<string>, false, set("-i"));
-	if (!scanned.options.some((o) => o.name === "-i")) return [];
+	const scanned = scanPerl(args);
+	if (!inPlacePerl(args)) return [];
 	const hasProgram = scanned.options.some((o) => o.name === "-e" || o.name === "-E");
 	return hasProgram ? scanned.operands : scanned.operands.slice(1);
-}
-
-/** True when `name` is `full` or an abbreviation of it that GNU getopt accepts (at least `min` characters). */
-function isLongOption(name: string, full: string, min: number): boolean {
-	return name.length >= min && full.startsWith(name);
 }
 
 /** `path` with its deepest existing ancestor replaced by that ancestor's real path. */
