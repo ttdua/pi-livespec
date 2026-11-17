@@ -155,7 +155,34 @@ describe("settle-continuation", () => {
 		expect(await incompletes(h)).toEqual([]);
 		const warnings = h.session.errors.slice(errors);
 		expect(warnings).toHaveLength(1);
-		expect(warnings[0]).toMatch(/^settle: incomplete items not written: The forge is in read-only mode/);
+		expect(warnings[0]).toBe("settle: unfinished work unknown: the forge is in read-only mode; nothing was written");
+	});
+
+	test("an unreachable forge at the second settle records a warning and writes nothing", async () => {
+		const h = await u2Started();
+		const s = settler(h);
+		expect((await s.settle())?.continue).toBe(true);
+		const before = (await h.world.forge.listComments(h.n)).length;
+		await h.world.makeUnreachable();
+		const errors = h.session.errors.length;
+		expect(await s.settle()).toBeUndefined();
+		const warnings = h.session.errors.slice(errors).filter((e) => e.startsWith("settle:"));
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe("settle: unfinished work unknown: the forge is in read-only mode; nothing was written");
+		await h.world.restore();
+		expect(await h.world.forge.listComments(h.n)).toHaveLength(before);
+		expect(await incompletes(h)).toEqual([]);
+	});
+
+	test("an unreachable forge at the first settle requests no continuation", async () => {
+		const h = await u2Started();
+		const s = settler(h);
+		await h.world.makeUnreachable();
+		expect(await s.settle()).toBeUndefined();
+		expect(h.session.errors.filter((e) => e.startsWith("settle: unfinished work unknown: "))).toHaveLength(1);
+		await h.world.restore();
+		// The flag was not spent: the next readable settle still gets its one continuation.
+		expect((await s.settle())?.continue).toBe(true);
 	});
 
 	test("an aborted outcome returns nothing", async () => {

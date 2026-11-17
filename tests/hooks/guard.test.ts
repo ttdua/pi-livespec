@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import extension from "../../src/extension.ts";
@@ -7,7 +7,10 @@ import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { cleanupDirs, type ToolHarness, toolHarness } from "../tools/helpers.ts";
 import { FakePi, fakeCtx } from "./fake-pi.ts";
 
+const HOME = process.env.HOME;
+
 afterEach(async () => {
+	process.env.HOME = HOME;
 	vi.restoreAllMocks();
 	setSession(undefined);
 	await cleanupDirs();
@@ -29,7 +32,8 @@ async function guarded(): Promise<{ h: ToolHarness; pi: FakePi; ctx: ReturnType<
 	return { h, pi, ctx, call };
 }
 
-const flowFile = (h: ToolHarness) => readFileSync(join(h.root, ".pi/livespec/config.yaml"), "utf8");
+const FLOW = "extends: agent-skills\n";
+const flowFile = (h: ToolHarness) => readFileSync(join(h.root, ".pi/livespec/flow.yaml"), "utf8");
 
 describe("command-guards", () => {
 	test("Reason names the tool", async () => {
@@ -51,7 +55,9 @@ describe("command-guards", () => {
 
 	test("Flow override edit blocked", async () => {
 		const { h, call } = await guarded();
+		writeFileSync(join(h.root, ".pi/livespec/flow.yaml"), FLOW);
 		const before = flowFile(h);
+		expect(before).toBe(FLOW);
 		const out = await call("edit", { path: ".pi/livespec/flow.yaml", edits: [{ oldText: "a", newText: "b" }] });
 		expect(out?.block).toBe(true);
 		expect(out?.reason).toMatch(/^livespec guard:/);
@@ -69,6 +75,26 @@ describe("command-guards", () => {
 		const { h, call } = await guarded();
 		const forms = ["@.pi/livespec/flow.yaml", `file://${join(h.root, ".pi/livespec/flow.yaml")}`, join(h.root, ".pi/livespec/config.yaml")];
 		for (const path of forms) expect((await call("write", { path, content: "x" }))?.block, path).toBe(true);
+	});
+
+	test("unicode spaces in a path are read as spaces, as pi's tools read them", async () => {
+		const { h, call } = await guarded();
+		// `my dir` points into .pi/livespec; only the normalized name reaches it through the symlink.
+		symlinkSync(join(h.root, ".pi/livespec"), join(h.root, "my dir"));
+		for (const space of ["\u00A0", "\u2007", "\u202F", "\u3000"]) {
+			expect((await call("write", { path: `my${space}dir/flow.yaml`, content: "x" }))?.block, JSON.stringify(space)).toBe(true);
+		}
+		expect(await call("write", { path: "my\u00A0other/flow.yaml", content: "x" })).toBeUndefined();
+	});
+
+	test("~ and ~/ in a path are the home directory, as pi's tools read them", async () => {
+		const { h, call } = await guarded();
+		// os.homedir() follows HOME on POSIX.
+		process.env.HOME = h.root;
+		expect((await call("edit", { path: "~/.pi/livespec/flow.yaml" }))?.block).toBe(true);
+		expect(await call("edit", { path: "~/src/limit.ts" })).toBeUndefined();
+		process.env.HOME = join(h.root, ".pi/livespec");
+		expect((await call("write", { path: "~", content: "x" }))?.block).toBe(true);
 	});
 
 	test("a call without a path or command is blocked", async () => {
@@ -103,6 +129,15 @@ describe("command-guards", () => {
 		h.git("config", "alias.ship", "push");
 		expect((await call("bash", { command: "git ship origin" }))?.reason).toContain("rule push");
 		expect(await call("bash", { command: "git status" })).toBeUndefined();
+	});
+
+	test("an alias reached through a quoted command word is checked", async () => {
+		const { h, call } = await guarded();
+		h.git("config", "alias.ship", "push");
+		for (const command of ["g''it ship", "g\\it ship origin", "env g''it ship", "sh -c 'g\"\"it ship'"]) {
+			expect((await call("bash", { command }))?.reason, command).toContain("rule push");
+		}
+		expect(await call("bash", { command: "echo ship" })).toBeUndefined();
 	});
 
 	test("an alias lookup failure treats unknown subcommands mentioning push as pushes", async () => {

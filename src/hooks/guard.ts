@@ -17,12 +17,12 @@ import { getSession } from "./session-store.ts";
 type ToolCallResult = { block: true; reason: string } | undefined;
 
 const ALLOW: GuardDecision = { allow: true };
-/** Aliases are read only for text that may run git; an alias body then decides like any command. */
-const MENTIONS_GIT = /git/i;
-
-/** `"unknown"` when the lookup fails: the classifier then treats unknown subcommands mentioning push as pushes. */
-async function aliasesFor(session: Session, command: string): Promise<GuardContext["aliases"]> {
-	if (!MENTIONS_GIT.test(command)) return {};
+/**
+ * Read on every bash call: the shell may spell `git` in a form no text prefilter sees (`g''it`, `\\git`),
+ * so only the classifier, after unquoting, knows whether git runs. `"unknown"` when the lookup fails: the
+ * classifier then treats unknown subcommands mentioning push as pushes.
+ */
+async function aliasesOf(session: Session): Promise<GuardContext["aliases"]> {
 	try {
 		return await session.git.aliases();
 	} catch {
@@ -34,7 +34,7 @@ async function checkBash(session: Session, input: Record<string, unknown>, cwd: 
 	const command = input.command;
 	if (typeof command !== "string") throw new Error("bash input has no command text");
 	const endpoints = forgeEndpoints(session.forgeTarget(), session.config.project);
-	return classifyCommand(command, { cwd, endpoints, aliases: await aliasesFor(session, command) });
+	return classifyCommand(command, { cwd, endpoints, aliases: await aliasesOf(session) });
 }
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;

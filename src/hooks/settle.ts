@@ -87,10 +87,29 @@ async function recordIncomplete(session: Session, state: ChangeState, items: str
 // ---------------------------------------------------------------- hooks
 
 type Settle = AgentBeforeSettleEventResult | undefined;
+type CardInput = Session["card"];
+
+/**
+ * Why the refreshed card cannot tell what is unfinished: a forge that could not be read, or a change state
+ * that is stale or read-only (own comments may be missing, so "nothing started" proves nothing).
+ */
+function unknownReason(card: CardInput): string | undefined {
+	if (card.kind === "forge-unavailable") return `the forge is unavailable (${card.message})`;
+	if (card.kind !== "change") return undefined;
+	if (card.state.readOnly) return "the forge is in read-only mode";
+	if (card.state.stale) return "the change state is stale";
+	return undefined;
+}
 
 async function beforeSettle(session: Session, event: AgentBeforeSettleEvent): Promise<Settle> {
 	await session.refresh();
 	const card = session.card;
+	const unknown = unknownReason(card);
+	if (unknown !== undefined) {
+		// Fail open: no continuation, no write, and the flag stays as it was.
+		session.record(STEP, `unfinished work unknown: ${unknown}; nothing was written`);
+		return undefined;
+	}
 	if (card.kind !== "change" || !session.pack.ok) return undefined;
 	const items = settleItems(card.state, session.pack.pack);
 	if (items.length === 0) {
