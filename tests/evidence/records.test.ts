@@ -1,0 +1,51 @@
+import { describe, expect, test } from "vitest";
+import { type ReceiptData, type StartData, newEvidenceId, readReceipts, readStarts, receiptComment, startComment } from "../../src/evidence/records.ts";
+import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+
+const start: StartData = {
+	unit: "U1",
+	digest: "d1",
+	verify: "bun test a",
+	pre: { sha: "a".repeat(40), exit: 1, verdict: "red", output: "FAIL a\n" },
+};
+const receipt: ReceiptData = {
+	unit: "U1",
+	digest: "d1",
+	verify: "bun test a",
+	pre: { sha: "a".repeat(40), exit: 1 },
+	post: { sha: "b".repeat(40), exit: 0 },
+	output: "ok\n",
+	start: "U1.abc",
+};
+
+function asMarked(body: string, commentId: string): MarkedComment {
+	const parsed = parseMarked(body);
+	if (!parsed) throw new Error("unparsable");
+	return { commentId, author: "bot", ...parsed };
+}
+
+describe("evidence records", () => {
+	test("unit-start round trip", () => {
+		expect(parseMarked(startComment("U1.abc", start))).toEqual({ kind: "unit-start", id: "U1.abc", data: start });
+	});
+
+	test("receipt round trip", () => {
+		expect(parseMarked(receiptComment("U1.abd", receipt))).toEqual({ kind: "receipt", id: "U1.abd", data: receipt });
+	});
+
+	test("newEvidenceId", () => {
+		expect(newEvidenceId("U1", new Date())).toMatch(/^U1\.[0-9a-z]+$/);
+		expect(newEvidenceId("U1", new Date(36))).toBe("U1.10");
+	});
+
+	test("readStarts and readReceipts keep comment order and skip malformed records", () => {
+		const marked = [
+			asMarked(startComment("U1.a", start), "c1"),
+			{ commentId: "c2", author: "bot", kind: "unit-start", id: "U1.b", data: { unit: "U1" } },
+			asMarked(receiptComment("U1.c", receipt), "c3"),
+			{ commentId: "c4", author: "bot", kind: "receipt", id: "U2.d", data: { ...receipt, post: "x" } },
+		];
+		expect(readStarts(marked)).toEqual([{ ...start, id: "U1.a", commentId: "c1", index: 0 }]);
+		expect(readReceipts(marked)).toEqual([{ ...receipt, id: "U1.c", commentId: "c3", index: 2 }]);
+	});
+});

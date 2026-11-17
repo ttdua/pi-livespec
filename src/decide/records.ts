@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
+import type { Signature } from "../evidence/signature.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 
 export type DecisionRecord = {
@@ -19,6 +20,10 @@ export type DecisionRecord = {
 	request?: string;
 	/** A human answer given during an amendment; not effective until the amendment is approved. */
 	proposal?: true;
+	/** The failure signature of a `progress` record; kept when `facts` becomes `facts_hash`. */
+	signature?: Signature;
+	/** The attempt number of a `progress` record; kept when `facts` becomes `facts_hash`. */
+	attempt?: number;
 };
 
 const MAX_FACTS_YAML = 2000;
@@ -29,6 +34,8 @@ const FENCE_CLOSE = /^```\s*$/;
 const isString = (v: unknown): v is string => typeof v === "string";
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const has = (o: object, key: string): boolean => Object.hasOwn(o, key);
+const isSignature = (v: unknown): v is Signature =>
+	isObject(v) && isString(v.hash) && Array.isArray(v.tests) && v.tests.every(isString);
 
 /** Checks the optional fields' types when present. */
 function optionalFieldsValid(r: Record<string, unknown>): boolean {
@@ -36,6 +43,8 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	if (has(r, "facts_hash") && !isString(r.facts_hash)) return false;
 	if (has(r, "request") && !isString(r.request)) return false;
 	if (has(r, "proposal") && typeof r.proposal !== "boolean") return false;
+	if (has(r, "attempt") && !(typeof r.attempt === "number" && Number.isInteger(r.attempt))) return false;
+	if (has(r, "signature") && !isSignature(r.signature)) return false;
 	if (has(r, "agent_additions") && !(Array.isArray(r.agent_additions) && r.agent_additions.every(isString))) return false;
 	if (has(r, "overridden_by")) {
 		const o = r.overridden_by;
@@ -51,7 +60,10 @@ function isRecord(v: unknown): v is DecisionRecord {
 	return required && optionalFieldsValid(v);
 }
 
-/** Replaces `facts` with `facts_hash` (sha256 hex of its yaml) when that yaml exceeds 2,000 characters. */
+/**
+ * Replaces `facts` with `facts_hash` (sha256 hex of its yaml) when that yaml exceeds 2,000 characters.
+ * Top-level fields such as `signature` and `attempt` are kept.
+ */
 function compactFacts(r: DecisionRecord): DecisionRecord {
 	if (r.facts === undefined) return r;
 	const yaml = stringify(r.facts);
