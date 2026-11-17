@@ -63,6 +63,13 @@ describe("protectedWrite", () => {
 			"sed -n p .pi/livespec/flow.yaml": undefined,
 			"wc -l < .pi/livespec/flow.yaml": undefined,
 			"echo x 2>&1 > out.txt": undefined,
+			"rm -rf .pi": ".pi",
+			"mv .pi /tmp/x": ".pi",
+			"mv -t /tmp .pi": ".pi",
+			"rmdir .pi/livespec": ".pi/livespec",
+			"rm -rf .pi/other": undefined,
+			"mv src .": undefined,
+			"mv /tmp/x .pi": undefined,
 		};
 		for (const [text, expected] of Object.entries(hits)) {
 			expect(protectedWrite(commands(text), root), text).toBe(expected);

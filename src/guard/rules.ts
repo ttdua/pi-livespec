@@ -133,6 +133,22 @@ function isGhApiWrite(inv: Invocation): boolean {
 	return method !== undefined ? method !== "GET" : hasOption(s, GH_API_FIELDS);
 }
 
+const GH_ALIAS_WRITES = set("set", "import");
+const SUBTREE_VALUED = set("-P", "--prefix", "-m", "--message");
+
+/** `git push`, `git send-pack` and `git subtree … push`; `args[0]` is the subcommand. */
+function isGitPush(inv: Invocation): boolean {
+	if (inv.name !== "git") return false;
+	const sub = inv.args[0]?.text;
+	if (sub === "push" || sub === "send-pack") return true;
+	return sub === "subtree" && scanOptions(inv.args.slice(1), SUBTREE_VALUED, false).operands[0]?.text === "push";
+}
+
+function isGhAliasWrite(inv: Invocation): boolean {
+	const [sub, action = ""] = ghOperands(inv);
+	return sub === "alias" && GH_ALIAS_WRITES.has(action);
+}
+
 function isGhOtherWrite(inv: Invocation): boolean {
 	const [sub = "", action = ""] = ghOperands(inv);
 	return GH_OTHER_WRITES[sub]?.has(action) ?? false;
@@ -183,7 +199,8 @@ function isEndpoint(text: string, endpoints: string[]): boolean {
 const forgeWrite = (what: string) => () => ({ what, advice: FORGE_ADVICE });
 
 const RULES: readonly Rule[] = [
-	{ id: "push", matches: (inv) => inv.name === "git" && inv.args[0]?.text === "push", explain: () => ({ what: "git push is blocked", advice: PUSH_ADVICE }) },
+	{ id: "push", matches: isGitPush, explain: () => ({ what: "git push is blocked", advice: PUSH_ADVICE }) },
+	{ id: "gh-alias", matches: isGhAliasWrite, explain: () => ({ what: "gh alias set and import are blocked because gh aliases can hide forge writes", advice: "run the gh command itself, or ask a human" }) },
 	{
 		id: "gh-issue",
 		matches: isGhIssueWrite,

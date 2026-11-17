@@ -10,7 +10,9 @@ import { commandName, stripWrappers } from "./unwrap.ts";
 const LIVESPEC_DIR = join(".pi", "livespec");
 const CD_COMMANDS = new Set(["cd", "pushd"]);
 /** Commands whose every path argument is written (or removed). */
-const ALL_PATHS_WRITTEN = new Set(["tee", "rm", "touch", "mv"]);
+const ALL_PATHS_WRITTEN = new Set(["tee", "rm", "touch", "mv", "rmdir"]);
+/** Commands that remove or move their path arguments, so an ancestor of `.pi/livespec` is a protected target too. */
+const TREE_REMOVERS = new Set(["rm", "mv", "rmdir"]);
 /** Commands that write only their last path argument, or the `-t DIR` value. */
 const LAST_PATH_WRITTEN = new Set(["cp", "ln", "install"]);
 /** Redirect operators that only read or duplicate descriptors. */
@@ -35,10 +37,16 @@ export function protectedWrite(commands: ShellCommand[], cwd: string): string | 
 	return undefined;
 }
 
-/** The words of the command `cmd` really runs, after the shared wrapper unwrapping. */
+/** The words of the command `cmd` really runs, after the shared wrapper unwrapping; a wrapped script is checked by the caller. */
 export function effectiveWords(cmd: ShellCommand): Word[] {
 	const words = stripWrappers(cmd.words);
-	return words === "too-deep" ? cmd.words : words;
+	return words === "too-deep" || "script" in words ? cmd.words : words;
+}
+
+/** True when `path`, resolved like `isLivespecPath`, is a strict ancestor of `<cwd>/.pi/livespec`. */
+function isLivespecAncestor(cwd: string, path: string): boolean {
+	const rel = relative(realResolve(resolve(cwd, path)), realResolve(resolve(cwd, LIVESPEC_DIR)));
+	return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 /**
@@ -63,8 +71,10 @@ export class DirectoryCandidates {
 
 	/** The first write target of `cmd` (whose effective words are `words`) under `.pi/livespec/`. */
 	protectedTarget(cmd: ShellCommand, words: Word[]): string | undefined {
-		const targets = [...redirectTargets(cmd), ...commandTargets(commandName(words[0]), words.slice(1))];
-		return targets.find((t) => this.protects(t))?.text;
+		const name = commandName(words[0]);
+		const targets = [...redirectTargets(cmd), ...commandTargets(name, words.slice(1))];
+		const removed = TREE_REMOVERS.has(name) ? removedTargets(name, words.slice(1)) : [];
+		return (targets.find((t) => this.protects(t)) ?? removed.find((t) => this.containsLivespec(t)))?.text;
 	}
 
 	/** Applies a `cd`/`pushd` given by the effective words; other commands change nothing. */
@@ -88,6 +98,21 @@ export class DirectoryCandidates {
 		if (this.unknown && !isAbsolute(target.text) && mentionsLivespec) return true;
 		return this.dirs.some((d) => isLivespecPath(this.root, resolve(d, target.text)));
 	}
+
+	/** A removed or moved target that holds `.pi/livespec`; an expansion or an unknown directory counts when it may. */
+	private containsLivespec(target: Word): boolean {
+		const mayHold = /(^|\/)\.pi(\/|$)|^\.{1,2}\/?$/.test(target.text);
+		if (target.expansion) return mayHold;
+		if (this.unknown && !isAbsolute(target.text) && mayHold) return true;
+		return this.dirs.some((d) => isLivespecAncestor(this.root, resolve(d, target.text)));
+	}
+}
+
+/** The paths `rm`/`rmdir` remove or `mv` moves away: every operand, but not `mv`'s destination. */
+function removedTargets(name: string, args: Word[]): Word[] {
+	const paths = operands(args, name === "mv" ? ["-t", "--target-directory", "-S", "--suffix"] : []);
+	if (name !== "mv" || optionArgument(args, "-t", "--target-directory")) return paths;
+	return paths.slice(0, -1);
 }
 
 function redirectTargets(cmd: ShellCommand): Word[] {

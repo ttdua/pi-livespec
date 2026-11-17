@@ -192,6 +192,63 @@ describe("classifyCommand", () => {
 		]);
 	});
 
+	it("env -S and --split-string re-parse their value as a script", () => {
+		expectBlocked([
+			"env -S 'git push'",
+			"env --split-string='git push'",
+			"env --split-string 'git push origin'",
+			"env -S'git push'",
+			"env -S git push",
+			"env -i -S 'gh issue edit 6'",
+			"env -S 'echo x > .pi/livespec/flow.yaml'",
+			'env -S "$CMD" push',
+		]);
+		expectAllowed(["env -S 'git status'", "env -S 'bun test'"]);
+	});
+
+	it("setsid, stdbuf, doas, ionice and flock are unwrapped", () => {
+		expectBlocked([
+			"setsid git push",
+			"setsid -f -w git push",
+			"stdbuf -oL git push",
+			"stdbuf -i 0 -o L -e 0 git push",
+			"stdbuf --output=L git push",
+			"doas git push",
+			"doas -u me git push",
+			"ionice git push",
+			"ionice -c 2 -n 7 git push",
+			"ionice -c3 -t gh pr create",
+			"flock /tmp/lock git push",
+			"flock -w 5 -x /tmp/lock git push",
+			"flock -c 'git push' /tmp/lock",
+			"flock /tmp/lock -c 'git push'",
+			"flock --command='git push' /tmp/lock",
+			"flock /tmp/lock --command 'git push'",
+		]);
+		expectAllowed(["setsid bun test", "stdbuf -oL bun test", "doas -u me ls", "ionice -c 3 bun test", "flock /tmp/lock bun test", "flock -c 'bun test' /tmp/lock", "flock 9"]);
+	});
+
+	it("git send-pack and git subtree push are pushes", () => {
+		for (const c of ["git send-pack origin main", "git subtree push --prefix=lib origin main", "git subtree push -P lib origin main", "git subtree -P lib push origin main"]) {
+			expect(blocked(c).rule, c).toBe("push");
+		}
+		expectAllowed(["git subtree split -P lib", "git subtree pull -P lib origin main"]);
+	});
+
+	it("gh alias set and import are blocked", () => {
+		for (const c of ["gh alias set co 'pr checkout'", "gh alias import aliases.yml", "gh -R o/r alias set x 'issue edit'"]) {
+			const d = blocked(c);
+			expect(d.rule, c).toBe("gh-alias");
+			expect(d.reason).toContain("gh aliases can hide forge writes");
+		}
+		expectAllowed(["gh alias list", "gh alias delete co"]);
+	});
+
+	it("removing or moving an ancestor of .pi/livespec is blocked", () => {
+		expectBlocked(["rm -rf .pi", "mv .pi /tmp/x", "rmdir .pi/livespec", "rm -rf ./.pi/", "cd .pi && cd .. && rm -r .pi", "rm -rf ."]);
+		expectAllowed(["rm -rf .pi/other", "mv src/a.ts .", "mv a.txt .pi/other/", "rm -rf src"]);
+	});
+
 	it("an unknown alias map blocks unknown git subcommands mentioning push only", () => {
 		const unknown: GuardContext = { ...github, aliases: "unknown" };
 		expectBlocked(["git pp push"], unknown);

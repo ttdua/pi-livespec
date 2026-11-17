@@ -1,22 +1,38 @@
 // The one way the guard recognizes the command a simple command really runs:
 // wrapper commands (`env`, `sudo`, `xargs` …) are removed, and the command word
-// is compared by basename without a leading backslash (design D7).
+// is compared by basename without a leading backslash (design D7). A wrapper
+// that runs a script (`env -S`, `flock -c`) yields that script for re-parsing.
 
-import { scanOptions, set } from "./options.ts";
+import { optionValues, type Scanned, scanOptions, set } from "./options.ts";
 import type { Word } from "./shell.ts";
 
 export const UNWRAP_DEPTH = 8;
 
-type Wrapper = { valued: ReadonlySet<string>; skipOperands?: (operands: Word[]) => number };
+/** What a wrapper chain runs: more words, a script text to parse again, or wrappers nested too deep. */
+export type Unwrapped = Word[] | { script: Word } | "too-deep";
+
+type Wrapper = {
+	valued: ReadonlySet<string>;
+	skipOperands?: (operands: Word[]) => number;
+	/** The script the wrapper runs instead of its operands, when it has one. */
+	script?: (scanned: Scanned) => Word | undefined;
+};
 
 const ASSIGNMENT_WORD = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const ENV_SPLIT = set("-S", "--split-string");
+const FLOCK_COMMAND = set("-c", "--command");
 
 const WRAPPERS: ReadonlyMap<string, Wrapper> = new Map<string, Wrapper>([
-	["env", { valued: set("-u", "--unset", "-C", "--chdir"), skipOperands: (ops) => countWhile(ops, (w) => ASSIGNMENT_WORD.test(w.text)) }],
+	["env", { valued: set("-u", "--unset", "-C", "--chdir", ...ENV_SPLIT), skipOperands: (ops) => countWhile(ops, (w) => ASSIGNMENT_WORD.test(w.text)), script: envSplitScript }],
 	["command", { valued: set() }],
 	["exec", { valued: set("-a") }],
 	["nice", { valued: set("-n", "--adjustment") }],
 	["nohup", { valued: set() }],
+	["setsid", { valued: set() }],
+	["stdbuf", { valued: set("-i", "-o", "-e", "--input", "--output", "--error") }],
+	["ionice", { valued: set("-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid") }],
+	["doas", { valued: set("-u", "-a", "-C") }],
+	["flock", { valued: set("-w", "--wait", "--timeout", "-E", "--conflict-exit-code", ...FLOCK_COMMAND), skipOperands: () => 1, script: flockScript }],
 	["time", { valued: set("-f", "-o", "--format", "--output") }],
 	["timeout", { valued: set("-s", "-k", "--signal", "--kill-after"), skipOperands: () => 1 }],
 	["sudo", { valued: set("-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T", "--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--command-timeout", "--close-from") }],
@@ -30,17 +46,40 @@ export function commandName(w: Word | undefined): string {
 	return text.slice(text.lastIndexOf("/") + 1);
 }
 
-/** The words of the command a wrapper chain runs; "too-deep" when wrappers nest beyond UNWRAP_DEPTH. */
-export function stripWrappers(words: Word[]): Word[] | "too-deep" {
+/** The words of the command a wrapper chain runs, or the script a wrapper runs; "too-deep" beyond UNWRAP_DEPTH. */
+export function stripWrappers(words: Word[]): Unwrapped {
 	let current = words;
 	for (let level = 0; level <= UNWRAP_DEPTH; level++) {
 		const head = current[0];
 		const wrapper = head && !head.expansion ? WRAPPERS.get(commandName(head)) : undefined;
 		if (!wrapper) return current;
-		const { operands } = scanOptions(current.slice(1), wrapper.valued, true);
-		current = operands.slice(wrapper.skipOperands?.(operands) ?? 0);
+		const scanned = scanOptions(current.slice(1), wrapper.valued, true);
+		const script = wrapper.script?.(scanned);
+		if (script) return { script };
+		current = scanned.operands.slice(wrapper.skipOperands?.(scanned.operands) ?? 0);
 	}
 	return "too-deep";
+}
+
+/** `env -S <string> [args…]`: the string is split into words like a script, and the operands follow it. */
+function envSplitScript(scanned: Scanned): Word | undefined {
+	const split = optionValues(scanned, ENV_SPLIT).at(-1);
+	if (!split) return undefined;
+	const all = [split, ...scanned.operands];
+	return { text: [split.text, ...scanned.operands.map(quoteWord)].join(" "), quoted: true, expansion: all.some((w) => w.expansion) };
+}
+
+/** `flock [opts] -c <script> <file>` or `flock [opts] <file> -c|--command <script>`. */
+function flockScript(scanned: Scanned): Word | undefined {
+	const option = optionValues(scanned, FLOCK_COMMAND).at(-1);
+	if (option) return option;
+	const [, flag, script] = scanned.operands;
+	return flag && FLOCK_COMMAND.has(flag.text) ? script : undefined;
+}
+
+/** A word as shell text: an expansion keeps its raw text, anything else is single-quoted. */
+function quoteWord(w: Word): string {
+	return w.expansion ? w.text : `'${w.text.replaceAll("'", `'\\''`)}'`;
 }
 
 function countWhile(words: Word[], pred: (w: Word) => boolean): number {

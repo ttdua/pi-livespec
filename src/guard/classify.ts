@@ -125,6 +125,7 @@ function livespecWrite(cmd: ShellCommand, dirs: DirectoryCandidates): GuardDecis
 function checkWords(words: Word[], scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
 	const unwrapped = stripWrappers(words);
 	if (unwrapped === "too-deep") return obscured(scan);
+	if ("script" in unwrapped) return checkChildScript(unwrapped.script, scan, dirs, depth);
 	const head = unwrapped[0];
 	if (!head) return ALLOW;
 	if (head.expansion) return obscured(scan);
@@ -160,11 +161,13 @@ function checkShell(args: Word[], scan: Scan, dirs: DirectoryCandidates, depth: 
 	const scanned = scanOptions(args, SHELL_VALUED, true);
 	const names = new Set(scanned.options.map((o) => o.name));
 	const first = scanned.operands[0];
-	if (names.has("-c")) {
-		if (!first) return ALLOW;
-		return first.expansion ? obscured(scan) : checkScript(first.text, scan, dirs.clone(), depth + 1);
-	}
+	if (names.has("-c")) return first ? checkChildScript(first, scan, dirs, depth) : ALLOW;
 	return first && !names.has("-s") ? ALLOW : obscured(scan);
+}
+
+/** A script word run by a child process (`sh -c`, `env -S`, `flock -c`): parsed again, or obscured when it is an expansion. */
+function checkChildScript(script: Word, scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
+	return script.expansion ? obscured(scan) : checkScript(script.text, scan, dirs.clone(), depth + 1);
 }
 
 // ---------------------------------------------------------------- git
@@ -175,8 +178,8 @@ const GIT_BUILTINS = set(
 	...["add", "am", "annotate", "apply", "archive", "bisect", "blame", "branch", "bundle", "cat-file", "check-attr", "check-ignore", "checkout", "cherry", "cherry-pick"],
 	...["clean", "clone", "commit", "config", "count-objects", "describe", "diff", "diff-files", "diff-index", "diff-tree", "difftool", "fetch", "for-each-ref", "format-patch"],
 	...["fsck", "gc", "grep", "hash-object", "help", "init", "log", "ls-files", "ls-remote", "ls-tree", "merge", "merge-base", "mergetool", "mv", "notes", "prune", "pull", "push"],
-	...["range-diff", "rebase", "reflog", "remote", "repack", "replace", "reset", "restore", "rev-list", "rev-parse", "revert", "rm", "shortlog", "show", "show-ref", "sparse-checkout"],
-	...["stash", "status", "submodule", "switch", "symbolic-ref", "tag", "update-index", "update-ref", "var", "verify-commit", "version", "whatchanged", "worktree", "write-tree"],
+	...["range-diff", "rebase", "reflog", "remote", "repack", "replace", "reset", "restore", "rev-list", "rev-parse", "revert", "rm", "send-pack", "shortlog", "show", "show-ref", "sparse-checkout"],
+	...["stash", "status", "submodule", "subtree", "switch", "symbolic-ref", "tag", "update-index", "update-ref", "var", "verify-commit", "version", "whatchanged", "worktree", "write-tree"],
 );
 
 function checkGit(args: Word[], scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
