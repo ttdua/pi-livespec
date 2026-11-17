@@ -6,6 +6,7 @@ import { nextStep, successorOf } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, Phase } from "../../src/engine/pack-types.ts";
 import type { ChangeState, CheckResult } from "../../src/engine/state-types.ts";
+import { deriveCommentFacts } from "../../src/engine/snapshot.ts";
 import type { StartRecord } from "../../src/evidence/records.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import type { Answered, RequestKind, RequestRecord, Subject } from "../../src/interaction/approver.ts";
@@ -518,6 +519,7 @@ describe("unit evidence rules", () => {
 		});
 		expect(nextStep(pack, s).next).toContain("Stuck report");
 		expect(nextStep(pack, s).next).not.toContain("BLOCKED");
+		expect(nextStep(pack, s).blockedUnits).toEqual([{ id: "U3", reason: "attempts" }]);
 	});
 
 	test("pendingVerifier lists started units with a pending start", () => {
@@ -526,7 +528,10 @@ describe("unit evidence rules", () => {
 	});
 
 	test("Derived unit attempts", () => {
-		const s = state("build", NO_QUESTION, { counters: { "unit_attempts.U3": 2 } });
+		const prog = (n: number): MarkedComment => ({ commentId: `p${n}`, kind: "decision", id: "progress.U3", author: "bot", data: { point: "progress", outcome: "retry", attempt: n } });
+		const counter: MarkedComment = { commentId: "k", kind: "counter", id: "unit_attempts.U3", author: "bot", data: { value: 9 } };
+		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3 });
+		const s = state("build", NO_QUESTION, { counters: facts.counters, evidence: facts.evidence });
 		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
 	});
 });
