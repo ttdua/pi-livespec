@@ -8,7 +8,8 @@ export type Word = { text: string; quoted: boolean; expansion: boolean };
 export type Redirect = { op: string; target: Word };
 export type ShellCommand = { words: Word[]; assignments: string[]; redirects: Redirect[]; substitutions: string[] };
 
-type WordToken = { kind: "word"; word: Word; substitutions: string[]; assignable: boolean };
+/** `escaped`: a `\` quoted part of the word, which (like quotes) makes a here-document delimiter literal. */
+type WordToken = { kind: "word"; word: Word; substitutions: string[]; assignable: boolean; escaped: boolean };
 type OpToken = { kind: "op"; op: string };
 type RedirectToken = { kind: "redirect"; op: string };
 type Token = WordToken | OpToken | RedirectToken;
@@ -41,6 +42,7 @@ class WordBuilder {
 	text = "";
 	quoted = false;
 	expansion = false;
+	escaped = false;
 	readonly substitutions: string[] = [];
 	private firstSpecial: number | undefined;
 
@@ -52,14 +54,14 @@ class WordBuilder {
 	token(): WordToken {
 		const assignment = ASSIGNMENT.exec(this.text);
 		const assignable = assignment !== null && assignment[0].length <= (this.firstSpecial ?? Number.POSITIVE_INFINITY);
-		return { kind: "word", word: { text: this.text, quoted: this.quoted, expansion: this.expansion }, substitutions: this.substitutions, assignable };
+		return { kind: "word", word: { text: this.text, quoted: this.quoted, expansion: this.expansion }, substitutions: this.substitutions, assignable, escaped: this.escaped };
 	}
 }
 
 class Lexer {
 	private i = 0;
 	private readonly tokens: Token[] = [];
-	private heredocs: { delimiter: string; stripTabs: boolean }[] = [];
+	private heredocs: { delimiter: string; stripTabs: boolean; token: WordToken }[] = [];
 	private heredocOp: string | undefined;
 
 	constructor(private readonly s: string) {}
@@ -103,22 +105,29 @@ class Lexer {
 
 	private pushWord(token: WordToken): void {
 		if (this.heredocOp !== undefined) {
-			this.heredocs.push({ delimiter: token.word.text, stripTabs: this.heredocOp.endsWith("-") });
+			this.heredocs.push({ delimiter: token.word.text, stripTabs: this.heredocOp.endsWith("-"), token });
 			this.heredocOp = undefined;
 		}
 		this.tokens.push(token);
 	}
 
-	/** Here-document bodies are data, not commands: skip each up to its delimiter line. */
+	/**
+	 * Here-document bodies are data, not commands: each is skipped up to its
+	 * delimiter line. With an unquoted delimiter the shell still runs the body's
+	 * substitutions, so they are kept on the redirect target's token.
+	 */
 	private skipHeredocBodies(): void {
-		for (const { delimiter, stripTabs } of this.heredocs) {
+		for (const { delimiter, stripTabs, token } of this.heredocs) {
+			const lines: string[] = [];
 			while (this.i < this.s.length) {
 				const nl = this.s.indexOf("\n", this.i);
 				const end = nl < 0 ? this.s.length : nl;
 				const line = this.s.slice(this.i, end);
 				this.i = end + 1;
 				if ((stripTabs ? line.replace(/^\t+/, "") : line) === delimiter) break;
+				lines.push(line);
 			}
+			if (!token.word.quoted && !token.escaped) token.substitutions.push(...substitutionsIn(lines.join("\n")));
 		}
 		this.heredocs = [];
 	}
@@ -151,6 +160,7 @@ class Lexer {
 	private readEscape(w: WordBuilder): void {
 		const next = this.s[this.i + 1];
 		w.markSpecial();
+		w.escaped = true;
 		this.i += 2;
 		if (next === undefined) w.text += "\\";
 		else if (next !== "\n") w.text += next;
@@ -192,18 +202,20 @@ class Lexer {
 		this.expand(w, `$${name}`, this.i + 1 + name.length);
 	}
 
-	/** `$(…)` is a substitution; `$((…))` is arithmetic, an expansion only. */
+	/** `$(…)` is a substitution; `$((…))` is arithmetic, whose own substitutions are kept. */
 	private readParenExpansion(w: WordBuilder): void {
 		const close = scanParens(this.s, this.i + 1);
 		const raw = this.s.slice(this.i, close + 1);
-		if (this.s[this.i + 2] !== "(") w.substitutions.push(raw.slice(2, -1));
+		w.substitutions.push(...dollarSubstitutions(raw));
 		this.expand(w, raw, close + 1);
 	}
 
+	/** `${…}`: the operand of `${X:-…}` and similar forms may hold substitutions. */
 	private readBraceExpansion(w: WordBuilder): void {
-		const close = this.s.indexOf("}", this.i + 2);
-		if (close < 0) throw new Unreadable();
-		this.expand(w, this.s.slice(this.i, close + 1), close + 1);
+		const close = scanBrace(this.s, this.i + 1);
+		const raw = this.s.slice(this.i, close + 1);
+		w.substitutions.push(...dollarSubstitutions(raw));
+		this.expand(w, raw, close + 1);
 	}
 
 	private readBacktick(w: WordBuilder): void {
@@ -219,6 +231,55 @@ class Lexer {
 		w.text += raw;
 		this.i = end;
 	}
+}
+
+/**
+ * The substitutions a `$(…)`, `$((…))` or `${…}` text runs: a command
+ * substitution is itself; arithmetic and parameter expansions yield the
+ * substitutions nested in their text.
+ */
+function dollarSubstitutions(raw: string): string[] {
+	if (raw.startsWith("$((")) return substitutionsIn(raw.slice(3, -2));
+	if (raw.startsWith("$(")) return [raw.slice(2, -1)];
+	return substitutionsIn(raw.slice(2, -1));
+}
+
+/**
+ * Every `$(…)` and backtick substitution in text the shell expands but does not
+ * split into commands (here-document bodies, `${…}` operands, arithmetic).
+ * Quotes are not special here, which can only find more substitutions, never fewer.
+ */
+function substitutionsIn(text: string): string[] {
+	const found: string[] = [];
+	for (let j = 0; j < text.length; j++) {
+		const c = text[j];
+		if (c === "\\") j++;
+		else if (c === "`") {
+			const close = scanBacktick(text, j);
+			found.push(text.slice(j + 1, close).replace(/\\([`$\\])/g, "$1"));
+			j = close;
+		} else if (c === "$" && (text[j + 1] === "(" || text[j + 1] === "{")) {
+			const close = text[j + 1] === "(" ? scanParens(text, j + 1) : scanBrace(text, j + 1);
+			found.push(...dollarSubstitutions(text.slice(j, close + 1)));
+			j = close;
+		}
+	}
+	return found;
+}
+
+/** Index of the `}` that closes the `{` at `open`, skipping escapes, double quotes and nested substitutions. */
+function scanBrace(s: string, open: number): number {
+	let depth = 0;
+	for (let j = open; j < s.length; j++) {
+		const c = s[j];
+		if (c === "{") depth++;
+		else if (c === "}" && --depth === 0) return j;
+		else if (c === "\\") j++;
+		else if (c === '"') j = scanDouble(s, j);
+		else if (c === "`") j = scanBacktick(s, j);
+		else if (c === "$" && s[j + 1] === "(") j = scanParens(s, j + 1);
+	}
+	throw new Unreadable();
 }
 
 /** Index of the `)` that closes the `(` at `open`, skipping quoted text and nested substitutions. */

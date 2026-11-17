@@ -3,8 +3,9 @@
 // existing parents is the only I/O.
 
 import { existsSync, realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ShellCommand, Word } from "./shell.ts";
+import { commandName, stripWrappers } from "./unwrap.ts";
 
 const LIVESPEC_DIR = join(".pi", "livespec");
 const CD_COMMANDS = new Set(["cd", "pushd"]);
@@ -27,25 +28,51 @@ export function isLivespecPath(cwd: string, path: string): boolean {
 export function protectedWrite(commands: ShellCommand[], cwd: string): string | undefined {
 	const dirs = new DirectoryCandidates(cwd);
 	for (const cmd of commands) {
-		const name = commandName(cmd.words);
-		const targets = [...redirectTargets(cmd), ...commandTargets(name, cmd.words.slice(1))];
-		const hit = targets.find((t) => dirs.protects(t));
-		if (hit) return hit.text;
-		if (CD_COMMANDS.has(name)) dirs.change(cmd.words.slice(1));
+		const hit = dirs.protectedTarget(cmd, effectiveWords(cmd));
+		if (hit !== undefined) return hit;
+		dirs.follow(effectiveWords(cmd));
 	}
 	return undefined;
 }
 
-/** The directories a command may run in after earlier `cd`s; over-approximates to block more, never less. */
-class DirectoryCandidates {
+/** The words of the command `cmd` really runs, after the shared wrapper unwrapping. */
+export function effectiveWords(cmd: ShellCommand): Word[] {
+	const words = stripWrappers(cmd.words);
+	return words === "too-deep" ? cmd.words : words;
+}
+
+/**
+ * The directories a command may run in after earlier `cd`s; over-approximates to
+ * block more, never less. `root` is the project directory that holds `.pi/livespec/`.
+ */
+export class DirectoryCandidates {
 	private dirs: string[];
 	private unknown = false;
 
-	constructor(private readonly cwd: string) {
-		this.dirs = [cwd];
+	constructor(private readonly root: string) {
+		this.dirs = [root];
 	}
 
-	change(args: Word[]): void {
+	/** A copy for a child shell: what it inherits, without its `cd`s flowing back. */
+	clone(): DirectoryCandidates {
+		const copy = new DirectoryCandidates(this.root);
+		copy.dirs = [...this.dirs];
+		copy.unknown = this.unknown;
+		return copy;
+	}
+
+	/** The first write target of `cmd` (whose effective words are `words`) under `.pi/livespec/`. */
+	protectedTarget(cmd: ShellCommand, words: Word[]): string | undefined {
+		const targets = [...redirectTargets(cmd), ...commandTargets(commandName(words[0]), words.slice(1))];
+		return targets.find((t) => this.protects(t))?.text;
+	}
+
+	/** Applies a `cd`/`pushd` given by the effective words; other commands change nothing. */
+	follow(words: Word[]): void {
+		if (CD_COMMANDS.has(commandName(words[0]))) this.change(words.slice(1));
+	}
+
+	private change(args: Word[]): void {
 		const arg = args.find((w) => !w.text.startsWith("-") || w.text === "-");
 		if (!arg || arg.expansion || arg.text === "-" || arg.text.startsWith("~")) {
 			this.unknown = true;
@@ -55,11 +82,11 @@ class DirectoryCandidates {
 		this.dirs = [...new Set([...this.dirs, ...next])];
 	}
 
-	protects(target: Word): boolean {
+	private protects(target: Word): boolean {
 		const mentionsLivespec = target.text.includes("livespec");
 		if (target.expansion) return mentionsLivespec;
 		if (this.unknown && !isAbsolute(target.text) && mentionsLivespec) return true;
-		return this.dirs.some((d) => isLivespecPath(this.cwd, resolve(d, target.text)));
+		return this.dirs.some((d) => isLivespecPath(this.root, resolve(d, target.text)));
 	}
 }
 
@@ -121,11 +148,6 @@ function optionArgument(args: Word[], short: string, long: string): Word | undef
 		if (w.text.startsWith(`${long}=`)) return { ...w, text: w.text.slice(long.length + 1) };
 	}
 	return undefined;
-}
-
-function commandName(words: Word[]): string {
-	const first = words[0];
-	return first ? basename(first.text.replace(/^\\/, "")) : "";
 }
 
 /** `path` with its deepest existing ancestor replaced by that ancestor's real path. */

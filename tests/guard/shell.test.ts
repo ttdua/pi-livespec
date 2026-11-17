@@ -55,6 +55,25 @@ describe("parseShell", () => {
 		expect(cmd && texts(cmd)).toEqual(["x"]);
 	});
 
+	it("finds substitutions inside ${…}, $((…)) and unquoted here-documents", () => {
+		expect(parsed("echo ${X:-$(git push)}")[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed("echo ${X:-${Y:-`git push`}}")[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed(`echo "\${X:-$(git push)}"`)[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed("echo $(( $(git push) + 1 ))")[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed("cat <<EOF > out\n$(git push)\nEOF\necho done")[0]?.substitutions).toEqual(["git push"]);
+		expect(parsed("cat <<'EOF'\n$(git push)\nEOF")[0]?.substitutions).toEqual([]);
+		expect(parsed("cat <<\\EOF\n$(git push)\nEOF")[0]?.substitutions).toEqual([]);
+	});
+
+	it("does not read here-document bodies as commands", () => {
+		const cmds = parsed("bash <<-'EOF'\n\tgit push\n\tEOF\necho done");
+		expect(cmds.map(texts)).toEqual([["bash"], ["echo", "done"]]);
+	});
+
+	it("unbalanced ${ is unreadable", () => {
+		expect(parseShell("echo ${X:-$(git push)")).toBe("unreadable");
+	});
+
 	it("unbalanced quotes are unreadable", () => {
 		expect(parseShell(`echo "x`)).toBe("unreadable");
 		expect(parseShell(`echo 'x`)).toBe("unreadable");

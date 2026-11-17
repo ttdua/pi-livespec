@@ -208,6 +208,68 @@ describe("classifyCommand", () => {
 		expectAllowed([`echo "hello`]);
 	});
 
+	it("substitutions inside parameter, arithmetic and here-document text are checked", () => {
+		expectBlocked(["echo ${X:-$(git push)}", "echo $(( $(git push) + 1 ))", "cat <<EOF\n$(git push)\nEOF", "cat <<EOF\n`gh issue comment 6 -b x`\nEOF", "echo ${X:-$(git push)"]);
+		expectAllowed(["cat <<'EOF'\n$(git push)\nEOF", "echo $((1 + 2))", "echo ${HOME:-/tmp}"]);
+	});
+
+	it("wrapped writes into .pi/livespec are blocked", () => {
+		expectBlocked([
+			"command rm .pi/livespec/config.yaml",
+			"env A=1 tee .pi/livespec/flow.yaml",
+			"sudo -u me cp x .pi/livespec/flow.yaml",
+			"xargs rm .pi/livespec/flow.yaml",
+			"nice -n 5 sed -i s/a/b/ .pi/livespec/flow.yaml",
+			"command cd .pi && echo x > livespec/flow.yaml",
+		]);
+		expectAllowed(["command rm out.txt", "env A=1 cat .pi/livespec/flow.yaml"]);
+	});
+
+	it("nested shells and substitutions keep the directory of earlier commands", () => {
+		expectBlocked([
+			"cd .pi; sh -c 'echo x > livespec/flow.yaml'",
+			"cd .pi && echo $(echo x > livespec/flow.yaml)",
+			"cd .pi; eval 'echo x > livespec/flow.yaml'",
+		]);
+		expectAllowed([`sh -c "cd .pi"; echo x > livespec/flow.yaml`, "echo $(cd .pi) > livespec/flow.yaml"]);
+	});
+
+	it("gh api rule applies to gh only", () => {
+		expectAllowed(["echo api -X POST", "echo api -f x=y"]);
+	});
+
+	it("a request body to a forge endpoint blocks even with GET or HEAD", () => {
+		expectBlocked(["curl -X GET -d x https://api.github.com", "wget --method=GET --body-data=x https://api.github.com", "curl -G -d q=1 https://api.github.com/search"]);
+		expectAllowed(["curl -X GET -d x https://example.org"]);
+	});
+
+	it("eval with a dangerous token is blocked before reparsing", () => {
+		expect(blocked("eval 'echo push'").rule).toBe("obscured");
+		expectAllowed([`eval "$(ssh-agent -s)"`, "eval 'echo hello'"]);
+	});
+
+	it("every block reason names the rule that matched", () => {
+		const samples = [
+			"git push",
+			"gh issue edit 6",
+			"gh pr create",
+			"tea pr create",
+			"gh api -X DELETE x",
+			"gh label create x",
+			"tea comment 6 x",
+			"curl -d x https://github.com",
+			"eval git push",
+			"rm .pi/livespec/x",
+		];
+		const rules = new Set<string>();
+		for (const c of samples) {
+			const d = blocked(c);
+			rules.add(d.rule);
+			expect(d.reason, c).toContain(`rule ${d.rule}`);
+		}
+		expect([...rules].sort()).toEqual(["gh-api", "gh-issue", "gh-write", "http-write", "livespec-files", "obscured", "pull-request", "push", "tea-write"]);
+	});
+
 	it("block reasons start with the guard prefix and name the rule's tool", () => {
 		const push = blocked("git push");
 		expect(push.reason).toMatch(/^livespec guard: /);
