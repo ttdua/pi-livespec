@@ -55,7 +55,7 @@ The guard SHALL always block, in a livespec project:
 - a git alias that expands to `push`;
 - `gh pr create`, `gh pr merge` and `tea pr …` or `tea pulls …` other than `list`.
 
-The reason SHALL say that pushes and pull requests happen only through livespec tools.
+The reason SHALL say that pushes and pull requests happen only through livespec tools. Wrapper options are recognized in the forms the guard models. A GNU abbreviated long option on a wrapper (`nice --adjust`, `timeout --kill-a`, `env --split-s`, `xargs --max-a`) is an accepted limit, documented in the architecture.
 
 #### Scenario: Push variants blocked
 - **WHEN** the agent runs each of `git push`, `git -C . push origin HEAD`, `env GIT_TRACE=1 git push`, `FOO=1 git push`, `sh -c "cd x && git push"`, `bash -c 'git push --force'`, `echo $(git push)`, `xargs git push < /dev/null` and `git -c user.name=x push`
@@ -110,7 +110,7 @@ The guard SHALL block agent writes to paths under `<project>/.pi/livespec/`:
 - bash redirections into it;
 - `tee`, `cp`, `mv`, `rm`, `ln`, `touch`, `install`, `sed -i` and `perl -i` targeting it.
 
-Paths SHALL be resolved against the working directory, following `..` and existing symlinks. Earlier `cd` and `pushd` commands in the same bash command SHALL be taken into account: a target is protected when it resolves under that folder from the starting directory or from any directory an earlier literal `cd` names. After a `cd` whose argument cannot be resolved, a relative target whose path contains `livespec` MUST be blocked. The reason SHALL say that the flow and config of the project are changed by a human. Reads MUST be allowed.
+Paths SHALL be resolved against the working directory, following `..` and existing symlinks. Earlier `cd` and `pushd` commands in the same bash command SHALL be taken into account: a target is protected when it resolves under that folder from the starting directory or from any directory an earlier literal `cd` names. After a `cd` whose argument cannot be resolved, a relative target whose path contains `livespec` MUST be blocked. The reason SHALL say that the flow and config of the project are changed by a human. Reads MUST be allowed. A recursive copy or a move into an ancestor of that folder (`cp -r <src>/livespec .pi`) is an accepted limit, documented in the architecture.
 
 #### Scenario: Flow override edit blocked
 - **WHEN** the agent calls `edit` on `.pi/livespec/flow.yaml`

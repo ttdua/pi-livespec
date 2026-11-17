@@ -452,6 +452,11 @@ The guard handler is registered **before** the context hook, so a blocked call i
 - [The settle hook loops] → The per-run flag allows one continuation; the second settle writes `incomplete` and returns nothing.
 - [A `git` alias defined after the session read the aliases] → Aliases are read on every bash `tool_call` that runs git. That is one `git config` call, only when a git command is found.
 - [Agents in executors that do not load the extension] → An accepted limit (brainstorm). LS-07 restricts write roles.
+- [Option-parsing corners of GNU tools keep producing new bypasses] → Five verify iterations each found another form, so a denylist parser does not converge. The guard is a guardrail against agent mistakes, not a sandbox. Two classes remain as accepted limits, approved by the user at verify iteration 5:
+  - a recursive copy or move into an ancestor of `.pi/livespec`;
+  - a GNU abbreviated long option on a wrapper.
+
+  A follow-up change adds a human-approval tier to the guard. The guard asks the human, through `ctx.ui`, before running a command it cannot prove safe and that mentions `.pi/livespec`, an ancestor of it, or `push`. The approver takes responsibility for the command. Certain pushes stay blocked, and the guard blocks when there is no UI.
 
 ## Migration Plan
 
