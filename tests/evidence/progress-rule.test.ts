@@ -38,6 +38,12 @@ describe("progress rule", () => {
 		expect((await run({ attempt: 2, cap: 3, signature: failB, previous: failA })).outcome).toBe("retry");
 	});
 
+	test("relative path suffixes are different failures", async () => {
+		const red = failureSignature("AssertionError: expected value left/red");
+		const blue = failureSignature("AssertionError: expected value left/blue");
+		expect((await run({ attempt: 2, cap: 3, signature: blue, previous: red })).outcome).toBe("retry");
+	});
+
 	test("first failure retries", async () => {
 		expect((await run({ attempt: 1, cap: 3, signature: failA })).outcome).toBe("retry");
 	});

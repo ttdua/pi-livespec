@@ -34,6 +34,15 @@ describe("failureSignature", () => {
 		expect(failureSignature(a).hash).toMatch(/^[0-9a-f]{64}$/);
 	});
 
+	test("relative path text is not normalized as an absolute path", () => {
+		const red = failureSignature("AssertionError: expected value left/red").hash;
+		const blue = failureSignature("AssertionError: expected value left/blue").hash;
+		expect(red).not.toBe(blue);
+		for (const [a, b] of [["at /tmp/abc/x", "at /tmp/def/x"], ['file "/tmp/abc/x"', 'file "/tmp/def/x"'], ["(/tmp/abc/x:3)", "(/tmp/def/x:3)"], ["path=/tmp/abc/x", "path=/tmp/def/x"], ["/tmp/abc/x", "/tmp/def/x"]]) {
+			expect(failureSignature(a as string).hash, a).toBe(failureSignature(b as string).hash);
+		}
+	});
+
 	test("a changed assertion message changes the hash", () => {
 		expect(failureSignature("expected 'foo' to be 'bar'").hash).not.toBe(failureSignature("expected 'foo' to be 'baz'").hash);
 	});

@@ -19,7 +19,8 @@ const NORMALIZATIONS: [RegExp, string][] = [
 	[/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/g, "<time>"], // ISO timestamps
 	[/\b\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\b/g, "<time>"], // clock times
 	[/\b[0-9a-f]{7,}\b/gi, "<hex>"], // SHAs and other hex runs
-	[/(?:[A-Za-z]:)?(?:\/[^\s/:'"`()<>]+)+\/?/g, "<path>"], // absolute paths
+	// Absolute paths, only at a boundary (start, whitespace, quote, bracket, `=`, `:`, `,`), so `left/red` stays intact.
+	[/(?<![^\s'"`([<{=:,])(?:[A-Za-z]:)?(?:\/[^\s/:'"`()<>]+)+\/?/g, "<path>"],
 	[/\b\d+(?:\.\d+)?\s?(?:ns|µs|us|ms|s|m|h)\b/g, "<dur>"], // durations
 	[/\d+/g, "<n>"], // other digit runs
 	[/\s+/g, " "], // whitespace
