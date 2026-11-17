@@ -14,16 +14,16 @@ const MAX_UTF8_CONTINUATIONS = 3;
  */
 export class StreamRedactor {
 	private readonly tokens: Buffer[];
-	private readonly tokenStrings: string[];
+	private readonly latin1Tokens: string[];
 	private readonly hold: number;
 	private pending: Buffer = Buffer.alloc(0);
 
 	constructor(tokens: string[]) {
-		// Raw list: `redactTokens` owns filtering, dedup and replacement.
-		this.tokenStrings = tokens;
 		this.tokens = tokens.map((t) => Buffer.from(t));
+		// The stream is decoded as latin1, so tokens map to the same byte-per-char form. Order, duplicates and empties are kept: `redactTokens` owns filtering, dedup and replacement.
+		this.latin1Tokens = this.tokens.map((t) => t.toString(BYTE_ENCODING));
 		// Empty tokens are ignored only here, so they do not inflate the hold-back.
-		this.hold = Math.max(0, ...tokens.filter((t) => t !== "").map((t) => Buffer.byteLength(t) - 1));
+		this.hold = Math.max(0, ...this.tokens.filter((t) => t.length > 0).map((t) => t.length - 1));
 	}
 
 	/** Redacted bytes that are safe to emit; the last bytes that may start a token are kept for the next call. */
@@ -42,7 +42,7 @@ export class StreamRedactor {
 		this.pending = Buffer.from(buf.subarray(emitTo));
 		// Latin-1 maps each byte to one char, so byte-exact matching and redaction survive binary data.
 		const text = buf.subarray(0, emitTo).toString(BYTE_ENCODING);
-		return Buffer.from(redactTokens(text, this.tokenStrings), BYTE_ENCODING);
+		return Buffer.from(redactTokens(text, this.latin1Tokens), BYTE_ENCODING);
 	}
 
 	/** `limit`, moved past the end of any token that starts before it, so no token is cut in two. */

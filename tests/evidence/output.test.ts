@@ -45,6 +45,14 @@ describe("StreamRedactor", () => {
 		expect(all).toBe("xx *** yy");
 	});
 
+	test("non-ASCII token split across chunks is redacted", () => {
+		const r = new StreamRedactor(["sécret"]);
+		const bytes = Buffer.from("xx sécret yy");
+		const cut = bytes.indexOf(Buffer.from("é")) + 1; // split inside the two-byte `é`
+		const all = Buffer.concat([r.push(bytes.subarray(0, cut)), r.push(bytes.subarray(cut)), r.end()]).toString();
+		expect(all).toBe("xx *** yy");
+	});
+
 	test("no tokens passes bytes through", () => {
 		expect(redactAll([], [Buffer.from("abc"), Buffer.from("def")]).toString()).toBe("abcdef");
 	});
