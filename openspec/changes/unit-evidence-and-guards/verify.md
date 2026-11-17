@@ -6,9 +6,11 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `unit-evidence-and-guards`
-**Verified at**: `2026-11-17 13:39`
-**Iteration**: `1`
-**Verifier**: the parent session, which ran the fresh tests, typecheck, validate, the clean-tree check, the guard probe and the signature checks. Independent static evidence for checks 3–5 came from a `code-reviewer` agent run read-only (`482cf5c9-179c-45d`) in this invocation.
+**Verified at**: `2026-11-17 15:34`
+**Iteration**: `2`
+**Verifier**:
+- The parent session ran validate, the task count, typecheck, the fresh test runs, the clean-tree check and the guard probe.
+- A `code-reviewer` agent run read-only in this invocation (`cb23c75a-56b4-4eb`) gave independent static evidence for checks 3–5. It also ran its own probe, then deleted the probe file.
 
 ---
 
@@ -19,8 +21,8 @@
 **Result**:
 
 ```text
-$ openspec validate unit-evidence-and-guards   (cwd: worktree)
-exit=0. Only warnings: "Requirement text is very long (>500 characters)" for 11 requirements (accepted project style). No errors.
+$ openspec validate unit-evidence-and-guards   (cwd: worktree, HEAD 201572e)
+exit=0; 0 errors; 14 warnings, all "Requirement text is very long (>500 characters)" (accepted project style)
 ```
 
 ---
@@ -29,7 +31,7 @@ exit=0. Only warnings: "Requirement text is very long (>500 characters)" for 11 
 
 - [x] Every box is ticked, or each open box has a recorded reason
 
-`openspec instructions apply` progress is `{"total":40,"complete":40,"remaining":0}`. `grep` counts 40 ticked boxes and 0 open boxes.
+`openspec instructions apply` reports progress `{"total":40,"complete":40,"remaining":0}`. `grep` counts 40 ticked boxes and 0 open boxes.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -39,124 +41,91 @@ exit=0. Only warnings: "Requirement text is very long (>500 characters)" for 11 
 
 ## 3. Requirement Evidence
 
-- [x] ADDED / MODIFIED: implementation evidence (file / line)
+- [ ] ADDED / MODIFIED: implementation evidence (file / line). 27 Pass, **1 Fail**.
 - [x] REMOVED: none in this change
 - [x] RENAMED: none in this change
 
-The change has 28 requirements across 10 delta specs. The table gives static locations; each row is also backed by the passing named scenario tests in check 4.
+Iteration 2 closed the iteration-1 items: `env -S` escapes, `flock` options, attached `mv -tDIR` and the stale docs lines. A fresh probe found a new bypass of the same family.
 
 | Requirement | Operation | Status | Evidence (file:line) or reason |
 |---|---|---|---|
-| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; registered at `src/extension.ts:116`; scenario tests `tests/evidence/wip.test.ts:99–140` |
-| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:60–75`; registered first at `src/extension.ts:106` |
-| command-guards / Forge write commands | ADDED | Pass | rule table `src/guard/rules.ts:202–216` (`gh-issue`, `gh-api`, `tea-write`, `http-write`, `gh-alias`) |
-| command-guards / Push and pull request commands | ADDED | **Fail** | `src/guard/rules.ts:202` blocks the listed forms. The fresh probe shows that `env -S 'git\_push'` and `env --split-string='git\_push'` return ALLOW. The requirement says "`git push` in any form, including after … `env`". See CRITICAL 1. |
-| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:84–173` |
-| command-guards / Livespec project files | ADDED | Pass (with warning) | `src/guard/paths.ts:22–30`; `src/hooks/guard.ts:46–57`. The probe blocks `mv -t/tmp .pi/livespec/flow.yaml` and `rm -rf .pi`, but allows `mv -t/tmp .pi`. See WARNING 2. |
-| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–10`; `grep -rn "guard/push" src` finds no importer under `src/` |
-| context-injection / Phase card content | MODIFIED | Pass | `src/evidence/card.ts:16–18` (started, blocked, pending); `src/hooks/phase-card.ts:87` (incomplete items, untrusted); imported at `src/extension.ts:8` |
-| decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:32–103`; `src/evidence/signature.ts:54`; pack `src/packs/agent-skills.yaml:20` |
-| flow-engine / Change state from issue and git | MODIFIED | Pass | `src/engine/snapshot.ts:84–108`; caps at `src/hooks/card-input.ts:75–76` and `src/interaction/complete-validate.ts:30` |
-| flow-engine / Next step | MODIFIED | Pass | `src/engine/state-types.ts:47–64` (new fields) |
-| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:232` (BLOCKED), `:239` (started), `:246` (unticked receipt) |
-| flow-engine / Named checks over LS-02 validators | MODIFIED | Pass | `src/engine/checks.ts:111–145`; `src/engine/registry.ts:50–86` |
-| flow-engine / Loop counters | MODIFIED | Pass | `src/evidence/unit-state.ts:59–99`; `src/engine/counters.ts:11,23`; `src/engine/snapshot.ts:92` |
-| flow-pack / Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:20,43`; fixture checked by `tests/engine/pack-load.test.ts:63` |
-| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:22–28,45,161–183` |
-| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:125` (gate-only checks run before the refusals) |
-| settle-continuation / Settle conditions | ADDED | Pass | `src/hooks/settle.ts:39–51,103–119,128–138` |
-| settle-continuation / One continuation | ADDED | Pass | `src/hooks/settle.ts:119–125,141–144` |
-| settle-continuation / Incomplete marker | ADDED | Pass | `src/hooks/settle.ts:60–84,115–121` |
-| unit-evidence / Unit start tool | ADDED | Pass | `src/tools/unit-start.ts:44–67`; `src/evidence/refusals.ts:85`; `src/tools/unit-tool.ts:45–56` |
-| unit-evidence / Valid red | ADDED | Pass | `src/evidence/runner.ts:60–113`; `src/evidence/red-green.ts:11–17` |
-| unit-evidence / Verifier pending | ADDED | Pass | `src/tools/unit-start.ts:22–26,51–58`; `src/tools/unit-finish.ts:73–108`; `src/evidence/pending.ts:23–27` |
-| unit-evidence / Unit finish tool | ADDED | Pass | `src/tools/unit-finish.ts:51–62,111–134,166–200` |
-| unit-evidence / Receipt | ADDED | Pass | `src/evidence/records.ts:19–29,67`; `src/evidence/runner.ts:103–112` |
-| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:59–99`; `src/tools/unit-finish.ts:137–162,190–196` |
+| agent-skills-content / No upgrade during work in progress | MODIFIED | Pass | `src/evidence/wip.ts:15–33`; `src/content/upgrade.ts:21–35`; `src/extension.ts:116` |
+| command-guards / Guard hook | ADDED | Pass | `src/hooks/guard.ts:33–37,60–78`; registered first at `src/extension.ts:106` |
+| command-guards / Forge write commands | ADDED | Pass | `src/guard/rules.ts:87–136,153–177,201–218`; endpoints `src/guard/classify.ts:31–51` |
+| command-guards / Push and pull request commands | ADDED | Pass | `src/guard/classify.ts:119–170,184–214`; `src/guard/unwrap.ts:27–92`; `src/guard/rules.ts:140–145,202–213`. Probe: every listed form, and the iteration-1 bypasses, are BLOCKed |
+| command-guards / Obscured commands | ADDED | Pass | `src/guard/classify.ts:75–86,99–108,125–170,184–196` |
+| command-guards / Livespec project files | ADDED | **Fail** | `src/guard/paths.ts:22–36,73–181`; `src/hooks/guard.ts:46–63`. **Bypass:** `env -S 'rm\_.pi/livespec/flow.yaml ${X}'` is ALLOWed. See CRITICAL 1 |
+| command-guards / Guarded push | ADDED | Pass | `src/guard/push.ts:9–13`; nothing under `src/` imports it |
+| context-injection / Phase card content | MODIFIED | Pass | `src/hooks/phase-card.ts:47–49,75–88`; `src/evidence/card.ts:12–23` |
+| decision-seam / Progress rule | ADDED | Pass | `src/evidence/progress-rule.ts:17–38,66–103`; `src/evidence/signature.ts:8–55`; `src/decide/registry.ts:84` |
+| flow-engine / Change state from issue and git | MODIFIED | Pass | `src/engine/snapshot.ts:55–61,84–110` |
+| flow-engine / Next step | MODIFIED | Pass | `src/engine/state-types.ts:47–64`; `src/engine/next-step.ts:345–366` |
+| flow-engine / Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:232,239,246` |
+| flow-engine / Named checks over LS-02 validators | MODIFIED | Pass | `src/engine/checks.ts:88–142`; `src/engine/registry.ts:50–86` |
+| flow-engine / Loop counters | MODIFIED | Pass | `src/engine/counters.ts:9–29`; `src/evidence/unit-state.ts:45–99` |
+| flow-pack / Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:20,43`; `tests/fixtures/agent-skills.pack.json:67–69,141–146` |
+| init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:14–47,161–183` |
+| phase-gates / Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:125–141`; `src/interaction/complete-validate.ts:47–57` |
+| settle-continuation / Settle conditions | ADDED | Pass | `src/hooks/settle.ts:39–51,103–119,128–139` |
+| settle-continuation / One continuation | ADDED | Pass | `src/hooks/settle.ts:24–25,119–125,141–144` |
+| settle-continuation / Incomplete marker | ADDED | Pass | `src/hooks/settle.ts:60–84,103–121` |
+| unit-evidence / Unit start tool | ADDED | Pass | `src/tools/unit-start.ts:29–67`; `src/evidence/refusals.ts:43–85`; `src/tools/unit-tool.ts:45–69` |
+| unit-evidence / Valid red | ADDED | Pass | `src/evidence/red-green.ts:11–17`; `src/evidence/runner.ts:60–112` |
+| unit-evidence / Verifier pending | ADDED | Pass | `src/evidence/pending.ts:6–27`; `src/tools/unit-finish.ts:73–108` |
+| unit-evidence / Unit finish tool | ADDED | Pass | `src/tools/unit-finish.ts:51–62,113–134,145–200` |
+| unit-evidence / Receipt | ADDED | Pass | `src/evidence/records.ts:19–34,67–73`; `src/evidence/output.ts:88–99` |
+| unit-evidence / Unit attempts and blocked units | ADDED | Pass | `src/evidence/unit-state.ts:45–99`; `src/tools/unit-finish.ts:139–162,190–200` |
 | unit-evidence / Verify red on base check | ADDED | Pass | `src/evidence/red-on-base.ts:37–103`; `src/evidence/worktree.ts:24–73` |
 | unit-evidence / Work in progress from started units | ADDED | Pass | `src/evidence/wip.ts:15–33` |
 
-Totals: 27 Pass and 1 Fail.
-
-**Guard probe**, run fresh. A temporary test called `classifyCommand` with a GitHub target, in the worktree; the file was removed afterwards and `git status` showed 0 changes.
+**Guard probe.** The parent called `classifyCommand` from a throwaway test with a GitHub target, deleted it, and `git status` showed 0 lines afterwards:
 
 ```text
-BLOCK: git push · env git push · env -S 'git push' · flock F -c 'git push' · mv .pi/livespec/flow.yaml /tmp/x
-       mv -t /tmp .pi/livespec/flow.yaml · mv -t/tmp .pi/livespec/flow.yaml · rm -rf .pi · gh issue edit 6 --body x
-ALLOW: env -S 'git\_push' · env --split-string='git\_push' · flock F --command='git push' · flock F -x -c 'git push'
-       mv -t/tmp .pi · gh issue view 6 · git status
+env -S 'rm\_.pi/livespec/flow.yaml ${X}' => ALLOW              <-- bypass
+env -S 'rm\_.pi/livespec/flow.yaml'      => BLOCK(livespec-files)
+env -S 'git\_push ${X}'                  => BLOCK(obscured)
+env -S 'echo\_hi'                        => ALLOW
 ```
+
+The verifier's own probe gave the same results. It also confirmed these iteration-1 fixes:
+- BLOCK: `env -S 'git\_push'`, `env --split-string='git\_push'`, `flock /tmp/l --command='git push'`, `flock /tmp/l -x -c 'git push'`, `mv -t/tmp .pi`, `cp -- -tfoo .pi/livespec/flow.yaml`.
+- ALLOW: `mv -t/tmp other`, `flock /tmp/l true`.
 
 ---
 
 ## 4. Scenario Coverage
 
-- [x] Every scenario maps to a test
-- [x] The project test command was run fresh in this step
+- [x] Every scenario maps to a test: the verifier found the quoted exact title of all 125 scenarios under `tests/`, with none missing.
+- [x] The project test command was run fresh in this step.
 
-**Test command**: `bun run test` (vitest run), cwd = worktree, HEAD `6b55d06`
-**Result**: exit 0, with 136 files and 1946 tests passed and 0 failed (log `/tmp/ls06/verify-test-1.log`). `bun run typecheck` exited 0.
+**Test command**: `bun run test` (vitest run), run fresh with cwd = worktree, HEAD `201572e`
+**Result**: **exit 1 on both full runs.** Every failure is in `tests/e2e/gates-flow.test.ts`. That file is unchanged by this change, and it fails the same way on the base:
 
-All 125 scenarios in the delta specs map to a test with the same name, as found by `grep -F` on each title under `tests/`. None is missing. Every one of those tests passed in the fresh run above. The scenario → test file:line table is in the verifier's evidence report; the main mappings by capability are:
+| Run | Load avg | Result |
+|---|---|---|
+| Full #1, 15:25 | 48 | 1 failed / 1947 passed. `full gate flow over a memory forge` timed out at 5089 ms. |
+| Full #2, 15:26–15:28 | 67 | 2 failed / 1946 passed. The same test timed out at 5048 ms. `Stale before the first lock` then failed with `expected true to be false` at `gates-flow.test.ts:169`, after `ENOTEMPTY rmdir …/ls-tools-*/home/cache/…` left by the timed-out test. |
+| `gates-flow.test.ts` alone, 6 runs | 55–67 | 2/2 pass on every run, 1290–2451 ms per test |
+| **Base `af3e9f6`** (`ls-06` checkout), full | 56 | **Same 2 failures**, both 5 s timeouts (5410 ms, 5088 ms); 113 files passed |
 
-| Scenario (capability) | Test |
-|---|---|
-| command-guards (23 scenarios) | `tests/guard/classify.test.ts:55–138`, `tests/guard/paths.test.ts:43`, `tests/hooks/guard.test.ts:39–67`, `tests/guard/push-callers.test.ts:24` |
-| unit-evidence (33) | `tests/tools/unit-start.test.ts:31–118`, `tests/tools/unit-finish.test.ts:41–252`, `tests/evidence/runner.test.ts:47–70`, `tests/evidence/red-on-base.test.ts:69–123`, `tests/evidence/worktree.test.ts:38`, `tests/evidence/wip.test.ts:80–91` |
-| settle-continuation (8) | `tests/hooks/settle.test.ts:59–145` |
-| decision-seam (5) | `tests/evidence/progress-rule.test.ts:30–66` |
-| flow-engine (30) | `tests/engine/snapshot.test.ts`, `next-step.test.ts`, `checks.test.ts`, `counters.test.ts`, `iterations.test.ts`, `tests/evidence/unit-state.test.ts:82` |
-| flow-pack (3) | `tests/engine/pack-load.test.ts:55–67` |
-| phase-gates (8) | `tests/engine/gates.test.ts:61–66`, `tests/tools/spec-gate.test.ts:132–267`, `tests/evidence/red-on-base.test.ts:165–175` |
-| init-and-doctor (5) | `tests/config.test.ts:28–202` |
-| context-injection (6) | `tests/hooks/phase-card.test.ts:36–214`, `tests/evidence/card.test.ts:26` |
-| agent-skills-content (4) | `tests/evidence/wip.test.ts:99–140` |
+`bun run typecheck` exited 0. The failures come from the machine's load against a fixed 5 s timeout, and they reproduce on the base before this change. This change did not introduce them. Still, by the rule, the fresh full suite did not pass, so the outcome cannot be PASS. See CRITICAL 2.
 
 ---
 
 ## 5. Design and Contract Coherence (warning only)
 
-- [x] Decisions in design.md match the code (D2, D3, D7, D9, D10 and D13 spot-checked; see drift warnings)
-- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code
+- [x] Decisions in design.md match the code. D2, D3, D7, D9, D10 and D13 were checked; the docs at `docs/architecture.md:161,168` now match the code.
+- [x] Contracts in plan.md, with the Contract deviations recorded in apply.md, match the code: **41/41 matched**, with 0 drift and 0 not verified. The deviations recorded in apply.md each match the code, for example `withEvidenceLock(fn)`, `testOnlyCommitCheck` with three parameters, `Git.parents`, `settleItems(state, pack)`, the iteration-2 env split-string splitter and `optionArgument`.
 
-All 41 Contracts rows are matched. The verifier matched 29. The parent matched the other 12 against declarations:
-
-| Contract | Evidence |
-|---|---|
-| `liftsCap` | `src/engine/iterations.ts:19` |
-| `outputTail` | `src/evidence/output.ts:88` |
-| `StreamRedactor` | `src/evidence/output.ts:15,21,30,35` |
-| `Git` | `src/engine/git.ts:33–49` (adds `parents`, recorded in apply.md) |
-| `ProjectConfig.verify` | `src/config.ts:22–28` |
-| `deriveCommentFacts` | `src/engine/snapshot.ts:84`; both callers pass `{ iterations, unitAttempts }` |
-| `classifyCommand` | `src/guard/classify.ts:57` |
-| `protectedWrite` / `isLivespecPath` | `src/guard/paths.ts:22,30` |
-| `VerifyEnv` / `verifyEnv` | `src/evidence/verify-env.ts:14,26` |
-| `Session` | `src/hooks/session.ts:123,133,138,148` |
-| Refusals | `src/evidence/refusals.ts:85,97,116` |
-
-The apply.md deviations checked against the code:
-
-| Deviation | Evidence |
-|---|---|
-| `withEvidenceLock(fn)` | `src/evidence/lock.ts:9–23` |
-| `testOnlyCommitCheck` third parameter | `src/evidence/pending.ts:23–27` |
-| `Git.parents` | `src/engine/git.ts:45` |
-| `settleItems(state, pack)` | `src/hooks/settle.ts:39` |
-| `registerRedOnBase` and the gate memo helpers | `src/engine/registry.ts:66–86` |
-
-**Drift warnings** (non-blocking):
-
-- `docs/architecture.md:161` says "Pending and refactor units are exempt" from `verify-red-on-base`. The spec and the code (`src/evidence/red-on-base.ts`) require a refactor unit to be green on `Base`, and report an error when its test is missing.
-- `docs/architecture.md:168` says aliases are "read from git config on every call that mentions git". Since Task 8's fix, `src/hooks/guard.ts` reads them on every bash call.
+**Drift warnings** (non-blocking): None.
 
 ---
 
 ## 6. Clean Tree and Commit Range
 
-- [x] Working tree is clean (`git status --porcelain`: 0 lines, before and after the probe)
+- [x] The working tree is clean: `git status --porcelain` printed 0 lines before and after every probe.
 
-**Commit range**: `af3e9f6..6b55d06`. That is 46 commits: the 45 in apply.md plus the receipt commit.
+**Commit range**: `af3e9f6..201572e`, 53 commits.
 
 ---
 
@@ -164,25 +133,22 @@ The apply.md deviations checked against the code:
 
 **CRITICAL**
 
-1. **`env -S` split-string escapes bypass the push guard.**
-   - **Where:** `src/guard/unwrap.ts:65–69`. The probe allows `env -S 'git\_push'` and `env --split-string='git\_push'`.
-   - **Why it fails the spec:** command-guards "Push and pull request commands" requires `git push` to be blocked "in any form, including after … `env`".
-   - **Recommendation:** in `unwrap.ts`, apply `env -S` split-string semantics before re-parsing. That means `\_` and unquoted whitespace act as separators, and `\c` and the other escapes are handled. Alternatively, fail closed: block any `-S`/`--split-string` value that contains a backslash together with a dangerous token. Add both probe commands as regression tests in `tests/guard/classify.test.ts`.
+1. **`env -S` with an expansion bypasses the `.pi/livespec/` write guard.**
+   - **Where:** `src/guard/classify.ts:169–170`, with `src/guard/unwrap.ts:66–79`.
+   - **What happens:** when the `-S` value contains `${…}`, `splitEnvString` returns unreadable. `checkChildScript` then only calls `obscured(nestedScan(...))`. `obscured` looks at the dangerous tokens (push, gh, tea, forge host) but not at a livespec path. So `env -S 'rm\_.pi/livespec/flow.yaml ${X}'` is ALLOWed, and it deletes the flow file when `X` is unset. This breaks command-guards "Livespec project files".
+   - **Recommendation:** make the unreadable and expansion child-script branch fail closed when the decoded text mentions `livespec`, as the existing unreadable-input rule in `classify.ts:58,90` already does. Alternatively, run `protectedWrite` on the words that can be split before the expansion. Add a regression test with the bypass command above, and keep `env -S 'echo\_hi'` and `env -S 'echo\_${X}'` allowed.
+2. **The fresh full suite did not pass, from a pre-existing test timeout under machine load.**
+   - **Where:** `tests/e2e/gates-flow.test.ts`. It uses the 5 s default timeout, and a timed-out run leaves its temporary `home/cache` behind, which then breaks the next test.
+   - **Why it counts:** it fails the same way on base `af3e9f6` and passes when run alone, but the rule says failing fresh tests are FAIL.
+   - **Recommendation:** give the two `gates-flow` tests an explicit timeout, for example 20 s, and make the harness cleanup tolerate `ENOTEMPTY` (`rm` with `force`, retried), so the suite is deterministic under load.
 
 **WARNING**
 
-1. **`flock` options after the lock operand bypass the guard.**
-   - **Where:** `src/guard/unwrap.ts:73–77`. The probe allows `flock F --command='git push'` and `flock F -x -c 'git push'`.
-   - **Why it is not CRITICAL:** `flock` is not in the spec's wrapper list. It was added by ruling 12.
-   - **Recommendation:** scan every option after the lock file, including `--command=` and intervening flags, and add tests. Or remove `flock` from the claimed wrappers and list it under "Accepted limits".
-2. **An attached `mv -tDIR` with an ancestor of `.pi/livespec` bypasses the guard.**
-   - **Where:** `src/guard/paths.ts:112–115,170–173`. The probe allows `mv -t/tmp .pi`.
-   - **Recommendation:** parse attached short options (`-tDIR`) with the same option scanner the rest of the guard uses, and add a test.
-3. **Two docs statements are stale.** These are the two drift warnings in section 5, at `docs/architecture.md:161` and `:168`. Correct both sentences.
+None.
 
 **SUGGESTION**
 
-1. **Flaky tests under load.** The suite passes on an idle machine, but under heavy parallel load the 5 s `gates-flow` timeout and the system-wide `pgrep` checks in `tests/evidence/runner.test.ts` flake. Track the process group the test owns, and give `tests/e2e/gates-flow.test.ts` an explicit timeout.
+1. The `pgrep -f` process checks in `tests/evidence/runner.test.ts` still match processes across the whole system. Track the process group the test owns instead.
 
 ---
 
@@ -194,7 +160,7 @@ The apply.md deviations checked against the code:
 
 **Next step**:
 
-Run `/opsx-apply`. It detects this FAIL and runs fix iteration 2 in this worktree. That iteration fixes CRITICAL 1. WARNINGs 1–3 are small and in the same files, so fix them in the same pass. Then run `/opsx-verify` again. This is iteration 1 of 5.
+Run `/opsx-apply`, which runs fix iteration 3 in this worktree. It should fix CRITICAL 1, the guard bypass. It should also fix CRITICAL 2, the `gates-flow` timeout and cleanup: that touches a test file outside this change's scope, and it is needed for a deterministic fresh run. Then run `/opsx-verify` again. This is iteration 2 of 5.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
