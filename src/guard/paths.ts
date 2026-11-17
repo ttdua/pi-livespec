@@ -172,6 +172,7 @@ const isShort = (v: string): boolean => !v.startsWith("--");
 function optionArgument(args: Word[], short: string, long: string): Word | undefined {
 	for (let k = 0; k < args.length; k++) {
 		const w = args[k] as Word;
+		if (w.text === "--") return undefined;
 		if (w.text === short || w.text === long) return args[k + 1];
 		if (w.text.startsWith(short) && !w.text.startsWith("--") && w.text.length > short.length) return { ...w, text: w.text.slice(short.length) };
 		if (w.text.startsWith(`${long}=`)) return { ...w, text: w.text.slice(long.length + 1) };
