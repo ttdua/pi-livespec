@@ -2,11 +2,11 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `src/guard/shell.ts`: a pure POSIX-shell tokenizer and simple-command splitter. It handles quotes, escapes, comments, `;` `&&` `||` `|` `&` and newlines, subshells and groups, redirections with targets, and `$(…)` and backtick substitutions kept as nested scripts. Commands stay in source order, and unbalanced input returns `unreadable`
-- [ ] 1.2 Add wrapper unwrapping (assignments, `env`, `command`, `exec`, `nice`, `nohup`, `time`, `timeout`, `sudo`, `xargs`, `sh|bash|zsh|dash -c`, `git` global options) with a depth limit of 8
-- [ ] 1.3 Add `src/guard/classify.ts` `classifyCommand(command, ctx)` and `forgeEndpoints`, covering the design D7 rules: push and aliases, `gh`, `tea`, `curl`/`wget` against forge endpoints, and obscured forms with dangerous tokens. Every block reason starts with `livespec guard:` and names the tool to use
-- [ ] 1.4 Add `src/guard/paths.ts` and the write-target rule. It applies to `write`/`edit` paths and to bash write targets: redirects, `tee`, `cp`, `mv`, `rm`, `ln`, `touch`, `install`, `sed -i` and `perl -i`. It resolves `..` and existing symlinks, and tracks `cd`/`pushd` within one command
-- [ ] 1.5 Table tests in `tests/guard/` naming every command-guards classification scenario, plus the Review Focus bypass and false-positive cases
+- [x] 1.1 Add `src/guard/shell.ts`: a pure POSIX-shell tokenizer and simple-command splitter. It handles quotes, escapes, comments, `;` `&&` `||` `|` `&` and newlines, subshells and groups, redirections with targets, and `$(…)` and backtick substitutions kept as nested scripts. Commands stay in source order, and unbalanced input returns `unreadable`
+- [x] 1.2 Add wrapper unwrapping (assignments, `env`, `command`, `exec`, `nice`, `nohup`, `time`, `timeout`, `sudo`, `xargs`, `sh|bash|zsh|dash -c`, `git` global options) with a depth limit of 8
+- [x] 1.3 Add `src/guard/classify.ts` `classifyCommand(command, ctx)` and `forgeEndpoints`, covering the design D7 rules: push and aliases, `gh`, `tea`, `curl`/`wget` against forge endpoints, and obscured forms with dangerous tokens. Every block reason starts with `livespec guard:` and names the tool to use
+- [x] 1.4 Add `src/guard/paths.ts` and the write-target rule. It applies to `write`/`edit` paths and to bash write targets: redirects, `tee`, `cp`, `mv`, `rm`, `ln`, `touch`, `install`, `sed -i` and `perl -i`. It resolves `..` and existing symlinks, and tracks `cd`/`pushd` within one command
+- [x] 1.5 Table tests in `tests/guard/` naming every command-guards classification scenario, plus the Review Focus bypass and false-positive cases
 
 ## 2. Evidence records, unit state and the progress rule
 
