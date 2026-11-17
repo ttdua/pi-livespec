@@ -23,12 +23,12 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 3.1 Add `verify.setup` and `verify.timeout` to `ProjectConfig` in `src/config.ts`, with warnings and defaults
-- [ ] 3.2 Add `Git.worktreeAdd`, `worktreeRemove`, `worktreePrune`, `revList`, `pathExistsAt`, `changedPaths`, `isIgnored` and `aliases` in `src/engine/git.ts`
-- [ ] 3.3 Add `src/evidence/output.ts` `outputTail` (8 KB budget including the truncation mark, UTF-8 boundary, invalid bytes replaced) and `src/evidence/runner.ts` `runVerify`. The runner checks the injected guard before spawning, runs `/bin/sh -c` in a cwd with stdin closed, kills the process group on timeout or abort, keeps the output tail with the total byte count, and redacts tokens
-- [ ] 3.4 Add `src/evidence/red-green.ts` (classify a run; the pre and post expectations for normal and refactor units)
-- [ ] 3.5 Add `src/evidence/worktree.ts` `withTempWorktree(git, root, sha, prep, fn)`. It prunes first, prepares with the setup command or dependency symlinks, honors abort, and always removes the worktree
-- [ ] 3.6 Tests against real temporary git repositories (`tests/helpers/repo.ts`), including timeout, abort, output edge cases and the symlink case
+- [x] 3.1 Add `verify.setup` and `verify.timeout` to `ProjectConfig` in `src/config.ts`, with warnings and defaults
+- [x] 3.2 Add `Git.worktreeAdd`, `worktreeRemove`, `worktreePrune`, `revList`, `pathExistsAt`, `changedPaths`, `isIgnored` and `aliases` in `src/engine/git.ts`
+- [x] 3.3 Add `src/evidence/output.ts` `outputTail` (8 KB budget including the truncation mark, UTF-8 boundary, invalid bytes replaced) and `src/evidence/runner.ts` `runVerify`. The runner checks the injected guard before spawning, runs `/bin/sh -c` in a cwd with stdin closed, kills the process group on timeout or abort, keeps the output tail with the total byte count, and redacts tokens
+- [x] 3.4 Add `src/evidence/red-green.ts` (classify a run; the pre and post expectations for normal and refactor units)
+- [x] 3.5 Add `src/evidence/worktree.ts` `withTempWorktree(git, root, sha, prep, fn)`. It prunes first, prepares with the setup command or dependency symlinks, honors abort, and always removes the worktree
+- [x] 3.6 Tests against real temporary git repositories (`tests/helpers/repo.ts`), including timeout, abort, output edge cases and the symlink case
 
 ## 4. Engine integration: state, counters, next step, gate-only checks, card
 
