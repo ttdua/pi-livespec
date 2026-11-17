@@ -16,7 +16,10 @@ import {
 	skillsReply,
 	validateReply,
 } from "./commands/subcommands.ts";
+import { setRedOnBaseEnv } from "./evidence/red-on-base.ts";
+import { verifyEnv } from "./evidence/verify-env.ts";
 import { registerContextHooks } from "./hooks/context.ts";
+import { getSession } from "./hooks/session-store.ts";
 import { type SessionDeps, defaultSessionDeps, registerSessionHooks } from "./hooks/session.ts";
 import { registerChangeTools } from "./tools/change-tools.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
@@ -100,6 +103,10 @@ export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> =
 	});
 	registerSpecValidate(pi);
 	registerChangeTools(pi);
+	setRedOnBaseEnv(async () => {
+		const session = getSession();
+		return session === undefined ? undefined : verifyEnv(session);
+	});
 	registerSessionHooks(pi, env);
 	registerContextHooks(pi);
 }

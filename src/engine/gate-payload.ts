@@ -9,6 +9,7 @@ import { currentDecision, type DecisionRecord } from "../decide/records.ts";
 import { registeredPayload } from "./gates.ts";
 import type { Git } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
+import { isGateOnly } from "./registry.ts";
 import type { ChangeState } from "./state-types.ts";
 
 export type ReviewFacts = { specsStat: string; specsFiles: string[]; issueUrl?: string };
@@ -51,6 +52,12 @@ function unitLine(u: Unit): string {
 	return `- ${u.id} — ${u.title} · Difficulty: ${u.difficulty ?? "(missing)"} · Tags: ${tags} · Covers: ${u.covers.join(", ")}`;
 }
 
+/** The results of gate-only checks that ran for this gate request, so the human sees what they report. */
+function gateCheckSection(state: ChangeState): string[] {
+	const lines = state.checks.filter((c) => isGateOnly(c.check)).map((c) => `- ${c.check} (${c.severity}): ${c.message}`);
+	return lines.length === 0 ? [] : ["Gate checks:", ...lines];
+}
+
 function planSections(state: ChangeState): string[][] {
 	const units = ["Units:", ...state.change.units.map(unitLine)];
 	const records = state.change.units.flatMap((u) => {
@@ -59,12 +66,13 @@ function planSections(state: ChangeState): string[][] {
 			(r): r is DecisionRecord => r !== undefined,
 		);
 	});
-	if (records.length === 0) return [units];
+	const gateChecks = gateCheckSection(state);
+	if (records.length === 0) return [units, gateChecks];
 	const lines = records.map((r) => {
 		const additions = r.agent_additions?.length ? ` (agent additions: ${r.agent_additions.join(", ")})` : "";
 		return `- ${r.point}.${r.subject}: ${r.reason}${additions}`;
 	});
-	return [units, ["Decisions:", ...lines]];
+	return [units, ["Decisions:", ...lines], gateChecks];
 }
 
 function shipSections(body: string): string[][] {

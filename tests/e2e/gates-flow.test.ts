@@ -2,17 +2,20 @@
 // goes through the real tools, the approver chain and forge polling.
 
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
+import { registerCheck } from "../../src/engine/registry.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
 import { CHANGE_BRANCH } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
+
+beforeEach(() => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" }));
 
 afterEach(async () => {
 	setSession(undefined);

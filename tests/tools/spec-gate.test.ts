@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { decisionComment } from "../../src/decide/records.ts";
@@ -22,6 +22,11 @@ afterEach(async () => {
 	resetGatesForTests();
 	await cleanupDirs();
 });
+
+/** The real check needs a worktree run per unit; these tests are about the gate, so it reports nothing. */
+const passRedOnBase = (): void => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
+
+beforeEach(passRedOnBase);
 
 const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const AT = "2026-11-15T10:00:00.000Z";

@@ -7,6 +7,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { unitDigest } from "../core/digest.ts";
+import { runChecks } from "../engine/checks.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
@@ -119,13 +120,19 @@ async function askHuman(w: WriteContext, state: ChangeState, target: string, pla
 	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again" });
 }
 
+/** Runs the gate-only checks of `target` before the refusals, so they see the fresh results. */
+async function withGateChecks(w: WriteContext, state: ChangeState, target: string): Promise<ChangeState> {
+	const checks = await runChecks(w.pack, state, { root: w.session.cwd, git: w.session.git }, { gate: true, target });
+	return { ...state, checks };
+}
+
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
 	const change = requireChange(w.session);
 	if (!change.ok) return toolResult(change.message, undefined, true);
-	const { state } = change;
 	const target = String(p.target ?? "");
+	const state = await withGateChecks(w, change.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
 	const plan = planGate(state, w.pack, target);
