@@ -5,6 +5,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ShellCommand, Word } from "./shell.ts";
+import { optionValues, type Scanned, scanOptions, set } from "./options.ts";
 import { commandName, stripWrappers } from "./unwrap.ts";
 
 const LIVESPEC_DIR = join(".pi", "livespec");
@@ -15,6 +16,19 @@ const ALL_PATHS_WRITTEN = new Set(["tee", "rm", "touch", "mv", "rmdir"]);
 const TREE_REMOVERS = new Set(["rm", "mv", "rmdir"]);
 /** Commands that write only their last path argument, or the `-t DIR` value. */
 const LAST_PATH_WRITTEN = new Set(["cp", "ln", "install"]);
+/** `-t DIR` / `--target-directory=DIR`: the one destination of cp, ln, install and mv. */
+const TARGET_DIR = set("-t", "--target-directory");
+const BACKUP_SUFFIX = ["-S", "--suffix"];
+/** Options that take a value, per command; a missing command has none, so each non-option word counts as a path. */
+const VALUED_OPTIONS: Record<string, ReadonlySet<string>> = {
+	cp: set("-t", "--target-directory", ...BACKUP_SUFFIX),
+	ln: set("-t", "--target-directory", ...BACKUP_SUFFIX),
+	mv: set("-t", "--target-directory", ...BACKUP_SUFFIX),
+	install: set("-t", "--target-directory", ...BACKUP_SUFFIX, "-m", "--mode", "-o", "--owner", "-g", "--group"),
+	touch: set("-d", "--date", "-r", "--reference", "-t", "--time"),
+	sed: set("-e", "-f", "--expression", "--file", "-l", "--line-length"),
+	perl: set("-e", "-E", "-I"),
+};
 /** Redirect operators that only read or duplicate descriptors. */
 const READ_REDIRECTS = new Set(["<", "<<", "<<-", "<<<", "<&"]);
 
@@ -110,9 +124,9 @@ export class DirectoryCandidates {
 
 /** The paths `rm`/`rmdir` remove or `mv` moves away: every operand, but not `mv`'s destination. */
 function removedTargets(name: string, args: Word[]): Word[] {
-	const paths = operands(args, name === "mv" ? ["-t", "--target-directory", "-S", "--suffix"] : []);
-	if (name !== "mv" || optionArgument(args, "-t", "--target-directory")) return paths;
-	return paths.slice(0, -1);
+	const scanned = scanCommand(name, args);
+	if (name !== "mv" || optionValues(scanned, TARGET_DIR).length > 0) return scanned.operands;
+	return scanned.operands.slice(0, -1);
 }
 
 function redirectTargets(cmd: ShellCommand): Word[] {
@@ -124,60 +138,45 @@ function isDescriptorDup(op: string, target: Word): boolean {
 }
 
 function commandTargets(name: string, args: Word[]): Word[] {
-	if (ALL_PATHS_WRITTEN.has(name)) return operands(args);
-	if (LAST_PATH_WRITTEN.has(name)) return lastPathTargets(args);
+	if (ALL_PATHS_WRITTEN.has(name)) return scanCommand(name, args).operands;
+	if (LAST_PATH_WRITTEN.has(name)) return lastPathTargets(name, args);
 	if (name === "sed") return sedTargets(args);
 	if (name === "perl") return perlTargets(args);
 	return [];
 }
 
-function lastPathTargets(args: Word[]): Word[] {
-	const dir = optionArgument(args, "-t", "--target-directory");
-	if (dir) return [dir];
-	const paths = operands(args);
-	return paths.length > 0 ? [paths[paths.length - 1] as Word] : [];
+/** Scans `args` with the options of `name` that take a value; other commands treat every non-option word as an operand. */
+function scanCommand(name: string, args: Word[]): Scanned {
+	return scanOptions(args, VALUED_OPTIONS[name] ?? set(), false);
+}
+
+/** The `-t DIR` value when given (it is the only write target), else the last operand. */
+function lastPathTargets(name: string, args: Word[]): Word[] {
+	const scanned = scanCommand(name, args);
+	const dirs = optionValues(scanned, TARGET_DIR);
+	if (dirs.length > 0) return dirs;
+	return scanned.operands.slice(-1);
 }
 
 /** `sed -i` edits every file operand; the script is the first operand unless `-e`/`-f` gave it. */
 function sedTargets(args: Word[]): Word[] {
-	if (!args.some((w) => /^-[a-zA-Z]*i/.test(w.text) || w.text.startsWith("--in-place"))) return [];
-	const hasScriptOption = args.some((w) => /^-[a-zA-Z]*[ef]$/.test(w.text) || /^--(expression|file)/.test(w.text));
-	const files = operands(args, ["-e", "-f", "--expression", "--file"]);
-	return hasScriptOption ? files : files.slice(1);
+	const scanned = scanOptions(args, VALUED_OPTIONS.sed as ReadonlySet<string>, false);
+	if (!scanned.options.some((o) => o.name === "-i" || isLongOption(o.name, "--in-place", 4))) return [];
+	const hasScript = scanned.options.some((o) => o.name === "-e" || o.name === "-f" || isLongOption(o.name, "--expression", 3) || isLongOption(o.name, "--file", 4));
+	return hasScript ? scanned.operands : scanned.operands.slice(1);
 }
 
 /** `perl -i` edits every file operand; the program is the first operand unless `-e`/`-E` gave it. */
 function perlTargets(args: Word[]): Word[] {
-	if (!args.some((w) => /^-[a-zA-Z]*i/.test(w.text))) return [];
-	const hasProgram = args.some((w) => /^-[a-zA-Z]*[eE]$/.test(w.text));
-	const files = operands(args, ["-e", "-E"]);
-	return hasProgram ? files : files.slice(1);
+	const scanned = scanOptions(args, VALUED_OPTIONS.perl as ReadonlySet<string>, false);
+	if (!scanned.options.some((o) => o.name === "-i")) return [];
+	const hasProgram = scanned.options.some((o) => o.name === "-e" || o.name === "-E");
+	return hasProgram ? scanned.operands : scanned.operands.slice(1);
 }
 
-/** Non-option words; the word after an option in `valued` (or a short cluster ending in one) is skipped. */
-function operands(args: Word[], valued: string[] = []): Word[] {
-	const out: Word[] = [];
-	for (let k = 0; k < args.length; k++) {
-		const w = args[k] as Word;
-		if (w.text === "--") return [...out, ...args.slice(k + 1)];
-		if (!w.text.startsWith("-") || w.text === "-") out.push(w);
-		else if (valued.some((v) => isShort(v) && w.text.startsWith(v) && w.text.length > v.length && !/^-[a-zA-Z]+$/.test(w.text))) continue; // `-tDIR`: value attached
-		else if (valued.some((v) => w.text === v || (!v.startsWith("--") && /^-[a-zA-Z]+$/.test(w.text) && w.text.endsWith(v.slice(1))))) k++;
-	}
-	return out;
-}
-
-const isShort = (v: string): boolean => !v.startsWith("--");
-
-function optionArgument(args: Word[], short: string, long: string): Word | undefined {
-	for (let k = 0; k < args.length; k++) {
-		const w = args[k] as Word;
-		if (w.text === "--") return undefined;
-		if (w.text === short || w.text === long) return args[k + 1];
-		if (w.text.startsWith(short) && !w.text.startsWith("--") && w.text.length > short.length) return { ...w, text: w.text.slice(short.length) };
-		if (w.text.startsWith(`${long}=`)) return { ...w, text: w.text.slice(long.length + 1) };
-	}
-	return undefined;
+/** True when `name` is `full` or an abbreviation of it that GNU getopt accepts (at least `min` characters). */
+function isLongOption(name: string, full: string, min: number): boolean {
+	return name.length >= min && full.startsWith(name);
 }
 
 /** `path` with its deepest existing ancestor replaced by that ancestor's real path. */
