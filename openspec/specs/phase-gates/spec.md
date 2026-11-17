@@ -7,7 +7,7 @@ Defines `spec_gate` and `registerGate`: per-phase self and human gates, the revi
 ## Requirements
 
 ### Requirement: Gate tool
-`spec_gate <target>` SHALL accept the current phase id or a gate registered with `registerGate(name, { checks, options })`. It SHALL run that phase's or gate's checks, then:
+`spec_gate <target>` SHALL accept the current phase id or a gate registered with `registerGate(name, { checks, options })`. It SHALL run that phase's or gate's checks, including its gate-only checks, before it evaluates the refusals below, then:
 - for a `self` gate, pass when every check passes;
 - for a `human` gate, send a request through the approver chain.
 
@@ -30,6 +30,14 @@ It MUST refuse, writing nothing, when:
 #### Scenario: Failing check that is not waivable
 - **WHEN** `spec-format` fails in define and `spec_gate define` runs
 - **THEN** the tool refuses and names the failing check
+
+#### Scenario: Gate-only check runs at the gate
+- **WHEN** the change is in `plan`, `verify-red-on-base` has not run in this session, and `spec_gate plan` runs
+- **THEN** `verify-red-on-base` runs before the refusals are evaluated, and its results are in the gate request's review payload
+
+#### Scenario: Forge answer completed without rerunning gate-only checks
+- **WHEN** a forge `gate:plan` request was sent after `verify-red-on-base` passed, and a new session completes its `/livespec approve` with HEAD and the issue unchanged
+- **THEN** the answer is valid, the plan gate is approved, and no unit's `Verify` runs during the completion
 
 #### Scenario: Self gate
 - **WHEN** the change is in `shape`, whose gate is `self`, and `spec_gate shape` runs

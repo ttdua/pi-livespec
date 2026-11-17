@@ -53,8 +53,8 @@ The card SHALL show:
 - the active phase's redirects;
 - open blocking questions;
 - counters with their caps;
-- active units;
-- `incomplete` markers;
+- active units, started units and blocked units with their reason;
+- the items of the latest `incomplete` comment;
 - optional skills that still need a skill note;
 - pending approver requests, with subject and adapter;
 - frozen and stale units;
@@ -83,6 +83,10 @@ Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be st
 #### Scenario: Ignored command shown
 - **WHEN** the last poll ignored a `/livespec approve` comment from a user without write access
 - **THEN** the card names the comment's author and the reason, wrapped as untrusted
+
+#### Scenario: Evidence shown
+- **WHEN** the change is in `build`, U1 is started at pre SHA `abc1234` and U2 is blocked by `progress`
+- **THEN** the card names U1 as started with `abc1234` and U2 as BLOCKED with reason `progress`
 
 ### Requirement: Cache evidence
 The change SHALL record a manual smoke run of at least five turns against a real model, listing per turn the uncached input and cache-read tokens with and without the livespec hooks, in the format of probe (c) in `docs/evidence/host-seams.md`. The run passes when, from turn 2 on, each hooked turn's cache-read tokens are within one cache block of the control turn, or the hooked turn reads more; an isolated full miss counts only if the control run shows none.

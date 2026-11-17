@@ -11,7 +11,7 @@ The engine SHALL build `changeState` only from the change issue and from git:
 - from the issue: the phase label, the parsed body, own marked comments, unit status lines and Questions;
 - from git: the current branch, HEAD, a clean or dirty tree, and the diff of `specs/` from `Base` to HEAD.
 
-From own marked comments it SHALL derive pending approver requests, gate results, the unit lock with frozen and stale units, stale phases, an unanswered stuck report and the `change_iterations` state. It MUST NOT use session memory as a source of state. When the forge is in read-only mode, the state MUST be built from cached data and marked stale.
+From own marked comments it SHALL derive pending approver requests, gate results, the unit lock with frozen and stale units, stale phases, an unanswered stuck report, the `change_iterations` state, started units, receipts, unit attempts, blocked units, receipted units that are not yet ticked, and the items of the latest `incomplete` comment. It MUST NOT use session memory as a source of state. When the forge is in read-only mode, the state MUST be built from cached data and marked stale.
 
 #### Scenario: State from fixture issue
 - **WHEN** the snapshot is read for an issue with label `livespec:phase/build`, unit U1 done and U3 pending, and a dirty tree
@@ -29,8 +29,16 @@ From own marked comments it SHALL derive pending approver requests, gate results
 - **WHEN** the issue has an own approved plan `gate` comment locking U1 and U2, U2's body differs from its locked digest, and an own `request` comment for `question:Q4` has no answer
 - **THEN** `changeState` shows U2 frozen and a pending request for `question:Q4`
 
+#### Scenario: Started unit from comments
+- **WHEN** the issue has an own `unit-start` comment for U2 and no later `receipt` for U2, and U2 is pending
+- **THEN** `changeState` shows U2 started
+
+#### Scenario: Done unit is never started
+- **WHEN** U2 has an own `unit-start` comment and no receipt, and a human ticked U2 on the web
+- **THEN** `changeState` does not show U2 started
+
 ### Requirement: Next step
-`nextStep(pack, changeState)` SHALL be a pure function. It returns the current phase, the required and optional skills, the redirects, outstanding check results, open blocking questions, counters with their caps, active units, `incomplete` markers, an optional phase to advance to, and exactly one sentence saying what to do next.
+`nextStep(pack, changeState)` SHALL be a pure function. It returns the current phase, the required and optional skills, the redirects, outstanding check results, open blocking questions, counters with their caps, active units, units waiting on `Depends`, started units, blocked units with their reason, the items of the latest `incomplete` comment, an optional phase to advance to, and exactly one sentence saying what to do next.
 
 #### Scenario: Pure
 - **WHEN** `nextStep` is called twice with equal inputs
@@ -47,8 +55,11 @@ From own marked comments it SHALL derive pending approver requests, gate results
 7. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
 8. missing phase output;
 9. failing check not waived by the phase's valid gate result;
-10. in `build`, the next pending unit whose `Depends` are done, or the blocked units when none is ready;
-11. the phase gate.
+10. in a `per: unit` phase, a blocked unit: send a stuck report with `spec_stuck`;
+11. in a `per: unit` phase, a started unit: finish it with `unit_finish`;
+12. in a `per: unit` phase, a receipted unit that is not ticked: run `unit_finish` again;
+13. in `build`, the next pending unit whose `Depends` are done, or the units waiting on `Depends` when none is ready;
+14. the phase gate.
 
 At the gate, the sentence MUST reflect the valid gate result for the phase, meaning the latest own result newer than the latest `stale` comment listing the phase. A superseded latest result counts as no valid result and never falls back to an older one. An approved valid result MUST report the successor as `advance`, except at `ship`. The sentence covers:
 - `changes_requested`: revise and request again;
@@ -60,7 +71,7 @@ In the last phase of the flow, the sentence MUST say the flow has no further pha
 
 #### Scenario: No unit ready
 - **WHEN** the change is in `build` and every pending unit depends on another pending unit
-- **THEN** the next sentence names the blocked units and their unmet `Depends`, and no advance is reported
+- **THEN** the next sentence names the waiting units and their unmet `Depends`, and no advance is reported
 
 #### Scenario: Last phase
 - **WHEN** the change is in `close`
@@ -106,6 +117,14 @@ In the last phase of the flow, the sentence MUST say the flow has no further pha
 - **WHEN** the change is in `ship` and its ship gate is approved
 - **THEN** the next sentence says the change is ready to ship and no advance is reported
 
+#### Scenario: Blocked unit asks for a stuck report
+- **WHEN** the change is in `build`, U2 is blocked by `unit_attempts`, no stuck report is open, and U3 is ready
+- **THEN** the next sentence says U2 is BLOCKED and asks to send a stuck report with `spec_stuck`
+
+#### Scenario: Started unit before the next unit
+- **WHEN** the change is in `build`, U1 is started, and U3 is ready
+- **THEN** the next sentence asks to finish U1 with `unit_finish`
+
 #### Scenario: Waived check does not hold the next step
 - **WHEN** the `plan` gate was approved with `size-limits` waived and `size-limits` still fails
 - **THEN** the next step reports `build` as `advance` and does not ask to fix `size-limits`
@@ -132,6 +151,8 @@ The successor of a phase SHALL be the first phase, in pack order, whose `require
 ### Requirement: Named checks over LS-02 validators
 The engine SHALL register the named checks `spec-format` (living spec validation of the capabilities the change declares), `units-format`, `done-maps-scenarios` and `capabilities-match-diff`, each returning the LS-02 `Result` list. The engine SHALL run only the checks the active phase lists, and later specs MUST be able to register more checks.
 
+A check MAY be registered as gate-only. A gate-only check SHALL run only when its gate is requested. On every other run of the checks, the engine SHALL report the check's last results that are still valid for the current state, or no result.
+
 #### Scenario: Units check in plan
 - **WHEN** the change is in `plan` and unit U2 lacks `Verify`
 - **THEN** the outstanding checks contain a `units-format` error for U2
@@ -140,12 +161,20 @@ The engine SHALL register the named checks `spec-format` (living spec validation
 - **WHEN** the change is in `shape`
 - **THEN** no check is run
 
+#### Scenario: Gate-only check skipped on refresh
+- **WHEN** a test registers gate-only check `slow` for `plan`, and the change state is refreshed twice without a gate request
+- **THEN** `slow` does not run and reports no result
+
 #### Scenario: Capabilities mismatch
 - **WHEN** the change declares `modified [rate-limit]` and the diff from `Base` touches only `specs/auth/`
 - **THEN** `capabilities-match-diff` reports both mismatches
 
 ### Requirement: Loop counters
-Loop counters SHALL be tool-written marked comments of kind `counter` with id `<loop>` or `<loop>.<unit>` and data `{ value }`. Setting a counter MUST edit the existing own counter comment or create one when none exists. A loop MAY instead be counted from other own marked comments; `change_iterations` SHALL be the number of own `stale` comments marked as a counted return to define after a plan approval, and a `counter` comment for it MUST be ignored. The engine SHALL report each counter with its cap from the pack's `loops`.
+Loop counters SHALL be tool-written marked comments of kind `counter` with id `<loop>` or `<loop>.<unit>` and data `{ value }`. Setting a counter MUST edit the existing own counter comment or create one when none exists. A loop MAY instead be counted from other own marked comments:
+- `change_iterations` SHALL be the number of own `stale` comments marked as a counted return to define after a plan approval;
+- `unit_attempts.<unit>` SHALL be derived from `progress` decision records, as unit-evidence "Unit attempts and blocked units" defines.
+
+A `counter` comment for a derived loop MUST be ignored. The engine SHALL report each counter with its cap from the pack's `loops`.
 
 #### Scenario: Counter shown with cap
 - **WHEN** a `counter` comment `review_rounds` has value 2 and the pack cap is 3
@@ -158,6 +187,10 @@ Loop counters SHALL be tool-written marked comments of kind `counter` with id `<
 #### Scenario: Derived iteration count
 - **WHEN** the issue has two own `stale` comments marked as counted returns to define and one that is not
 - **THEN** `nextStep` reports `change_iterations` as 2 of 5
+
+#### Scenario: Derived unit attempts
+- **WHEN** U2 has two own `progress.U2` records after its latest `unit-start`, and an own `counter` comment `unit_attempts.U2` with value 9
+- **THEN** `nextStep` reports `unit_attempts.U2` as 2 of 3
 
 ### Requirement: Comments cache
 The engine SHALL cache the raw comments of a change issue and reuse them while the issue's `updatedAt` is unchanged, for at most 5 minutes, and MUST drop the entry after any livespec write to that issue. Own marked comments MUST be filtered from the cached comments by the current `whoami` login on every read, never stored pre-filtered.
