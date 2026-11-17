@@ -69,7 +69,7 @@ async function runOnBase(env: VerifyEnv, base: string, u: Unit, verify: string):
 	const prep = { ...(setup !== undefined ? { setup } : {}), run };
 	const out = await withTempWorktree(env.git, env.root, base, prep, (dir) => runVerify(verify, { ...run, cwd: dir }));
 	if ("invalid" in out) return { results: [error(`${id}: the worktree on Base could not be prepared (${out.invalid}).${tail(out.output)}`)], cache: out.invalid !== "aborted" };
-	if ("blocked" in out) return { results: [error(`${id}: the Verify command is blocked, so it was not run: ${untrusted(out.blocked)} Fix Verify with unit_amend.`)], cache: false };
+	if ("blocked" in out) return { results: [error(`${id}: the Verify command is blocked, so it was not run: ${untrusted(out.blocked)} Fix Verify with unit_amend.`)], cache: true };
 	const cls = classifyRun(out);
 	return { results: classResult(u, cls, out.exit, out.output), cache: !(typeof cls === "object" && cls.invalid === "aborted") };
 }

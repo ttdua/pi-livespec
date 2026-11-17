@@ -219,3 +219,21 @@ describe("memo of invalid runs", () => {
 		expect(h.runs()).toBe(1);
 	});
 });
+
+describe("memo of blocked runs", () => {
+	test("a guard-blocked Verify is classified once across two gates and never spawned", async () => {
+		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG && git push" }]);
+		let consulted = 0;
+		setRedOnBaseEnv(async () => {
+			const env = await verifyEnv(h.session);
+			const guard = env.run.guard;
+			return { ...env, run: { ...env.run, guard: (cmd: string) => (consulted++, guard(cmd)) } };
+		});
+		await h.call("spec_gate", { target: GATE });
+		expect(consulted).toBe(1);
+		await h.call("spec_gate", { target: GATE });
+		expect(consulted).toBe(1);
+		expect(h.runs()).toBe(0);
+		expect((await requestOf(h)).text).toContain("blocked");
+	});
+});
