@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `unit-evidence-and-guards`
-**Iteration**: `2`
-**Applied at**: `2026-11-17 14:54`
+**Iteration**: `3`
+**Applied at**: `2026-11-17 16:04`
 **Executor**: `subagent-driven-development`. Implementer seats used the `implementer` agent, and task and final reviews used the `code-reviewer` agent. Models came from the agent config, with no override.
 
 ---
@@ -22,8 +22,12 @@
 
 ## Commits
 
-- **Range**: `af3e9f6..71d000e`. This covers the lane merges, the `tasks.md` ticks, the final-review fix wave, the iteration-1 receipts and the iteration-2 fixes. The `apply.md` commit itself comes after `71d000e`.
-- **Count**: `52`
+- **Range**: `af3e9f6..bd4fe09`. This covers the lane merges, the `tasks.md` ticks, the final-review fix wave, every verify and apply receipt, and the iteration-2 and iteration-3 fixes. The `apply.md` commit itself comes after `bd4fe09`.
+- **Count**: `58`
+- **Iteration 3 range**: `878d376..bd4fe09`, 4 commits. This fixed verify iteration 2 (FAIL).
+  - `940fc00`: fixes the guard.
+  - `47de3b7`: stabilises the suite.
+  - `5c98b77` and `bd4fe09`: a scratch report was force-added, then untracked again. Their net effect on tracked files is nil.
 - **Iteration 2 range**: `a1039d7..71d000e`, 5 commits. This fixed verify iteration 1 (FAIL): `95fc76f`, `8a44a22`, `e084548`, `3faa8e4`, `71d000e`.
 
 ---
@@ -51,6 +55,9 @@ These are all internal contracts (`public: no`) unless noted. No public contract
 - `testOnlyCommitCheck`: gains a third parameter (the pending test files) and a `missing` result, so a commit that touches no pending test is refused.
 - `Git.parents()`: added to refuse a merge commit as the pending first commit.
 - `stripWrappers`: may return `{ script }`, for `env -S` and `flock -c`.
+- Iteration 3 changes:
+  - `checkChildScript` (`src/guard/classify.ts`) now blocks an expansion child script when its decoded text mentions livespec, as well as when it has a dangerous token. This covers `env -S`, `sh -c` and `flock -c`.
+  - Test infra: `vitest.config.ts` sets `testTimeout` and `hookTimeout` to 30_000. Temp-dir cleanup retries (`maxRetries` 5). The `pgrep` markers in `tests/evidence/runner.test.ts` are unique per run.
 - Iteration 2 changes:
   - `src/guard/unwrap.ts` gains a pure env split-string splitter.
   - An unreadable `-S` value is decoded (`\_`, `\t`, `\n` become spaces) before the dangerous-token scan, and fails closed.
@@ -85,14 +92,20 @@ Iteration 2 (fix iteration after verify iteration 1 FAIL):
 |---|---|---|---|---|
 | CRITICAL 1 (`env -S`), WARNINGs 1–3 | `sequential` | `a1039d7..71d000e` | approved after 2 rounds (scoped re-review `af9f2539`) | — (committed on `unit-evidence-and-guards`) |
 
+Iteration 3 (fix iteration after verify iteration 2 FAIL):
+
+| Item | Lane | Range | Review | Merge commit |
+|---|---|---|---|---|
+| CRITICAL 1 (`env -S` expansion with a livespec path), CRITICAL 2 (suite stability under load), SUGGESTION (pgrep marker) | `sequential` | `878d376..bd4fe09` | approved, 1 round (scoped re-review `fa735f56`) | — (committed on `unit-evidence-and-guards`) |
+
 Final whole-branch review: **With fixes**, with 2 Important and 6 Minor findings. One fix wave followed on `unit-evidence-and-guards` (`4b4c771..d18db6d`, sequential). The scoped re-review found I1 and M3–M7 addressed. It left three guard gaps open: `env -S` split-string escapes, `flock` options after the lock operand, and an attached `mv -tDIR .pi`. Verify iteration 1 reported them, and iteration 2 closed all three.
 
-Integration evidence on `71d000e`, from the controller at 14:53:
-- `bun run test` exited 0: 136 files and 1948 tests passed. Load averages were 49.65, 92.25 and 96.85.
+Integration evidence on `bd4fe09`, from the controller at 16:02–16:04:
 - `bun run typecheck` exited 0.
+- `bun run test` passed twice in a row. Both runs exited 0, with 136 files and 1949 tests passed. Load averages were 32 for the first run and 106 for the second.
 
 ---
 
 ## Next step
 
-Run `/opsx-verify` (iteration 2).
+Run `/opsx-verify` (iteration 3).
