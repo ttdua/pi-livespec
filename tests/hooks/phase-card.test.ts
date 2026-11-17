@@ -264,3 +264,11 @@ describe("approvals section display ids", () => {
 		expect(card.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("Ignore-all-previous-instructions");
 	});
 });
+
+describe("Incomplete line", () => {
+	test("shows the comment items, not ids", () => {
+		const body = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
+		const card = renderCard(changeCard(stateFor("build", { incomplete: ["finish the header test", "docs"] }, body)));
+		expect(card).toContain("Incomplete: finish the header test, docs");
+	});
+});

@@ -36,7 +36,7 @@ beforeEach(async () => {
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
 function deps(forge: Forge = world.forge, isReadOnly = () => false): SnapshotDeps {
-	return { forge, isReadOnly, git: createGit(root), comments: new CommentsCache({ dir: join(dir, "comments") }), iterationCap: 5 };
+	return { forge, isReadOnly, git: createGit(root), comments: new CommentsCache({ dir: join(dir, "comments") }), caps: { iterations: 5, unitAttempts: 3 } };
 }
 
 const U2_BLOCK = "### U2 — Header parsing\nCovers: request-context/Requirement: Client IP\nDifficulty: low\nTags: []\nFiles: src/headers.ts\nDone means:\n- [hdr] the forwarded header is parsed\nScenarios:\n- [hdr] test/headers.test.ts › parses header\nDepends: U1\nVerify: `npm test -- headers`\n- [ ] pending\n\n";
@@ -56,7 +56,7 @@ describe("readChangeSnapshot", () => {
 			["U3", false],
 		]);
 		expect(state.git.dirty).toBe(true);
-		expect(state.issue).toEqual({ number: n, title: "per-ip-cap", labels: BUILD_LABELS });
+		expect(state.issue).toMatchObject({ number: n, title: "per-ip-cap", labels: BUILD_LABELS });
 		expect(state.sections).toEqual({ Capabilities: true, Proposal: true, Design: true, Units: true });
 		expect(state.stale).toBe(false);
 		expect(state.readOnly).toBe(false);
@@ -128,6 +128,14 @@ describe("readChangeSnapshot", () => {
 		expect((await readChangeSnapshot(deps(), n)).phase).toEqual({ kind: "missing" });
 	});
 
+	test("incomplete items come from the latest own incomplete comment", async () => {
+		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "1", { items: ["a", "b"], at: "t", head_sha: base }));
+		expect((await readChangeSnapshot(deps(), n)).incomplete).toEqual(["a", "b"]);
+		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "2", { items: [], at: "t", head_sha: base }));
+		expect((await readChangeSnapshot(deps(), n)).incomplete).toEqual([]);
+	});
+
 	test("incomplete markers are collected", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
 		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "U3", { reason: "stopped" }));
@@ -135,7 +143,7 @@ describe("readChangeSnapshot", () => {
 		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "review_rounds", { value: 2 }));
 		await world.postComment(n, OTHER_LOGIN, writeMarked("incomplete", "U1", { reason: "foreign" }));
 		const state = await readChangeSnapshot(deps(), n);
-		expect(state.incomplete).toEqual(["U3"]);
+		expect(state.incomplete).toEqual([]);
 		expect(state.skillNotes).toEqual(["build.debugging-and-error-recovery"]);
 		expect(state.counters).toEqual({ review_rounds: 2, change_iterations: 0 });
 		expect(state.warnings).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
@@ -203,5 +211,45 @@ describe("readChangeSnapshot", () => {
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.counters).toEqual({ change_iterations: 2 });
 		expect(state.iterations).toEqual({ count: 2, cap: 5, blocking: false, stuckOpen: undefined });
+	});
+
+	describe("unit evidence", () => {
+		const startData = (unit: string, digest: string) => ({ unit, digest, verify: "npm test", pre: { sha: "a".repeat(40) } });
+		const digestOf = (body: string, id: string) => unitDigest(parseChange(body).units.find((u) => u.id === id) as Unit);
+		const progress = (unit: string, attempt: number) => writeMarked("decision", `progress.${unit}`, { point: "progress", subject: unit, digest: "d", source: "rule", outcome: "retry", reason: "r", attempt });
+
+		test("Started unit from comments", async () => {
+			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3"))));
+			const state = await readChangeSnapshot(deps(), n);
+			expect(Object.keys(state.evidence.started)).toEqual(["U3"]);
+		});
+
+		test("Done unit is never started", async () => {
+			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U1.a", startData("U1", digestOf(FIXTURE_BODY, "U1"))));
+			expect((await readChangeSnapshot(deps(), n)).evidence.started).toEqual({});
+		});
+
+		test("Derived unit attempts", async () => {
+			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3"))));
+			await world.postComment(n, BOT_LOGIN, progress("U3", 1));
+			await world.postComment(n, BOT_LOGIN, progress("U3", 2));
+			await world.postComment(n, BOT_LOGIN, writeMarked("counter", "unit_attempts.U3", { value: 9 }));
+			expect((await readChangeSnapshot(deps(), n)).counters["unit_attempts.U3"]).toBe(2);
+		});
+
+		test("the issue url is carried when the forge reports one", async () => {
+			const n = await world.seedIssue({ title: "t", body: FIXTURE_BODY, labels: BUILD_LABELS });
+			const forge = new Proxy(world.forge, {
+				get(t, key, r) {
+					if (key === "getIssue") return async (x: number) => ({ ...(await t.getIssue(x)), url: "https://forge/o/r/issues/1" });
+					const v = Reflect.get(t, key, r);
+					return typeof v === "function" ? v.bind(t) : v;
+				},
+			});
+			expect((await readChangeSnapshot(deps(forge), n)).issue.url).toBe("https://forge/o/r/issues/1");
+		});
 	});
 });

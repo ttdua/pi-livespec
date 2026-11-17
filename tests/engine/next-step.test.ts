@@ -6,6 +6,7 @@ import { nextStep, successorOf } from "../../src/engine/next-step.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, Phase } from "../../src/engine/pack-types.ts";
 import type { ChangeState, CheckResult } from "../../src/engine/state-types.ts";
+import type { StartRecord } from "../../src/evidence/records.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import type { Answered, RequestKind, RequestRecord, Subject } from "../../src/interaction/approver.ts";
 import type { AppliedAnswer, PendingRequest } from "../../src/interaction/requests.ts";
@@ -179,7 +180,7 @@ describe("nextStep", () => {
 		const step = nextStep(pack, state("build", NO_QUESTION));
 		expect(step.next).toBe("Build U3 — Rate limit per IP.");
 		expect(step.activeUnits).toEqual(["U3"]);
-		expect(step.blockedUnits).toEqual([]);
+		expect(step.waitingUnits).toEqual([]);
 	});
 
 	test("Build with pending units does not advance", () => {
@@ -191,7 +192,7 @@ describe("nextStep", () => {
 	test("No unit ready", () => {
 		const step = nextStep(pack, state("build", NONE_READY));
 		expect(step.next).toBe("No unit is ready: U1 waits on U3; U3 waits on U1.");
-		expect(step.blockedUnits).toEqual([
+		expect(step.waitingUnits).toEqual([
 			{ id: "U1", waitingOn: ["U3"] },
 			{ id: "U3", waitingOn: ["U1"] },
 		]);
@@ -458,5 +459,74 @@ describe("fix round 1", () => {
 		const step = nextStep(pack, state("plan", NO_QUESTION, { requests: requests([odd], [answered]) }));
 		expect(step.pending.map((p) => [p.mode, p.adapter])).toEqual([["blocking", "forge"], ["blocking", "forge"]]);
 		expect(step.next).toBe("Wait for the human's answer to gate:plan on the forge.");
+	});
+});
+
+describe("unit evidence rules", () => {
+	const startRec = (unit: string, over: Partial<StartRecord> = {}): StartRecord => ({
+		unit,
+		digest: "d",
+		verify: "v",
+		pre: { sha: "abc1234".padEnd(40, "0") },
+		id: `${unit}.s`,
+		commentId: "c",
+		index: 0,
+		...over,
+	});
+	const evidence = (over: Partial<ChangeState["evidence"]>): ChangeState["evidence"] => ({
+		started: {},
+		receipts: {},
+		attempts: {},
+		blocked: {},
+		untickedReceipts: [],
+		...over,
+	});
+	/** U1 and U3 pending, both ready. */
+	const TWO_READY = NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —");
+
+	test("Blocked unit asks for a stuck report", () => {
+		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ blocked: { U3: "attempts" } }) }));
+		expect(step.next).toBe("U3 is BLOCKED (attempts): send a stuck report with spec_stuck.");
+		expect(step.blockedUnits).toEqual([{ id: "U3", reason: "attempts" }]);
+	});
+
+	test("Started unit before the next unit", () => {
+		const s = state("build", TWO_READY, { evidence: evidence({ started: { U1: startRec("U1") } }) });
+		const step = nextStep(pack, s);
+		expect(step.next).toBe("Finish U1 with unit_finish once Verify passes.");
+		expect(step.startedUnits).toEqual(["U1"]);
+		expect(step.activeUnits).toEqual(["U1", "U3"]);
+	});
+
+	test("Receipted, not ticked", () => {
+		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ untickedReceipts: ["U3"] }) }));
+		expect(step.next).toBe("Run unit_finish U3 again to tick it.");
+		expect(step.untickedReceipts).toEqual(["U3"]);
+	});
+
+	test("blocked comes before started, started before unticked", () => {
+		const both = evidence({ started: { U1: startRec("U1") }, blocked: { U3: "progress" }, untickedReceipts: ["U3"] });
+		expect(nextStep(pack, state("build", TWO_READY, { evidence: both })).next).toContain("BLOCKED (progress)");
+		const noBlock = evidence({ started: { U1: startRec("U1") }, untickedReceipts: ["U3"] });
+		expect(nextStep(pack, state("build", TWO_READY, { evidence: noBlock })).next).toContain("Finish U1");
+	});
+
+	test("an open stuck report waits before a blocked unit", () => {
+		const s = state("build", NO_QUESTION, {
+			evidence: evidence({ blocked: { U3: "attempts" } }),
+			iterations: { count: 0, cap: undefined, blocking: false, stuckOpen: "S1.x" },
+		});
+		expect(nextStep(pack, s).next).toContain("Stuck report");
+		expect(nextStep(pack, s).next).not.toContain("BLOCKED");
+	});
+
+	test("pendingVerifier lists started units with a pending start", () => {
+		const s = state("build", TWO_READY, { evidence: evidence({ started: { U1: startRec("U1", { pending: true }), U3: startRec("U3") } }) });
+		expect(nextStep(pack, s).pendingVerifier).toEqual(["U1"]);
+	});
+
+	test("Derived unit attempts", () => {
+		const s = state("build", NO_QUESTION, { counters: { "unit_attempts.U3": 2 } });
+		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
 	});
 });

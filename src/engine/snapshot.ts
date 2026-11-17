@@ -10,14 +10,17 @@ import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { readRequests } from "../interaction/requests.ts";
 import type { CommentsCache } from "./comments-cache.ts";
+import { deriveUnitEvidence } from "../evidence/unit-state.ts";
 import { readCounters } from "./counters.ts";
 import { type Git, GitError } from "./git.ts";
 import { deriveIterations } from "./iterations.ts";
 import { deriveLocks } from "./locks.ts";
 import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 
-/** `iterationCap` is the pack's `loops.change_iterations`; without it the cap never blocks. */
-export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; iterationCap?: number };
+/** The pack's `loops.change_iterations` and `loops.unit_attempts`; a missing cap never blocks. */
+export type Caps = { iterations: number | undefined; unitAttempts: number | undefined };
+
+export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number } };
 
 const PHASE_PREFIX = phaseLabel("");
 const BODY_SECTIONS = ["Proposal", "Design", "Units"] as const;
@@ -48,6 +51,16 @@ function idsOfKind(marked: MarkedComment[], kind: string): string[] {
 	return marked.filter((m) => m.kind === kind).map((m) => m.id);
 }
 
+/** The `items` of the latest own `incomplete` comment; empty when it is cleared, absent or malformed. */
+function incompleteItems(marked: MarkedComment[]): string[] {
+	const latest = marked.filter((m) => m.kind === "incomplete").at(-1);
+	const items = (latest?.data as { items?: unknown } | null)?.items;
+	return Array.isArray(items) ? items.filter((i): i is string => typeof i === "string") : [];
+}
+
+const attemptCounters = (attempts: Record<string, number>): Record<string, number> =>
+	Object.fromEntries(Object.entries(attempts).map(([unit, n]) => [`unit_attempts.${unit}`, n]));
+
 /**
  * The login confirmed by `whoami` now, or undefined when the forge is unreachable. A login seen
  * earlier is never reused: the account may have switched, and its state must not be counted.
@@ -61,10 +74,9 @@ async function currentLogin(forge: Forge): Promise<string | undefined> {
 	}
 }
 
-type CommentFacts = Pick<
-	ChangeState,
-	"counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations"
-> & { stale: boolean; warnings: string[] };
+type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence">;
+
+type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
 
 const UNKNOWN_LOGIN_WARNING = "the forge is unreachable and the current login is unknown: own marked comments are not read";
 
@@ -72,13 +84,15 @@ const UNKNOWN_LOGIN_WARNING = "the forge is unreachable and the current login is
 export function deriveCommentFacts(
 	marked: MarkedComment[],
 	change: Change,
-	iterationCap: number | undefined,
-): Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations"> {
-	const iterations = deriveIterations(marked, iterationCap);
+	caps: Caps,
+): DerivedFacts {
+	const iterations = deriveIterations(marked, caps.iterations);
+	const evidence = deriveUnitEvidence(change, marked, caps.unitAttempts);
 	return {
-		counters: { ...readCounters(marked), change_iterations: iterations.count },
+		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count },
 		skillNotes: idsOfKind(marked, "skill-note"),
-		incomplete: idsOfKind(marked, "incomplete"),
+		incomplete: incompleteItems(marked),
+		evidence,
 		marked,
 		requests: readRequests(marked),
 		lock: deriveLocks(change, marked),
@@ -91,7 +105,7 @@ async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): 
 	const login = await currentLogin(d.forge);
 	const own = login === undefined ? { comments: [], warnings: [UNKNOWN_LOGIN_WARNING] } : filterMarked(read.comments, login);
 	return {
-		...deriveCommentFacts(own.comments, change, d.iterationCap),
+		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts }),
 		stale: read.stale || login === undefined,
 		warnings: own.warnings,
 	};
@@ -121,7 +135,7 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 	const comments = await readCommentFacts(d, issue, change);
 	const git = await readGitFacts(d.git, change.header.base);
 	return {
-		issue: { number: issue.number, title: issue.title, labels: [...issue.labels] },
+		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], ...(issue.url === undefined ? {} : { url: issue.url }) },
 		phase: phaseFromLabels(issue.labels),
 		change,
 		sections: sectionPresence(issue.body, change),
@@ -137,5 +151,6 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		lock: comments.lock,
 		iterations: comments.iterations,
 		commandWarnings: [],
+		evidence: comments.evidence,
 	};
 }

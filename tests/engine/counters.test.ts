@@ -37,11 +37,11 @@ describe("readCounters", () => {
 	test("reads counter values and ignores other kinds and malformed data", () => {
 		const counters = readCounters([
 			marked("counter", "review_rounds", { value: 2 }),
-			marked("counter", "unit_attempts.U3", { value: 1 }),
+			marked("counter", "review_rounds.U3", { value: 1 }),
 			marked("counter", "broken", { value: "two" }),
 			marked("skill-note", "build.x", { value: 9 }),
 		]);
-		expect(counters).toEqual({ review_rounds: 2, "unit_attempts.U3": 1 });
+		expect(counters).toEqual({ review_rounds: 2, "review_rounds.U3": 1 });
 	});
 
 	test("change_iterations counter comment is ignored", () => {
@@ -62,7 +62,14 @@ describe("setCounter", () => {
 	});
 
 	test("setCounter creates when missing", async () => {
-		await setCounter(world.forge, n, "unit_attempts.U3", 1, await own());
-		expect(readCounters(await own())).toEqual({ "unit_attempts.U3": 1 });
+		await setCounter(world.forge, n, "review_rounds.U3", 1, await own());
+		expect(readCounters(await own())).toEqual({ "review_rounds.U3": 1 });
+	});
+});
+
+describe("Derived unit attempts", () => {
+	test("counter comments for unit_attempts.* are ignored", () => {
+		const counters = readCounters([marked("counter", "unit_attempts.U2", { value: 9 }), marked("counter", "review_rounds", { value: 1 })]);
+		expect(counters).toEqual({ review_rounds: 1 });
 	});
 });
