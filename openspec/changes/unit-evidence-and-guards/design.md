@@ -456,7 +456,7 @@ The guard handler is registered **before** the context hook, so a blocked call i
   - a recursive copy or move into an ancestor of `.pi/livespec`;
   - a GNU abbreviated long option on a wrapper.
 
-  A follow-up change adds a human-approval tier to the guard. The guard asks the human, through `ctx.ui`, before running a command it cannot prove safe and that mentions `.pi/livespec`, an ancestor of it, or `push`. The approver takes responsibility for the command. Certain pushes stay blocked, and the guard blocks when there is no UI.
+  A follow-up change (#28) adds a human-approval tier to the guard. The guard asks the human, through `ctx.ui`, before running a command it cannot prove safe and that mentions `.pi/livespec`, an ancestor of it, or `push`. The approver takes responsibility for the command. Certain pushes stay blocked, and the guard blocks when there is no UI.
 
 ## Migration Plan
 

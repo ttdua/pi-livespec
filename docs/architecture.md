@@ -184,7 +184,7 @@ Every reason starts with `livespec guard:`, names the rule and names the livespe
 - **Other push and forge paths.** `git lfs push`, `tea` aliases and `tea api` are not recognized.
 - **Other writers.** Writes to `.pi/livespec/` through `git checkout`/`git restore`, `truncate`, `dd of=`, `rsync`, `patch` or an interpreter (`python -c`, `node -e`) are not caught.
 - **Copies into an ancestor.** A recursive copy or move whose destination is an ancestor of `.pi/livespec` (`cp -r incoming/livespec .pi`, `cp -a incoming/.pi .`, `mv incoming/livespec .pi`) is not caught. The guard checks the destination operand, not the subtree the copy creates.
-- **Abbreviated wrapper options.** A GNU abbreviated long option on a wrapper (`nice --adjust 5 git push`, `timeout --kill-a`, `env --split-s`, `xargs --max-a`) hides the wrapped command. Abbreviations of write-command options are resolved.
+- **Abbreviated wrapper options.** A GNU abbreviated long option on a wrapper (`nice --adjust 5 git push`, `timeout --kill-a`, `env --split-s`, `xargs --max-a`) hides the wrapped command. Abbreviations of write-command options are resolved. Both limits are tracked in #28, which adds human approval.
 - **Two sessions on one change.** The evidence lock is per process; two pi sessions can run `unit_start`/`unit_finish` on the same change at once.
 
 ## Forge accounts

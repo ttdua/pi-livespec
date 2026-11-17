@@ -171,7 +171,7 @@ None after the amendment. The two items below were CRITICAL at 19:36. They are n
    - **What:** iteration 5 resolved unique-prefix long options only for write commands. The wrapper table matches full names only, so the value of an abbreviated valued option is read as the wrapped command. `nice --adjust 5 git push`, `timeout --kill-a 1 5 git push`, `env --split-s 'git push'` and `xargs --max-a 1 git push` are ALLOWed.
    - **Recommendation:** reuse `normalizeLongOptions` from `src/guard/writeoptions.ts` per wrapper, with each wrapper's long-option list. Or fail closed: when a wrapper carries an unknown long option and the remaining words contain a dangerous token (`push`, `pr`), block. Add regressions for the four forms above and keep `nice -n 5 make` allowed.
 
-**Recurring pattern and decision.** Five iterations in a row each found the next option-parsing corner of GNU CLIs, so the denylist guard has not converged. The user chose to accept the remaining classes as limits (`de6fe63`). The lasting fix goes to a follow-up change, a human-approval tier. When the guard cannot prove a command safe and the command mentions `.pi/livespec`, an ancestor of it, or `push`:
+**Recurring pattern and decision.** Five iterations in a row each found the next option-parsing corner of GNU CLIs, so the denylist guard has not converged. The user chose to accept the remaining classes as limits (`de6fe63`). The lasting fix goes to a follow-up change, a human-approval tier (#28). When the guard cannot prove a command safe and the command mentions `.pi/livespec`, an ancestor of it, or `push`:
 - it asks the human through `ctx.ui`, showing the agent's stated reason and the parsed parts of the command;
 - the approver takes responsibility for the command;
 - a certain push stays blocked, and the guard blocks when there is no UI.
@@ -192,7 +192,7 @@ At 19:36 the outcome was FAIL. After the user-approved artifact amendment `de6fe
 
 **Next step**:
 
-Run `/opsx-continue` from the worktree to create the finalize artifact, then `/opsx-archive`. Afterwards, start the follow-up change for the guard's human-approval tier.
+Run `/opsx-continue` from the worktree to create the finalize artifact, then `/opsx-archive`. Afterwards, start the follow-up change for the guard's human-approval tier (#28).
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
