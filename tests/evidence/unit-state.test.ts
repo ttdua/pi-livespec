@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type Change, parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import type { ReceiptData, StartData } from "../../src/evidence/records.ts";
-import { deriveUnitEvidence } from "../../src/evidence/unit-state.ts";
+import { budgetWindow, deriveUnitEvidence } from "../../src/evidence/unit-state.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 
 const unitBlock = (n: number, done: boolean): string =>
@@ -51,6 +51,15 @@ const progress = (unit: string, outcome: "retry" | "stop", attempt = 1): MarkedC
 	});
 const stuckAnswer = (outcome: string, choice = "B"): MarkedComment =>
 	m("stuck", "S1-answer", { request: "stuck-S1.x", outcome, choice, notes: "", by: "alice", at: "t", adapter: "forge" });
+
+describe("budgetWindow", () => {
+	test("is the latest start, receipt or lifting stuck answer", () => {
+		expect(budgetWindow([], "U1")).toBe(-1);
+		expect(budgetWindow([progress("U1", "retry"), start("U1"), progress("U1", "retry")], "U1")).toBe(1);
+		expect(budgetWindow([start("U1"), receipt("U1"), start("U2")], "U1")).toBe(1);
+		expect(budgetWindow([start("U1"), progress("U1", "stop"), stuckAnswer("approved")], "U1")).toBe(2);
+	});
+});
 
 describe("deriveUnitEvidence", () => {
 	test("Started unit from comments", () => {

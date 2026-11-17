@@ -12,7 +12,6 @@ import { decide } from "../decide/seam.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
-import { liftsCap } from "../engine/iterations.ts";
 import { isTestFile, testOnlyCommitCheck } from "../evidence/pending.ts";
 import { previousSignature, progressRecord } from "../evidence/progress-rule.ts";
 import { newEvidenceId, type ReceiptData, receiptComment, type StartRecord } from "../evidence/records.ts";
@@ -20,6 +19,7 @@ import { classifyRun, postOk } from "../evidence/red-green.ts";
 import { blockedRefusal, finishMode, unitFinishRefusal } from "../evidence/refusals.ts";
 import { runVerify, type VerifyRun } from "../evidence/runner.ts";
 import { failureSignature } from "../evidence/signature.ts";
+import { budgetWindow } from "../evidence/unit-state.ts";
 import { RECEIPT_OUTPUT_BYTES } from "../evidence/verify-env.ts";
 import { withTempWorktree } from "../evidence/worktree.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
@@ -146,9 +146,9 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	const cap = w.pack.loops.unit_attempts ?? Number.POSITIVE_INFINITY;
 	const attempt = (state.evidence.attempts[u.id] ?? 0) + 1;
 	const signature = failureSignature(run.output);
-	const previous = previousSignature(state.marked, u.id, budgetStart(c, start));
+	const previous = previousSignature(state.marked, u.id, budgetWindow(state.marked, u.id));
 	const facts = { attempt, cap, signature, ...(previous === undefined ? {} : { previous }) };
-	const decided = await decide("progress", facts, { config: w.pack.decisions.progress ?? { mode: "rule" }, subject: u.id, digest: unitDigest(u) });
+	const decided = await decide("progress", facts, { config: w.pack.decisions.progress, subject: u.id, digest: unitDigest(u) });
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
@@ -160,13 +160,6 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	const head = `${what} Attempt ${attempt} of ${cap} for ${u.id}; signature ${signature.tests.length === 0 ? "without test names" : `tests ${untrusted(signature.tests.join(", "))}`}, hash ${signature.hash.slice(0, 12)}.`;
 	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${untrusted(decided.reason)}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, comment.id)].join("\n") : RETRY;
 	return { ...c.done(`${head}\n${next}\n${unitResult(run.output)}`), isError: true };
-}
-
-/** The comment index after which `progress` records count towards the current budget. */
-function budgetStart(c: UnitCall, start: StartRecord): number {
-	const receipt = c.state.evidence.receipts[c.unit.id]?.at(-1)?.index ?? -1;
-	const lift = c.state.marked.reduce((last, m, index) => (liftsCap(m) ? index : last), -1);
-	return Math.max(start.index, receipt, lift);
 }
 
 // --- flow ---------------------------------------------------------------------------------

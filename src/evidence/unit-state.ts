@@ -56,10 +56,20 @@ function collect(marked: MarkedComment[]): Trail {
 	return trail;
 }
 
+/** The comment index of the latest start, receipt or lifting stuck answer of `unit`; NONE when there is none. */
+function windowStart(trail: Trail, unit: string): number {
+	return Math.max(trail.starts.get(unit)?.index ?? NONE, trail.receipts.get(unit)?.at(-1)?.index ?? NONE, trail.lastLift);
+}
+
+/** The comment index after which `progress` records of `unit` count towards its current attempt budget. */
+export function budgetWindow(marked: MarkedComment[], unit: string): number {
+	return windowStart(collect(marked), unit);
+}
+
 /** The attempts newer than the start, the latest receipt and the latest lifting stuck answer. */
 function budgetAttempts(trail: Trail, unit: string): Attempt[] {
-	const windowStart = Math.max(trail.starts.get(unit)?.index ?? NONE, trail.receipts.get(unit)?.at(-1)?.index ?? NONE, trail.lastLift);
-	return (trail.attempts.get(unit) ?? []).filter((a) => a.index > windowStart);
+	const start = windowStart(trail, unit);
+	return (trail.attempts.get(unit) ?? []).filter((a) => a.index > start);
 }
 
 function blockReason(budget: Attempt[], cap: number | undefined): "attempts" | "progress" | undefined {
