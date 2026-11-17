@@ -55,10 +55,10 @@ Blocked by: 1, 2, 3, 4
 
 Blocked by: 3, 4, 5
 
-- [ ] 6.1 Add `src/evidence/red-on-base.ts`: the gate-only, waivable check over `withTempWorktree` at `Base`, with an internal per-`(root, Base, unit, digest)` cache, its environment set by `setRedOnBaseEnv`, and an error when no environment exists. `clearGateMemo()` runs at `session_start` and `session_shutdown`
-- [ ] 6.2 Make `spec_gate` run `runChecks(…, { gate: true, target })` before `gateRefusal`. Answer validation keeps using memoized results only
-- [ ] 6.3 Add `verify-red-on-base` and `decisions.progress` to `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`
-- [ ] 6.4 Tests for the verify-red-on-base, phase-gates and flow-pack delta scenarios
+- [x] 6.1 Add `src/evidence/red-on-base.ts`: the gate-only, waivable check over `withTempWorktree` at `Base`, with an internal per-`(root, Base, unit, digest)` cache, its environment set by `setRedOnBaseEnv`, and an error when no environment exists. `clearGateMemo()` runs at `session_start` and `session_shutdown`
+- [x] 6.2 Make `spec_gate` run `runChecks(…, { gate: true, target })` before `gateRefusal`. Answer validation keeps using memoized results only
+- [x] 6.3 Add `verify-red-on-base` and `decisions.progress` to `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`
+- [x] 6.4 Tests for the verify-red-on-base, phase-gates and flow-pack delta scenarios
 
 ## 7. Work-in-progress predicate
 
