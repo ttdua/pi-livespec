@@ -19,10 +19,11 @@ export class StreamRedactor {
 	private pending: Buffer = Buffer.alloc(0);
 
 	constructor(tokens: string[]) {
-		const known = [...new Set(tokens.filter((t) => t !== ""))];
-		this.tokens = known.map((t) => Buffer.from(t));
-		this.tokenStrings = this.tokens.map((t) => t.toString(BYTE_ENCODING));
-		this.hold = Math.max(0, ...this.tokens.map((t) => t.length - 1));
+		// Raw list: `redactTokens` owns filtering, dedup and replacement.
+		this.tokenStrings = tokens;
+		this.tokens = tokens.map((t) => Buffer.from(t));
+		// Empty tokens are ignored only here, so they do not inflate the hold-back.
+		this.hold = Math.max(0, ...tokens.filter((t) => t !== "").map((t) => Buffer.byteLength(t) - 1));
 	}
 
 	/** Redacted bytes that are safe to emit; the last bytes that may start a token are kept for the next call. */

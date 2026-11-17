@@ -37,6 +37,14 @@ describe("StreamRedactor", () => {
 		expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(MAX);
 	});
 
+	test("empty and duplicate tokens still redact across a chunk split", () => {
+		const r = new StreamRedactor(["", "s3cr3t", "s3cr3t"]);
+		const first = r.push(Buffer.from("xx s3")).toString();
+		const second = r.push(Buffer.from("cr3t yy")).toString();
+		const all = first + second + r.end().toString();
+		expect(all).toBe("xx *** yy");
+	});
+
 	test("no tokens passes bytes through", () => {
 		expect(redactAll([], [Buffer.from("abc"), Buffer.from("def")]).toString()).toBe("abcdef");
 	});
