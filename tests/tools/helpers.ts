@@ -18,7 +18,11 @@ import { registerContextHooks } from "../../src/hooks/context.ts";
 import { Session } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { registerChangeTools } from "../../src/tools/change-tools.ts";
+import { parseChange } from "../../src/core/change.ts";
+import { unitDigest } from "../../src/core/digest.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
+import { BOT_LOGIN } from "../forge/world.ts";
 import { FakePi, type FakeUI, fakeCtx } from "../hooks/fake-pi.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
@@ -33,10 +37,13 @@ export type ToolHarness = {
 	session: Session;
 	pi: FakePi;
 	ctx: ReturnType<typeof fakeCtx>;
-	call(tool: string, params?: unknown): Promise<ToolOut>;
+	/** Runs a registered tool; `signal` is the tool call's abort signal. */
+	call(tool: string, params?: unknown, signal?: AbortSignal): Promise<ToolOut>;
 	git(...args: string[]): string;
 	/** Every git command the session ran, in order (args only). */
 	gitCalls: string[][];
+	/** The change issue seeded from `change`, if any. */
+	n: number;
 };
 
 export type ToolHarnessOptions = {
@@ -48,7 +55,27 @@ export type ToolHarnessOptions = {
 	prepare?: (git: (...args: string[]) => string) => void;
 	/** Scripted dialogs of the tool `ctx`; without it the ctx has no UI. */
 	ui?: FakeUI;
+	/** Seeds an open change issue on `livespec/per-ip-cap` (or `branch`): `Base:` and `Branch:` lines, then `body`. */
+	change?: { body: string; phase?: string };
+	/** With `change`: posts an approved plan `gate` comment locking every unit at its current digest. */
+	locked?: boolean;
 };
+
+const CHANGE_BRANCH = "livespec/per-ip-cap";
+const LOCKED_AT = "2026-11-15T10:00:00.000Z";
+
+/** Seeds the change issue of `o.change` and, with `o.locked`, the approved plan gate that locks its units. */
+async function seedChange(world: MemoryWorld, o: ToolHarnessOptions, head: string, branch: string): Promise<number> {
+	if (!o.change) return 0;
+	const body = `Base: ${head}\nBranch: ${branch}\n${o.change.body}`;
+	const n = await world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", `livespec:phase/${o.change.phase ?? "build"}`] });
+	if (o.locked) {
+		const locked = Object.fromEntries(parseChange(body).units.map((u) => [u.id, unitDigest(u)]));
+		const data = { phase: "plan", outcome: "approved", notes: "", by: "alice", at: LOCKED_AT, adapter: "in-session", head_sha: head, waivers: [], locked };
+		await world.postComment(n, BOT_LOGIN, writeMarked("gate", "plan.self-1", data));
+	}
+	return n;
+}
 
 const dirs: string[] = [];
 
@@ -77,9 +104,11 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 	git("remote", "add", "origin", origin);
 	git("push", "-q", "origin", "main");
 	o.prepare?.(git);
-	if (o.branch) git("switch", "-q", "-c", o.branch);
+	const branch = o.branch ?? (o.change ? CHANGE_BRANCH : undefined);
+	if (branch) git("switch", "-q", "-c", branch);
 	const head = git("rev-parse", "HEAD");
 	const world = new MemoryWorld();
+	const n = await seedChange(world, o, head, branch ?? "main");
 	const cacheRoot = join(home, "cache");
 	const forge = new CachedForge(o.forge ? o.forge(world) : world.forge, { cacheRoot, host: "git.example.test", owner: "acme", repo: "shop" });
 	const gitCalls: string[][] = [];
@@ -93,16 +122,17 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 	session.forge = forge;
 	session.comments = new CommentsCache({ dir: join(cacheRoot, "git.example.test", "acme", "shop") });
 	setSession(session);
+	if (o.change) await session.refresh();
 	const pi = new FakePi();
 	registerChangeTools(pi.api as never);
 	registerContextHooks(pi.api as never);
 	const ctx = fakeCtx(root, true, o.ui);
-	const call = async (tool: string, params: unknown = {}) => {
+	const call = async (tool: string, params: unknown = {}, signal?: AbortSignal) => {
 		const t = pi.tools.get(tool);
 		if (!t) throw new Error(`tool ${tool} is not registered`);
-		return (await t.execute("call-1", params, undefined, undefined, ctx)) as ToolOut;
+		return (await t.execute("call-1", params, signal, undefined, ctx)) as ToolOut;
 	};
-	return { root, origin, head, world, forge, session, pi, ctx, call, git, gitCalls };
+	return { root, origin, head, world, forge, session, pi, ctx, call, git, gitCalls, n };
 }
 
 export const textOf = (out: ToolOut): string => out.content.map((c) => c.text).join("\n");

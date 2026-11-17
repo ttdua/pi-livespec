@@ -12,6 +12,8 @@ import { registerSpecStatus } from "./spec-status.ts";
 import { registerSpecStuck } from "./spec-stuck.ts";
 import { registerSpecWrite } from "./spec-write.ts";
 import { registerUnitAmend } from "./unit-amend.ts";
+import { registerUnitFinish } from "./unit-finish.ts";
+import { registerUnitStart } from "./unit-start.ts";
 
 export function registerChangeTools(pi: ExtensionAPI): void {
 	registerSpecStatus(pi);
@@ -23,6 +25,8 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerSpecGate(pi);
 	registerPlanUnits(pi);
 	registerUnitAmend(pi);
+	registerUnitStart(pi);
+	registerUnitFinish(pi);
 	registerSpecQuestion(pi);
 	registerSpecStuck(pi);
 }
