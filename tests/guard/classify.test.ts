@@ -1,0 +1,221 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import type { ProjectConfig } from "../../src/config.ts";
+import { classifyCommand, forgeEndpoints, type GuardContext, type GuardDecision } from "../../src/guard/classify.ts";
+
+const cwd = mkdtempSync(join(tmpdir(), "livespec-guard-"));
+afterAll(() => rmSync(cwd, { recursive: true, force: true }));
+
+const github: GuardContext = { cwd, endpoints: forgeEndpoints({ kind: "github", host: "github.com" }, null), aliases: {} };
+const gitea: GuardContext = { cwd, endpoints: forgeEndpoints({ kind: "gitea", host: "git.example.com" }, null), aliases: {} };
+
+function blocked(command: string, ctx: GuardContext = github): Extract<GuardDecision, { allow: false }> {
+	const d = classifyCommand(command, ctx);
+	if (d.allow) throw new Error(`expected a block: ${command}`);
+	return d;
+}
+
+function expectBlocked(commands: string[], ctx: GuardContext = github): void {
+	const allowed = commands.filter((c) => classifyCommand(c, ctx).allow);
+	expect(allowed).toEqual([]);
+}
+
+function expectAllowed(commands: string[], ctx: GuardContext = github): void {
+	const refused = commands.filter((c) => !classifyCommand(c, ctx).allow);
+	expect(refused).toEqual([]);
+}
+
+describe("forgeEndpoints", () => {
+	it("lists host, authority, GitHub API hosts and config hosts", () => {
+		const config: ProjectConfig = { githubHosts: ["ghe.corp"], giteaUrl: "https://Gitea.Corp:3000/", agentSkillsChannelSet: false };
+		expect(forgeEndpoints({ kind: "github", host: "github.com", authority: "github.com" }, config)).toEqual([
+			"github.com",
+			"api.github.com",
+			"uploads.github.com",
+			"ghe.corp",
+			"gitea.corp:3000",
+		]);
+		expect(forgeEndpoints({ kind: "gitea", host: "git.example.com", authority: "git.example.com:3000" }, null)).toEqual([
+			"git.example.com",
+			"git.example.com:3000",
+		]);
+		expect(forgeEndpoints(undefined, null)).toEqual(["github.com", "api.github.com"]);
+	});
+});
+
+describe("classifyCommand", () => {
+	it("Reason names the tool", () => {
+		const d = blocked("gh issue edit 6 --body-file body.md");
+		expect(d.reason).toMatch(/^livespec guard: /);
+		expect(d.reason).toContain("spec_write");
+	});
+
+	it("Manual tick blocked", () => {
+		expect(blocked(`gh issue edit 6 --body "…- [x] done…"`).reason).toContain("spec_write");
+	});
+
+	it("Self-approval comment blocked", () => {
+		expect(blocked(`gh issue comment 6 --body "/livespec approve"`).reason).toMatch(/spec_question|spec_gate/);
+	});
+
+	it("API write blocked, read allowed", () => {
+		expectBlocked(["gh api -X PATCH repos/o/r/issues/6 -f body=x"]);
+		expectAllowed(["gh api repos/o/r/issues/6"]);
+	});
+
+	it("Raw HTTP write to the forge host", () => {
+		expectBlocked([`curl -X POST https://git.example.com/api/v1/repos/o/r/issues/6/comments -d '{}'`], gitea);
+		expectAllowed(["curl -X POST https://example.org/hook"], gitea);
+	});
+
+	it("GitHub API host", () => {
+		expectBlocked([`curl -X PATCH https://api.github.com/repos/o/r/issues/6 -d '{"body":"x"}'`]);
+	});
+
+	it("Tea write blocked", () => {
+		expectBlocked([`tea comment 6 "/livespec approve"`], gitea);
+		expectAllowed(["tea issues list"], gitea);
+	});
+
+	it("Push variants blocked", () => {
+		expectBlocked([
+			"git push",
+			"git -C . push origin HEAD",
+			"env GIT_TRACE=1 git push",
+			"FOO=1 git push",
+			`sh -c "cd x && git push"`,
+			"bash -c 'git push --force'",
+			"echo $(git push)",
+			"xargs git push < /dev/null",
+			"git -c user.name=x push",
+		]);
+	});
+
+	it("Push alias blocked", () => {
+		expectBlocked(["git p"], { ...github, aliases: { p: "push" } });
+	});
+
+	it("Pull request commands blocked", () => {
+		expectBlocked(["gh pr create --fill", "gh pr merge 3", "tea pr create"]);
+	});
+
+	it("Ordinary git allowed", () => {
+		expectAllowed(["git status", `git commit -m "x"`, "git log --oneline", "git -C sub fetch"]);
+	});
+
+	it("Eval blocked", () => {
+		expectBlocked([`eval "git push"`]);
+	});
+
+	it("Variable git subcommand", () => {
+		expectBlocked(["CMD=push; git $CMD"]);
+		expectAllowed([`git commit -m "$MSG"`]);
+	});
+
+	it("Variable command word", () => {
+		expectBlocked(["X=gh; $X issue comment 6 -b hi"]);
+	});
+
+	it("Harmless eval allowed", () => {
+		expectAllowed([`eval "$(ssh-agent -s)"`]);
+	});
+
+	it("Script file allowed", () => {
+		expectAllowed(["bash ./scripts/release.sh"]);
+	});
+
+	it("Shell write blocked", () => {
+		expectBlocked([`echo "gate: self" >> .pi/livespec/flow.yaml`, "sed -i s/human/self/ ./.pi/livespec/flow.yaml"]);
+	});
+
+	it("Directory change before the write", () => {
+		expectBlocked(["cd .pi; echo x > livespec/flow.yaml", "(cd sub); echo x > .pi/livespec/flow.yaml", `cd "$D" && echo x > livespec/flow.yaml`]);
+		expectAllowed(["cd src && echo x > out.txt"]);
+	});
+
+	it("Read allowed", () => {
+		expectAllowed(["cat .pi/livespec/flow.yaml"]);
+	});
+
+	it("push and gh variants beyond the spec list are blocked", () => {
+		expectBlocked([
+			"git --no-pager push",
+			"GIT_DIR=x git push",
+			"cd sub && git push",
+			"\\git push",
+			`"git" "push"`,
+			"/usr/bin/git push",
+			"gh --repo o/r issue edit 6",
+			"cd .pi && echo x > livespec/flow.yaml",
+			"git --git-dir=.git --work-tree . push",
+			"git --namespace x -p --bare push",
+			"sudo -u me nice -n 5 timeout -s KILL 10 nohup command git push",
+			"time exec git push",
+			`bash -lc "git push"`,
+			"echo `git push`",
+			"gh -R o/r pr merge 3",
+			"gh api --method=POST repos/o/r/issues -f title=x",
+			"gh api repos/o/r/issues/6/comments --input body.json",
+			"gh label create x",
+			"gh release create v1",
+			"gh secret set X",
+			"tea issues edit 6",
+			"tea pulls merge 3",
+			"wget --post-data=x https://api.github.com/repos/o/r/issues",
+			"curl --json '{}' https://api.github.com/repos/o/r/issues",
+			"eval git push",
+			"echo git push | bash",
+			"tee .pi/livespec/flow.yaml < x",
+			"cp x .pi/livespec/flow.yaml",
+			"rm -f .pi/livespec/config.yaml",
+		]);
+	});
+
+	it("everyday commands mentioning push, gh or tea are allowed", () => {
+		expectAllowed([
+			"grep -r push src/",
+			"git log --grep=push",
+			`echo "gh is installed"`,
+			"rg tea",
+			"bun test",
+			"git stash push -m x",
+			"cd src && echo x > out.txt",
+			"gh issue view 6",
+			"gh pr list",
+			"gh api -X GET repos/o/r/issues -f state=open",
+			"curl https://api.github.com/repos/o/r",
+			"curl -I https://api.github.com",
+			"git commit -m 'push the button'",
+			"bun run test 2>&1 | tail -5",
+		]);
+	});
+
+	it("an unknown alias map blocks unknown git subcommands mentioning push only", () => {
+		const unknown: GuardContext = { ...github, aliases: "unknown" };
+		expectBlocked(["git pp push"], unknown);
+		expectAllowed(["git pp", "git stash push -m x", "git status"], unknown);
+	});
+
+	it("shell aliases containing push are blocked", () => {
+		expectBlocked(["git sync"], { ...github, aliases: { sync: "!git fetch && git push" } });
+		expectBlocked(["git -c alias.x='!git push' x", "git -c alias.y=push y origin"]);
+	});
+
+	it("unreadable input is blocked only when it mentions a dangerous token", () => {
+		expect(blocked(`echo "git push`).rule).toBe("obscured");
+		expectAllowed([`echo "hello`]);
+	});
+
+	it("block reasons start with the guard prefix and name the rule's tool", () => {
+		const push = blocked("git push");
+		expect(push.reason).toMatch(/^livespec guard: /);
+		expect(push.reason).toContain("livespec tools");
+		expect(push.reason).toContain("LS-09");
+		for (const c of ["gh pr create", "gh api -X DELETE x", "curl -d x https://github.com", "eval git push", "rm .pi/livespec/x"]) {
+			expect(blocked(c).reason).toMatch(/^livespec guard: /);
+		}
+		expect(blocked("rm .pi/livespec/x").reason).toContain("human");
+	});
+});
