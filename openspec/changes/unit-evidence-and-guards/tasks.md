@@ -34,11 +34,11 @@ Blocked by: none
 
 Blocked by: 2
 
-- [ ] 4.1 Extend `ChangeState` with `evidence` and `issue.url`, and change `incomplete` to the items of the latest `incomplete` comment. Thread `unitAttemptsCap` through `deriveCommentFacts`, `SnapshotDeps`, `src/hooks/card-input.ts` and `src/interaction/complete-validate.ts`. Expose `unit_attempts.<unit>` in `counters`, and ignore `counter` comments for it
-- [ ] 4.2 Extend `NextStep` with `startedUnits`, `blockedUnits` (with reason) and `pendingVerifier`, rename the `Depends` list to `waitingUnits`, and add precedence rules 10–12 in `src/engine/next-step.ts`. Update `src/hooks/phase-card.ts`, `src/tools/format-step.ts` and the test fixtures that use the old name
-- [ ] 4.3 Add `registerCheck(…, { at: "gate", key })`, the per-check keyed memo in `src/engine/registry.ts`, and `runChecks(…, { gate: true, target })` in `src/engine/checks.ts`
-- [ ] 4.4 Add `src/evidence/card.ts`, the `evidence` card section: started with its pre SHA, blocked with its reason, verifier pending
-- [ ] 4.5 Tests for the flow-engine and context-injection delta scenarios
+- [x] 4.1 Extend `ChangeState` with `evidence` and `issue.url`, and change `incomplete` to the items of the latest `incomplete` comment. Thread `unitAttemptsCap` through `deriveCommentFacts`, `SnapshotDeps`, `src/hooks/card-input.ts` and `src/interaction/complete-validate.ts`. Expose `unit_attempts.<unit>` in `counters`, and ignore `counter` comments for it
+- [x] 4.2 Extend `NextStep` with `startedUnits`, `blockedUnits` (with reason) and `pendingVerifier`, rename the `Depends` list to `waitingUnits`, and add precedence rules 10–12 in `src/engine/next-step.ts`. Update `src/hooks/phase-card.ts`, `src/tools/format-step.ts` and the test fixtures that use the old name
+- [x] 4.3 Add `registerCheck(…, { at: "gate", key })`, the per-check keyed memo in `src/engine/registry.ts`, and `runChecks(…, { gate: true, target })` in `src/engine/checks.ts`
+- [x] 4.4 Add `src/evidence/card.ts`, the `evidence` card section: started with its pre SHA, blocked with its reason, verifier pending
+- [x] 4.5 Tests for the flow-engine and context-injection delta scenarios
 
 ## 5. Unit start and unit finish tools
 
