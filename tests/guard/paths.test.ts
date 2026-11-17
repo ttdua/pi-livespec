@@ -148,3 +148,18 @@ describe("protectedWrite option modelling", () => {
 		expect(protectedWrite(commands("env -C .pi true; rm livespec/x"), root)).toBeUndefined();
 	});
 });
+
+describe("protectedWrite redirects and perl options", () => {
+	const cases: Record<string, string | undefined> = {
+		"env -C .pi/livespec cat flow.yaml > snapshot.yaml": undefined,
+		"env -C /tmp cat x > .pi/livespec/flow.yaml": ".pi/livespec/flow.yaml",
+		"env -C .pi/livespec cat x > ../livespec/flow.yaml": undefined,
+		"perl -xtests/../.pi -i /tmp/filter.pl livespec/flow.yaml": "-xtests/../.pi",
+		"perl -i -xpi -pe s/a/b/ livespec/flow.yaml": "livespec/flow.yaml",
+		"perl -i -pe s/a/b/ other.txt": undefined,
+		"perl -ne print .pi/livespec/flow.yaml": undefined,
+	};
+	for (const [text, expected] of Object.entries(cases)) {
+		it(text, () => expect(protectedWrite(commands(text), root)).toBe(expected));
+	}
+});

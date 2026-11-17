@@ -387,3 +387,9 @@ describe("classifyCommand", () => {
 		expect(blocked("rm .pi/livespec/x").reason).toContain("human");
 	});
 });
+
+describe("wrapper chdir reaches nested scripts", () => {
+	const blockedCases = ["env -C .pi sh -c 'rm livespec/flow.yaml'", "env -C .pi env -S 'rm livespec/flow.yaml'", "sudo -D .pi sh -c 'tee livespec/flow.yaml'"];
+	for (const c of blockedCases) it(`blocks ${c}`, () => expectBlocked([c]));
+	it("allows a nested script in another directory", () => expectAllowed(["env -C /tmp sh -c 'rm livespec/flow.yaml'", "env -C .pi sh -c 'cat livespec/flow.yaml'"]));
+});

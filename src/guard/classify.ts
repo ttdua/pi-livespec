@@ -122,7 +122,8 @@ function livespecWrite(cmd: ShellCommand, dirs: DirectoryCandidates): GuardDecis
 	return target === undefined ? ALLOW : blockFor("livespec-files", `${target} is under .pi/livespec/`, "the project flow and config are changed by a human only");
 }
 
-function checkWords(words: Word[], scan: Scan, dirs: DirectoryCandidates, depth: number): GuardDecision {
+function checkWords(words: Word[], scan: Scan, outer: DirectoryCandidates, depth: number): GuardDecision {
+	const dirs = outer.scoped(words);
 	const unwrapped = stripWrappers(words);
 	if (unwrapped === "too-deep") return obscured(scan);
 	if ("script" in unwrapped) return checkChildScript(unwrapped.script, scan, dirs, depth);

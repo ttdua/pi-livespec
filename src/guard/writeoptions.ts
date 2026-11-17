@@ -20,7 +20,7 @@ const SPECS: Record<string, Spec> = {
 	ln: { short: "sfinvbStTrLPdF", long: "symbolic force interactive no-dereference verbose backup suffix target-directory no-target-directory relative logical physical directory help version" },
 	install: { short: "bcCdDgmopsStTvZU", long: "backup compare directory create-leading group mode owner preserve-timestamps strip strip-program suffix target-directory no-target-directory verbose preserve-context context debug unprivileged help version" },
 	sed: { short: "nefEirslbuza", long: "quiet silent expression file regexp-extended in-place line-length separate binary unbuffered null-data zero-terminated follow-symlinks debug posix sandbox help version" },
-	perl: { short: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", long: "help version" },
+	perl: { short: "pnlaF0wWXsTtCEeiIMmcUdD", long: "help version" },
 };
 
 const LONG_NAMES = new Map(Object.entries(SPECS).map(([name, spec]) => [name, spec.long.split(" ").map((l) => `--${l}`)]));

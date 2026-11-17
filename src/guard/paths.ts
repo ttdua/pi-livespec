@@ -86,25 +86,25 @@ export class DirectoryCandidates {
 
 	/** The first write target of `cmd` (whose effective words are `words`) under `.pi/livespec/`. */
 	protectedTarget(cmd: ShellCommand, words: Word[]): string | undefined {
-		const chdirs = chdirValues(cmd.words);
-		if (chdirs.length > 0) return this.withChdirs(chdirs).targetIn(cmd, words);
-		return this.targetIn(cmd, words);
+		// Redirects are opened by the outer shell; the wrapped command runs in the wrapper's directories.
+		const redirected = redirectTargets(cmd).find((t) => this.protects(t));
+		return (redirected ?? this.scoped(cmd.words).commandTarget(words))?.text;
 	}
 
-	private targetIn(cmd: ShellCommand, words: Word[]): string | undefined {
+	private commandTarget(words: Word[]): Word | undefined {
 		const name = commandName(words[0]);
 		const args = words.slice(1);
-		const targets = [...redirectTargets(cmd), ...commandTargets(name, args)];
 		const removed = TREE_REMOVERS.has(name) ? removedTargets(name, args) : [];
-		const hit = targets.find((t) => this.protects(t)) ?? removed.find((t) => this.containsLivespec(t)) ?? this.unmodelledOptionTarget(name, args);
-		return hit?.text;
+		return commandTargets(name, args).find((t) => this.protects(t)) ?? removed.find((t) => this.containsLivespec(t)) ?? this.unmodelledOptionTarget(name, args);
 	}
 
-	/** A copy for one command that a wrapper runs in other directories (`env -C`, `sudo -D`); `cd`s of the script are unaffected. */
-	private withChdirs(chdirs: Word[]): DirectoryCandidates {
-		const scoped = this.clone();
-		for (const dir of chdirs) scoped.enter(dir);
-		return scoped;
+	/** The directories for the command a wrapper chain runs in `words` (`env -C`, `sudo -D`); this one when there is no chdir. `cd`s of the script are unaffected. */
+	scoped(words: Word[]): DirectoryCandidates {
+		const chdirs = chdirValues(words);
+		if (chdirs.length === 0) return this;
+		const copy = this.clone();
+		for (const dir of chdirs) copy.enter(dir);
+		return copy;
 	}
 
 	/** An argument that touches livespec when a write command carries an option this guard does not model. */
@@ -112,7 +112,9 @@ export class DirectoryCandidates {
 		if (!hasUnmodelledOption(name, args)) return undefined;
 		const scanned = scanCommand(name, args);
 		const words = [...args, ...scanned.options.flatMap((o) => (o.value ? [o.value] : []))];
-		return words.find((w) => w.text.includes("livespec") || this.protects(w) || this.containsLivespec(w));
+		// perl's unmodelled options include `-xDIR`, which changes the directory, so any `.pi` mention counts.
+		const mentions = (w: Word) => w.text.includes("livespec") || (name === "perl" && w.text.includes(".pi"));
+		return words.find((w) => mentions(w) || this.protects(w) || this.containsLivespec(w));
 	}
 
 	/** Applies a `cd`/`pushd` given by the effective words; other commands change nothing. */
