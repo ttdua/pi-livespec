@@ -64,8 +64,8 @@ Blocked by: 3, 4, 5
 
 Blocked by: 2
 
-- [ ] 7.1 Add `src/evidence/wip.ts`, which registers a predicate over open `build` changes' own marked comments via `deriveUnitEvidence`
-- [ ] 7.2 Tests for the work-in-progress and agent-skills-content delta scenarios
+- [x] 7.1 Add `src/evidence/wip.ts`, which registers a predicate over open `build` changes' own marked comments via `deriveUnitEvidence`
+- [x] 7.2 Tests for the work-in-progress and agent-skills-content delta scenarios
 
 ## 8. Guard and settle hooks, wiring and docs
 
