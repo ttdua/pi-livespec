@@ -29,6 +29,24 @@ export interface Git {
 	mergeAbort(): Promise<void>;
 	/** `git merge-base --is-ancestor <a> <b>`. */
 	isAncestor(a: string, b: string): Promise<boolean>;
+	/** `git worktree add --detach <dir> <sha>`. */
+	worktreeAdd(dir: string, sha: string): Promise<void>;
+	/** `git worktree remove --force <dir>`. */
+	worktreeRemove(dir: string): Promise<void>;
+	/** `git worktree prune`: drops entries whose directory is gone. */
+	worktreePrune(): Promise<void>;
+	/** `git rev-list --reverse <range>`, oldest first. */
+	revList(range: string): Promise<string[]>;
+	/** `git cat-file -e <sha>:<path>`. */
+	pathExistsAt(sha: string, path: string): Promise<boolean>;
+	/** `git diff-tree --no-commit-id --name-only -r --root <commit>`; empty for an empty or a merge commit. */
+	changedPaths(commit: string): Promise<string[]>;
+	/** `git rev-list --parents -n 1 <commit>` without the commit itself: its parents, none for a root commit. */
+	parents(commit: string): Promise<string[]>;
+	/** `git check-ignore -q <path>`. */
+	isIgnored(path: string): Promise<boolean>;
+	/** `git config --get-regexp ^alias\.`: alias name to its expansion; `{}` when none is set. */
+	aliases(): Promise<Record<string, string>>;
 }
 
 export class GitError extends Error {
@@ -51,6 +69,28 @@ const EXIT_MERGE_STOPPED = 1;
 /** `merge-base --is-ancestor` exits 1 when the first commit is not an ancestor of the second. */
 const EXIT_NOT_ANCESTOR = 1;
 const ORIGIN_PREFIX = "origin/";
+/** `cat-file -e` exits 128 when the object or path does not exist. */
+const EXIT_NO_OBJECT = 128;
+/** `check-ignore` exits 1 when the path is not ignored. */
+const EXIT_NOT_IGNORED = 1;
+const ALIAS_PREFIX = "alias.";
+
+/** Non-empty lines of a command's stdout. */
+const lines = (out: string | undefined): string[] => (out ?? "").split("\n").filter((l) => l !== "");
+
+/** `config -z --get-regexp` output: NUL-terminated entries of `<key>\n<value>`. */
+function parseAliases(out: string): Record<string, string> {
+	const entries = out
+		.split("\0")
+		.filter((entry) => entry.startsWith(ALIAS_PREFIX))
+		.map((entry): [string, string] => {
+			const newline = entry.indexOf("\n");
+			const key = newline < 0 ? entry : entry.slice(0, newline);
+			return [key.slice(ALIAS_PREFIX.length), newline < 0 ? "" : entry.slice(newline + 1)];
+		});
+	// `fromEntries` defines own properties, so a key such as `__proto__` stays plain data.
+	return Object.fromEntries(entries);
+}
 
 type Run = (args: string[], notFoundCode?: number) => Promise<string | undefined>;
 
@@ -120,6 +160,23 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			await run(["merge", "--abort"]);
 		},
 		isAncestor: async (a, b) => (await run(["merge-base", "--is-ancestor", END_OF_OPTIONS, a, b], EXIT_NOT_ANCESTOR)) !== undefined,
+		worktreeAdd: async (dir, sha) => {
+			await run(["worktree", "add", "--quiet", "--detach", END_OF_OPTIONS, dir, sha]);
+		},
+		worktreeRemove: async (dir) => {
+			await run(["worktree", "remove", "--force", END_OF_OPTIONS, dir]);
+		},
+		worktreePrune: async () => {
+			await run(["worktree", "prune"]);
+		},
+		revList: async (range) => lines(await run(["rev-list", "--reverse", END_OF_OPTIONS, range])),
+		pathExistsAt: async (sha, path) =>
+			(await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}:${path}`], EXIT_NO_OBJECT)) !== undefined,
+		changedPaths: async (commit) =>
+			lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit])),
+		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
+		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
+		aliases: async () => parseAliases((await run(["config", "-z", "--get-regexp", "^alias\\."], EXIT_NOT_FOUND)) ?? ""),
 	};
 }
 

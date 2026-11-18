@@ -12,7 +12,7 @@ import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-ty
 
 type Decision = { next: string; advance?: string };
 
-type UnitPlan = { ready: Unit[]; blocked: { id: string; waitingOn: string[] }[] };
+type UnitPlan = { ready: Unit[]; waiting: { id: string; waitingOn: string[] }[] };
 
 type PendingEntry = NextStep["pending"][number];
 
@@ -60,18 +60,31 @@ function openBlockingQuestions(state: ChangeState): Question[] {
 	return state.change.questions.filter((q) => q.kind === "blocking" && !q.checked);
 }
 
-/** Pending units split by whether every `Depends` target is a done unit. Only `per: unit` phases plan units. */
-function planUnits(phase: Phase | undefined, units: Unit[]): UnitPlan {
-	if (phase?.per !== "unit") return { ready: [], blocked: [] };
+/**
+ * Pending units split by whether every `Depends` target is a done unit; started units come first among the
+ * ready ones. Only `per: unit` phases plan units.
+ */
+function planUnits(phase: Phase | undefined, units: Unit[], started: Record<string, unknown>): UnitPlan {
+	if (phase?.per !== "unit") return { ready: [], waiting: [] };
 	const done = new Set(units.filter((u) => u.done).map((u) => u.id));
-	const plan: UnitPlan = { ready: [], blocked: [] };
+	const plan: UnitPlan = { ready: [], waiting: [] };
 	for (const unit of units.filter((u) => !u.done)) {
 		const waitingOn = unit.depends.filter((d) => !done.has(d));
 		if (waitingOn.length === 0) plan.ready.push(unit);
-		else plan.blocked.push({ id: unit.id, waitingOn });
+		else plan.waiting.push({ id: unit.id, waitingOn });
 	}
+	plan.ready.sort((a, b) => Number(!(a.id in started)) - Number(!(b.id in started)));
 	return plan;
 }
+
+/** Ids of the units in `state.change` order that satisfy `keep`. */
+const unitsWhere = (state: ChangeState, keep: (id: string) => boolean): string[] => state.change.units.map((u) => u.id).filter(keep);
+
+function blockedUnits(state: ChangeState): NextStep["blockedUnits"] {
+	return unitsWhere(state, (id) => id in state.evidence.blocked).map((id) => ({ id, reason: state.evidence.blocked[id] as "attempts" | "progress" }));
+}
+
+const pendingVerifier = (state: ChangeState): string[] => unitsWhere(state, (id) => state.evidence.started[id]?.pending === true);
 
 /** The cap of `<loop>` or `<loop>.<unit>` is `loops[<loop>]`. */
 function countersWithCaps(pack: Pack, counters: Record<string, number>): NextStep["counters"] {
@@ -211,12 +224,34 @@ const failingCheck: Rule = ({ state, phase }) => {
 	return failure ? { next: `Fix ${failure.check}: ${sentence(failure.message)}.` } : undefined;
 };
 
-/** Rule 10: in a `per: unit` phase, the next ready unit, or the blocked units; no decision once every unit is done. */
+/** Rule 10: in a `per: unit` phase, a unit blocked by attempts or progress needs a stuck report. */
+const blockedUnit: Rule = ({ state, phase }) => {
+	if (phase.per !== "unit") return undefined;
+	const blocked = blockedUnits(state)[0];
+	if (!blocked) return undefined;
+	return { next: `${blocked.id} is BLOCKED (${blocked.reason}): send a stuck report with spec_stuck.` };
+};
+
+/** Rule 11: in a `per: unit` phase, a started unit is finished before anything else is built. */
+const startedUnit: Rule = ({ state, phase }) => {
+	if (phase.per !== "unit") return undefined;
+	const started = unitsWhere(state, (id) => id in state.evidence.started)[0];
+	return started ? { next: `Finish ${started} with unit_finish once Verify passes.` } : undefined;
+};
+
+/** Rule 12: in a `per: unit` phase, a receipted unit whose tick is missing. */
+const receiptedUnit: Rule = ({ state, phase }) => {
+	if (phase.per !== "unit") return undefined;
+	const unticked = state.evidence.untickedReceipts[0];
+	return unticked ? { next: `Run unit_finish ${unticked} again to tick it.` } : undefined;
+};
+
+/** Rule 13: in a `per: unit` phase, the next ready unit, or the waiting units; no decision once every unit is done. */
 const nextUnit: Rule = ({ units }) => {
 	const ready = units.ready[0];
 	if (ready) return { next: `Build ${ready.id} — ${ready.title}.` };
-	if (units.blocked.length === 0) return undefined;
-	const waits = units.blocked.map((b) => `${b.id} waits on ${b.waitingOn.join(", ")}`).join("; ");
+	if (units.waiting.length === 0) return undefined;
+	const waits = units.waiting.map((b) => `${b.id} waits on ${b.waitingOn.join(", ")}`).join("; ");
 	return { next: `No unit is ready: ${waits}.` };
 };
 
@@ -266,6 +301,9 @@ const RULES: Rule[] = [
 	changedUnit,
 	missingOutput,
 	failingCheck,
+	blockedUnit,
+	startedUnit,
+	receiptedUnit,
 	nextUnit,
 ];
 
@@ -296,7 +334,7 @@ function decide(i: RuleInput): Decision {
 export function nextStep(pack: Pack, state: ChangeState): NextStep {
 	const phase = activePhase(pack, state);
 	const blockingQuestions = openBlockingQuestions(state);
-	const units = planUnits(phase, state.change.units);
+	const units = planUnits(phase, state.change.units, state.evidence.started);
 	const requests = openRequests(state);
 	const changed = changedUnits(pack, state, phase);
 	const decision: Decision = phase
@@ -311,7 +349,11 @@ export function nextStep(pack: Pack, state: ChangeState): NextStep {
 		blockingQuestions,
 		counters: countersWithCaps(pack, state.counters),
 		activeUnits: units.ready.map((u) => u.id),
-		blockedUnits: units.blocked,
+		waitingUnits: units.waiting,
+		startedUnits: unitsWhere(state, (id) => id in state.evidence.started),
+		blockedUnits: blockedUnits(state),
+		untickedReceipts: [...state.evidence.untickedReceipts],
+		pendingVerifier: pendingVerifier(state),
 		incomplete: [...state.incomplete],
 		pending: requests.map(({ id, subject, mode, adapter }) => ({ id, subject, mode, adapter })),
 		frozenUnits: changed.frozen,

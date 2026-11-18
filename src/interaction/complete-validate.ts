@@ -27,7 +27,7 @@ const superseded = (reason: string): Verdict => ({ verdict: "superseded", reason
 /** The change state as `spec_gate` would see it now, from the issue, own comments and git. */
 async function stateNow(ctx: CompletionCtx, issue: Issue): Promise<ChangeState> {
 	const change = parseChange(issue.body);
-	const facts = deriveCommentFacts(ctx.marked, change, ctx.pack.loops.change_iterations);
+	const facts = deriveCommentFacts(ctx.marked, change, { iterations: ctx.pack.loops.change_iterations, unitAttempts: ctx.pack.loops.unit_attempts });
 	const git = await readGitFacts(ctx.git, change.header.base);
 	const snapshot: Omit<ChangeState, "checks"> = {
 		issue: { number: issue.number, title: issue.title, labels: [...issue.labels] },

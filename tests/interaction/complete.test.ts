@@ -73,7 +73,7 @@ const comments = { list: async (forge: Forge, issue: { number: number }) => ({ c
 
 /** The change state and next step as `Session.refresh` sees them. */
 async function stateOf(f: Fixture): Promise<{ state: ChangeState; step: ReturnType<typeof nextStep> }> {
-	const snapshot = await readChangeSnapshot({ forge: f.world.forge, isReadOnly: () => false, git: f.git, comments, iterationCap: f.pack.loops.change_iterations }, f.n);
+	const snapshot = await readChangeSnapshot({ forge: f.world.forge, isReadOnly: () => false, git: f.git, comments, caps: { iterations: f.pack.loops.change_iterations, unitAttempts: f.pack.loops.unit_attempts } }, f.n);
 	const state = { ...snapshot, checks: await runChecks(f.pack, snapshot, { root: f.root, git: f.git }) };
 	return { state, step: nextStep(f.pack, state) };
 }

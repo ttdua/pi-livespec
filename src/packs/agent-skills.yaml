@@ -17,6 +17,7 @@ decisions:
       perf: [performance, latency, throughput, cache]
       api: [endpoint, public api]
   difficulty: { mode: rule }
+  progress: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -39,7 +40,7 @@ phases:
     skills: { required: [planning-and-task-breakdown] }
     outputs: [issue#Units]
     redirects: ["No tasks/plan.md or tasks/todo.md; units live in the change issue"]
-    checks: [units-format, done-maps-scenarios, unit-classification]
+    checks: [units-format, done-maps-scenarios, unit-classification, verify-red-on-base]
     gate: human
   - id: build
     requires: [plan]

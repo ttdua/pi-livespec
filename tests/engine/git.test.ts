@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import type { ProjectConfig } from "../../src/config.ts";
 import { createGit, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
+import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
 const PROJECT: ProjectConfig = { githubHosts: [], agentSkillsChannelSet: false };
@@ -194,3 +195,94 @@ describe("merge", () => {
 		await expect(git.isAncestor("0".repeat(40), head)).rejects.toBeInstanceOf(GitError);
 	});
 });
+
+describe("verify additions", () => {
+	test("worktreeAdd, worktreeRemove and worktreePrune manage detached worktrees", async () => {
+		const { root, git } = await committedRepo();
+		const sha = await git.head();
+		const dir = `${await makeRepo()}/wt`;
+		await git.worktreeAdd(dir, sha);
+		expect(existsSync(`${dir}/README.md`)).toBe(true);
+		expect(gitIn(dir, "rev-parse", "HEAD")).toBe(sha);
+		expect(gitIn(dir, "branch", "--show-current")).toBe("");
+		await git.worktreeRemove(dir);
+		expect(existsSync(dir)).toBe(false);
+		await git.worktreeAdd(dir, sha);
+		execFileSync("rm", ["-rf", dir]);
+		expect(worktreeCount(root)).toBe(2);
+		await git.worktreePrune();
+		expect(worktreeCount(root)).toBe(1);
+	});
+
+	test("revList lists commits oldest first", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "a.txt", "a\n");
+		commitAll(root, "a");
+		const a = await git.head();
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "b");
+		const b = await git.head();
+		expect(await git.revList(`${base}..HEAD`)).toEqual([a, b]);
+		expect(await git.revList("HEAD..HEAD")).toEqual([]);
+	});
+
+	test("pathExistsAt checks a path at a commit", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "tests/x.test.ts", "t\n");
+		commitAll(root, "t");
+		expect(await git.pathExistsAt(base, "README.md")).toBe(true);
+		expect(await git.pathExistsAt(base, "tests/x.test.ts")).toBe(false);
+		expect(await git.pathExistsAt("HEAD", "tests/x.test.ts")).toBe(true);
+	});
+
+	test("changedPaths lists the files of one commit, the root commit included", async () => {
+		const { root, git } = await committedRepo();
+		expect(await git.changedPaths("HEAD")).toEqual(["README.md"]);
+		await writeIn(root, "src/a.ts", "a\n");
+		await writeIn(root, "tests/a.test.ts", "t\n");
+		commitAll(root, "two");
+		expect(await git.changedPaths("HEAD")).toEqual(["src/a.ts", "tests/a.test.ts"]);
+	});
+
+	test("parents lists a commit's parents; a merge has two", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		expect(await git.parents(base)).toEqual([]);
+		await writeIn(root, "a.txt", "a\n");
+		commitAll(root, "a");
+		const a = await git.head();
+		expect(await git.parents(a)).toEqual([base]);
+		const merge = execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", "HEAD^{tree}", "-p", a, "-p", base, "-m", "m"], { cwd: root, encoding: "utf8" }).trim();
+		expect(await git.parents(merge)).toEqual([a, base]);
+	});
+
+	test("isIgnored follows .gitignore", async () => {
+		const { root, git } = await committedRepo();
+		await writeIn(root, ".gitignore", "node_modules/\n");
+		await writeIn(root, "node_modules/x/y.js", "y\n");
+		expect(await git.isIgnored("node_modules")).toBe(true);
+		expect(await git.isIgnored("README.md")).toBe(false);
+	});
+
+	test("aliases reads git aliases, and is empty without any", async () => {
+		const { root } = await committedRepo();
+		// Reads only the repository's config, never the user's global or system aliases.
+		const isolated: GitExec = (args, opts = {}) =>
+			defaultGitExec(args, { ...opts, env: { ...opts.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" } });
+		const git = createGit(root, isolated);
+		expect(await git.aliases()).toEqual({});
+		gitIn(root, "config", "alias.p", "push origin");
+		gitIn(root, "config", "alias.st", "status --short");
+		expect(await git.aliases()).toEqual({ p: "push origin", st: "status --short" });
+	});
+});
+
+function gitIn(cwd: string, ...args: string[]): string {
+	return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function worktreeCount(root: string): number {
+	return gitIn(root, "worktree", "list").split("\n").filter(Boolean).length;
+}

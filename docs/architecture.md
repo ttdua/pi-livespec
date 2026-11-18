@@ -26,8 +26,14 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │              subagent_packet · forge_read                                         │
 │ hooks/       session_start (load, forge, resume card, background skills check)    │
 │              · before_agent_start (routing note section) · context (phase card)   │
-│              · tool_call (skill reads; later: guard) · resources_discover         │
-│              · agent_before_settle (later)                                        │
+│              · tool_call (guard, registered first; then skill reads)              │
+│              · resources_discover · agent_before_settle (one continuation,        │
+│              incomplete marker) · agent_settled                                   │
+│ evidence/    unit-start and receipt records · unit state · Verify runner and      │
+│              temporary worktrees · red/green · failure signature · progress       │
+│              rule · verify-red-on-base · started-unit work in progress            │
+│ guard/       shell parser · command classifier · .pi/livespec/ paths ·            │
+│              guardedPush (the only git push)                                      │
 │ subagent/    role dispatch · context packets · parallel lanes                     │
 │ content/     agent-skills clone: mirror, immutable trees, compatibility check,    │
 │              upgrade policy, livespec.lock, root lock, pin, rollback, exposure    │
@@ -138,11 +144,48 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 **Decisions.** `decide(point, facts)` runs the registered rule (`tags`, `difficulty`), which returns an outcome or asks the human. For the `ask` branch, `createDecisionAsker` (`src/tools/decide-ask.ts`) sends a blocking `decide:<point>.<subject>` request through the configured approver chain: an in-session choice is completed at once as a `source: human` record, and a forge request stays pending until `/livespec choose` completes it; an open request for the subject is reported pending instead of asking again. `plan_units` and `unit_amend` stay rule-only: they pass no asker, so a rule that asks refuses the tool before any write. Wiring the asker into them, and reusing a human answer on rerun, waits for the first built-in rule that asks. Every outcome is posted as a `decision` record keyed by point and subject with the unit digest; the `unit-classification` check compares the body with the latest record, so a tag removed from the body is caught. The agent can only add tags through `extra_tags`, which the record lists as `agent_additions`.
 
-**Known gaps.** LS-06 closes the first two.
+**Known gaps.**
 
-- **Same-login command comments.** Commands from the plugin's own login are accepted, because the person running pi and the plugin account are usually the same login. Until LS-06's guard on direct forge writes (`gh`, `tea` and raw API calls in bash), the agent could post `/livespec approve` itself. The `gate` result records the answering comment's id and author for audit.
-- **Pack overrides that lower a gate.** `.pi/livespec/flow.yaml` can still set `define`, `plan` or `ship` to `gate: self`, and the agent can edit that file. LS-06 adds a guard that blocks agent writes to `.pi/livespec/`.
 - **Cross-session polling.** Polling is single-flight within one session only. Two sessions or machines polling the same issue at once are not coordinated; each completion step is idempotent against the state it reads, but concurrent writers are not serialized.
+
+## Evidence and guards
+
+**Receipts.** Build evidence is two kinds of own marked comment on the change issue, both append-only:
+
+- `unit_start U<n>` checks that the unit is pending, not frozen, its dependencies are done, no other unit is started and the tree is clean. It then runs the unit's `Verify` at `HEAD` and posts a `unit-start` comment with the unit digest and the pre run. A normal unit must be red at the start, and a refactor unit must be green. A command that cannot run (not found, timeout, spawn error) is never counted as red.
+- `unit_finish U<n>` runs `Verify` again at `HEAD`. When it is green, it posts a `receipt` with the pre and post SHA and exit codes, plus the tail of the output (at most 8 KB, with known tokens redacted). Then it ticks the unit, keeping every other byte of the body. A receipt without a tick, after a crash, is reconciled on the next call.
+- A unit whose test file in `Files` does not exist at the pre commit is *verifier-pending*: its first commit may change only those test files, and that commit becomes the pre.
+
+**Attempts and `BLOCKED`.** Each `unit_finish` that is not green posts a `progress` decision record with the attempt number and a failure signature (failing test names plus a normalized error hash). The `progress` rule stops early when two attempts in a row fail the same way. The unit is `BLOCKED` when the rule says stop or `loops.unit_attempts` is reached, and only a chosen stuck answer restarts its budget.
+
+**`verify-red-on-base`.** A gate-only check of the plan gate. It runs every non-pending unit's `Verify` on `Base` in a temporary worktree and fails when a normal unit is already green there. Pending (non-refactor) units are exempt. A refactor unit must be green on `Base`, and it is an error when its test is missing. A missing toolchain is not red. Results are memoized for the session, keyed by the root, `Base` and the unit digests.
+
+**`verify.setup`.** A temporary worktree normally symlinks `node_modules`, `.venv` and `vendor` from the main checkout. When the project config sets `verify.setup`, that command prepares the worktree instead. `verify.timeout` bounds each run, 600 seconds by default. The worktree is always removed.
+
+**Guard.** A `tool_call` handler, registered before every other livespec handler, checks each `bash`, `write` and `edit` call of an initialized project. It blocks:
+
+- forge writes through `gh`, `tea`, `gh api` and `curl`/`wget` to the forge host;
+- `git push` in any form, including aliases (read from git config on every bash call) and pull request commands;
+- writes to `.pi/livespec/`, through `write`, `edit` or a shell redirect, tracking `cd` within one command;
+- obscured forms (`eval`, a variable command word, an unreadable command) that contain a dangerous token.
+
+Every reason starts with `livespec guard:`, names the rule and names the livespec tool to use. The guard fails closed: an internal error blocks the call with "the command was not run". It has no flag, variable or parameter that lets a call through.
+
+**`guardedPush`.** `src/guard/push.ts` is the only code that runs `git push`. It is not a tool, and no tool imports it in LS-06; LS-09 adds callers that check the state first.
+
+**Settle.** At `agent_before_settle` with outcome `completed`, a resolved change in a `per: unit` phase or with a started unit has unfinished items: each started unit, a dirty tree, and each message of a condition registered with `registerSettleCondition`. The first time in a user prompt, the hook appends a `livespec-settle` message and requests one continuation. If items remain at the next settle, it writes the own `incomplete` comment (id `<change number>`, edited in place) and lets the agent settle. A later settle with nothing unfinished clears that comment, whatever the phase. A read-only forge writes nothing and records a warning. The settle hook fails open: errors are recorded.
+
+**Accepted limits.**
+
+- **Script files.** `sh script.sh` and a script run by its own path are not read; a forbidden command inside a script file runs.
+- **Pushes outside pi.** A human, a git hook or another program can still push or write to the forge; the guard only sees the agent's tool calls.
+- **Executors without the extension.** An agent in a harness that does not load pi-livespec is not guarded. LS-07 restricts write roles.
+- **Unlisted runners.** `watch`, `chronic`, `script -c`, `busybox sh -c` and `find -exec` run commands the guard does not unwrap.
+- **Other push and forge paths.** `git lfs push`, `tea` aliases and `tea api` are not recognized.
+- **Other writers.** Writes to `.pi/livespec/` through `git checkout`/`git restore`, `truncate`, `dd of=`, `rsync`, `patch` or an interpreter (`python -c`, `node -e`) are not caught.
+- **Copies into an ancestor.** A recursive copy or move whose destination is an ancestor of `.pi/livespec` (`cp -r incoming/livespec .pi`, `cp -a incoming/.pi .`, `mv incoming/livespec .pi`) is not caught. The guard checks the destination operand, not the subtree the copy creates.
+- **Abbreviated wrapper options.** A GNU abbreviated long option on a wrapper (`nice --adjust 5 git push`, `timeout --kill-a`, `env --split-s`, `xargs --max-a`) hides the wrapped command. Abbreviations of write-command options are resolved. Both limits are tracked in #28, which adds human approval.
+- **Two sessions on one change.** The evidence lock is per process; two pi sessions can run `unit_start`/`unit_finish` on the same change at once.
 
 ## Forge accounts
 

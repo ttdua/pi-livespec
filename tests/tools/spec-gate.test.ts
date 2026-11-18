@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { decisionComment } from "../../src/decide/records.ts";
@@ -22,6 +22,11 @@ afterEach(async () => {
 	resetGatesForTests();
 	await cleanupDirs();
 });
+
+/** The real check needs a worktree run per unit; these tests are about the gate, so it reports nothing. */
+const passRedOnBase = (): void => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
+
+beforeEach(passRedOnBase);
 
 const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const AT = "2026-11-15T10:00:00.000Z";
@@ -427,5 +432,29 @@ describe("spec_gate", () => {
 		const out = await h.call("spec_gate", { target: "deploy" });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("neither the current phase");
+	});
+});
+
+describe("spec_gate gate-only checks", () => {
+	test("a gate-only check runs before the refusals and its result reaches the refusal", async () => {
+		registerCheck("verify-red-on-base", async () => [{ code: "verify-red-on-base", severity: "error", message: "U1 is green on Base" }], { at: "gate", key: () => "k" });
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("verify-red-on-base");
+		expect(await ofKind(h, "gate")).toEqual([]);
+	});
+});
+
+describe("named gate payload", () => {
+	test("a named gate's review payload lists its gate-only check results", async () => {
+		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
+		registerGate("new-dependency", { checks: ["dep-audit"] });
+		const h = await change("build", { ui: human("approve") });
+		await h.call("spec_gate", { target: "new-dependency" });
+		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
+		expect(summary).toContain("Gate checks:");
+		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");
 	});
 });

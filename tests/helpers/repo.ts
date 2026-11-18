@@ -8,7 +8,7 @@ const created: string[] = [];
 
 // Registered at import time: every test file using makeRepo gets automatic cleanup.
 afterEach(async () => {
-	for (const dir of created.splice(0)) await rm(dir, { recursive: true, force: true });
+	for (const dir of created.splice(0)) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 /** Create a temporary git repository (removed after each test) and return its root. */

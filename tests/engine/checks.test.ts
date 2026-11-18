@@ -8,14 +8,14 @@ import { createGit, type Git } from "../../src/engine/git.ts";
 import type { CheckResult } from "../../src/engine/state-types.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
-import { checkNames, registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
+import { checkNames, clearGateMemo, gateMemoGeneration, isGateOnly, onGateMemoClear, registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { decisionComment, type DecisionRecord } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification"];
+const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base"];
 const VALID_SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const EMPTY_SPEC = "# broken\n\n## Purpose\nNothing.\n\n## Requirements\n";
 
@@ -75,7 +75,7 @@ describe("runChecks", () => {
 		expect(await runChecks(pack, stateFor("shape"), { root: "/nowhere", git: NO_GIT })).toEqual([]);
 		expect(called).toEqual([]);
 		await runChecks(pack, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
-		expect(called).toEqual(["units-format", "done-maps-scenarios", "unit-classification"]);
+		expect(called).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base"]);
 	});
 
 	test("no check runs without a single phase", async () => {
@@ -236,5 +236,68 @@ describe("unit-classification", () => {
 		const marked = fixtureRecords();
 		await runChecks(custom, stateFor("plan", { marked }), { root: "/nowhere", git: NO_GIT });
 		expect(seen).toBe(marked);
+	});
+});
+
+describe("gate-only checks", () => {
+	function withSlow(): Pack {
+		return { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, checks: ["slow"] } : p)) };
+	}
+	const slowResult = { code: "slow", severity: "error" as const, message: "slow failed" };
+	let calls = 0;
+	let key = "k";
+	beforeEach(() => {
+		calls = 0;
+		key = "k";
+		registerCheck("slow", async () => (calls++, [slowResult]), { at: "gate", key: () => key });
+	});
+	const run = (opts?: { gate?: boolean; target?: string }) => runChecks(withSlow(), stateFor("plan"), { root: "/nowhere", git: NO_GIT }, opts);
+
+	test("Gate-only check skipped on refresh", async () => {
+		expect(await run()).toEqual([]);
+		expect(await run()).toEqual([]);
+		expect(calls).toBe(0);
+		expect(isGateOnly("slow")).toBe(true);
+	});
+
+	test("a gate run stores results that a refresh with the same key returns", async () => {
+		const gated = await run({ gate: true, target: "plan" });
+		expect(gated).toEqual([{ ...slowResult, check: "slow" }]);
+		expect(await run()).toEqual(gated);
+		expect(calls).toBe(1);
+	});
+
+	test("a refresh with another key returns none", async () => {
+		await run({ gate: true, target: "plan" });
+		key = "other";
+		expect(await run()).toEqual([]);
+		expect(calls).toBe(1);
+	});
+
+	test("a gate run of another target does not run the check", async () => {
+		expect(await run({ gate: true, target: "build" })).toEqual([]);
+		expect(calls).toBe(0);
+	});
+
+	test("results of a check that finishes after clearGateMemo are not stored", async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		registerCheck("slow", async () => (await gate, [slowResult]), { at: "gate", key: () => key });
+		const pending = run({ gate: true, target: "plan" });
+		clearGateMemo();
+		release();
+		await pending;
+		expect(await run()).toEqual([]);
+	});
+
+	test("clearGateMemo drops stored results, bumps the generation and calls listeners", async () => {
+		await run({ gate: true, target: "plan" });
+		let called = 0;
+		onGateMemoClear(() => called++);
+		const before = gateMemoGeneration();
+		clearGateMemo();
+		expect(gateMemoGeneration()).toBe(before + 1);
+		expect(called).toBe(1);
+		expect(await run()).toEqual([]);
 	});
 });

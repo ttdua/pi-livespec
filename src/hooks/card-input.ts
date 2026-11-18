@@ -72,8 +72,8 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const forge = session.forge;
 	const comments = session.comments;
 	if (forge === undefined || comments === undefined) throw new Error(FORGE_NOT_CONNECTED);
-	const iterationCap = pack.loops.change_iterations;
-	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, iterationCap }, n);
+	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts };
+	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
 	return { ...snapshot, checks, warnings, commandWarnings: [...session.commandWarnings] };

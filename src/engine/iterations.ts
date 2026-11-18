@@ -16,7 +16,7 @@ const isStuckAnswer = (m: MarkedComment): boolean => m.kind === STUCK_KIND && m.
 const LIFTING_OUTCOMES = new Set(["approved", "approved_with_notes"]);
 
 /** A stuck answer that chose an option; a dismissed one leaves the cap blocking. */
-function liftsCap(m: MarkedComment): boolean {
+export function liftsCap(m: MarkedComment): boolean {
 	if (!isStuckAnswer(m) || typeof m.data !== "object" || m.data === null) return false;
 	const { outcome, choice } = m.data as { outcome?: unknown; choice?: unknown };
 	return typeof outcome === "string" && LIFTING_OUTCOMES.has(outcome) && typeof choice === "string" && choice !== "";
