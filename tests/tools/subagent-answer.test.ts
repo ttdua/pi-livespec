@@ -70,6 +70,16 @@ describe("questions from a child", () => {
 		expect(await h.marked()).toHaveLength(before);
 	});
 
+	test("a failed resume after the answer is recorded says so", async () => {
+		const { h } = await asked();
+		Object.assign(h.fake.service, { resume: async () => ({ kind: "refused", reason: "not-resumable" }) });
+		const out = await h.call("subagent_answer", { id: "agent-1", answer: "x" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).not.toContain("Nothing was launched or written");
+		expect(textOf(out)).toContain("the answer is recorded");
+		expect(textOf(out)).toContain("dispatch implementer U1 again");
+	});
+
 	test("refuses an id the executor no longer knows", async () => {
 		const { h } = await asked();
 		Object.assign(h.fake.service, { getRecord: () => undefined });

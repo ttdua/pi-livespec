@@ -22,13 +22,18 @@ export type RunFacts = {
 
 export const INLINE_SOURCE = "inline";
 
+/** The reason of the `BLOCKED` record a post-launch mismatch leaves; such a record is no attempt. */
+export const LAUNCH_MISMATCH = "launch-mismatch";
+
+const isLaunchMismatch = (d: Partial<DispatchData>): boolean => d.reason === LAUNCH_MISMATCH;
+
 const isReviewRole = (role: Role): boolean => role === "reviewer" || role === "verifier";
 
 /** Next `attempt` of a dispatch record for the unit and role: one more than the settled records so far. */
 export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<DispatchData>;
-		return m.kind === "dispatch" && d.role === role && d.unit === unit && d.status !== undefined && !["QUESTION", "ANSWERED"].includes(d.status);
+		return m.kind === "dispatch" && d.role === role && d.unit === unit && d.status !== undefined && !["QUESTION", "ANSWERED"].includes(d.status) && !isLaunchMismatch(d);
 	}).length + 1;
 }
 
@@ -53,6 +58,7 @@ function dispatchData(run: RunFacts, result: SubagentResult): DispatchData {
 		role: run.role, ...optional("unit", run.unit), ...optional("subject", run.subject), ...optional("agentId", run.agentId),
 		attempt: run.attempt, packet: run.packet.hash, agentSource: run.agentSource, requested: run.requested, effective: run.effective,
 		status: result.status, commits: result.commits ?? [], notes, discoveries: result.discoveries, sources_used: result.sources_used,
+		...optional("reason", result.reason), ...optional("evidence", result.evidence),
 	};
 }
 

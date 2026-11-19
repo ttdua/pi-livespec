@@ -5,7 +5,8 @@ import { buildPacket, changeName } from "../subagents/packet.ts";
 import { writePacket } from "../subagents/packet-store.ts";
 import { requireChange, requireSession, requireValidPack, requireWritable, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { argsOf, checkTarget, childRefusal, packetContext, packetText, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-env.ts";
+import { packetContext, packetText } from "./subagent-request.ts";
+import { argsOf, checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_packet";
 

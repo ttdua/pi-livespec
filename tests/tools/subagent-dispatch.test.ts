@@ -85,6 +85,12 @@ describe("subagent-dispatch tools", () => {
 		[{ role: "planner" }, "unknown role"],
 		[{ role: "reviewer", subject: "vibes" }, "unknown subject"],
 		[{ role: "implementer", unit: "U9" }, "does not exist"],
+		[{ role: "constructor" }, "unknown role"],
+		[{ role: "toString" }, "unknown role"],
+		[{ role: "__proto__" }, "unknown role"],
+		[{ role: "reviewer", subject: "constructor" }, "unknown subject"],
+		[{ role: "reviewer", subject: "__proto__" }, "unknown subject"],
+		[{ role: "implementer", unit: "U1", subject: "unit" }, "only a reviewer takes a subject"],
 	])("refuses %o", async (params, text) => {
 		const h = await subagentHarness({ executor: {} });
 		const out = await h.call("subagent_dispatch", params);
@@ -160,6 +166,15 @@ describe("subagent-dispatch tools", () => {
 		const out = await h.call("subagent_packet", { role: "implementer", unit: "U2" });
 		expect(textOf(out)).toContain("the cache client retries twice");
 		expect(textOf(out)).toContain(`comment:${record?.commentId}`);
+	});
+
+	test("needs context names the source ids in the tool text", async () => {
+		const h = await subagentHarness({ executor: {} });
+		next(h, citing(h, { status: "NEEDS_CONTEXT", reason: "I need spec:auth to know the roles", evidence: "no auth spec in the packet" }));
+		const out = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(textOf(out)).toContain("Sources named: spec:auth");
+		expect(textOf(out)).toContain("Reason: I need spec:auth");
+		expect(textOf(out)).toContain("Evidence: no auth spec in the packet");
 	});
 
 	test("a dispatch stores its packet for unit_finish freshness", async () => {

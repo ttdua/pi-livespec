@@ -27,7 +27,7 @@ describe("inline fallback", () => {
 		expect(textOf(out)).toContain("subagent_record implementer U1");
 		const packet = await h.call("subagent_packet", { role: "implementer", unit: "U1" });
 		expect(textOf(packet)).toContain("# livespec packet protocol");
-		const recorded = await h.call("subagent_record", { role: "implementer", unit: "U1", result: done({ commits: [] }) });
+		const recorded = await h.call("subagent_record", { role: "implementer", unit: "U1", result: done({ commits: [], sources_used: footerIds(textOf(packet)) }) });
 		expect(recorded.isError, textOf(recorded)).toBeFalsy();
 		expect((await h.latest("dispatch"))?.data).toMatchObject({ role: "implementer", unit: "U1", status: "DONE", agentSource: "inline", attempt: 1 });
 		await h.commit({ "src/u1.ts": "export const x = 1;\n" });
@@ -44,7 +44,8 @@ describe("inline fallback", () => {
 	test("inline review recorded", async () => {
 		const h = await subagentHarness({ units: [U1] });
 		await h.start("U1");
-		const out = await h.call("subagent_record", { role: "reviewer", unit: "U1", subject: "unit", result: reviewResult() });
+		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "reviewer", unit: "U1", subject: "unit" })));
+		const out = await h.call("subagent_record", { role: "reviewer", unit: "U1", subject: "unit", result: reviewResult({ sources_used: cited }) });
 		expect(out.isError, textOf(out)).toBeFalsy();
 		const summary = await h.latest("finding-summary");
 		expect(summary?.data).toMatchObject({ role: "reviewer", subject: "unit", unit: "U1", round: 1, status: "DONE", findings: [FINDING], head: h.git("rev-parse", "HEAD"), agentSource: "inline" });
@@ -60,5 +61,23 @@ describe("inline fallback", () => {
 		const blocked = await h.call("subagent_record", { role: "implementer", unit: "U1", result: done({ status: "BLOCKED", reason: "r" }) });
 		expect(textOf(blocked)).toContain("needs reason and evidence");
 		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("inline result omitting a required source is refused", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		const before = (await h.marked()).length;
+		const out = await h.call("subagent_record", { role: "implementer", unit: "U1", result: done() });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("omits required sources");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("inline NEEDS_CONTEXT past the cap points to spec_stuck", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "implementer", unit: "U1" })));
+		const nc = done({ status: "NEEDS_CONTEXT", reason: "need spec:auth", evidence: "missing", sources_used: cited });
+		for (let i = 0; i < 2; i++) expect(textOf(await h.call("subagent_record", { role: "implementer", unit: "U1", result: nc }))).toContain("Sources named: spec:auth");
+		const third = await h.call("subagent_record", { role: "implementer", unit: "U1", result: nc });
+		expect(textOf(third)).toContain("spec_stuck");
 	});
 });

@@ -84,26 +84,38 @@ export function watchLaunch(events: EventsLike, signal: AbortSignal): LaunchWatc
 	};
 }
 
-export type LaunchCheck = { ok: true } | { ok: false; field: string; laneCwd: boolean };
+/** One effective value that differs from the request. */
+export type Mismatch = { field: string; requested: string; effective: string };
+
+export type LaunchCheck = { ok: true } | { ok: false; field: string; laneCwd: boolean; mismatches: Mismatch[] };
+
+const show = (v: unknown): string => (v === undefined ? "unset" : Array.isArray(v) ? `[${v.join(", ")}]` : String(v));
 
 const sameList = (a: readonly string[] | undefined, b: readonly string[]): boolean => a !== undefined && a.length === b.length && a.every((v, i) => v === b[i]);
 
-/** The first effective field that differs from the request; a missing event is a mismatch named `session-created`. */
-function mismatch(requested: SpawnOptionsLike, facts: LaunchFacts | undefined): string | undefined {
-	if (facts === undefined) return "session-created";
-	if (facts.context !== requested.context) return "context";
-	if (facts.cwd !== requested.cwd) return "cwd";
-	if (facts.inheritSkills !== requested.skills.inherit) return "inheritSkills";
-	if (!sameList(facts.skillPaths, requested.skills.paths)) return "skillPaths";
-	if (facts.contextFiles !== requested.contextFiles) return "contextFiles";
+/** Every effective field that differs from the request; a missing event is the one mismatch `session-created`. */
+function mismatches(requested: SpawnOptionsLike, facts: LaunchFacts | undefined): Mismatch[] {
+	if (facts === undefined) return [{ field: "session-created", requested: "an event before the run settles", effective: "none" }];
+	const out: Mismatch[] = [];
+	const differ = (field: string, want: unknown, got: unknown, same: boolean): void => {
+		if (!same) out.push({ field, requested: show(want), effective: show(got) });
+	};
+	differ("context", requested.context, facts.context, facts.context === requested.context);
+	differ("cwd", requested.cwd, facts.cwd, facts.cwd === requested.cwd);
+	differ("inheritSkills", requested.skills.inherit, facts.inheritSkills, facts.inheritSkills === requested.skills.inherit);
+	differ("skillPaths", requested.skills.paths, facts.skillPaths, sameList(facts.skillPaths, requested.skills.paths));
+	differ("contextFiles", requested.contextFiles, facts.contextFiles, facts.contextFiles === requested.contextFiles);
 	const excluded = new Set(facts.excludedExtensionPackages ?? []);
-	if (!requested.excludeExtensionPackages.every((p) => excluded.has(p))) return "excludedExtensionPackages";
-	return undefined;
+	const covered = requested.excludeExtensionPackages.every((p) => excluded.has(p));
+	differ("excludedExtensionPackages", requested.excludeExtensionPackages, facts.excludedExtensionPackages, covered);
+	return out;
 }
 
-/** Compares the effective launch with the request; a `cwd` mismatch of a lane launch re-runs the unit sequentially. */
+/** Compares the effective launch with the request; a `cwd`-only mismatch of a lane launch re-runs the unit sequentially. */
 export function checkLaunch(requested: SpawnOptionsLike, facts?: LaunchFacts): LaunchCheck {
-	const field = mismatch(requested, facts);
-	if (field === undefined) return { ok: true };
-	return { ok: false, field, laneCwd: field === "cwd" && requested.metadata.lane !== undefined };
+	const found = mismatches(requested, facts);
+	const first = found[0];
+	if (first === undefined) return { ok: true };
+	const laneCwd = requested.metadata.lane !== undefined && found.length === 1 && first.field === "cwd";
+	return { ok: false, field: first.field, laneCwd, mismatches: found };
 }

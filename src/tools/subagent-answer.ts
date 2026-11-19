@@ -11,8 +11,9 @@ import type { Packet } from "../subagents/source-types.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
-import { childRefusal, defaultSubagentDeps, dispatchDeps, dispatchRequest, packetContext, refusal, type SubagentToolDeps, type Target, type ToolCtx, warn } from "./subagent-env.ts";
-import { outcomeText } from "./subagent-dispatch.ts";
+import { outcomeText } from "./subagent-outcome.ts";
+import { defaultSubagentDeps, dispatchDeps, dispatchRequest, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
+import { argsOf, childRefusal, refusal, type Target, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_answer";
 
@@ -74,7 +75,7 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	const d = dispatchDeps(pi, w, state.issue.number, service, warn(ctx));
 	await d.post(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
 	const record = await resume(service, p.id, p.answer);
-	if (typeof record === "string") return refusal(TOOL, `${record}; the answer is recorded, dispatch ${t.role} again.`);
+	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded on the forge, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
 	const run = resumedRun(p.id, packet.cwd, q.launch, request.difficulty);
 	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0 });
 	return toolResult(withStep(w.session, outcomeText(t, outcome)), undefined);

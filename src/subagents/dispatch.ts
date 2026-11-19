@@ -1,15 +1,15 @@
 // Orchestration of one dispatch: watch → spawn → check → wait → interpret → record. Counters come from forge records only.
 
 import type { LaunchFacts, RecordLike, SubagentsServiceLike } from "./executor.ts";
-import { checkLaunch, type EventsLike, spawnOptions, watchLaunch } from "./launch.ts";
+import { checkLaunch, type EventsLike, type Mismatch, spawnOptions, watchLaunch } from "./launch.ts";
 import { dispatchComment, type QuestionLaunch, type Thinking } from "./records.ts";
 import { type DispatchHistory, interpret, type ResultDecision } from "./result.ts";
 import { AGENT_OF, type ReviewSubject, type Role, type SubagentEntry, type SubagentResult } from "./roles.ts";
-import { blockedResult, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
+import { blockedResult, LAUNCH_MISMATCH, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
 import type { Packet } from "./source-types.ts";
 
 export type DispatchOutcome =
-	| { kind: "result"; result: SubagentResult; facts: LaunchFacts }
+	| { kind: "result"; result: SubagentResult; facts: LaunchFacts; sourcesNamed?: string[] }
 	| { kind: "question"; id: string; text: string }
 	| { kind: "inline"; reason: string; packet: Packet }
 	| { kind: "sequential"; reason: string }
@@ -92,20 +92,27 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 			return { kind: "stop", outcome: { kind: "inline", reason: `the executor refused the launch: ${messageOf(error)}; ${request.role} runs inline`, packet: request.packet } };
 		}
 		const { facts, waited } = await waitWithFacts(deps, agentId, watch, settled);
+		const run: Run = { agentId, facts: facts ?? { context: "unknown", cwd: "unknown" }, thinking: options.thinkingLevel, agentSource };
 		const check = checkLaunch(options, facts);
-		if (!check.ok) return { kind: "stop", outcome: mismatchOutcome(deps, request, agentId, check, waited) };
-		return { kind: "settled", run: { agentId, facts: facts as LaunchFacts, thinking: options.thinkingLevel, agentSource }, record: await waited };
+		if (!check.ok) return { kind: "stop", outcome: await mismatchOutcome(deps, request, run, check, waited) };
+		return { kind: "settled", run, record: await waited.catch((error: unknown): RecordLike => ({ id: agentId, status: "error", error: messageOf(error) })) };
 	} finally {
 		watch.dispose();
 	}
 }
 
-function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, agentId: string, check: { field: string; laneCwd: boolean }, waited: Promise<RecordLike>): DispatchOutcome {
-	deps.service.abort(agentId);
+/** `field: requested X, effective Y` for each mismatch: the evidence of a `launch-mismatch` record. */
+const mismatchEvidence = (found: Mismatch[]): string => found.map((m) => `${m.field}: requested ${m.requested}, effective ${m.effective}`).join("; ");
+
+/** Aborts the child, records the mismatch as `BLOCKED` `launch-mismatch` (not a failed attempt), then runs inline or sequentially. */
+async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run: Run, check: { field: string; laneCwd: boolean; mismatches: Mismatch[] }, waited: Promise<RecordLike>): Promise<DispatchOutcome> {
+	deps.service.abort(run.agentId);
 	waited.catch(() => undefined);
-	const why = check.field === "session-created" ? "no session-created event arrived before the run settled" : `the executor did not apply ${check.field}`;
-	if (check.laneCwd) return { kind: "sequential", reason: `child ${agentId} was aborted: its effective cwd differs from the lane; re-run ${request.unit} sequentially` };
-	return { kind: "inline", reason: `child ${agentId} was aborted: ${why} (mismatch: ${check.field}); ${request.role} runs inline`, packet: request.packet };
+	const evidence = mismatchEvidence(check.mismatches);
+	const result: SubagentResult = { ...blockedResult(LAUNCH_MISMATCH), notes: `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence };
+	await recordResult(deps, runFacts(request, run), request.packet.cwd, result);
+	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${evidence}); re-run ${request.unit} sequentially` };
+	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${LAUNCH_MISMATCH} recorded (mismatch: ${evidence}); ${request.role} runs inline`, packet: request.packet };
 }
 
 /** The data a later `subagent_answer` needs to record the resumed run as this dispatch would have. */
@@ -126,6 +133,7 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 			await recordResult(deps, run, cwd, decision.result ?? blockedResult(decision.reason));
 			return { kind: "stuck", reason: decision.reason };
 		case "more-context":
+			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };
 		case "accept":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts };
 	}

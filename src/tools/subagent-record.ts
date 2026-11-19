@@ -8,7 +8,10 @@ import { INLINE_SOURCE, recordResult } from "../subagents/run-record.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
-import { argsOf, checkTarget, childRefusal, defaultSubagentDeps, dispatchRequest, packetContext, recordDeps, refusal, type SubagentToolDeps, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-env.ts";
+import { interpret } from "../subagents/result.ts";
+import { resultText } from "./subagent-outcome.ts";
+import { defaultSubagentDeps, dispatchRequest, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
+import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_record";
 
@@ -40,12 +43,17 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
+	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
+	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0 });
+	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
 		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true,
 	};
 	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
-	return toolResult(withStep(w.session, `Recorded the inline ${argsOf(target)} run with ${kept.status}.`), undefined);
+	const named = decision.kind === "more-context" ? decision.ids : undefined;
+	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT");
+	return toolResult(withStep(w.session, `Inline run: ${text}`), undefined);
 }
 
 export function registerSubagentRecord(pi: ExtensionAPI, deps: SubagentToolDeps = defaultSubagentDeps): void {

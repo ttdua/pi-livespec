@@ -4,6 +4,9 @@ import { parseMarked } from "../../src/forge/markers.ts";
 import { type DispatchDeps, type DispatchRequest, runDispatch } from "../../src/subagents/dispatch.ts";
 import { checkLaunch, raisedThinking, spawnOptions } from "../../src/subagents/launch.ts";
 import { interpret } from "../../src/subagents/result.ts";
+import { needsContextCount } from "../../src/subagents/run-record.ts";
+import { dispatchComment } from "../../src/subagents/records.ts";
+import { mark } from "./helpers.ts";
 import { checkSchema, resultSchema } from "../../src/subagents/roles.ts";
 import type { Packet } from "../../src/subagents/source-types.ts";
 import { applied, done, fakeExecutor, unpublish } from "./fake-executor.ts";
@@ -62,13 +65,13 @@ describe("launch options", () => {
 		["excludedExtensionPackages", { excludedExtensionPackages: [] }],
 	])("post-launch check names %s", (field, change) => {
 		const o = spawnOptions(packet(), "implementer", undefined, "low", 0, ["git:github.com/obra/superpowers"], { change: "c", unit: "U1" });
-		expect(checkLaunch(o, { ...applied(o), ...change })).toEqual({ ok: false, field, laneCwd: false });
+		expect(checkLaunch(o, { ...applied(o), ...change })).toMatchObject({ ok: false, field, laneCwd: false });
 		expect(checkLaunch(o, applied(o))).toEqual({ ok: true });
 	});
 
 	test("a lane cwd mismatch re-runs sequentially", () => {
 		const o = spawnOptions(packet(), "implementer", undefined, "low", 0, [], { change: "c", unit: "U1", lane: "U1" });
-		expect(checkLaunch(o, { ...applied(o), cwd: "/other" })).toEqual({ ok: false, field: "cwd", laneCwd: true });
+		expect(checkLaunch(o, { ...applied(o), cwd: "/other" })).toMatchObject({ ok: false, field: "cwd", laneCwd: true });
 	});
 });
 
@@ -108,6 +111,23 @@ describe("result interpretation", () => {
 	});
 });
 
+describe("records", () => {
+	test("needsContextCount counts NEEDS_CONTEXT dispatch records of the unit only", () => {
+		const rec = (unit: string, status: string, attempt: number) =>
+			mark(dispatchComment({ role: "implementer", unit, attempt, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: status as never, commits: [], notes: "", discoveries: [], sources_used: [] }));
+		const marked = [rec("U1", "NEEDS_CONTEXT", 1), rec("U1", "DONE", 2), rec("U2", "NEEDS_CONTEXT", 1), rec("U1", "NEEDS_CONTEXT", 3)];
+		expect(needsContextCount(marked, "U1")).toBe(2);
+		expect(needsContextCount(marked, "U2")).toBe(1);
+	});
+
+	test("a launch-mismatch record does not supersede the run of the same attempt", () => {
+		const base = { role: "implementer" as const, unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" as const }, effective: {}, commits: [], notes: "", discoveries: [], sources_used: [] };
+		const mismatch = mark(dispatchComment({ ...base, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd" }));
+		const run = mark(dispatchComment({ ...base, status: "DONE" }));
+		expect(mismatch.id).not.toBe(run.id);
+	});
+});
+
 describe("runDispatch", () => {
 	test("capable executor launches", async () => {
 		const fake = fakeExecutor({ records: [{ structuredResult: withSources(["answer:Q2"]) }] });
@@ -132,7 +152,41 @@ describe("runDispatch", () => {
 		expect(out).toMatchObject({ kind: "inline" });
 		expect(out.kind === "inline" && out.reason).toContain("session-created");
 		expect(fake.aborted).toEqual(["agent-1"]);
-		expect(posted).toEqual([]);
+		expect(posted).toHaveLength(1);
+		expect(posted[0]?.kind).toBe("dispatch");
+		expect(posted[0]?.data).toMatchObject({ status: "BLOCKED", agentId: "agent-1", attempt: 1 });
+		expect(String(posted[0]?.data.notes)).toContain("launch-mismatch");
+		expect(String(posted[0]?.data.notes)).toContain("session-created");
+	});
+
+	test("a field mismatch is recorded with requested and effective values", async () => {
+		const fake = fakeExecutor({ facts: () => ({ inheritSkills: true }) });
+		const { d, posted } = deps(fake);
+		await runDispatch(d, request());
+		expect(posted[0]?.data).toMatchObject({ status: "BLOCKED", attempt: 1 });
+		expect(String(posted[0]?.data.notes)).toMatch(/inheritSkills: requested false, effective true/);
+	});
+
+	test("a lane cwd mismatch is recorded and re-runs sequentially", async () => {
+		const fake = fakeExecutor({ facts: () => ({ cwd: "/moved" }) });
+		const { d, posted } = deps(fake);
+		const out = await runDispatch(d, request({ lane: "U1" }));
+		expect(out.kind).toBe("sequential");
+		expect(String(posted[0]?.data.notes)).toMatch(/cwd: requested \/w\/c, effective \/moved/);
+	});
+
+	test("a rejected wait is retried as a crash", async () => {
+		const fake = fakeExecutor({ records: [{ structuredResult: withSources(["answer:Q2"]) }] });
+		let calls = 0;
+		const wait = fake.service.wait;
+		fake.service.wait = async (id: string) => {
+			if (++calls === 1) throw new Error("executor lost the run");
+			return wait(id);
+		};
+		const { d } = deps(fake);
+		const out = await runDispatch(d, request());
+		expect(fake.spawned).toHaveLength(2);
+		expect(out.kind).toBe("result");
 	});
 
 	test("skills ignored aborts", async () => {

@@ -1,4 +1,4 @@
-// What the subagent tools share: parameter checks, the packet context of the session, the dispatch request and the record side effects.
+// The run side of the subagent tools: packet context, difficulty, isolation list, dispatch request, record deps and the override warning.
 
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -8,55 +8,24 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Session } from "../hooks/session.ts";
 import type { AgentInfo, DispatchDeps, DispatchRequest } from "../subagents/dispatch.ts";
 import type { EventsLike } from "../subagents/launch.ts";
-import { type ChildCheckContext, isChildSession } from "../subagents/child.ts";
 import { configuredPackages, excludedPackages } from "../subagents/isolation.ts";
 import { changeName } from "../subagents/packet.ts";
 import { entriesFor } from "../subagents/policy.ts";
 import type { Thinking } from "../subagents/records.ts";
-import { AGENT_OF, ROLE_SUBJECTS, type ReviewSubject, type Role, type SubagentEntry } from "../subagents/roles.ts";
+import type { SubagentEntry } from "../subagents/roles.ts";
 import { needsContextCount, nextAttempt, nextRound, type RecordDeps } from "../subagents/run-record.ts";
 import type { Packet, PacketContext } from "../subagents/source-types.ts";
 import { unitRoot } from "../subagents/state.ts";
-import { afterForgeWrite, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { afterForgeWrite, type WriteContext } from "./guard.ts";
+import type { Target } from "./subagent-target.ts";
 
 /** Where the subagent tools read pi's settings from; tests point `home` at a scratch directory. */
 export type SubagentToolDeps = { home: () => string };
 
 export const defaultSubagentDeps: SubagentToolDeps = { home: homedir };
 
-export type TargetParams = { role: string; unit?: string; subject?: string };
-export type Target = { role: Role; unit?: string; subject?: ReviewSubject };
-
-export const CHILD_REFUSAL = (tool: string): string => `${tool} refused: only the main session dispatches and records subagent runs; this is a child session. Nothing was launched or written.`;
-
-/** What a tool reads from pi's tool context: the session check and the UI notifier. */
-export type ToolCtx = ChildCheckContext & { ui?: { notify?(message: string, type?: "info" | "warning" | "error"): void } };
-
-/** Refuses in a child session before anything else runs. */
-export const childRefusal = (tool: string, ctx: ToolCtx): ToolResult<undefined> | undefined => (isChildSession(ctx) ? toolResult(CHILD_REFUSAL(tool), undefined, true) : undefined);
-
-export const warn = (ctx: ToolCtx) => (text: string): void => ctx.ui?.notify?.(text, "warning");
-
 const LEVELS: readonly Thinking[] = ["low", "medium", "high"];
 const DEFAULT_DIFFICULTY: Thinking = "medium";
-
-export const refusal = (tool: string, message: string): ToolResult<undefined> => toolResult(`${tool} refused: ${message} Nothing was launched or written.`, undefined, true);
-
-const isSubject = (s: string): s is ReviewSubject => (ROLE_SUBJECTS as readonly string[]).includes(s) || (s.startsWith("persona:") && s.length > "persona:".length);
-
-/** The role, subject and unit, or why they cannot name a run; the unit must exist in the change. */
-export function checkTarget(p: TargetParams, state: ChangeState): Target | string {
-	if (!(p.role in AGENT_OF)) return `unknown role ${JSON.stringify(p.role)}; use one of ${Object.keys(AGENT_OF).join(", ")}.`;
-	const role = p.role as Role;
-	if (p.subject !== undefined && !isSubject(p.subject)) return `unknown subject ${JSON.stringify(p.subject)}; use one of ${ROLE_SUBJECTS.join(", ")} or persona:<name>.`;
-	if (role === "reviewer" && p.subject === undefined) return "a reviewer needs a subject (spec, plan, unit, change or persona:<name>).";
-	const needsUnit = role === "implementer" || p.subject === "unit";
-	if (needsUnit && (p.unit === undefined || p.unit === "")) return `a unit id is required for ${[role, p.subject].filter(Boolean).join(" ")}.`;
-	if (p.unit !== undefined && !state.change.units.some((u) => u.id === p.unit)) return `unit ${p.unit} does not exist in the change.`;
-	return { role, ...(p.unit === undefined ? {} : { unit: p.unit }), ...(p.subject === undefined ? {} : { subject: p.subject as ReviewSubject }) };
-}
-
-export const argsOf = (t: Target): string => [t.role, t.unit, t.subject].filter((p) => p !== undefined).join(" ");
 
 /** The packet context of the session's current change; a unit in an open lane builds in its lane. */
 export function packetContext(w: WriteContext, state: ChangeState, unit: string | undefined): PacketContext {
@@ -141,10 +110,3 @@ export function packetText(packet: Packet): string {
 	const skills = packet.skillPaths.length === 0 ? "none" : packet.skillPaths.join(", ");
 	return `Packet ${packet.hash} (cwd ${packet.cwd}; skills: ${untrusted(skills)})\n\n${packet.text}`;
 }
-
-/** Parameters shared by `subagent_dispatch`, `subagent_packet` and `subagent_record`. */
-export const TARGET_PROPERTIES = {
-	role: { type: "string", enum: Object.keys(AGENT_OF) },
-	unit: { type: "string", description: "Unit id such as U3; required for implementer, verifier and the unit subject" },
-	subject: { type: "string", description: "Reviewer subject: spec, plan, unit, change or persona:<name>" },
-};

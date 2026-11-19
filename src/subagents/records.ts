@@ -25,6 +25,9 @@ export type DispatchData = {
 	notes: string;
 	discoveries: string[];
 	sources_used: string[];
+	/** The child's `reason` and `evidence` of a `BLOCKED` or `NEEDS_CONTEXT` result, or the parent's (`launch-mismatch`). */
+	reason?: string;
+	evidence?: string;
 };
 
 /** A child's question, or its answer; both carry the agent id that links them to the later result. */
@@ -71,7 +74,9 @@ export const findingKey = (commentId: string, index: number): string => `${comme
 
 export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : "";
+	// A launch-mismatch record keeps the attempt number, so it needs its own id to not supersede the attempt's run record.
+	const mismatch = "reason" in data && data.reason === "launch-mismatch" ? ".mismatch" : "";
+	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : mismatch;
 	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
 }
 
