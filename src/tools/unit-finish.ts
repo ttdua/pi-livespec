@@ -175,22 +175,30 @@ async function reconcile(c: UnitCall): Promise<ToolResult<undefined>> {
 	return c.done(`${c.unit.id} already has a receipt; no Verify was run. ${tickText(c.unit.id, ticked)}`);
 }
 
-/** A stale source of the unit's last packet stops the unit: the stuck report names it, nothing else is written. */
-async function staleStop(c: UnitCall, ctx: ApproverCtx | undefined): Promise<ToolResult<undefined> | undefined> {
+/** The stale sources of the unit's last packet; nothing is sent here, because a human request must never wait under the evidence lock. */
+type Staleness = { stale?: string[] };
+
+async function staleStop(c: UnitCall, found: Staleness): Promise<ToolResult<undefined> | undefined> {
 	const { w, state, env, unit: u } = c;
 	const stale = await staleSince({ session: w.session, state, pack: w.pack, forge: w.forge, git: env.git, root: env.root, cwd: env.root, budgetTokens: w.session.config.user.packetBudgetTokens }, u.id);
 	if (stale === undefined) return undefined;
 	const cancelled = c.cancelled();
 	if (cancelled !== undefined) return cancelled;
-	const head = `unit_finish refused: ${u.id} is not ticked; its dispatched packet is stale (${stale.join(", ")}).`;
-	if (ctx === undefined) return c.refuse(`${head} Report it with spec_stuck.`);
-	const sent = await runSpecStuck(stuckFor(u.id, stale), ctx);
-	return { ...sent, content: [{ type: "text", text: `${head}\n${sent.content.map((x) => x.text).join("\n")}` }], isError: true };
+	found.stale = stale;
+	return c.refuse(`${staleHead(u.id, stale)} Report it with spec_stuck.`);
 }
 
-async function runFinish(c: UnitCall, ctx?: ApproverCtx): Promise<ToolResult<undefined>> {
+const staleHead = (unit: string, stale: string[]): string => `unit_finish refused: ${unit} is not ticked; its dispatched packet is stale (${stale.join(", ")}).`;
+
+/** After the lock: the stale report goes to the human through `spec_stuck`, and its text follows the refusal. */
+async function reportStale(unit: string, stale: string[], ctx: ApproverCtx): Promise<ToolResult<undefined>> {
+	const sent = await runSpecStuck(stuckFor(unit, stale), ctx);
+	return { ...sent, content: [{ type: "text", text: `${staleHead(unit, stale)}\n${sent.content.map((x) => x.text).join("\n")}` }], isError: true };
+}
+
+async function runFinish(c: UnitCall, found: Staleness): Promise<ToolResult<undefined>> {
 	const { env, state, unit: u } = c;
-	const stale = await staleStop(c, ctx);
+	const stale = await staleStop(c, found);
 	if (stale !== undefined) return stale;
 	if (finishMode(state, u.id) === "reconcile") return reconcile(c);
 	const start = state.evidence.started[u.id] as StartRecord;
@@ -217,8 +225,10 @@ function precheck(unit: string): PrecheckFn {
 	};
 }
 
-export function runUnitFinish(unit: string, signal?: AbortSignal, ctx?: ApproverCtx): Promise<ToolResult<undefined>> {
-	return lockedEvidenceCall(TOOL, unit, signal, precheck(unit), (c) => runFinish(c, ctx));
+export async function runUnitFinish(unit: string, signal?: AbortSignal, ctx?: ApproverCtx): Promise<ToolResult<undefined>> {
+	const found: Staleness = {};
+	const result = await lockedEvidenceCall(TOOL, unit, signal, precheck(unit), (c) => runFinish(c, found));
+	return found.stale !== undefined && ctx !== undefined ? reportStale(unit, found.stale, ctx) : result;
 }
 
 export function registerUnitFinish(pi: ExtensionAPI): void {

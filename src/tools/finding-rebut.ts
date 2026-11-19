@@ -17,7 +17,9 @@ const blank = (text: unknown): boolean => typeof text !== "string" || text.trim(
 /** The finding `index` of the review summary comment `commentId`, or why there is none. */
 function findingOf(marked: MarkedComment[], commentId: string, index: number): Finding | string {
 	const summary = marked.find((m) => m.commentId === commentId && m.kind === "finding-summary");
-	const findings = (summary?.data as { findings?: Finding[] } | undefined)?.findings;
+	const data = summary?.data as { findings?: Finding[]; advisory?: boolean } | undefined;
+	const findings = data?.findings;
+	if (data?.advisory === true) return `${commentId} is an advisory review: its findings never block, so there is nothing to rebut.`;
 	if (!Array.isArray(findings)) return `${commentId} is not a review summary comment of this change.`;
 	return findings[index] ?? `finding ${index} does not exist in ${commentId} (it has ${findings.length}).`;
 }

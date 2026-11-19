@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -95,6 +96,13 @@ describe("unit-evidence", () => {
 		expect(record?.data).toMatchObject({ unit: "U2", pre: { sha: lane.git("rev-parse", "HEAD"), exit: 1 } });
 	});
 
+	test("an open lane whose worktree is gone refuses naming the path", async () => {
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		const lane = await openLane(h, "U2");
+		rmSync(lane.path, { recursive: true, force: true });
+		await expectRefusal(h, "U2", [lane.path]);
+	});
+
 	test("a dirty lane refuses, whatever the change worktree looks like", async () => {
 		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
 		const lane = await openLane(h, "U2");
@@ -102,7 +110,7 @@ describe("unit-evidence", () => {
 		await expectRefusal(h, "U2", ["dirty"]);
 	});
 
-	test("One started unit at a time in the same lane", async () => {
+	test("two units in different lanes may both be started", async () => {
 		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
 		await openLane(h, "U1");
 		await openLane(h, "U2");

@@ -77,6 +77,16 @@ describe("review-findings", () => {
 		expect(await h.marked()).toHaveLength(before);
 	});
 
+	test("a finding of an advisory summary is refused", async () => {
+		const { h, rebut } = await harness();
+		const id = await seedSummary(h, { advisory: true, findings: [warning()] });
+		const before = (await h.marked()).length;
+		const out = await rebut({ comment: id, index: 0, reason: "r", evidence: "e" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("advisory");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
 	test("a finding that does not block is refused", async () => {
 		const { h, rebut } = await harness();
 		const id = await seedSummary(h, { findings: [warning({ severity: "SUGGESTION" })] });

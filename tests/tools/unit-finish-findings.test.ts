@@ -8,7 +8,8 @@ import { cleanupDirs, textOf } from "./helpers.ts";
 import { buildPacket, changeName } from "../../src/subagents/packet.ts";
 import { writePacket } from "../../src/subagents/packet-store.ts";
 import { DEFAULT_SKILLS, makeTree } from "../subagents/packet-world.ts";
-import { cardState, type UnitHarness, type UnitSpec, unitHarness } from "./unit-helpers.ts";
+import type { FakeUI } from "../hooks/fake-pi.ts";
+import { cardState, type UnitHarness, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -23,8 +24,8 @@ const MEDIUM: UnitSpec = { id: "U1", verify: "sh check.sh", difficulty: "medium"
 const REVIEW_WHEN_MEDIUM = "integrationBranch: main\n";
 
 /** A started, committed and green U1. */
-async function greenUnit(spec: UnitSpec = U1, units: UnitSpec[] = [spec]): Promise<UnitHarness> {
-	const h = await unitHarness({ units, scripts: SCRIPTS, config: REVIEW_WHEN_MEDIUM });
+async function greenUnit(spec: UnitSpec = U1, units: UnitSpec[] = [spec], extra: { ui?: FakeUI; config?: string } = {}): Promise<UnitHarness> {
+	const h = await unitHarness({ units, scripts: SCRIPTS, config: extra.config ?? REVIEW_WHEN_MEDIUM, ...(extra.ui ? { ui: extra.ui } : {}) });
 	const out = await h.start("U1");
 	if (out.isError) throw new Error(textOf(out));
 	await h.commit({ "src/u1.ts": "x\n" });
@@ -122,6 +123,11 @@ describe("freshness at unit_finish", () => {
 	async function dispatched(): Promise<UnitHarness> {
 		const h = await greenUnit();
 		h.session.activeTree = makeTree(DEFAULT_SKILLS);
+		await storeDispatch(h);
+		return h;
+	}
+
+	async function storeDispatch(h: UnitHarness): Promise<void> {
 		const ctx = { session: h.session, state: cardState(h).state, pack: h.session.pack.ok ? h.session.pack.pack : (undefined as never), forge: h.forge, git: h.session.git, root: h.root, cwd: h.root, budgetTokens: 24000 };
 		const built = await buildPacket(ctx, "implementer", "U1");
 		if (!built.ok) throw new Error(built.message);
@@ -130,7 +136,6 @@ describe("freshness at unit_finish", () => {
 			role: "implementer", unit: "U1", attempt: 1, packet: built.packet.hash, agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
 		});
-		return h;
 	}
 
 	test("a dispatched unit with no news ticks", async () => {
@@ -149,6 +154,59 @@ describe("freshness at unit_finish", () => {
 		expect(await h.ofKind("receipt")).toHaveLength(0);
 		expect((await h.ofKind("stuck")).length).toBeGreaterThan(0);
 		expect((await h.units())[0]?.done).toBe(false);
+	});
+
+	test("a reviewer dispatch after the implementer's does not stale a merged lane unit", async () => {
+		const h = await dispatched();
+		const ctx = { session: h.session, state: cardState(h).state, pack: h.session.pack.ok ? h.session.pack.pack : (undefined as never), forge: h.forge, git: h.session.git, root: h.root, cwd: h.root, budgetTokens: 24000 };
+		const review = await buildPacket(ctx, "reviewer", "U1", "unit");
+		if (!review.ok) throw new Error(review.message);
+		await writePacket(h.root, changeName(ctx), review.packet);
+		await h.seed("dispatch", "dispatch.U1.reviewer.1", {
+			role: "reviewer", unit: "U1", subject: "unit", attempt: 1, packet: review.packet.hash, agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
+		});
+		h.git("switch", "-q", "-c", "side");
+		await writeIn(h.root, "side.txt", "s\n");
+		h.git("add", "-A");
+		h.git("commit", "-q", "-m", "side");
+		const side = h.git("rev-parse", "HEAD");
+		h.git("switch", "-q", "livespec/per-ip-cap");
+		await writeIn(h.root, "main.txt", "m\n");
+		h.git("add", "-A");
+		h.git("commit", "-q", "-m", "main");
+		h.git("merge", "--no-ff", "-q", "-m", "merge lane", side);
+		await h.session.refresh();
+		const out = await h.finish("U1");
+		expect(out.isError, textOf(out)).toBeFalsy();
+	});
+
+	test("the stuck report offers no continue option", async () => {
+		const h = await dispatched();
+		await h.world.postComment(h.n, "alice", "actually use a token bucket");
+		await h.session.comments?.invalidate(h.n);
+		await h.finish("U1");
+		const [report] = await h.ofKind("stuck");
+		const ids = (report?.data as { options: { id: string }[] }).options.map((o) => o.id);
+		expect(ids).toEqual(["redispatch", "amend"]);
+	});
+
+	test("a pending stuck request does not hold the evidence lock", async () => {
+		let release!: () => void;
+		let asked = false;
+		const gate = new Promise<void>((r) => (release = r));
+		const ui: FakeUI = { hasUI: true, select: async () => ((asked = true), await gate, undefined) };
+		const h = await greenUnit(U1, [U1, U2], { ui, config: "integrationBranch: main\ninteraction: { adapter: [in-session] }\n" });
+		h.session.activeTree = makeTree(DEFAULT_SKILLS);
+		await storeDispatch(h);
+		await h.world.postComment(h.n, "alice", "actually use a token bucket");
+		await h.session.comments?.invalidate(h.n);
+		const finishing = h.finish("U1");
+		await waitFor(() => asked);
+		const other = await Promise.race([h.start("U2"), new Promise<string>((r) => setTimeout(() => r("blocked"), 5000))]);
+		release();
+		await finishing;
+		expect(other).not.toBe("blocked");
 	});
 
 	test("an inline unit has no packet and skips freshness", async () => {

@@ -12,6 +12,7 @@ import { parseChange, type Unit } from "../../src/core/change.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
+import type { FakeUI } from "../hooks/fake-pi.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { type ToolHarness, type ToolHarnessOptions, toolHarness } from "./helpers.ts";
 
@@ -112,6 +113,8 @@ export type UnitHarnessOptions = {
 	scripts?: Record<string, string>;
 	config?: string;
 	update?: UpdateScript;
+	/** Scripted dialogs of the tool ctx (for tools that ask a human, such as `spec_stuck`). */
+	ui?: FakeUI;
 };
 
 export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
@@ -127,6 +130,7 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 		locked: true,
 		forge: (world) => scriptedForge(world.forge, writes, o.update),
 		...(o.config !== undefined ? { config: o.config } : {}),
+		...(o.ui !== undefined ? { ui: o.ui } : {}),
 	};
 	const h = await toolHarness(options);
 	const marked = async () => filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;

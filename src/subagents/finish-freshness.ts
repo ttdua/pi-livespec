@@ -18,7 +18,7 @@ export type FinishFacts = { session: { activeTree?: string }; state: ChangeState
  * record (an inline unit has no packet) or a packet that was never stored. A re-read that throws counts as stale.
  */
 export async function staleSince(f: FinishFacts, unit: string): Promise<string[] | undefined> {
-	const dispatch = latestDispatch(f.state.marked, unit);
+	const dispatch = latestDispatch(f.state.marked, unit, "implementer");
 	if (dispatch === undefined) return undefined;
 	const ctx: PacketContext = { ...f };
 	const packet = await readPacket(f.root, changeName(ctx), dispatch.packet);
@@ -39,7 +39,7 @@ export function stuckFor(unit: string, stale: string[]): SpecStuckParams {
 		hypothesis: `Changed since the dispatch: ${stale.join(", ")}. The work may not reflect them.`,
 		options: [
 			{ id: "redispatch", label: `Re-dispatch ${unit} with the new context` },
-			{ id: "continue", label: `Keep the work of ${unit} and tick it after reading the new input` },
+			{ id: "amend", label: `Amend ${unit} with unit_amend to take the new input into account` },
 		],
 		recommended: "redispatch",
 	};

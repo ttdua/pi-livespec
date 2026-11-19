@@ -2,6 +2,7 @@
 // change resolution, the refusal rules and the run environment; and the texts
 // of a blocked, invalid or aborted `Verify` run.
 
+import { existsSync } from "node:fs";
 import type { Unit } from "../core/change.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
@@ -45,9 +46,10 @@ export type PrecheckFn = (state: ChangeState, pack: Pack, git: Git) => Precheck 
 export const startable = (refusal: string | undefined): Precheck => (refusal === undefined ? { ok: true } : { refused: refusal });
 
 /** The unit's worktree: its open lane, else the change worktree. The state's HEAD and dirty flag are read there. */
-async function unitWorktree(session: Session, state: ChangeState, unit: string): Promise<{ state: ChangeState; at: RunWorktree | undefined }> {
+async function unitWorktree(session: Session, state: ChangeState, unit: string): Promise<{ state: ChangeState; at: RunWorktree | undefined } | { refused: string }> {
 	const root = unitRoot(state, unit, session.cwd);
 	if (root === session.cwd) return { state, at: undefined };
+	if (!existsSync(root)) return { refused: `the lane worktree of ${displayUnitId(unit)} is gone (${root}); recreate the lane or close its record.` };
 	const git = createGit(root);
 	const [head, dirty] = await Promise.all([git.head(), git.isDirty()]);
 	return { state: { ...state, git: { ...state.git, head, dirty } }, at: { root, git } };
@@ -71,6 +73,7 @@ export function lockedEvidenceCall(
 		const change = requireChange(w.session);
 		if (!change.ok) return refuse(change.message);
 		const lane = await unitWorktree(w.session, change.state, unit);
+		if ("refused" in lane) return refuse(lane.refused);
 		const { state } = lane;
 		const check = await precheck(state, w.pack, lane.at?.git ?? w.session.git);
 		if ("refused" in check) return refuse(check.refused);
