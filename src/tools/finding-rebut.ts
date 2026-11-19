@@ -2,6 +2,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { MarkedComment } from "../forge/markers.ts";
+import { isChildSession, type ChildCheckContext } from "../subagents/child.ts";
 import { isBlocking, rebuttalComment, type RebuttalData } from "../subagents/records.ts";
 import type { Finding } from "../subagents/roles.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
@@ -36,7 +37,8 @@ function earlierItems(marked: MarkedComment[], commentId: string): RebuttalData[
 	return (prior?.data as RebuttalData | undefined)?.items ?? [];
 }
 
-export async function runFindingRebut(p: RebutParams): Promise<ToolResult<undefined>> {
+export async function runFindingRebut(p: RebutParams, ctx?: ChildCheckContext): Promise<ToolResult<undefined>> {
+	if (ctx !== undefined && isChildSession(ctx)) return refuse("only the main session rebuts findings; this is a child session.");
 	if (blank(p.reason)) return refuse("a reason is required.");
 	if (blank(p.evidence)) return refuse("evidence is required.");
 	const w = await prepareWrite();
@@ -66,6 +68,6 @@ export function registerFindingRebut(pi: ExtensionAPI): void {
 			properties: { comment: { type: "string" }, index: { type: "number" }, reason: { type: "string" }, evidence: { type: "string" } },
 			required: ["comment", "index", "reason", "evidence"],
 		} as never,
-		execute: (_id, params) => runFindingRebut(params as RebutParams),
+		execute: (_id, params, _signal, _update, ctx) => runFindingRebut(params as RebutParams, ctx as never),
 	});
 }

@@ -3,6 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerChangeNew } from "./change-new.ts";
 import { registerChangeStart } from "./change-start.ts";
+import { registerFindingRebut } from "./finding-rebut.ts";
+import { registerForgeRead } from "./forge-read.ts";
 import { registerPlanUnits } from "./plan-units.ts";
 import { registerSkillNote } from "./skill-note.ts";
 import { registerSpecGate } from "./spec-gate.ts";
@@ -11,6 +13,10 @@ import { registerSpecQuestion } from "./spec-question.ts";
 import { registerSpecStatus } from "./spec-status.ts";
 import { registerSpecStuck } from "./spec-stuck.ts";
 import { registerSpecWrite } from "./spec-write.ts";
+import { registerSubagentAnswer } from "./subagent-answer.ts";
+import { registerSubagentDispatch } from "./subagent-dispatch.ts";
+import { registerSubagentPacket } from "./subagent-packet.ts";
+import { registerSubagentRecord } from "./subagent-record.ts";
 import { registerUnitAmend } from "./unit-amend.ts";
 import { registerUnitFinish } from "./unit-finish.ts";
 import { registerUnitStart } from "./unit-start.ts";
@@ -29,4 +35,10 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerUnitFinish(pi);
 	registerSpecQuestion(pi);
 	registerSpecStuck(pi);
+	registerSubagentDispatch(pi);
+	registerSubagentAnswer(pi);
+	registerSubagentPacket(pi);
+	registerSubagentRecord(pi);
+	registerFindingRebut(pi);
+	registerForgeRead(pi);
 }
