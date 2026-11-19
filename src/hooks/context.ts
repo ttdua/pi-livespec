@@ -80,6 +80,22 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 		}
 	});
 
+	// The `context>=N%` condition needs a completed turn and the usage read after it (design D11).
+	pi.on("turn_end", async (_event, ctx) => {
+		if (isChildSession(ctx)) return undefined;
+		const session = initializedSession();
+		if (!session) return undefined;
+		try {
+			const percent = ctx.getContextUsage()?.percent;
+			session.mainTurns.turnsCompleted += 1;
+			if (typeof percent === "number") session.mainTurns.contextPercent = percent;
+			else delete session.mainTurns.contextPercent;
+		} catch (error) {
+			warn(ctx, "turn_end", error);
+		}
+		return undefined;
+	});
+
 	pi.on("tool_call", async (event, ctx) => {
 		if (isChildSession(ctx)) return undefined;
 		const session = initializedSession();

@@ -9,6 +9,7 @@ import type { AdapterName } from "../interaction/approver.ts";
 import type { RequestsState } from "../interaction/requests.ts";
 import type { ReviewSubject, Role } from "../subagents/roles.ts";
 import type { LaneRecord } from "../subagents/state.ts";
+import type { UnfamiliarFacts } from "../subagents/unfamiliar.ts";
 import type { IterationState } from "./iterations.ts";
 import type { LockState } from "./locks.ts";
 
@@ -50,6 +51,8 @@ export type ChangeState = {
 		contextPercent?: number;
 		turnsCompleted: number;
 		lanes: Record<string, LaneRecord>;
+		/** The `unfamiliar-code` fact, read from the living specs at refresh. */
+		unfamiliar: UnfamiliarFacts;
 		pending?: { unit?: string; agentId: string; question: string };
 	};
 };

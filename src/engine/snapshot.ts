@@ -114,6 +114,7 @@ function deriveSubagents(marked: MarkedComment[]): ChangeState["subagents"] {
 		executor: { ok: found.ok, missing: found.ok ? [] : found.missing },
 		turnsCompleted: 0,
 		lanes: openLanes(marked),
+		unfamiliar: { change: false, units: {} },
 		...(pending === undefined ? {} : { pending: { ...(pending.unit === undefined ? {} : { unit: pending.unit }), agentId: pending.agentId, question: pending.question } }),
 	};
 }

@@ -101,6 +101,8 @@ export class Session {
 	accountNotice?: string;
 	/** Command comments the last approval poll ignored, with the reason; copied into the change state. */
 	commandWarnings: string[] = [];
+	/** Turns completed and the context usage after the last one; the card input copies them into `ChangeState.subagents`. */
+	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
 	private first = true;

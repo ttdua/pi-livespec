@@ -26,7 +26,7 @@ export function stateFor(phase: string, overrides: Partial<ChangeState> = {}, bo
 		iterations: { count: 0, cap: undefined, blocking: false, stuckOpen: undefined },
 		commandWarnings: [],
 		evidence: { started: {}, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
-		subagents: { executor: { ok: false, missing: [] }, turnsCompleted: 0, lanes: {} },
+		subagents: { executor: { ok: false, missing: [] }, turnsCompleted: 0, lanes: {}, unfamiliar: { change: false, units: {} } },
 		...overrides,
 	};
 }
