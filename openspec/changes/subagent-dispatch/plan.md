@@ -73,7 +73,7 @@ Child sessions are detected in the existing hooks. `unit_start` and `unit_finish
 | `ChangeState.subagents` | new | `{ executor: { ok: boolean; missing: string[] }; contextPercent?: number; turnsCompleted: number; lanes: Record<string, LaneRecord>; pending?: { unit?: string; agentId: string; question: string } }`, filled at refresh | no |
 | `NextStep.dispatch` / `NextStep.pendingChild` | new | `dispatch?: { role: Role; unit?: string; subject?: ReviewSubject; inline: boolean }`; `pendingChild?: { agentId: string; question: string }` | no |
 | `Git.worktreeAddBranch` / `Git.resetHard` | new | `worktreeAddBranch(dir: string, branch: string, at: string): Promise<void>` → `git worktree add -b <branch> <dir> <at>`; `resetHard(sha: string): Promise<void>` → `git reset --hard <sha>` | no |
-| `unitRoot(state, unit)` | new | `(state: ChangeState, unit: string) => string`: the open lane's path, else the change worktree root | no |
+| `unitRoot(state, unit, root)` | new | `(state: ChangeState, unit: string, root: string) => string`: the open lane's path, else `root` (the change worktree). Contract deviation (internal, Task 4): `root` is passed in because `ChangeState` has no root field | no |
 | `UserConfig` | modified | adds `lanes: number; packetBudgetTokens: number; isolation: { excludePackages: string[] }` | yes (config file) |
 | `unit_start` / `unit_finish` | modified | same params; new refusals (spec `unit-evidence`) | yes |
 

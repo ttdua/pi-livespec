@@ -28,11 +28,11 @@ Blocked by: none
 
 Blocked by: 3
 
-- [ ] 4.1 `src/subagents/records.ts`: register the `dispatch` marker kind; write and read `dispatch` comments (role, unit, attempt, packet hash, agent source, requested/effective thinking and model, status, commits, notes, discoveries, sources_used)
-- [ ] 4.2 Write and read `finding-summary` comments: status, advisory, reviewed HEAD, sources_used, required ids, computed `completed`, findings; rebuttal records with `rebuts`
-- [ ] 4.3 `lane` marker records and `unitRoot`; pending child question from `dispatch` records (`QUESTION`, closed by `ANSWERED` or a later record with the same agent id); `ChangeState.subagents` filled at refresh
-- [ ] 4.4 Unresolved-blocking-finding and completed-review queries per unit, including advisory exclusion, `needs-decision` answered and `out-of-scope` shown at a gate, and the lane-head-as-second-parent rule
-- [ ] 4.5 Tests for each `review-findings` scenario and the dispatch record scenarios
+- [x] 4.1 `src/subagents/records.ts`: register the `dispatch` marker kind; write and read `dispatch` comments (role, unit, attempt, packet hash, agent source, requested/effective thinking and model, status, commits, notes, discoveries, sources_used)
+- [x] 4.2 Write and read `finding-summary` comments: status, advisory, reviewed HEAD, sources_used, required ids, computed `completed`, findings; rebuttal records with `rebuts`
+- [x] 4.3 `lane` marker records and `unitRoot`; pending child question from `dispatch` records (`QUESTION`, closed by `ANSWERED` or a later record with the same agent id); `ChangeState.subagents` filled at refresh
+- [x] 4.4 Unresolved-blocking-finding and completed-review queries per unit, including advisory exclusion, `needs-decision` answered and `out-of-scope` shown at a gate, and the lane-head-as-second-parent rule
+- [x] 4.5 Tests for each `review-findings` scenario and the dispatch record scenarios
 
 ## 5. Packets
 
