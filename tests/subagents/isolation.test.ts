@@ -1,3 +1,4 @@
+// Tests for the isolation list: settings reads and known-flow matching.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -37,6 +38,12 @@ describe("configuredPackages", () => {
 		settings(home, ".pi/agent/settings.json", "{not json");
 		expect(await configuredPackages(root, home)).toEqual([]);
 	});
+
+	test("a non-ENOENT read failure propagates with the path", async () => {
+		const file = join(home, ".pi", "agent", "settings.json");
+		mkdirSync(file, { recursive: true });
+		await expect(configuredPackages(root, home)).rejects.toThrow(file);
+	});
 });
 
 describe("excludedPackages", () => {
@@ -51,6 +58,11 @@ describe("excludedPackages", () => {
 
 	test("extra user exclusion only", () => {
 		expect(excludedPackages([], ["npm:acme-flow"])).toEqual(["npm:acme-flow"]);
+	});
+
+	test("known flow matches with a version suffix, not a longer name", () => {
+		expect(excludedPackages(["git:github.com/obra/superpowers@v7"], [])).toEqual(["git:github.com/obra/superpowers@v7"]);
+		expect(excludedPackages(["git:github.com/obra/superpowers-extra"], [])).toEqual([]);
 	});
 
 	test("no duplicates", () => {

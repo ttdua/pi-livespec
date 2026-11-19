@@ -7,11 +7,21 @@ import { join } from "node:path";
 /** Packages of other flows, excluded from every launch without configuration. */
 export const KNOWN_FLOW_PATTERNS: readonly RegExp[] = [/(^|[:/])obra\/superpowers(@|$)/, /(^|[:/])ttdua\/pi-superspec(@|$)/];
 
-/** Reads `packages` from one settings file. Missing or invalid files yield none. */
+/**
+ * Reads `packages` from one settings file. A missing file, unparsable JSON or a
+ * missing `packages` array yields none; any other I/O error propagates with the path.
+ */
 async function packagesIn(file: string): Promise<string[]> {
+	let text: string;
+	try {
+		text = await readFile(file, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw new Error(`cannot read ${file}: ${(error as Error).message}`, { cause: error });
+	}
 	let doc: unknown;
 	try {
-		doc = JSON.parse(await readFile(file, "utf8"));
+		doc = JSON.parse(text);
 	} catch {
 		return [];
 	}
