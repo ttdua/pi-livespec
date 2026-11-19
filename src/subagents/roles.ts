@@ -92,3 +92,34 @@ export function resultSchema(role: Role): JsonSchema {
 function object(properties: Record<string, JsonSchema>, required: string[]): JsonSchema {
 	return { type: "object", properties, required, additionalProperties: false };
 }
+
+export type SchemaCheck = { ok: true } | { ok: false; errors: string[] };
+
+/** Validates `value` against the executor's JSON Schema subset; errors name the JSON path of each violation. */
+export function checkSchema(schema: JsonSchema, value: unknown, path = "$"): SchemaCheck {
+	const errors = schemaErrors(schema, value, path);
+	return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+function schemaErrors(schema: JsonSchema, value: unknown, path: string): string[] {
+	if (schema.type === "string") {
+		if (typeof value !== "string") return [`${path} must be a string`];
+		return schema.enum && !schema.enum.includes(value) ? [`${path} must be one of ${schema.enum.join(", ")}`] : [];
+	}
+	if (schema.type === "array") {
+		if (!Array.isArray(value)) return [`${path} must be an array`];
+		return schema.items ? value.flatMap((item, i) => schemaErrors(schema.items as JsonSchema, item, `${path}[${i}]`)) : [];
+	}
+	if (schema.type === "object") return objectErrors(schema, value, path);
+	return [];
+}
+
+function objectErrors(schema: JsonSchema, value: unknown, path: string): string[] {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return [`${path} must be an object`];
+	const record = value as Record<string, unknown>;
+	const properties = schema.properties ?? {};
+	const missing = (schema.required ?? []).filter((key) => record[key] === undefined).map((key) => `${path}.${key} is required`);
+	const extra = schema.additionalProperties === false ? Object.keys(record).filter((key) => !(key in properties)).map((key) => `${path}.${key} is not allowed`) : [];
+	const nested = Object.entries(properties).flatMap(([key, sub]) => (record[key] === undefined ? [] : schemaErrors(sub, record[key], `${path}.${key}`)));
+	return [...missing, ...extra, ...nested];
+}

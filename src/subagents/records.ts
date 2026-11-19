@@ -29,8 +29,11 @@ export type DispatchData = {
 
 /** A child's question, or its answer; both carry the agent id that links them to the later result. */
 export type DispatchQuestionData =
-	| { status: "QUESTION"; role: Role; unit?: string; agentId: string; attempt?: number; question: string }
+	| { status: "QUESTION"; role: Role; unit?: string; subject?: ReviewSubject; agentId: string; attempt?: number; question: string; launch?: QuestionLaunch }
 	| { status: "ANSWERED"; role: Role; unit?: string; agentId: string; attempt?: number; answer: string };
+
+/** What `subagent_answer` needs to record the resumed run as the dispatch would have: the packet and the launch facts. */
+export type QuestionLaunch = { packet: string; agentSource: string; requested: { thinking: Thinking }; effective: { model?: string; thinking?: string }; advisory?: boolean };
 
 export type FindingSummaryData = {
 	role: Role;
@@ -237,4 +240,11 @@ export function pendingQuestion(marked: MarkedComment[]): PendingQuestion | unde
 	const data = open.at(-1)?.data as Extract<DispatchQuestionData, { status: "QUESTION" }> | undefined;
 	if (data === undefined) return undefined;
 	return { ...(data.unit === undefined ? {} : { unit: data.unit }), role: data.role, agentId: data.agentId, question: data.question };
+}
+
+/** The `QUESTION` record of `agentId` when it is the agent's latest record, so the question is still open. */
+export function pendingQuestionOf(marked: MarkedComment[], agentId: string): Extract<DispatchQuestionData, { status: "QUESTION" }> | undefined {
+	const last = current(marked).filter((m) => (m.kind === "dispatch" || m.kind === "finding-summary") && (m.data as { agentId?: unknown } | null)?.agentId === agentId).at(-1);
+	const data = last?.kind === "dispatch" ? (last.data as DispatchQuestionData) : undefined;
+	return data?.status === "QUESTION" ? data : undefined;
 }
