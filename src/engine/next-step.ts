@@ -7,10 +7,11 @@ import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interactio
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
+import { buildLoopStep } from "../subagents/build-loop.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
-type Decision = { next: string; advance?: string };
+type Decision = { next: string; advance?: string; dispatch?: NextStep["dispatch"] };
 
 type UnitPlan = { ready: Unit[]; waiting: { id: string; waitingOn: string[] }[] };
 
@@ -232,11 +233,19 @@ const blockedUnit: Rule = ({ state, phase }) => {
 	return { next: `${blocked.id} is BLOCKED (${blocked.reason}): send a stuck report with spec_stuck.` };
 };
 
-/** Rule 11: in a `per: unit` phase, a started unit is finished before anything else is built. */
-const startedUnit: Rule = ({ state, phase }) => {
+/** Rule 11a: a child waiting on an answer, whatever the phase. */
+const childQuestion: Rule = ({ state }) => {
+	const pending = state.subagents.pending;
+	if (!pending) return undefined;
+	return { next: `Child ${pending.agentId} asks: ${pending.question} Answer it with subagent_answer ${pending.agentId} "<answer>", or raise it with spec_question when only the user can decide.` };
+};
+
+/** Rule 11b: in a `per: unit` phase, a started unit runs the build loop, then is finished before anything else is built. */
+const startedUnit: Rule = ({ pack, state, phase }) => {
 	if (phase.per !== "unit") return undefined;
 	const started = unitsWhere(state, (id) => id in state.evidence.started)[0];
-	return started ? { next: `Finish ${started} with unit_finish once Verify passes.` } : undefined;
+	if (!started) return undefined;
+	return buildLoopStep(pack, state, phase, started) ?? { next: `Finish ${started} with unit_finish once Verify passes.` };
 };
 
 /** Rule 12: in a `per: unit` phase, a receipted unit whose tick is missing. */
@@ -302,6 +311,7 @@ const RULES: Rule[] = [
 	missingOutput,
 	failingCheck,
 	blockedUnit,
+	childQuestion,
 	startedUnit,
 	receiptedUnit,
 	nextUnit,
@@ -362,5 +372,8 @@ export function nextStep(pack: Pack, state: ChangeState): NextStep {
 	};
 	if (state.iterations.stuckOpen !== undefined) step.stuckOpen = state.iterations.stuckOpen;
 	if (decision.advance !== undefined) step.advance = decision.advance;
+	if (decision.dispatch !== undefined) step.dispatch = decision.dispatch;
+	const { pending } = state.subagents;
+	if (pending !== undefined) step.pendingChild = { agentId: pending.agentId, question: pending.question };
 	return step;
 }

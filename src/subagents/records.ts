@@ -109,7 +109,7 @@ export function invalidRecords(marked: MarkedComment[]): string[] {
 }
 
 /** Valid records only, and of those the latest comment per marker identity: superseded comments are history. */
-function current(marked: MarkedComment[]): MarkedComment[] {
+export function current(marked: MarkedComment[]): MarkedComment[] {
 	const latest = new Map<string, MarkedComment>();
 	for (const m of marked) {
 		const valid = VALID[m.kind];

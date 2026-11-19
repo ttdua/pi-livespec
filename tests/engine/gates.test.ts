@@ -14,6 +14,7 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
+import { finding, rebutted, reviewed } from "../subagents/helpers.ts";
 
 /** The fixture body with Q1 answered, so no blocking question is open. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", "- [x] Q1 (blocking): Which header carries the client IP behind the proxy? — Answer: X-Forwarded-For");
@@ -241,5 +242,38 @@ describe("blockingStateRefusal", () => {
 	test("the first rule in order wins", () => {
 		const iterations = { count: 0, cap: undefined, blocking: false, stuckOpen: "S1" };
 		expect(blockingStateRefusal(stateFor("define", { iterations }))).toBe(Q1);
+	});
+});
+
+describe("subagent findings in the gate payload", () => {
+	const reviewer = (subject: string, over: Record<string, unknown> = {}) =>
+		reviewed({ subject: subject as never, unit: undefined, advisory: true, findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:3", evidence: "no scenario for 429" })], ...over });
+
+	test("advisory spec review in gate payload", () => {
+		const s = ready("define", { marked: [reviewer("spec")] });
+		const payload = gatePayload(s, pack, "define", FACTS);
+		expect(payload.summary).toContain("Subagent findings");
+		expect(payload.summary).toContain("CRITICAL");
+		expect(payload.summary).toContain(untrusted("no scenario for 429"));
+	});
+
+	test("an advisory finding does not block the gate request", () => {
+		const s = ready("define", { marked: [reviewer("spec")] });
+		expect(blockingStateRefusal(s)).toBeUndefined();
+	});
+
+	test("findings of another phase's reviewer are not listed", () => {
+		const s = ready("define", { marked: [reviewer("plan")] });
+		expect(gatePayload(s, pack, "define", FACTS).summary).not.toContain("Subagent findings");
+	});
+
+	test("rebuttals in gate payload", () => {
+		const summary = reviewed({ unit: "U3", findings: [finding({ evidence: "off by one" })] });
+		const s = ready("define", { marked: [summary, rebutted(summary.commentId, 0, "limit is inclusive", "see ratelimit.ts:12")] });
+		const text = gatePayload(s, pack, "define", FACTS).summary;
+		expect(text).toContain("Subagent findings");
+		expect(text).toContain("Rebuttals");
+		expect(text).toContain(untrusted("limit is inclusive"));
+		expect(text).toContain(untrusted("see ratelimit.ts:12"));
 	});
 });

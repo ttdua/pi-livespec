@@ -257,3 +257,23 @@ describe("context hooks in a child session", () => {
 		expect(out).toEqual({ skillPaths: [] });
 	});
 });
+
+describe("context facts for subagent policy", () => {
+	test("turn_end records the turn count and context percent for the next card input", async () => {
+		const h = await resumed();
+		const ctx = { ...h.ctx, getContextUsage: () => ({ tokens: 10, contextWindow: 100, percent: 61.5 }) };
+		await h.pi.fire("turn_end", { type: "turn_end" }, ctx);
+		expect(getSession()?.mainTurns).toEqual({ turnsCompleted: 1, contextPercent: 61.5 });
+		await getSession()?.refresh();
+		const card = getSession()?.card;
+		expect(card?.kind === "change" && card.state.subagents).toMatchObject({ turnsCompleted: 1, contextPercent: 61.5 });
+	});
+
+	test("an unknown usage drops the percent; a child's turn_end changes nothing", async () => {
+		const h = await resumed();
+		await h.pi.fire("turn_end", {}, { ...h.ctx, getContextUsage: () => ({ tokens: null, contextWindow: 100, percent: null }) });
+		expect(getSession()?.mainTurns).toEqual({ turnsCompleted: 1 });
+		await h.pi.fire("turn_end", {}, asChild(h.ctx));
+		expect(getSession()?.mainTurns.turnsCompleted).toBe(1);
+	});
+});

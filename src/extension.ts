@@ -6,6 +6,8 @@ import "./interaction/card.ts";
 import "./interaction/doctor.ts";
 // The evidence card section.
 import "./evidence/card.ts";
+// The subagents card section.
+import "./subagents/card.ts";
 // Registers the `subagents` pack sub-schema.
 import "./subagents/policy.ts";
 import { type CommandEnv } from "./commands/deps.ts";

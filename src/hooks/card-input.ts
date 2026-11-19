@@ -76,7 +76,8 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
-	return { ...snapshot, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	const subagents = { ...snapshot.subagents, ...session.mainTurns };
+	return { ...snapshot, subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {
