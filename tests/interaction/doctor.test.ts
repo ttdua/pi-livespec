@@ -4,7 +4,11 @@ import type { LoadedConfig } from "../../src/config.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { checkApprover } from "../../src/interaction/doctor.ts";
 
-const DEFAULT_CONFIG: LoadedConfig = { project: null, user: { agentSkills: { channel: "auto" } }, warnings: [] };
+const DEFAULT_CONFIG: LoadedConfig = {
+	project: null,
+	user: { agentSkills: { channel: "auto" }, lanes: 3, packetBudgetTokens: 24000, isolation: { excludePackages: [] } },
+	warnings: [],
+};
 
 function deps(over: { config?: LoadedConfig; hasUI: boolean; forge?: "writable" | "read-only" | "missing"; accountBlock?: string }): DoctorDeps {
 	const forge = over.forge ?? "missing";

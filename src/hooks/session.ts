@@ -75,7 +75,7 @@ export function defaultSessionDeps(): SessionDeps {
 }
 
 export class Session {
-	config: LoadedConfig = { project: null, user: { agentSkills: { channel: "auto" } }, warnings: [] };
+	config: LoadedConfig = { project: null, user: { agentSkills: { channel: "auto" }, lanes: 3, packetBudgetTokens: 24000, isolation: { excludePackages: [] } }, warnings: [] };
 	pack: LoadedPack = { ok: false, errors: [] };
 	forge?: CachedForge;
 	comments?: CommentsCache;

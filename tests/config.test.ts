@@ -237,3 +237,42 @@ describe("verify config", () => {
 		expect(project?.verify).toBeUndefined();
 	});
 });
+
+describe("subagent config", () => {
+	test("subagent settings", async () => {
+		userFile('lanes: 2\npacketBudgetTokens: 16000\nisolation: { excludePackages: ["git:github.com/acme/flow"] }\n');
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.lanes).toBe(2);
+		expect(user.packetBudgetTokens).toBe(16000);
+		expect(user.isolation).toEqual({ excludePackages: ["git:github.com/acme/flow"] });
+		expect(warnings).toEqual([]);
+	});
+
+	test("subagent defaults", async () => {
+		const { user } = await loadConfig(root, home);
+		expect(user.lanes).toBe(3);
+		expect(user.packetBudgetTokens).toBe(24000);
+		expect(user.isolation).toEqual({ excludePackages: [] });
+	});
+
+	test("invalid lanes warns and uses the default", async () => {
+		userFile("lanes: 0\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.lanes).toBe(3);
+		expect(warnings.some((w) => w.includes("lanes"))).toBe(true);
+	});
+
+	test("invalid packetBudgetTokens warns and uses the default", async () => {
+		userFile("packetBudgetTokens: 1.5\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.packetBudgetTokens).toBe(24000);
+		expect(warnings.some((w) => w.includes("packetBudgetTokens"))).toBe(true);
+	});
+
+	test("isolation excludePackages must be a list of strings", async () => {
+		userFile("isolation: { excludePackages: [1, 2] }\n");
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.isolation).toEqual({ excludePackages: [] });
+		expect(warnings.some((w) => w.includes("isolation.excludePackages"))).toBe(true);
+	});
+});
