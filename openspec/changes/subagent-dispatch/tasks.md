@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 `src/subagents/executor.ts`: find the service on `globalThis[Symbol.for("@ttdua/pi-subagents:service")]`, falling back to the legacy `Symbol.for("@gotgenes/pi-subagents:service")`, report the missing capabilities (`spawn`, `wait`, `resume`, `abort`, `childSession`, `getAgentType`), and read effective launch facts from `subagents:child:session-created` by agent id (tests with a fake service)
-- [ ] 1.2 `src/subagents/child.ts`: `isChildSession(ctx)` from `childSession()`, falling back to the header's `parentSession`; a check that throws counts as child. Add the `CHILD_NOTE` constant
-- [ ] 1.3 `src/hooks/context.ts`: in a child, `before_agent_start` sets `CHILD_NOTE`, `context` adds no card, `resources_discover` returns no skills; `src/hooks/session.ts`: no resume card in a child (specs `child-sessions`, `context-injection`)
-- [ ] 1.4 Tests: child-note scenarios, no card, no skills, guard still blocks `git push` in a child
+- [x] 1.1 `src/subagents/executor.ts`: find the service on `globalThis[Symbol.for("@ttdua/pi-subagents:service")]`, falling back to the legacy `Symbol.for("@gotgenes/pi-subagents:service")`, report the missing capabilities (`spawn`, `wait`, `resume`, `abort`, `childSession`, `getAgentType`), and read effective launch facts from `subagents:child:session-created` by agent id (tests with a fake service)
+- [x] 1.2 `src/subagents/child.ts`: `isChildSession(ctx)` from `childSession()`, falling back to the header's `parentSession`; a check that throws counts as child. Add the `CHILD_NOTE` constant
+- [x] 1.3 `src/hooks/context.ts`: in a child, `before_agent_start` sets `CHILD_NOTE`, `context` adds no card, `resources_discover` returns no skills; `src/hooks/session.ts`: no resume card in a child (specs `child-sessions`, `context-injection`)
+- [x] 1.4 Tests: child-note scenarios, no card, no skills, guard still blocks `git push` in a child
 
 ## 2. Config keys and isolation list
 
