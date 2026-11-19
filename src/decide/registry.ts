@@ -3,6 +3,7 @@
 
 import { type Node, type Pair, isMap, isScalar } from "yaml";
 import { registerPackSchema } from "../engine/registry.ts";
+import { registerSubagentsSchema } from "../subagents/policy.ts";
 import { progressRule, progressSchema } from "../evidence/progress-rule.ts";
 import { difficultyRule, difficultySchema } from "./rules/difficulty.ts";
 import { tagsRule, tagsSchema } from "./rules/tags.ts";
@@ -78,10 +79,12 @@ export function resetRulesForTests(): void {
 	rules.clear();
 }
 
+/** Registers the built-in rules and the `subagents` pack schema the default pack needs. */
 export function registerBuiltinRules(): void {
 	registerRule("tags", tagsSchema, tagsRule);
 	registerRule("difficulty", difficultySchema, difficultyRule);
 	registerRule("progress", progressSchema, progressRule);
+	registerSubagentsSchema();
 }
 
 /** Merges two `decisions` values per point: the point's `merge`, else a one-level spread. */
