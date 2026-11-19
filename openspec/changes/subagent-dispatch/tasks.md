@@ -57,10 +57,10 @@ Blocked by: 1, 2, 4, 5, 7, 9
 
 Blocked by: 4, 5
 
-- [ ] 7.1 `src/tools/finding-rebut.ts`: rebut one finding with reason and evidence; refuse empty fields and `missed-context`
-- [ ] 7.2 `src/tools/unit-finish.ts`: before every tick path, refuse on an unresolved blocking finding or a missing completed review the non-advisory policy entry requires (context conditions left out), and run the freshness check for dispatched units
-- [ ] 7.3 `src/tools/unit-start.ts` and `src/tools/unit-tool.ts`: checks run in the unit's lane worktree when a lane is open; one started unit per worktree
-- [ ] 7.4 Tests: new `unit-evidence` scenarios; every existing unit-start and unit-finish test still passes
+- [x] 7.1 `src/tools/finding-rebut.ts`: rebut one finding with reason and evidence; refuse empty fields and `missed-context`
+- [x] 7.2 `src/tools/unit-finish.ts`: before every tick path, refuse on an unresolved blocking finding or a missing completed review the non-advisory policy entry requires (context conditions left out), and run the freshness check for dispatched units
+- [x] 7.3 `src/tools/unit-start.ts` and `src/tools/unit-tool.ts`: checks run in the unit's lane worktree when a lane is open; one started unit per worktree
+- [x] 7.4 Tests: new `unit-evidence` scenarios; every existing unit-start and unit-finish test still passes
 
 ## 8. Parallel lanes
 
