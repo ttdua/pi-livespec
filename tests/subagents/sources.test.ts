@@ -102,19 +102,19 @@ describe("manifest", () => {
 		expect(got).not.toContain("pr#51");
 		const result = await buildPacket(world.refreshed(), "scout");
 		if (!result.ok) throw new Error(result.message);
-		expect(result.packet.text).toContain("30 most recently closed pull requests");
+		expect(result.packet.text).toContain("the 30 highest-numbered closed pull requests");
 	});
 
-	test("scout reads only the 30 most recently closed pull requests", async () => {
+	test("scout reads the 30 highest-numbered closed pull requests, merged or not", async () => {
 		const world = await makeWorld();
-		for (let n = 100; n < 135; n++) {
-			world.pulls.push({ number: n, state: "closed", merged: true, mergedAt: `2026-02-${String(n - 99).padStart(2, "0")}`, head: "h", base: "b", title: `pr ${n}`, body: "b", version: "p" as never });
-			world.prFiles.set(n, ["src/limits/x.ts"]);
-		}
-		const got = ids(await sourcesOf(world, "scout")).filter((i) => i.startsWith("pr#"));
+		const closed = (number: number, merged: boolean) => ({ number, state: "closed" as const, merged, ...(merged ? { mergedAt: "2026-03-01" } : {}), head: "h", base: "b", title: `pr ${number}`, body: "b", version: "p" as never });
+		world.pulls.push(closed(5, true));
+		for (let n = 101; n <= 130; n++) world.pulls.push(closed(n, false));
+		for (const p of world.pulls) world.prFiles.set(p.number, ["src/limits/x.ts"]);
+		const got = ids(await sourcesOf(world, "scout")).filter((i) => i.startsWith("pr#")).map((i) => Number(i.slice(3)));
 		expect(got).toHaveLength(30);
-		expect(got).toContain("pr#134");
-		expect(got).not.toContain("pr#100");
+		expect(got).not.toContain(5);
+		expect(got).toEqual(Array.from({ length: 30 }, (_, i) => 130 - i));
 	});
 
 	test("closing summaries are the last comment, titled as not yet defined", async () => {

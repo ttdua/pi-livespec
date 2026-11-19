@@ -9,10 +9,10 @@ import { unitText } from "./sources-change.ts";
 import type { Placed } from "./source-types.ts";
 
 const ISSUE_REF = /(?:^|[^\w&])#(\d+)\b/g;
-/** Closed pull requests a scout reads, most recently closed first: a search bound, stated in the packet. */
+/** Closed pull requests a scout reads: the highest-numbered ones, a search bound stated in the packet (`PullRequest` has no close time). */
 const MAX_CLOSED_PRS = 30;
 
-export const SCOUT_SCOPE = `Search scope: closed issues of the same capability, and the ${MAX_CLOSED_PRS} most recently closed pull requests that touched the capability's \`paths\`; older pull requests were not searched.`;
+export const SCOUT_SCOPE = `Search scope: closed issues of the same capability, and the ${MAX_CLOSED_PRS} highest-numbered closed pull requests that touched the capability's \`paths\`; lower-numbered pull requests were not searched.`;
 
 /** `issue#<n>` for every `#N` the unit text names, one hop; the change's own issue and initiative are skipped. */
 export const referencedIssues: Provider = {
@@ -80,15 +80,13 @@ async function capabilityPaths(cx: Cx): Promise<string[]> {
 	return out;
 }
 
-const closedStamp = (p: PullRequest): string => p.mergedAt ?? "";
-
-/** The most recently closed pull requests that changed a file matching one of the capability `paths`. */
+/** The highest-numbered closed pull requests, merged or not, that changed a file matching one of the capability `paths`. */
 async function closedPullRequests(cx: Cx): Promise<PullRequest[]> {
 	const globs = await capabilityPaths(cx);
 	if (globs.length === 0) return [];
 	const recent = (await cx.ctx.forge.listPullRequests({ state: "closed" }))
 		.filter((p) => p.number !== prNumber(cx.ctx.state.change))
-		.sort((a, b) => closedStamp(b).localeCompare(closedStamp(a)) || b.number - a.number)
+		.sort((a, b) => b.number - a.number)
 		.slice(0, MAX_CLOSED_PRS);
 	const hits: PullRequest[] = [];
 	for (const pr of recent) {
