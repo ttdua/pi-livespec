@@ -22,18 +22,23 @@ async function readAliases(git: Git): Promise<GuardContext["aliases"]> {
 	}
 }
 
-/** Builds the run environment once per tool call; aliases are read once here. */
-export async function verifyEnv(session: Session, signal?: AbortSignal): Promise<VerifyEnv> {
+/** Where a run happens when it is not the change worktree: a lane worktree and the git over it. */
+export type RunWorktree = { root: string; git: Git };
+
+/** Builds the run environment once per tool call; aliases are read once here. `at` moves it into a lane worktree. */
+export async function verifyEnv(session: Session, signal?: AbortSignal, at?: RunWorktree): Promise<VerifyEnv> {
 	const config = session.config.project;
-	const ctx: GuardContext = { cwd: session.cwd, endpoints: forgeEndpoints(session.forgeTarget(), config), aliases: await readAliases(session.git) };
+	const git = at?.git ?? session.git;
+	const root = at?.root ?? session.cwd;
+	const ctx: GuardContext = { cwd: root, endpoints: forgeEndpoints(session.forgeTarget(), config), aliases: await readAliases(git) };
 	const guard = (cmd: string): string | undefined => {
 		const decision = classifyCommand(cmd, ctx);
 		return decision.allow ? undefined : decision.reason;
 	};
 	const signals = signal === undefined ? [session.shutdownSignal] : [signal, session.shutdownSignal];
 	return {
-		root: session.cwd,
-		git: session.git,
+		root,
+		git,
 		config,
 		run: { timeoutS: config?.verify?.timeoutS ?? DEFAULT_VERIFY_TIMEOUT_S, guard, tokens: session.redactionTokens(), signal: AbortSignal.any(signals) },
 	};

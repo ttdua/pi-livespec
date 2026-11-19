@@ -15,7 +15,7 @@ import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { type ToolHarness, type ToolHarnessOptions, toolHarness } from "./helpers.ts";
 
-export type UnitSpec = { id: string; verify: string; files?: string[]; depends?: string[]; kind?: "refactor" };
+export type UnitSpec = { id: string; verify: string; files?: string[]; depends?: string[]; kind?: "refactor"; difficulty?: string };
 
 const logDirs: string[] = [];
 
@@ -27,7 +27,7 @@ function unitBlock(u: UnitSpec): string {
 	return [
 		`### ${u.id} — Unit ${u.id}`,
 		"Covers: rate-limit/Requirement: Per-IP cap",
-		"Difficulty: low",
+		`Difficulty: ${u.difficulty ?? "low"}`,
 		"Tags: []",
 		`Files: ${(u.files ?? [`src/${u.id.toLowerCase()}.ts`]).join(", ")}`,
 		"Done means:",

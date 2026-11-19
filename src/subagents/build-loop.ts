@@ -30,7 +30,7 @@ type Loop = {
 
 const isLevel = (v: string | undefined): v is (typeof LEVELS)[number] => LEVELS.includes(v as never);
 
-function policyFacts(state: ChangeState, phase: Phase, unit: Unit): PolicyFacts {
+export function policyFacts(state: ChangeState, phase: Phase, unit: Unit): PolicyFacts {
 	const { contextPercent, turnsCompleted, unfamiliar } = state.subagents;
 	return {
 		units: state.change.units.length,

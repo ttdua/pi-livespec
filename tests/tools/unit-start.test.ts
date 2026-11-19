@@ -4,6 +4,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
+import { openLane } from "./lane-helpers.ts";
 import { cardState, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
 
 afterEach(async () => {
@@ -79,6 +80,35 @@ describe("unit-evidence", () => {
 		expect((await h.start("U1")).isError).toBeFalsy();
 		const text = await expectRefusal(h, "U2", ["U1"]);
 		expect(text).toContain("unit_finish U1");
+	});
+
+	test("Started in a lane", async () => {
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		const lane = await openLane(h, "U2");
+		await writeIn(lane.path, "notes.txt", "lane work\n");
+		lane.git("add", "-A");
+		lane.git("commit", "-q", "-m", "lane work");
+		const out = await h.start("U2");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const record = (await h.ofKind("unit-start")).find((m) => m.id.startsWith("U2."));
+		expect(record?.data).toMatchObject({ unit: "U2", pre: { sha: lane.git("rev-parse", "HEAD"), exit: 1 } });
+	});
+
+	test("a dirty lane refuses, whatever the change worktree looks like", async () => {
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		const lane = await openLane(h, "U2");
+		await writeIn(lane.path, "scratch.txt", "x\n");
+		await expectRefusal(h, "U2", ["dirty"]);
+	});
+
+	test("One started unit at a time in the same lane", async () => {
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		await openLane(h, "U1");
+		await openLane(h, "U2");
+		expect((await h.start("U1")).isError).toBeFalsy();
+		// U1 runs in its own lane, so U2's lane is free; the change worktree has no started unit either.
+		expect((await h.start("U2")).isError, "a second lane starts").toBeFalsy();
 	});
 
 	test("Restart after an amendment", async () => {
