@@ -198,3 +198,41 @@ describe("fix round 2", () => {
 		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), ...over })])).toHaveLength(1);
 	});
 });
+
+describe("fix round 3", () => {
+	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+	const full = {
+		role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: { model: "m", thinking: "high" },
+		status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
+	};
+
+	it("a complete dispatch is valid", () => {
+		expect(invalidRecords([raw("dispatch", "d", full)])).toEqual([]);
+	});
+
+	it.each(["commits", "notes", "packet", "agentSource", "requested", "effective"])("dispatch missing %s is invalid", (key) => {
+		expect(invalidRecords([raw("dispatch", "d", { ...full, [key]: undefined })])).toHaveLength(1);
+	});
+
+	it.each([
+		["requested.thinking", { requested: { thinking: "max" } }],
+		["effective.model", { effective: { model: 3 } }],
+		["agentId", { agentId: 4 }],
+		["subject", { subject: "bogus" }],
+	])("dispatch with wrong-typed %s is invalid", (_l, over) => {
+		expect(invalidRecords([raw("dispatch", "d", { ...full, ...over })])).toHaveLength(1);
+	});
+
+	it("QUESTION with a non-numeric attempt is invalid", () => {
+		const q = { status: "QUESTION", role: "implementer", agentId: "a", question: "q", attempt: "1" };
+		expect(invalidRecords([raw("dispatch", "d", q)])).toHaveLength(1);
+	});
+
+	it.each(["bogus", "persona:", "persona"])("summary with subject %s is invalid", (subject) => {
+		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), subject })])).toHaveLength(1);
+	});
+
+	it.each(["spec", "plan", "unit", "change", "persona:security"])("summary with subject %s is valid", (subject) => {
+		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), subject })])).toEqual([]);
+	});
+});

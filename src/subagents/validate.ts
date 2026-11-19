@@ -1,6 +1,6 @@
 // Shape validators for own `dispatch`, `finding-summary` and `lane` marker data; enum values come from the role schemas.
 
-import { AGENT_OF, FINDING_SCHEMA, resultSchema } from "./roles.ts";
+import { AGENT_OF, FINDING_SCHEMA, resultSchema, ROLE_SUBJECTS } from "./roles.ts";
 
 type Obj = Record<string, unknown>;
 
@@ -17,6 +17,10 @@ const FINDING_KEYS = ["severity", "kind", "location", "evidence", "fix", "scope"
 const oneOf = (list: readonly string[]) => (v: unknown): boolean => isStr(v) && list.includes(v);
 const isRole = oneOf(ROLES);
 const isStatus = oneOf(RESULT_STATUSES);
+const isThinking = oneOf(["low", "medium", "high"]);
+
+/** A `ReviewSubject`: a fixed subject or `persona:<name>` with a non-empty name. */
+const isSubject = (v: unknown): boolean => isStr(v) && (ROLE_SUBJECTS.includes(v as never) || (v.startsWith("persona:") && v.length > "persona:".length));
 
 export function isFindingData(v: unknown): boolean {
 	if (!isObj(v) || !FINDING_KEYS.every((k) => isStr(v[k]))) return false;
@@ -24,12 +28,22 @@ export function isFindingData(v: unknown): boolean {
 	return (["severity", "kind", "scope"] as const).every((k) => oneOf(enums[k]?.enum ?? [])(v[k]));
 }
 
+const isRequested = (v: unknown): boolean => isObj(v) && isThinking(v.thinking);
+const isEffective = (v: unknown): boolean => isObj(v) && optional(v.model, isStr) && optional(v.thinking, isStr);
+
+/** Fields every dispatch variant may carry; each is type-checked when present. */
+const hasCommonFields = (d: Obj): boolean => isRole(d.role) && optional(d.unit, isStr) && optional(d.subject, isSubject) && optional(d.agentId, isStr) && optional(d.attempt, isNum);
+
+/** A settled run: every field `DispatchData` requires. */
 function isResultDispatch(d: Obj): boolean {
-	return isStatus(d.status) && isNum(d.attempt) && isStrList(d.sources_used) && isStrList(d.discoveries) && optional(d.commits, isStrList) && optional(d.notes, isStr) && optional(d.agentId, isStr);
+	return (
+		isStatus(d.status) && isNum(d.attempt) && isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
+		isStrList(d.commits) && isStr(d.notes) && isStrList(d.discoveries) && isStrList(d.sources_used)
+	);
 }
 
 export function isDispatchData(d: unknown): boolean {
-	if (!isObj(d) || !isRole(d.role) || !optional(d.unit, isStr)) return false;
+	if (!isObj(d) || !hasCommonFields(d)) return false;
 	if (d.status === "QUESTION") return isStr(d.agentId) && isStr(d.question);
 	if (d.status === "ANSWERED") return isStr(d.agentId) && isStr(d.answer);
 	return isResultDispatch(d);
@@ -43,9 +57,10 @@ export function isSummaryData(d: unknown): boolean {
 	if (!isObj(d)) return false;
 	if (d.rebuts !== undefined) return isRebuttal(d);
 	return (
-		isRole(d.role) && isStr(d.subject) && isStatus(d.status) && isNum(d.round) && isStr(d.head) &&
+		isRole(d.role) && isSubject(d.subject) && isStatus(d.status) && isNum(d.round) && isStr(d.head) &&
 		typeof d.advisory === "boolean" && typeof d.completed === "boolean" &&
 		isStrList(d.sources_used) && isStrList(d.required) && optional(d.unit, isStr) && optional(d.agentId, isStr) &&
+		isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
 		Array.isArray(d.findings) && d.findings.every(isFindingData)
 	);
 }
