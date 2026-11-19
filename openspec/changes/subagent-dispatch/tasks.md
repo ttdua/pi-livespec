@@ -38,11 +38,11 @@ Blocked by: 3
 
 Blocked by: 2, 3, 4
 
-- [ ] 5.1 `src/subagents/protocol.ts`: the flow-neutral protocol text with `PROTOCOL_VERSION`; test that no default-pack skill name appears in it
-- [ ] 5.2 `src/subagents/sources.ts`: source ids and versions, a provider per manifest entry (role and subject), `registerPacketSource`, and diff files for reviewer subjects
-- [ ] 5.3 `src/subagents/packet.ts`: layer order, flow block, role skill paths from the pack (a missing skill refuses), untrusted wrapping, budget (chars/4) with spill files under `<git common dir>/livespec/packets/<change>/<hash>/`, refusal when the inline part cannot fit, hash with `<spill>/` placeholders
-- [ ] 5.4 Freshness: re-read source versions and re-enumerate comments and answers since dispatch; own `question` comments with human answers count
-- [ ] 5.5 Tests for every `subagent-packets` scenario (stable prefix, flow switch, manifest inclusion, spill, budget refusal, hash stability, freshness)
+- [x] 5.1 `src/subagents/protocol.ts`: the flow-neutral protocol text with `PROTOCOL_VERSION`; test that no default-pack skill name appears in it
+- [x] 5.2 `src/subagents/sources.ts`: source ids and versions, a provider per manifest entry (role and subject), `registerPacketSource`, and diff files for reviewer subjects
+- [x] 5.3 `src/subagents/packet.ts`: layer order, flow block, role skill paths from the pack (a missing skill refuses), untrusted wrapping, budget (chars/4) with spill files under `<git common dir>/livespec/packets/<change>/<hash>/`, refusal when the inline part cannot fit, hash with `<spill>/` placeholders
+- [x] 5.4 Freshness: re-read source versions and re-enumerate comments and answers since dispatch; own `question` comments with human answers count
+- [x] 5.5 Tests for every `subagent-packets` scenario (stable prefix, flow switch, manifest inclusion, spill, budget refusal, hash stability, freshness)
 
 ## 6. Dispatch, answer, packet and record tools
 
