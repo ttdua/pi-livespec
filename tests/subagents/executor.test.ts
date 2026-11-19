@@ -1,3 +1,4 @@
+// Tests executor service lookup by capability and launch-facts parsing.
 import { afterEach, describe, expect, test } from "vitest";
 import { findExecutor, parseLaunchFacts, SERVICE_KEYS } from "../../src/subagents/executor.ts";
 

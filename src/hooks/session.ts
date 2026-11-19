@@ -506,8 +506,12 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	const content = d.content(d.home);
 	await loadSessionBasics(session, d, content);
 	if (!session.initialized) return suggestInit(session, ctx);
-	// A child never connects the forge (`reconnect` can advance the change), polls approvals or shows the resume card.
-	if (isChildSession(ctx)) return;
+	// A child resolves only the forge target, which the guard's endpoint list needs. It never connects the forge
+	// (`reconnect` can advance the change), selects an account, polls approvals or shows the resume card.
+	if (isChildSession(ctx)) {
+		await targetFor(session, d);
+		return;
+	}
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);

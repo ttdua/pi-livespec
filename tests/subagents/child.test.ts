@@ -1,3 +1,4 @@
+// Tests child-session detection and the fixed child note.
 import { afterEach, describe, expect, test } from "vitest";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import { CHILD_NOTE, isChildSession } from "../../src/subagents/child.ts";
