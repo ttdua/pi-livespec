@@ -24,6 +24,8 @@ phases:
   - id: shape
     skills: { required: [interview-me], optional: [idea-refine] }
     gate: self
+    subagents:
+      - { role: scout, mode: auto, when: ["unfamiliar-code"] }
   - id: define
     requires: [shape]
     skills:
@@ -35,6 +37,9 @@ phases:
       - "Proposal and design go to the change issue via livespec tools, never a local file"
     checks: [spec-format, capabilities-match-diff]   # named checks over LS-02 validators
     gate: human
+    subagents:
+      - { role: scout, mode: auto, when: ["unfamiliar-code"] }
+      - { role: reviewer, subject: spec, mode: always, advisory: true }
   - id: plan
     requires: [define]
     skills: { required: [planning-and-task-breakdown] }
@@ -42,6 +47,9 @@ phases:
     redirects: ["No tasks/plan.md or tasks/todo.md; units live in the change issue"]
     checks: [units-format, done-maps-scenarios, unit-classification, verify-red-on-base]
     gate: human
+    subagents:
+      - { role: scout, mode: auto, when: ["unfamiliar-code"] }
+      - { role: reviewer, subject: plan, mode: always, advisory: true }
   - id: build
     requires: [plan]
     per: unit
@@ -49,6 +57,9 @@ phases:
       required: [incremental-implementation, test-driven-development, git-workflow-and-versioning]
       optional: [doubt-driven-development, debugging-and-error-recovery, source-driven-development,
                  frontend-ui-engineering, browser-testing-with-devtools, observability-and-instrumentation]
+    subagents:
+      - { role: implementer, mode: auto, when: ["units>=3", "difficulty>=medium", "context>=60%"] }
+      - { role: reviewer, subject: unit, mode: auto, when: ["difficulty>=medium"], skills: [code-review-and-quality] }
   - id: review
     requires: [build]
     skills:
