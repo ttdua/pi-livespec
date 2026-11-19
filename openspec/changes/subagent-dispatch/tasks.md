@@ -48,10 +48,10 @@ Blocked by: 2, 3, 4
 
 Blocked by: 1, 2, 4, 5, 7, 9
 
-- [ ] 6.1 `src/subagents/launch.ts`, `result.ts` and `dispatch.ts`: build the spawn options (fresh, contextFiles false, skills, exclusions, cwd, metadata, resultSchema, thinking from `Difficulty` raised per failed attempt; never `model`), spawn, run the post-launch check (abort on mismatch, inline fallback, lane cwd → sequential), and wait
-- [ ] 6.2 Result handling: missing structured result → retry once with the identical packet; missing required source → resume once naming it; `NEEDS_CONTEXT` ≤ 2 then `spec_stuck`; `BLOCKED missing-prerequisite` → `spec_stuck`; unreachable commits do not count; post the `dispatch` or `finding-summary` record
-- [ ] 6.3 `src/tools/subagent-dispatch.ts`, `subagent-answer.ts`, `subagent-packet.ts`, `subagent-record.ts` (and registration of `finding_rebut` and `forge_read`): parameters, refusals (unknown role or subject, missing unit, child session), user-only questions routed to `spec_question`, role override warning once per session; register them in `src/tools/change-tools.ts`
-- [ ] 6.4 Tests with a fake executor service for every `subagent-dispatch` scenario
+- [x] 6.1 `src/subagents/launch.ts`, `result.ts` and `dispatch.ts`: build the spawn options (fresh, contextFiles false, skills, exclusions, cwd, metadata, resultSchema, thinking from `Difficulty` raised per failed attempt; never `model`), spawn, run the post-launch check (abort on mismatch, inline fallback, lane cwd → sequential), and wait
+- [x] 6.2 Result handling: missing structured result → retry once with the identical packet; missing required source → resume once naming it; `NEEDS_CONTEXT` ≤ 2 then `spec_stuck`; `BLOCKED missing-prerequisite` → `spec_stuck`; unreachable commits do not count; post the `dispatch` or `finding-summary` record
+- [x] 6.3 `src/tools/subagent-dispatch.ts`, `subagent-answer.ts`, `subagent-packet.ts`, `subagent-record.ts` (and registration of `finding_rebut` and `forge_read`): parameters, refusals (unknown role or subject, missing unit, child session), user-only questions routed to `spec_question`, role override warning once per session; register them in `src/tools/change-tools.ts`
+- [x] 6.4 Tests with a fake executor service for every `subagent-dispatch` scenario
 
 ## 7. Findings tool and unit evidence changes
 
