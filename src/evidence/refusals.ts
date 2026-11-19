@@ -6,6 +6,7 @@ import { unitDigest } from "../core/digest.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { displayUnitId } from "../interaction/display-ids.ts";
+import { unitRoot } from "../subagents/state.ts";
 
 export type FinishMode = "reconcile" | "run";
 
@@ -65,9 +66,11 @@ const alreadyStarted: Rule = ({ state, unit, target }) => {
 	return `${displayUnitId(unit)} is already started: finish it with unit_finish ${displayUnitId(unit)}.`;
 };
 
+/** Another started unit in the same worktree: a lane is its own worktree, so units in different lanes do not collide. */
 const otherStarted: Rule = ({ state, unit }) => {
-	const other = Object.keys(state.evidence.started).find((id) => id !== unit);
-	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time.`;
+	const here = unitRoot(state, unit, "");
+	const other = Object.keys(state.evidence.started).find((id) => id !== unit && unitRoot(state, id, "") === here);
+	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time in a worktree.`;
 };
 
 const START_RULES: Rule[] = [notPerUnit, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, staleState, dirtyTree, otherStarted];

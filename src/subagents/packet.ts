@@ -57,7 +57,7 @@ function hashOf(body: string, plan: Plan): string {
 	return sha256([body, header, ...plan.placed.map((p) => `${p.source.id}@${p.source.version}`)].join("\n"));
 }
 
-const changeName = (ctx: PacketContext): string => ctx.state.change.header.branch?.split("/").at(-1) || `issue-${ctx.state.issue.number}`;
+export const changeName = (ctx: PacketContext): string => ctx.state.change.header.branch?.split("/").at(-1) || `issue-${ctx.state.issue.number}`;
 
 async function plan(ctx: PacketContext, target: Target, reads: Reads): Promise<{ ok: true; plan: Plan } | { ok: false; message: string }> {
 	const phase = ctx.state.phase.kind === "ok" ? ctx.state.phase.id : undefined;
