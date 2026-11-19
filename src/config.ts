@@ -34,6 +34,9 @@ export interface InteractionConfig {
 export interface UserConfig {
 	agentSkills: { channel: Channel };
 	interaction?: InteractionConfig;
+	lanes: number;
+	packetBudgetTokens: number;
+	isolation: { excludePackages: string[] };
 }
 
 export interface LoadedConfig {
@@ -45,7 +48,9 @@ export interface LoadedConfig {
 const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify"];
 const VERIFY_KEYS = ["setup", "timeout"];
 export const DEFAULT_VERIFY_TIMEOUT_S = 600;
-const USER_KEYS = ["agentSkills", "interaction"];
+export const DEFAULT_LANES = 3;
+export const DEFAULT_PACKET_BUDGET_TOKENS = 24000;
+const USER_KEYS = ["agentSkills", "interaction", "lanes", "packetBudgetTokens", "isolation"];
 const DEFAULT_CHAIN: readonly AdapterName[] = ["in-session"];
 const ADAPTERS: readonly string[] = ADAPTER_NAMES;
 
@@ -202,9 +207,42 @@ function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig
 	return project;
 }
 
+/** A positive integer setting: any other value warns and yields `fallback`. */
+function positiveInt(file: string, doc: Doc, key: string, fallback: number, warnings: string[]): number {
+	const value = doc[key];
+	if (value === undefined) return fallback;
+	if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+	warnings.push(`${file}: invalid ${key} "${describeValue(value)}" (expected a positive integer); using ${fallback}`);
+	return fallback;
+}
+
+/** The `isolation` section: `excludePackages` is a list of package sources; any other value is ignored. */
+function readIsolation(file: string, doc: Doc, warnings: string[]): string[] {
+	const section = doc.isolation;
+	if (section === undefined) return [];
+	if (section === null || typeof section !== "object" || Array.isArray(section)) {
+		warnings.push(`${file}: "isolation" must be a mapping; ignored`);
+		return [];
+	}
+	const entry = section as Doc;
+	for (const key of Object.keys(entry)) {
+		if (key !== "excludePackages") warnings.push(`${file}: unknown key "isolation.${key}"`);
+	}
+	const list = entry.excludePackages;
+	if (list === undefined) return [];
+	if (Array.isArray(list) && list.every((v) => typeof v === "string")) return list as string[];
+	warnings.push(`${file}: "isolation.excludePackages" must be a list of strings; ignored`);
+	return [];
+}
+
 function buildUser(file: string, doc: Doc, warnings: string[]): UserConfig {
 	warnUnknownKeys(file, doc, USER_KEYS, warnings);
-	const user: UserConfig = { agentSkills: { channel: readChannel(file, doc, warnings).channel ?? DEFAULT_CHANNEL } };
+	const user: UserConfig = {
+		agentSkills: { channel: readChannel(file, doc, warnings).channel ?? DEFAULT_CHANNEL },
+		lanes: positiveInt(file, doc, "lanes", DEFAULT_LANES, warnings),
+		packetBudgetTokens: positiveInt(file, doc, "packetBudgetTokens", DEFAULT_PACKET_BUDGET_TOKENS, warnings),
+		isolation: { excludePackages: readIsolation(file, doc, warnings) },
+	};
 	const interaction = readInteraction(file, doc, warnings);
 	if (interaction !== undefined) user.interaction = interaction;
 	return user;
