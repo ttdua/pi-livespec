@@ -5,11 +5,12 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseChange } from "../../src/core/change.ts";
+import { deriveUnitEvidence } from "../../src/evidence/unit-state.ts";
 import { createGit } from "../../src/engine/git.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
-import type { Comment, Forge, Issue, ReviewComment, Version } from "../../src/forge/types.ts";
+import type { Comment, Forge, Issue, PullRequest, ReviewComment, Version } from "../../src/forge/types.ts";
 import type { PacketContext } from "../../src/subagents/source-types.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
@@ -26,6 +27,8 @@ export type World = {
 	issueUpdatedAt: string;
 	comments: Map<number, Comment[]>;
 	reviewComments: ReviewComment[];
+	pulls: PullRequest[];
+	prFiles: Map<number, string[]>;
 	issues: Map<number, Issue>;
 	root: string;
 	base: string;
@@ -76,6 +79,7 @@ const next = (): Version => `v${++counter}` as Version;
 export async function makeWorld(over: { body?: string; pack?: Pack; tree?: string; budget?: number } = {}): Promise<World> {
 	const root = await makeRepo();
 	await writeIn(root, "specs/rate-limit/spec.md", SPEC_TEXT);
+	await writeIn(root, "specs/request-context/spec.md", "---\npaths: [\"src/context.ts\"]\n---\n# request-context\n\n## Purpose\nContext.\n\n## Requirements\n\n### Requirement: Client IP\nThe system SHALL expose the client IP.\n\n#### Scenario: ip\n- **WHEN** a request arrives\n- **THEN** the IP is set\n")
 	await writeIn(root, "specs/constraints.md", "# Constraints\nNo new dependencies.\n");
 	await writeIn(root, "specs/product.md", "# Product\nA rate limiter.\n");
 	commitAll(root, "base");
@@ -86,7 +90,7 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 	const head = git(root, "rev-parse", "HEAD");
 	const world = {
 		issueBody: (over.body ?? FIXTURE_BODY).replace(FIXTURE_BASE, base), issueUpdatedAt: "t0",
-		comments: new Map<number, Comment[]>(), reviewComments: [], issues: new Map<number, Issue>(), root, base, head,
+		comments: new Map<number, Comment[]>(), reviewComments: [], pulls: [], prFiles: new Map<number, string[]>(), issues: new Map<number, Issue>(), root, base, head,
 	} as unknown as World;
 	world.forge = scriptedForge(world);
 	world.tree = over.tree ?? makeTree(DEFAULT_SKILLS);
@@ -111,7 +115,7 @@ function stateOf(world: World): ChangeState {
 	const marked: MarkedComment[] = filterMarked(world.comments.get(7) ?? [], BOT).comments;
 	const start = (unit: string) => ({ id: `${unit}.s`, commentId: "s", index: 0, unit, digest: "d", verify: "v", pre: { sha: world.base } });
 	const state = stateFor("build", { git: { branch: "livespec/per-ip-cap", head: world.head, dirty: false, specsChanged: true }, marked }, world.issueBody);
-	return { ...state, change: parseChange(world.issueBody), evidence: { ...state.evidence, started: { U3: start("U3") } } };
+	return { ...state, change: parseChange(world.issueBody), evidence: { ...state.evidence, receipts: deriveUnitEvidence(parseChange(world.issueBody), marked, undefined).receipts, started: { U3: start("U3") } } };
 }
 
 function scriptedForge(world: World): Forge {
@@ -125,10 +129,10 @@ function scriptedForge(world: World): Forge {
 		listComments: async (n) => [...(world.comments.get(n) ?? [])],
 		findOpenPullRequest: async () => null,
 		getPullRequest: async (n) => ({ number: n, state: "open", merged: false, head: "h", base: "b", title: "the pr", body: "pr body", version: "p1" as Version }),
-		listPullRequests: async () => [],
+		listPullRequests: async (q) => world.pulls.filter((p) => q.state === "all" || p.state === q.state),
 		listReviewComments: async () => [...world.reviewComments],
 		listReviews: async () => [],
-		getPullRequestFiles: async () => [],
+		getPullRequestFiles: async (n) => world.prFiles.get(n) ?? [],
 		getChecks: async () => ({ state: "none", checks: [] }),
 	};
 	return forge as Forge;

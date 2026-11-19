@@ -2,12 +2,17 @@
 
 import { matchGlob } from "../core/glob.ts";
 import { parseChange } from "../core/change.ts";
-import { declaredCapabilities, numberOf, placed, prNumber, sha256, type Provider } from "./source-kit.ts";
+import { parseSpec } from "../core/spec.ts";
+import type { Issue, PullRequest } from "../forge/types.ts";
+import { declaredCapabilities, numberOf, placed, prNumber, readText, sha256, type Cx, type Provider } from "./source-kit.ts";
 import { unitText } from "./sources-change.ts";
 import type { Placed } from "./source-types.ts";
 
 const ISSUE_REF = /(?:^|[^\w&])#(\d+)\b/g;
-const MAX_REFS = 10;
+/** Closed pull requests a scout reads, most recently closed first: a search bound, stated in the packet. */
+const MAX_CLOSED_PRS = 30;
+
+export const SCOUT_SCOPE = `Search scope: closed issues of the same capability, and the ${MAX_CLOSED_PRS} most recently closed pull requests that touched the capability's \`paths\`; older pull requests were not searched.`;
 
 /** `issue#<n>` for every `#N` the unit text names, one hop; the change's own issue and initiative are skipped. */
 export const referencedIssues: Provider = {
@@ -16,7 +21,7 @@ export const referencedIssues: Provider = {
 		const unit = cx.target.unit;
 		if (!unit) return [];
 		const own = new Set([cx.ctx.state.issue.number, numberOf(cx.ctx.state.change.header.initiative)]);
-		const refs = [...new Set([...unitText(cx, unit).matchAll(ISSUE_REF)].map((m) => Number(m[1])))].filter((n) => !own.has(n)).slice(0, MAX_REFS);
+		const refs = [...new Set([...unitText(cx, unit).matchAll(ISSUE_REF)].map((m) => Number(m[1])))].filter((n) => !own.has(n));
 		const out: Placed[] = [];
 		for (const n of refs) {
 			const issue = await cx.reads.issue(n);
@@ -58,26 +63,62 @@ export const pullRequestAndChecks: Provider = {
 	},
 };
 
-/** Closed `livespec` issues of the same capability or touching the same `paths`; scouts read their titles. */
+/** Closed `livespec` issues of the same capability. */
+async function closedIssues(cx: Cx): Promise<Issue[]> {
+	const caps = new Set(declaredCapabilities(cx.ctx.state.change));
+	const closed = await cx.ctx.forge.searchIssues({ state: "closed", labels: ["livespec"] });
+	return closed.filter((i) => i.number !== cx.ctx.state.issue.number && declaredCapabilities(parseChange(i.body)).some((c) => caps.has(c)));
+}
+
+/** The `paths` globs of the declared capabilities' living specs; a capability without a spec contributes none. */
+async function capabilityPaths(cx: Cx): Promise<string[]> {
+	const out: string[] = [];
+	for (const cap of declaredCapabilities(cx.ctx.state.change)) {
+		const text = await readText(cx.ctx.root, `specs/${cap}/spec.md`);
+		if (text !== undefined) out.push(...parseSpec(text, cap).paths);
+	}
+	return out;
+}
+
+const closedStamp = (p: PullRequest): string => p.mergedAt ?? "";
+
+/** The most recently closed pull requests that changed a file matching one of the capability `paths`. */
+async function closedPullRequests(cx: Cx): Promise<PullRequest[]> {
+	const globs = await capabilityPaths(cx);
+	if (globs.length === 0) return [];
+	const recent = (await cx.ctx.forge.listPullRequests({ state: "closed" }))
+		.filter((p) => p.number !== prNumber(cx.ctx.state.change))
+		.sort((a, b) => closedStamp(b).localeCompare(closedStamp(a)) || b.number - a.number)
+		.slice(0, MAX_CLOSED_PRS);
+	const hits: PullRequest[] = [];
+	for (const pr of recent) {
+		const files = await cx.ctx.forge.getPullRequestFiles(pr.number);
+		if (files.some((f) => globs.some((g) => g === f || matchGlob(g, f)))) hits.push(pr);
+	}
+	return hits;
+}
+
+/** Closed issues of the same capability and closed pull requests touching the same `paths`; scouts read them. */
 export const closedWork: Provider = {
 	name: "closed-work",
 	async run(cx) {
-		const caps = new Set(declaredCapabilities(cx.ctx.state.change));
-		const closed = await cx.ctx.forge.searchIssues({ state: "closed", labels: ["livespec"] });
-		return closed
-			.filter((i) => i.number !== cx.ctx.state.issue.number && declaredCapabilities(parseChange(i.body)).some((c) => caps.has(c)))
-			.map((i) => placed({ id: `issue#${i.number}`, version: i.updatedAt, title: `Closed change #${i.number}: ${i.title}`, text: i.body, untrusted: true }));
+		const issues = (await closedIssues(cx)).map((i) => placed({ id: `issue#${i.number}`, version: i.updatedAt, title: `Closed change #${i.number}: ${i.title}`, text: i.body, untrusted: true }));
+		const prs = (await closedPullRequests(cx)).map((p) => placed({ id: `pr#${p.number}`, version: p.version, title: `Closed pull request #${p.number}: ${p.title}`, text: p.body, untrusted: true }));
+		return [...issues, ...prs];
 	},
 };
 
-/** The last comment of each closed change of the same capability: its closing summary. */
+/**
+ * The last comment of each closed change of the same capability. No closing-summary marker exists yet (change closure
+ * is defined later), so the last comment stands in, titled as such.
+ */
 export const closingSummaries: Provider = {
 	name: "closing-summaries",
 	async run(cx) {
 		const out: Placed[] = [];
-		for (const issue of (await closedWork.run(cx)).map((p) => numberOf(p.source.id) as number)) {
-			const last = (await cx.reads.comments(issue)).at(-1);
-			if (last) out.push(placed({ id: `comment:${last.id}`, version: last.updatedAt, title: `Closing summary of #${issue}`, text: last.body, untrusted: true }));
+		for (const issue of await closedIssues(cx)) {
+			const last = (await cx.reads.comments(issue.number)).at(-1);
+			if (last) out.push(placed({ id: `comment:${last.id}`, version: last.updatedAt, title: `Closing summary of #${issue.number}: last comment (closing summary not yet defined)`, text: last.body, untrusted: true }));
 		}
 		return out;
 	},

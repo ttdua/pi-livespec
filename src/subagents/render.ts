@@ -28,12 +28,13 @@ export function renderSource(s: PacketSource): string {
 export type Spilled = { source: PacketSource; path: string };
 
 /** Layer 3: the task. `inline` and `spilled` partition the sources in manifest order. */
-export function renderTask(t: { target: Target; unitText: string | undefined; inline: PacketSource[]; spilled: Spilled[]; verify?: string; files: string[] }): string {
+export function renderTask(t: { target: Target; unitText: string | undefined; notes?: string[]; inline: PacketSource[]; spilled: Spilled[]; verify?: string; files: string[] }): string {
 	const { target } = t;
 	const head = [TASK_HEADING, `Role: ${target.role}`];
 	if (target.unit) head.push(`Unit: ${target.unit.id}`);
 	if (target.subject) head.push(`Subject: ${target.subject}`, `Rubric: ${rubricFor(target.subject as ReviewSubject)}`);
 	const parts = [head.join("\n"), t.unitText === undefined ? "" : `### Unit\n${t.unitText}\n`, "### Sources", ...t.inline.map(renderSource)];
+	if (t.notes?.length) parts.push("### Search scope", ...t.notes);
 	parts.push("### Spilled sources", t.spilled.length === 0 ? "none" : t.spilled.map((s) => `- ${s.source.id} ${s.source.version} ${s.path}`).join("\n"));
 	if (t.verify !== undefined) parts.push(`### Verify\n${t.verify}`);
 	parts.push(`### Files\n${t.files.length === 0 ? "none" : t.files.join("\n")}`, `### Prohibitions\n${PROHIBITIONS.map((p) => `- ${p}`).join("\n")}`);

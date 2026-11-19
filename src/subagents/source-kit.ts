@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Change } from "../core/change.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import { parseMarked } from "../forge/markers.ts";
 import type { Comment, Forge, Issue } from "../forge/types.ts";
 import type { PacketContext, PacketSource, Placed, Placement, Target } from "./source-types.ts";
 
@@ -80,9 +81,14 @@ export async function readText(root: string, rel: string): Promise<string | unde
 /** A relative path inside the tree; anything else (absolute, `..`) is refused. */
 export const safeRelative = (p: string): boolean => p !== "" && !p.startsWith("/") && !p.split("/").includes("..");
 
-/** Human (non-own) comments on the change issue and its pull request, as `comment:<id>` with their versions. */
-export async function humanComments(ctx: PacketContext): Promise<{ id: string; version: string }[]> {
-	const login = (await ctx.forge.whoami()).login;
-	const lists = await Promise.all(threadNumbers(ctx.state).map((n) => ctx.forge.listComments(n)));
-	return lists.flat().filter((c) => c.author !== login).map((c) => ({ id: `comment:${c.id}`, version: c.updatedAt }));
+/**
+ * Human comments on the change issue and its pull request, as `comment:<id>` with their versions. Only a comment that
+ * both was written by the plugin account and carries a valid marker is own; a plain comment by that account is human.
+ * Reads go through `reads`, so a build that shares one `Reads` sees one snapshot.
+ */
+export async function humanComments(ctx: PacketContext, reads: Reads = makeReads(ctx.forge)): Promise<{ id: string; version: string }[]> {
+	const login = await reads.login();
+	const lists = await Promise.all(threadNumbers(ctx.state).map((n) => reads.comments(n)));
+	const own = (c: Comment): boolean => c.author === login && parseMarked(c.body) !== null;
+	return lists.flat().filter((c) => !own(c)).map((c) => ({ id: `comment:${c.id}`, version: c.updatedAt }));
 }

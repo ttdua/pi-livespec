@@ -3,14 +3,14 @@
 import { roleSkillPaths } from "./flow.ts";
 import { renderFooter, renderPrefix, renderTask, tokensOf, type Spilled } from "./render.ts";
 import type { ReviewSubject, Role } from "./roles.ts";
-import { humanComments, sha256 } from "./source-kit.ts";
+import { humanComments, makeReads, sha256, type Reads } from "./source-kit.ts";
 import type { Packet, PacketContext, PacketResult, PacketSource, Placed, Target } from "./source-types.ts";
 import { seenKey } from "./freshness.ts";
 import { collectSources } from "./sources.ts";
 import { spillDirectory, spillName, SPILL_PLACEHOLDER, writeSpills } from "./spill.ts";
 import { unitText } from "./sources-change.ts";
+import { SCOUT_SCOPE } from "./sources-forge.ts";
 import { resolveTarget } from "./target.ts";
-import { makeReads } from "./source-kit.ts";
 
 export { roleSkillPaths };
 export { registerPacketSource } from "./sources.ts";
@@ -19,7 +19,7 @@ export type { Packet, PacketContext, PacketSource } from "./source-types.ts";
 /** A zero hash stands in while the budget is fitted: the real hash and its directory have the same length, so the sizes agree. */
 const SIZING_HASH = "0".repeat(64);
 
-type Plan = { target: Target; skills: string[]; skillPaths: string[]; placed: Placed[]; unit: string | undefined };
+type Plan = { target: Target; skills: string[]; skillPaths: string[]; placed: Placed[]; unit: string | undefined; seen: string[] };
 
 /** Indexes (into `placed`) that live in a file: always the `file` sources, plus the ones spilled for budget. */
 type Spill = Set<number>;
@@ -30,7 +30,8 @@ function render(ctx: PacketContext, plan: Plan, spill: Spill, dir: string, hash:
 	const spilled: Spilled[] = plan.placed.flatMap((p, i) => (spill.has(i) ? [{ source: p.source, path: `${dir}/${names(i)}` }] : []));
 	const flow = { pack: ctx.pack, tree: ctx.session.activeTree, skills: plan.skills };
 	const unitBlock = plan.target.unit ? unitText({ ctx, target: plan.target, reads: makeReads(ctx.forge) }, plan.target.unit) : undefined;
-	const task = renderTask({ target: plan.target, unitText: unitBlock, inline, spilled, ...(plan.target.unit?.verify ? { verify: plan.target.unit.verify } : {}), files: plan.target.unit?.files ?? [] });
+	const notes = plan.target.role === "scout" ? [SCOUT_SCOPE] : [];
+	const task = renderTask({ target: plan.target, unitText: unitBlock, notes, inline, spilled, ...(plan.target.unit?.verify ? { verify: plan.target.unit.verify } : {}), files: plan.target.unit?.files ?? [] });
 	const body = renderPrefix(flow) + task;
 	return { body, text: body + renderFooter(hash, plan.placed.map((p) => p.source)) };
 }
@@ -58,12 +59,12 @@ function hashOf(body: string, plan: Plan): string {
 
 const changeName = (ctx: PacketContext): string => ctx.state.change.header.branch?.split("/").at(-1) || `issue-${ctx.state.issue.number}`;
 
-async function plan(ctx: PacketContext, target: Target): Promise<{ ok: true; plan: Plan } | { ok: false; message: string }> {
+async function plan(ctx: PacketContext, target: Target, reads: Reads): Promise<{ ok: true; plan: Plan } | { ok: false; message: string }> {
 	const phase = ctx.state.phase.kind === "ok" ? ctx.state.phase.id : undefined;
 	if (phase === undefined) return { ok: false, message: "the change has no single phase, so the role's flow skills are unknown" };
 	const skills = roleSkillPaths(ctx.pack, phase, target.role, ctx.session.activeTree, target.subject);
 	if (!skills.ok) return { ok: false, message: `skill ${skills.missing.join(", ")} is missing from the active content tree; nothing was launched` };
-	return { ok: true, plan: { target, skills: skills.names, skillPaths: skills.paths, placed: await collectSources(ctx, target), unit: target.unit?.id } };
+	return { ok: true, plan: { target, skills: skills.names, skillPaths: skills.paths, seen: (await humanComments(ctx, reads)).map(seenKey), placed: await collectSources(ctx, target, reads), unit: target.unit?.id } };
 }
 
 export async function buildPacket(ctx: PacketContext, role: Role, unit?: string, subject?: ReviewSubject): Promise<PacketResult> {
@@ -71,7 +72,7 @@ export async function buildPacket(ctx: PacketContext, role: Role, unit?: string,
 	if (!target.ok) return target;
 	let planned: Awaited<ReturnType<typeof plan>>;
 	try {
-		planned = await plan(ctx, target.target);
+		planned = await plan(ctx, target.target, makeReads(ctx.forge));
 	} catch (error) {
 		return { ok: false, message: error instanceof Error ? error.message : String(error) };
 	}
@@ -98,6 +99,6 @@ async function finish(ctx: PacketContext, p: Plan, spill: Spill): Promise<Packet
 	}
 	const { text } = render(ctx, p, spill, dir, hash);
 	const sources = p.placed.map((x, i) => ({ id: x.source.id, version: x.source.version, required: x.source.required, ...(spill.has(i) ? { spill: `${dir}/${spillName(i, x.source.id)}` } : {}) }));
-	const packet: Packet = { text, hash, sources, skillPaths: p.skillPaths, cwd: ctx.cwd, seen: (await humanComments(ctx)).map(seenKey) };
+	const packet: Packet = { text, hash, sources, skillPaths: p.skillPaths, cwd: ctx.cwd, seen: p.seen };
 	return { ok: true, packet };
 }

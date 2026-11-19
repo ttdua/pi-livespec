@@ -37,9 +37,12 @@ export const coveredRequirements: Provider = {
 		const out: Placed[] = [];
 		for (const [cap, names] of byCap) {
 			const text = await readText(ctx.root, `specs/${cap}/spec.md`);
-			if (text === undefined) continue;
+			if (text === undefined) throw new Error(`covered spec specs/${cap}/spec.md (spec:${cap}) is missing`);
+			const found = new Set(parseSpec(text, cap).requirements.map((rq) => rq.name));
+			const absent = [...names].filter((n) => !found.has(n));
+			if (absent.length > 0) throw new Error(`covered requirement ${absent.join(", ")} was not found in specs/${cap}/spec.md (spec:${cap})`);
 			const body = requirementBlocks(text, cap, names);
-			if (body !== "") out.push(placed({ id: `spec:${cap}`, version: sha256(body), title: `Covered requirements of ${cap}`, text: body, untrusted: false }, "pinned"));
+			out.push(placed({ id: `spec:${cap}`, version: sha256(body), title: `Covered requirements of ${cap}`, text: body, untrusted: false }, "pinned"));
 		}
 		return out;
 	},

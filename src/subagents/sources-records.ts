@@ -1,12 +1,12 @@
 // Providers over the change's own marked comments: gate notes, findings, receipts, dispatch records and decisions.
 
 import { stringify } from "yaml";
+import type { ReceiptRecord } from "../evidence/records.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { latestDispatch, type DispatchData, type DispatchQuestionData } from "./records.ts";
 import { placed, sha256, type Cx, type Provider } from "./source-kit.ts";
 import type { Placed } from "./source-types.ts";
 
-const RECEIPT_OUTPUT_CHARS = 2000;
 
 /** The comment's updated-at, the version of a `comment:<id>` source; falls back to a content hash. */
 async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
@@ -47,10 +47,14 @@ export const unitFindings: Provider = {
 	},
 };
 
+/** One receipt in full: both SHAs and exits and the whole output. */
+export const receiptText = (unit: string, receipt: ReceiptRecord): string =>
+	`Receipt of ${unit}: pre ${receipt.pre.sha} exit ${receipt.pre.exit}, post ${receipt.post.sha} exit ${receipt.post.exit}\n${receipt.output}`;
+
 function receiptSource(cx: Cx, unit: string): Placed | undefined {
 	const receipt = cx.ctx.state.evidence.receipts[unit]?.at(-1);
 	if (!receipt) return undefined;
-	const text = `Receipt of ${unit}: pre ${receipt.pre.sha} exit ${receipt.pre.exit}, post ${receipt.post.sha} exit ${receipt.post.exit}\n${receipt.output.slice(-RECEIPT_OUTPUT_CHARS)}`;
+	const text = receiptText(unit, receipt);
 	return placed({ id: `receipt:${unit}`, version: sha256(text), title: `Receipt of ${unit}`, text, untrusted: true });
 }
 
@@ -58,7 +62,13 @@ async function dispatchSource(cx: Cx, unit: string): Promise<Placed | undefined>
 	const data: DispatchData | undefined = latestDispatch(cx.ctx.state.marked, unit);
 	const m = data === undefined ? undefined : cx.ctx.state.marked.find((c) => c.data === data);
 	if (!data || !m) return undefined;
-	const text = [`Notes: ${data.notes}`, ...data.discoveries.map((d) => `Discovery: ${d}`)].join("\n");
+	const text = [
+		`Status: ${data.status}`,
+		`Commits: ${data.commits.length === 0 ? "none" : data.commits.join(", ")}`,
+		`Notes: ${data.notes}`,
+		...data.discoveries.map((d) => `Discovery: ${d}`),
+		`Sources used: ${data.sources_used.length === 0 ? "none" : data.sources_used.join(", ")}`,
+	].join("\n");
 	return commentSource(cx, m, `Dispatch record of ${unit}`, text);
 }
 

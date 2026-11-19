@@ -1,5 +1,10 @@
 // Tests of the context manifest per role and subject.
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { receiptComment } from "../../src/evidence/records.ts";
+import { buildPacket } from "../../src/subagents/packet.ts";
+import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
 import { collectSources, registerPacketSource, resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { resolveTarget } from "../../src/subagents/target.ts";
@@ -75,6 +80,121 @@ describe("manifest", () => {
 	test("scout holds the initiative", async () => {
 		const world = await makeWorld();
 		expect(ids(await sourcesOf(world, "scout"))).toContain("issue#12");
+	});
+
+	test("scout finds closed work by capability only", async () => {
+		const world = await makeWorld();
+		world.issues.set(30, { number: 30, title: "older rate work", body: "Capabilities: new [], modified [rate-limit]\n", labels: ["livespec"], state: "closed", author: HUMAN, updatedAt: "u", version: "v" as never });
+		world.issues.set(31, { number: 31, title: "other", body: "Capabilities: new [], modified [billing]\n", labels: ["livespec"], state: "closed", author: HUMAN, updatedAt: "u", version: "v" as never });
+		const got = ids(await sourcesOf(world, "scout"));
+		expect(got).toContain("issue#30");
+		expect(got).not.toContain("issue#31");
+	});
+
+	test("scout finds a closed pull request by paths only, and states the search scope", async () => {
+		const world = await makeWorld();
+		const pr = (number: number) => ({ number, state: "closed" as const, merged: true, mergedAt: `2026-01-${String(number).padStart(2, "0")}`, head: "h", base: "b", title: `pr ${number}`, body: "b", version: "p" as never });
+		world.pulls.push(pr(50), pr(51));
+		world.prFiles.set(50, ["src/limits/window.ts"]);
+		world.prFiles.set(51, ["README.md"]);
+		const got = ids(await sourcesOf(world, "scout"));
+		expect(got).toContain("pr#50");
+		expect(got).not.toContain("pr#51");
+		const result = await buildPacket(world.refreshed(), "scout");
+		if (!result.ok) throw new Error(result.message);
+		expect(result.packet.text).toContain("30 most recently closed pull requests");
+	});
+
+	test("scout reads only the 30 most recently closed pull requests", async () => {
+		const world = await makeWorld();
+		for (let n = 100; n < 135; n++) {
+			world.pulls.push({ number: n, state: "closed", merged: true, mergedAt: `2026-02-${String(n - 99).padStart(2, "0")}`, head: "h", base: "b", title: `pr ${n}`, body: "b", version: "p" as never });
+			world.prFiles.set(n, ["src/limits/x.ts"]);
+		}
+		const got = ids(await sourcesOf(world, "scout")).filter((i) => i.startsWith("pr#"));
+		expect(got).toHaveLength(30);
+		expect(got).toContain("pr#134");
+		expect(got).not.toContain("pr#100");
+	});
+
+	test("closing summaries are the last comment, titled as not yet defined", async () => {
+		const world = await makeWorld();
+		world.issues.set(30, { number: 30, title: "older", body: "Capabilities: new [], modified [rate-limit]\n", labels: ["livespec"], state: "closed", author: HUMAN, updatedAt: "u", version: "v" as never });
+		const last = world.post(HUMAN, "shipped", 30);
+		const placed = await sourcesOf(world, "reviewer", undefined, "spec");
+		const found = placed.find((p) => p.source.id === `comment:${last.id}`);
+		expect(found?.source.title).toContain("closing summary not yet defined");
+		expect(found?.source.untrusted).toBe(true);
+	});
+
+	test("every #N reference of the unit is included, not just ten", async () => {
+		const refs = Array.from({ length: 11 }, (_, i) => `#${200 + i}`).join(" ");
+		const world = await makeWorld({ body: FIXTURE_BODY.replace("Depends: U1\nVerify: `npm test -- ratelimit`", `Depends: U1\nVerify: \`npm test -- ratelimit\`\nSee ${refs}`) });
+		const got = ids(await sourcesOf(world, "implementer", "U3"));
+		for (let i = 0; i < 11; i++) expect(got).toContain(`issue#${200 + i}`);
+	});
+
+	test("a covered spec that is missing refuses the packet naming it", async () => {
+		const world = await makeWorld();
+		await rm(join(world.root, "specs/rate-limit/spec.md"));
+		await expect(sourcesOf(world, "implementer", "U3")).rejects.toThrow(/covered-requirements.*spec:rate-limit/);
+	});
+
+	test("a covered requirement that is not found refuses the packet", async () => {
+		const world = await makeWorld({ body: FIXTURE_BODY.replace("rate-limit/Requirement: Per-IP cap", "rate-limit/Requirement: Nonexistent") });
+		await expect(sourcesOf(world, "implementer", "U3")).rejects.toThrow(/Nonexistent.*not found/);
+	});
+
+	test("a unit without a start SHA refuses the diff", async () => {
+		const world = await makeWorld();
+		const ctx = world.refreshed();
+		const state = { ...ctx.state, evidence: { ...ctx.state.evidence, started: {} } };
+		const target = resolveTarget(state, "reviewer", "U3", "unit");
+		if (!target.ok) throw new Error(target.message);
+		await expect(collectSources({ ...ctx, state }, target.target)).rejects.toThrow(/diff.*unit-start/);
+	});
+
+	test("a change without a Base SHA refuses the specs diff", async () => {
+		const world = await makeWorld();
+		const ctx = world.refreshed();
+		const change = { ...ctx.state.change, header: { ...ctx.state.change.header, base: undefined } };
+		const target = resolveTarget(ctx.state, "reviewer", undefined, "spec");
+		if (!target.ok) throw new Error(target.message);
+		await expect(collectSources({ ...ctx, state: { ...ctx.state, change } }, target.target)).rejects.toThrow(/specs-diff.*Base/);
+	});
+
+	test("a verifier without a finding refuses the packet", async () => {
+		const world = await makeWorld();
+		await expect(sourcesOf(world, "verifier")).rejects.toThrow(/finding/);
+	});
+
+	test("a dependency's dispatch record keeps status, commits, notes, discoveries and sources used", async () => {
+		const world = await makeWorld();
+		const posted = world.post(BOT, dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE_WITH_CONCERNS", commits: ["abc1234"], notes: "flaky", discoveries: ["d1"], sources_used: ["spec:rate-limit"],
+		}));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.id}`);
+		for (const part of ["DONE_WITH_CONCERNS", "abc1234", "flaky", "d1", "spec:rate-limit"]) expect(found?.source.text).toContain(part);
+	});
+
+	test("a receipt keeps its whole output", async () => {
+		const world = await makeWorld();
+		const output = `${"line\n".repeat(1000)}END-OF-OUTPUT`;
+		world.post(BOT, receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "aaa", exit: 1 }, post: { sha: "bbb", exit: 0 }, output, start: "U1.s" }));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === "receipt:U1");
+		expect(found?.source.text).toContain(output);
+	});
+
+	test("verifier holds the owning unit verbatim and its receipts' evidence", async () => {
+		const world = await makeWorld();
+		world.post(BOT, receiptComment("U3.r1", { unit: "U3", digest: "d", verify: "v", pre: { sha: "pre1234", exit: 1 }, post: { sha: "post567", exit: 0 }, output: "3 passed", start: "U3.s" }));
+		const finding = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:3", evidence: "e", fix: "f", scope: "unit" as const };
+		const target = resolveTarget(world.ctx.state, "verifier");
+		if (!target.ok) throw new Error(target.message);
+		const placed = await collectSources({ ...world.refreshed(), finding }, target.target);
+		const owner = placed.find((p) => p.source.id === "receipt:U3")?.source.text ?? "";
+		for (const part of ["### U3 — Rate limit per IP", "the 101st request within 60 s", "pre1234", "post567", "3 passed", "exit 1", "exit 0"]) expect(owner).toContain(part);
 	});
 
 	test("registered provider adds source", async () => {

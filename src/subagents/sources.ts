@@ -2,7 +2,7 @@
 
 import { rubricFor } from "./rubrics.ts";
 import type { ReviewSubject, Role } from "./roles.ts";
-import { makeReads, placed, sha256, type Cx, type Provider } from "./source-kit.ts";
+import { makeReads, placed, sha256, type Cx, type Provider, type Reads } from "./source-kit.ts";
 import type { PacketContext, Placed, SourceProvider, Target } from "./source-types.ts";
 import { answeredQuestions, changeIssue, coveredRequirements, initiativeIssue } from "./sources-change.ts";
 import { closedWork, closingSummaries, pullRequestAndChecks, referencedIssues, reviewComments } from "./sources-forge.ts";
@@ -55,8 +55,8 @@ function registered(role: Role): Provider[] {
 }
 
 /** The required sources of `target` in manifest order, first occurrence of an id wins. A failing provider rejects with its name. */
-export async function collectSources(ctx: PacketContext, target: Target): Promise<Placed[]> {
-	const cx: Cx = { ctx, target, reads: makeReads(ctx.forge) };
+export async function collectSources(ctx: PacketContext, target: Target, reads: Reads = makeReads(ctx.forge)): Promise<Placed[]> {
+	const cx: Cx = { ctx, target, reads };
 	const providers = [...manifest(target.role, target.subject), ...rubric(target.role === "reviewer" ? target.subject : undefined), productExcerpt, ...registered(target.role)];
 	const out = new Map<string, Placed>();
 	for (const p of providers) for (const item of await runProvider(p, cx)) if (!out.has(item.source.id)) out.set(item.source.id, item);
