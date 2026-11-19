@@ -62,6 +62,8 @@ export type FindingSummaryData = {
 	requested: { thinking: Thinking };
 	effective: { model?: string; thinking?: string };
 	findings: Finding[];
+	/** The unit's n-th `NEEDS_CONTEXT` request of this role (set by the parent): no review round is used. */
+	contextRequest?: number;
 };
 
 export type RebuttalData = { rebuts: string; items: { index: number; reason: string; evidence: string }[] };
@@ -93,7 +95,8 @@ export function dispatchComment(data: DispatchData | DispatchQuestionData): stri
 
 export function findingSummaryComment(data: FindingSummaryData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	return writeMarked("finding-summary", `finding-summary.${scope}.${token(data.subject)}.${data.round}`, data);
+	const suffix = data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
+	return writeMarked("finding-summary", `finding-summary.${scope}.${token(data.subject)}.${data.round}${suffix}`, data);
 }
 
 export function rebuttalComment(data: RebuttalData): string {

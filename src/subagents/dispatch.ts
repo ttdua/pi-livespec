@@ -13,8 +13,8 @@ export type DispatchOutcome =
 	| { kind: "question"; id: string; text: string }
 	| { kind: "inline"; reason: string; packet: Packet }
 	| { kind: "sequential"; reason: string }
-	| { kind: "blocked"; reason: string }
-	| { kind: "stuck"; reason: string };
+	| { kind: "blocked"; reason: string; result?: SubagentResult }
+	| { kind: "stuck"; reason: string; result?: SubagentResult };
 
 export type AgentInfo = { name: string; source: string; filePath?: string };
 
@@ -128,9 +128,10 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 		case "blocked":
 			await recordResult(deps, run, cwd, blockedResult(decision.reason));
 			return { kind: "blocked", reason: decision.reason };
-		case "stuck":
-			await recordResult(deps, run, cwd, decision.result ?? blockedResult(decision.reason));
-			return { kind: "stuck", reason: decision.reason };
+		case "stuck": {
+			const result = await recordResult(deps, run, cwd, decision.result ?? blockedResult(decision.reason));
+			return { kind: "stuck", reason: decision.reason, result };
+		}
 		case "more-context":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };
 		case "accept":

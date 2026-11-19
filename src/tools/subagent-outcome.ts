@@ -20,9 +20,9 @@ const STATUS_HINT: Partial<Record<SubagentResult["status"], string>> = {
 	BLOCKED: "\nThe child is blocked: read its reason and evidence, then send a stuck report with spec_stuck.",
 };
 
-/** The recorded result, with the child's reason and evidence and the source ids it named; `capped` turns NEEDS_CONTEXT into a stuck hint. */
-export function resultText(t: Target, r: SubagentResult, named: string[] | undefined, capped = false): string {
-	const lines = [
+/** The recorded result's lines; every child-authored part is wrapped as untrusted. */
+function resultLines(t: Target, r: SubagentResult, named: string[] | undefined): string[] {
+	return [
 		`${argsOf(t)} settled with ${r.status} and was recorded.`,
 		`Notes: ${untrusted(r.notes)}`,
 		...(r.reason === undefined ? [] : [`Reason: ${untrusted(r.reason)}`]),
@@ -32,8 +32,12 @@ export function resultText(t: Target, r: SubagentResult, named: string[] | undef
 		`Discoveries: ${r.discoveries.length === 0 ? "none" : untrusted(r.discoveries.join("; "))}`,
 		...(r.findings === undefined ? [] : [`Findings: ${r.findings.length}`]),
 	];
+}
+
+/** The recorded result and what to do next; `capped` turns NEEDS_CONTEXT into a stuck hint. */
+export function resultText(t: Target, r: SubagentResult, named: string[] | undefined, capped = false): string {
 	const hint = capped && r.status === "NEEDS_CONTEXT" ? STUCK_HINT(t) : (STATUS_HINT[r.status] ?? "");
-	return lines.join("\n") + hint;
+	return resultLines(t, r, named).join("\n") + hint;
 }
 
 /** What the parent reads after a dispatch: the recorded result, the child's question, or the next step. */
@@ -50,6 +54,6 @@ export function outcomeText(t: Target, outcome: DispatchOutcome): string {
 		case "blocked":
 			return `${argsOf(t)} is BLOCKED: ${outcome.reason}. Send a stuck report with spec_stuck.`;
 		case "stuck":
-			return `${argsOf(t)} needs a decision: ${outcome.reason}. Send a stuck report with spec_stuck for ${t.unit ?? "the change"}.`;
+			return `${argsOf(t)} needs a decision: ${outcome.reason}. Send a stuck report with spec_stuck for ${t.unit ?? "the change"}.${outcome.result ? `\n${resultLines(t, outcome.result, undefined).join("\n")}` : ""}`;
 	}
 }

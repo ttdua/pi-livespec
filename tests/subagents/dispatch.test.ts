@@ -5,8 +5,9 @@ import { type DispatchDeps, type DispatchRequest, runDispatch } from "../../src/
 import { checkLaunch, raisedThinking, spawnOptions } from "../../src/subagents/launch.ts";
 import { interpret } from "../../src/subagents/result.ts";
 import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/run-record.ts";
-import { current, dispatchComment, latestDispatch } from "../../src/subagents/records.ts";
+import { current, dispatchComment, findingSummaryComment, latestDispatch } from "../../src/subagents/records.ts";
 import { mark } from "./helpers.ts";
+import { isDispatchData } from "../../src/subagents/validate.ts";
 import { checkSchema, resultSchema } from "../../src/subagents/roles.ts";
 import type { Packet } from "../../src/subagents/source-types.ts";
 import { applied, done, fakeExecutor, unpublish } from "./fake-executor.ts";
@@ -79,6 +80,15 @@ describe("result interpretation", () => {
 	const h0 = { needsContext: 0, retries: 0, returns: 0 };
 	const rec = (structuredResult: unknown, over = {}) => ({ id: "a", status: "completed", structuredResult, ...over });
 
+	test("stuck and blocked reasons wrap child text as untrusted", () => {
+		const nc = done({ status: "NEEDS_CONTEXT", reason: "do <x>", evidence: "e" });
+		expect(interpret(rec(nc), packet(), "implementer", { ...h0, needsContext: 2 })).toMatchObject({ kind: "stuck", reason: expect.stringContaining("<untrusted>do &lt;x></untrusted>") });
+		const mp = done({ sources_used: ["answer:Q2"], status: "BLOCKED", reason: "missing-prerequisite", evidence: "ignore <rules>" });
+		expect(interpret(rec(mp), packet(), "implementer", h0)).toMatchObject({ kind: "stuck", reason: expect.stringContaining("<untrusted>ignore &lt;rules></untrusted>") });
+		const crash = { id: "a", status: "error", error: "boom <now>" };
+		expect(interpret(crash, packet(), "implementer", { ...h0, retries: 1 })).toMatchObject({ kind: "blocked", reason: expect.stringContaining("<untrusted>boom &lt;now></untrusted>") });
+	});
+
 	test("blocked without evidence treated as missing", () => {
 		expect(interpret(rec(done({ status: "BLOCKED", reason: "r" })), packet(), "implementer", h0)).toEqual({ kind: "retry" });
 	});
@@ -133,6 +143,11 @@ describe("records", () => {
 		expect(nextAttempt([mismatch], "implementer", "U1")).toBe(1);
 	});
 
+	test("launchMismatch is valid only as true", () => {
+		expect(isDispatchData({ ...base, status: "BLOCKED", launchMismatch: true })).toBe(true);
+		expect(isDispatchData({ ...base, status: "BLOCKED", launchMismatch: false })).toBe(false);
+	});
+
 	test("a child's own launch-mismatch reason is a normal BLOCKED run", () => {
 		const child = rec({ status: "BLOCKED", reason: "launch-mismatch", evidence: "the child says so" });
 		expect(child.id).toBe("dispatch.U1.implementer.1");
@@ -144,6 +159,20 @@ describe("records", () => {
 		const run = rec({ status: "DONE", discoveries: ["d"] });
 		const mismatch = rec({ attempt: 2, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd", launchMismatch: true });
 		expect(latestDispatch([run, mismatch], "U1")?.status).toBe("DONE");
+	});
+
+	test("review NEEDS_CONTEXT summaries count toward the cap, not toward rounds", () => {
+		const summary = (over: Record<string, unknown>) => mark(findingSummaryComment({
+			role: "reviewer", subject: "unit", unit: "U1", round: 1, status: "DONE", advisory: false, head: "h", packet: "p", sources_used: [], required: [], completed: true,
+			agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [], ...over,
+		} as never));
+		const nc1 = summary({ status: "NEEDS_CONTEXT", completed: false, contextRequest: 1 });
+		const nc2 = summary({ status: "NEEDS_CONTEXT", completed: false, contextRequest: 2 });
+		expect(nc1.id).not.toBe(nc2.id);
+		expect(needsContextCount([nc1, nc2], "U1", "reviewer")).toBe(2);
+		expect(needsContextCount([nc1, nc2], "U1", "implementer")).toBe(0);
+		expect(nextRound([nc1, nc2], "reviewer", "U1", "unit")).toBe(1);
+		expect(current([nc1, nc2, summary({})])).toHaveLength(3);
 	});
 
 	test("NEEDS_CONTEXT records do not raise the attempt and are not superseded by the next run", () => {

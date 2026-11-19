@@ -1,8 +1,7 @@
 // The forge record of one settled run, dispatched or inline: a `dispatch` comment for writers and scouts, a `finding-summary` for reviewers and verifiers.
 
 import type { MarkedComment } from "../forge/markers.ts";
-import { isLaunchMismatch } from "./records.ts";
-import { computeCompleted, current, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
+import { computeCompleted, current, isLaunchMismatch, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
 import type { ReviewSubject, Role, SubagentResult } from "./roles.ts";
 import type { Packet } from "./source-types.ts";
 
@@ -43,17 +42,20 @@ export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | 
 export function nextRound(marked: MarkedComment[], role: Role, unit: string | undefined, subject: ReviewSubject | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<FindingSummaryData> & { rebuts?: unknown };
-		return m.kind === "finding-summary" && d.rebuts === undefined && d.role === role && d.unit === unit && d.subject === subject;
+		return m.kind === "finding-summary" && d.rebuts === undefined && d.contextRequest === undefined && d.role === role && d.unit === unit && d.subject === subject;
 	}).length + 1;
 }
 
-/** Earlier `NEEDS_CONTEXT` dispatch records of the unit and role: the cap counts these only. */
+/** Earlier `NEEDS_CONTEXT` records of the unit and role, `dispatch` or `finding-summary`: the cap counts these only. */
 export function needsContextCount(marked: MarkedComment[], unit: string | undefined, role: Role): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<DispatchData>;
-		return m.kind === "dispatch" && d.unit === unit && d.role === role && d.status === "NEEDS_CONTEXT";
+		return (m.kind === "dispatch" || m.kind === "finding-summary") && d.unit === unit && d.role === role && d.status === "NEEDS_CONTEXT";
 	}).length;
 }
+
+/** The parent's number of a `NEEDS_CONTEXT` result; it keeps the record off the attempt and round counters. */
+const contextRequestOf = (run: RunFacts, result: SubagentResult): { contextRequest?: number } => (result.status === "NEEDS_CONTEXT" ? { contextRequest: run.needsContext + 1 } : {});
 
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : ({ [key]: value } as Record<K, V>));
 
@@ -64,7 +66,7 @@ function dispatchData(run: RunFacts, result: SubagentResult): DispatchData {
 		attempt: run.attempt, packet: run.packet.hash, agentSource: run.agentSource, requested: run.requested, effective: run.effective,
 		status: result.status, commits: result.commits ?? [], notes, discoveries: result.discoveries, sources_used: result.sources_used,
 		...optional("reason", result.reason), ...optional("evidence", result.evidence),
-		...(result.status === "NEEDS_CONTEXT" ? { contextRequest: run.needsContext + 1 } : {}),
+		...contextRequestOf(run, result),
 	};
 }
 
@@ -81,6 +83,7 @@ function summaryData(run: RunFacts, result: SubagentResult, head: string): Findi
 		round: run.round, status: result.status, advisory: run.advisory, head, packet: run.packet.hash,
 		sources_used: result.sources_used, required, completed: computeCompleted(result, required),
 		agentSource: run.agentSource, requested: run.requested, effective: run.effective, findings: result.findings ?? [],
+		...contextRequestOf(run, result),
 	};
 }
 

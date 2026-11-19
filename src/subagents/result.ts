@@ -1,5 +1,6 @@
 // Pure interpretation of a settled child run: accept, retry, return to the child, ask, or stop (spec "Result handling").
 
+import { untrusted } from "../hooks/phase-card.ts";
 import type { RecordLike } from "./executor.ts";
 import { checkSchema, resultSchema, type Role, type SubagentResult } from "./roles.ts";
 import type { Packet } from "./source-types.ts";
@@ -37,7 +38,7 @@ export function namedSourceIds(result: SubagentResult): string[] {
 /** Why the run left no usable result, or undefined when its structured result fits the role's schema. */
 function missingReason(record: RecordLike, role: Role): string | undefined {
 	if (record.structuredResultError !== undefined) return `the structured result is ${record.structuredResultError}`;
-	if (record.structuredResult === undefined) return record.error ? `the run ended with an error: ${record.error}` : `the run ended (${record.status}) without a structured result`;
+	if (record.structuredResult === undefined) return record.error ? `the run ended with an error: ${untrusted(record.error)}` : `the run ended (${record.status}) without a structured result`;
 	const check = checkSchema(resultSchema(role), record.structuredResult);
 	if (!check.ok) return `the structured result does not match the ${role} schema: ${check.errors.join("; ")}`;
 	const result = record.structuredResult as SubagentResult;
@@ -57,10 +58,10 @@ function missingSources(result: SubagentResult, packet: Packet): string[] {
 
 function statusDecision(result: SubagentResult, history: DispatchHistory): ResultDecision {
 	if (result.status === "NEEDS_CONTEXT") {
-		if (history.needsContext >= NEEDS_CONTEXT_CAP) return { kind: "stuck", reason: `NEEDS_CONTEXT returned ${history.needsContext + 1} times: ${result.reason}`, result };
+		if (history.needsContext >= NEEDS_CONTEXT_CAP) return { kind: "stuck", reason: `NEEDS_CONTEXT returned ${history.needsContext + 1} times: ${untrusted(result.reason ?? "")}`, result };
 		return { kind: "more-context", ids: namedSourceIds(result), result };
 	}
-	if (result.status === "BLOCKED" && result.reason?.includes(MISSING_PREREQUISITE)) return { kind: "stuck", reason: `${MISSING_PREREQUISITE}: ${result.evidence}`, result };
+	if (result.status === "BLOCKED" && result.reason?.includes(MISSING_PREREQUISITE)) return { kind: "stuck", reason: `${MISSING_PREREQUISITE}: ${untrusted(result.evidence ?? "")}`, result };
 	return { kind: "accept", result };
 }
 
