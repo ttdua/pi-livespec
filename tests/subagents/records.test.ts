@@ -160,3 +160,41 @@ describe("fix round 1", () => {
 		expect(invalidRecords(junk)).toHaveLength(5);
 	});
 });
+
+describe("fix round 2", () => {
+	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+	const goodDispatch = { role: "implementer", unit: "U1", attempt: 1, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] };
+
+	it.each([
+		["bogus status", { ...goodDispatch, status: "bogus" }],
+		["bogus role", { ...goodDispatch, role: "boss" }],
+		["attempt not a number", { ...goodDispatch, attempt: "1" }],
+		["sources_used not strings", { ...goodDispatch, sources_used: [1] }],
+		["commits not strings", { ...goodDispatch, commits: "a" }],
+		["discoveries missing", { ...goodDispatch, discoveries: undefined }],
+		["ANSWERED without answer", { role: "implementer", status: "ANSWERED", agentId: "a" }],
+	])("dispatch with %s is skipped and warned", (_l, data) => {
+		const m = raw("dispatch", "d", data);
+		expect(latestDispatch([m], "U1")).toBeUndefined();
+		expect(invalidRecords([m])).toHaveLength(1);
+	});
+
+	it("a malformed summary does not resolve a blocker", () => {
+		const r1 = summary({ findings: [finding()] });
+		const bad = raw("finding-summary", "finding-summary.U1.unit.2", { ...(summary({ round: 2 }).data as object), findings: [{ ...finding(), severity: "bogus" }] });
+		const badFlag = raw("finding-summary", "finding-summary.U1.unit.3", { ...(summary({ round: 3 }).data as object), advisory: "no" });
+		expect(unresolvedBlocking([r1, bad, badFlag], "U1", new Set(), new Set())).toHaveLength(1);
+		expect(invalidRecords([bad, badFlag])).toHaveLength(2);
+	});
+
+	it.each([
+		["status", { status: "bogus" }],
+		["round", { round: "2" }],
+		["completed", { completed: "yes" }],
+		["required", { required: [3] }],
+		["kind enum", { findings: [{ ...finding(), kind: "x" }] }],
+		["scope enum", { findings: [{ ...finding(), scope: "x" }] }],
+	])("summary with bad %s is invalid", (_l, over) => {
+		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), ...over })])).toHaveLength(1);
+	});
+});

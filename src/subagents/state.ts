@@ -1,6 +1,7 @@
 // Lane records (open worktrees of parallel units) and the worktree a unit's tools run in.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { isLaneData } from "./validate.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 
 registerKind("lane");
@@ -12,8 +13,7 @@ export function laneComment(data: LaneData): string {
 	return writeMarked("lane", `lane.${data.unit}`, data);
 }
 
-const isLane = (d: unknown): d is LaneData =>
-	typeof d === "object" && d !== null && ["unit", "path", "branch", "base"].every((k) => typeof (d as Record<string, unknown>)[k] === "string");
+const isLane = (d: unknown): d is LaneData => isLaneData(d);
 
 /** Lane records whose data does not have the expected shape. */
 export function invalidLanes(marked: MarkedComment[]): string[] {

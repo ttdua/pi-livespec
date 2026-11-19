@@ -1,6 +1,7 @@
 // Forge records of subagent runs: `dispatch` and `finding-summary` comments, and the queries the flow reads from them.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
 registerKind("dispatch");
@@ -100,29 +101,7 @@ export function computeCompleted(result: Pick<SubagentResult, "status" | "source
 	return COMPLETED_STATUSES.includes(result.status) && required.every((id) => result.sources_used.includes(id));
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const isStr = (v: unknown): v is string => typeof v === "string";
-const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
-const ROLE_NAMES = ["scout", "implementer", "reviewer", "verifier"];
-const FINDING_KEYS = ["severity", "kind", "location", "evidence", "fix", "scope"] as const;
-
-const isFinding = (v: unknown): v is Finding => isRecord(v) && FINDING_KEYS.every((k) => isStr(v[k]));
-const hasRole = (d: Record<string, unknown>): boolean => isStr(d.role) && ROLE_NAMES.includes(d.role);
-
-function validDispatch(d: unknown): boolean {
-	if (!isRecord(d) || !hasRole(d)) return false;
-	if (d.status === "QUESTION") return isStr(d.agentId) && isStr(d.question);
-	if (d.status === "ANSWERED") return isStr(d.agentId);
-	return isStr(d.status);
-}
-
-function validSummary(d: unknown): boolean {
-	if (!isRecord(d)) return false;
-	if (isStr(d.rebuts)) return Array.isArray(d.items) && d.items.every((i) => isRecord(i) && typeof i.index === "number");
-	return hasRole(d) && isStr(d.subject) && typeof d.completed === "boolean" && isStr(d.head) && Array.isArray(d.findings) && d.findings.every(isFinding);
-}
-
-const VALID: Record<string, (d: unknown) => boolean> = { dispatch: validDispatch, "finding-summary": validSummary };
+const VALID: Record<string, (d: unknown) => boolean> = { dispatch: isDispatchData, "finding-summary": isSummaryData };
 
 /** Own `dispatch` and `finding-summary` records whose data does not have the expected shape. */
 export function invalidRecords(marked: MarkedComment[]): string[] {
