@@ -74,10 +74,10 @@ Blocked by: 6, 7
 
 Blocked by: 3, 4
 
-- [ ] 9.1 `src/engine/next-step.ts` and a card section: policy suggestions as next steps (`subagent_dispatch …`, or `subagent_packet`/`subagent_record` inline when no executor), the build-loop order (start, implementer, unit review, finish), fix rounds, `spec_stuck` after `unit_rebuilds`, pending child questions; nothing in the small-fix lane
-- [ ] 9.2 Gate payload: advisory findings and rebuttals listed at the next human gate
-- [ ] 9.3 `src/tools/forge-read.ts`: read-only targets over `Forge`, untrusted wrapping, refusal in a child
-- [ ] 9.4 Tests for every `subagent-policy` (suggestions, advisory, build loop) and `forge-read` scenario
+- [x] 9.1 `src/engine/next-step.ts` and a card section: policy suggestions as next steps (`subagent_dispatch …`, or `subagent_packet`/`subagent_record` inline when no executor), the build-loop order (start, implementer, unit review, finish), fix rounds, `spec_stuck` after `unit_rebuilds`, pending child questions; nothing in the small-fix lane
+- [x] 9.2 Gate payload: advisory findings and rebuttals listed at the next human gate
+- [x] 9.3 `src/tools/forge-read.ts`: read-only targets over `Forge`, untrusted wrapping, refusal in a child
+- [x] 9.4 Tests for every `subagent-policy` (suggestions, advisory, build loop) and `forge-read` scenario
 
 ## 10. Doctor, docs and end-to-end
 
