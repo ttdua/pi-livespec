@@ -33,6 +33,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
@@ -505,6 +506,8 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	const content = d.content(d.home);
 	await loadSessionBasics(session, d, content);
 	if (!session.initialized) return suggestInit(session, ctx);
+	// A child never connects the forge (`reconnect` can advance the change), polls approvals or shows the resume card.
+	if (isChildSession(ctx)) return;
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);

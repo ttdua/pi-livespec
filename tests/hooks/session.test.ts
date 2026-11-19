@@ -4,6 +4,7 @@ import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
 import { gateMemoGeneration, onGateMemoClear } from "../../src/engine/registry.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { gitStatus } from "../helpers/repo.ts";
+import { asChild } from "./fake-pi.ts";
 import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
 import { writeIn } from "../helpers/repo.ts";
 
@@ -249,5 +250,14 @@ describe("gate memo clearing is inside the error boundary", () => {
 		await expect(h.pi.fire("session_shutdown", {}, h.ctx)).resolves.not.toThrow();
 		expect(session?.shutdownSignal.aborted).toBe(true);
 		await expect(h.start()).resolves.not.toThrow();
+	});
+});
+
+describe("session_start in a child session", () => {
+	test("no resume card at child session_start", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.pi.fire("session_start", { type: "session_start", reason: "startup" }, asChild(h.ctx));
+		expect(resumeMessages(h.pi.entries)).toEqual([]);
 	});
 });

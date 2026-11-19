@@ -5,7 +5,7 @@ import extension from "../../src/extension.ts";
 import * as classify from "../../src/guard/classify.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { cleanupDirs, type ToolHarness, toolHarness } from "../tools/helpers.ts";
-import { FakePi, fakeCtx } from "./fake-pi.ts";
+import { asChild, FakePi, fakeCtx } from "./fake-pi.ts";
 
 const HOME = process.env.HOME;
 
@@ -155,5 +155,15 @@ describe("command-guards", () => {
 		expect(await call("write", { path: "src/../.pi/livespec/config.yaml" })).toBeUndefined();
 		setSession(undefined);
 		expect(await call("bash", { command: "gh issue edit 1 --body x" })).toBeUndefined();
+	});
+});
+
+describe("command-guards in a child session", () => {
+	test("guard blocks git push in a child", async () => {
+		const { h, pi } = await guarded();
+		const child = asChild(fakeCtx(h.root));
+		const out = await pi.fire("tool_call", { type: "tool_call", toolName: "bash", toolCallId: "c1", input: { command: "git push" } }, child);
+		expect((out as Block)?.block).toBe(true);
+		expect((out as { reason: string }).reason).toMatch(/^livespec guard:/);
 	});
 });

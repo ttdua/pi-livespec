@@ -5,6 +5,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { exposedSkillPaths } from "../content/expose.ts";
 import { messageOf } from "../core/messages.ts";
+import { CHILD_NOTE, isChildSession } from "../subagents/child.ts";
 import { renderCard } from "./phase-card.ts";
 import { ROUTING_NOTE } from "./routing-note.ts";
 import type { Session } from "./session.ts";
@@ -49,6 +50,11 @@ function optionalSkillRead(session: Session, input: unknown, cwd: string): strin
 
 export function registerContextHooks(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (event, ctx) => {
+		// A child only gets the note: `refresh` can advance the change, which a child must never do.
+		if (isChildSession(ctx)) {
+			if (initializedSession()) event.systemPromptOptions.sections[ROUTING_SECTION] = CHILD_NOTE;
+			return;
+		}
 		const session = initializedSession();
 		if (!session) return;
 		try {
@@ -60,6 +66,7 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 	});
 
 	pi.on("context", async (event, ctx) => {
+		if (isChildSession(ctx)) return undefined;
 		const session = initializedSession();
 		if (!session) return undefined;
 		try {
@@ -74,6 +81,7 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
+		if (isChildSession(ctx)) return undefined;
 		const session = initializedSession();
 		if (!session || event.toolName !== READ_TOOL) return undefined;
 		try {
@@ -86,6 +94,7 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 	});
 
 	pi.on("resources_discover", async (_event, ctx) => {
+		if (isChildSession(ctx)) return NO_SKILLS;
 		try {
 			const session = getSession();
 			if (!session) return NO_SKILLS;
