@@ -86,16 +86,19 @@ function parseCondition(condition: string): Condition | undefined {
 	return undefined;
 }
 
-/** True when `unit`, or the phase without a unit, touches code that no capability's `paths` covers. */
-export function unfamiliarCode(phase: string, unit: Unit | undefined, specs: Spec[]): boolean {
+/**
+ * The `unfamiliar-code` condition. In `build`, true when a file of `unit` matches no capability's `paths`.
+ * In `shape`, `define` and `plan`, true when the repository has no specs, or a change capability (`capabilities`,
+ * the names in the change's `Capabilities` header) has no spec or a spec with no `paths`.
+ */
+export function unfamiliarCode(phase: string, unit: Unit | undefined, specs: Spec[], capabilities: string[]): boolean {
 	if (specs.length === 0) return true;
 	if (phase === "build") {
 		if (!unit) return false;
 		const globs = specs.flatMap((s) => s.paths);
 		return unit.files.some((file) => !globs.some((glob) => matchGlob(glob, file)));
 	}
-	const named = new Set((unit?.covers ?? []).map((c) => c.split("/")[0]?.trim() ?? ""));
-	return [...named].some((capability) => {
+	return capabilities.some((capability) => {
 		const spec = specs.find((s) => s.capability === capability);
 		return spec === undefined || spec.paths.length === 0;
 	});
@@ -133,6 +136,23 @@ function validateEntry(node: Node, report: (n: Node, message: string) => void): 
 		report(modeNode ?? node, `\`mode\` must be one of: ${MODES.join(", ")}`);
 	}
 	validateWhen(node, get("when"), mode, report);
+	validateAdvisory(get("advisory"), report);
+	validateSkills(get("skills"), report);
+}
+
+function validateAdvisory(pair: Pair | undefined, report: (n: Node, message: string) => void): void {
+	if (!pair) return;
+	const value = pair.value as Node | null;
+	if (!isScalar(value) || typeof value.value !== "boolean") report(value ?? (pair.key as Node), "`advisory` must be true or false");
+}
+
+function validateSkills(pair: Pair | undefined, report: (n: Node, message: string) => void): void {
+	if (!pair) return;
+	const value = pair.value as Node | null;
+	if (!isSeq(value)) return report(value ?? (pair.key as Node), "`skills` must be a list of skill names");
+	for (const item of value.items) {
+		if (scalarText(item as Node) === undefined) report(item as Node, "`skills` entries must be skill names (strings)");
+	}
 }
 
 function validateSubject(node: Node, pair: Pair | undefined, role: string | undefined, report: (n: Node, message: string) => void): void {
@@ -153,8 +173,10 @@ function isValidSubject(value: string): value is ReviewSubject {
 function validateWhen(node: Node, pair: Pair | undefined, mode: unknown, report: (n: Node, message: string) => void): void {
 	if (mode !== "auto" && pair) report(pair.key as Node, "`when` is only allowed with `mode: auto`");
 	if (mode === "auto" && !pair) report(node, "`mode: auto` needs a `when` list");
-	if (!pair || !isSeq(pair.value)) return;
-	for (const item of pair.value.items) {
+	if (!pair) return;
+	const list = pair.value as Node | null;
+	if (!isSeq(list)) return report(list ?? (pair.key as Node), "`when` must be a list of conditions");
+	for (const item of list.items) {
 		const text = isScalar(item) ? String(item.value) : "";
 		if (!parseCondition(text)) report(item as Node, `unparsable condition \`${text}\`; allowed: units>=N, difficulty>=low|medium|high, tags:<tag>, unfamiliar-code, context>=N%`);
 	}

@@ -1,3 +1,4 @@
+// Tests for the role catalogue: the result schemas each role must submit.
 import { describe, expect, test } from "vitest";
 import { type JsonSchema, type Role, resultSchema } from "../../src/subagents/roles.ts";
 

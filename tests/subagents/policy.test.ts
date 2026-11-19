@@ -1,3 +1,4 @@
+// Tests for the subagents pack policy: sub-schema validation, `when` conditions and the default pack entries.
 import { LineCounter, type Node, type Pair, isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Unit } from "../../src/core/change.ts";
@@ -109,6 +110,31 @@ describe("subagents sub-schema", () => {
 		expect(errors.length).toBeGreaterThan(0);
 	});
 
+	test("advisory must be a boolean", () => {
+		const errors = errorsOf("[{ role: reviewer, subject: spec, mode: always, advisory: nope }]");
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toMatchObject({ line: 6, col: 74 });
+		expect(errors[0]?.message).toContain("advisory");
+	});
+
+	test("skills must be a list of strings", () => {
+		const errors = errorsOf("[{ role: implementer, mode: always, skills: 42 }]");
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toMatchObject({ line: 6, col: 60 });
+		expect(errors[0]?.message).toContain("skills");
+	});
+
+	test("skills entries must be strings", () => {
+		expect(errorsOf("[{ role: implementer, mode: always, skills: [{ a: 1 }] }]")).toHaveLength(1);
+	});
+
+	test("when must be a list", () => {
+		const errors = errorsOf("[{ role: implementer, mode: auto, when: units>=3 }]");
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toMatchObject({ line: 6, col: 56 });
+		expect(errors[0]?.message).toContain("`when` must be a list");
+	});
+
 	test("persona subjects are reported as personas", () => {
 		expect(personas([{ role: "reviewer", subject: "persona:security", mode: "always" }])).toEqual(["security"]);
 	});
@@ -117,13 +143,27 @@ describe("subagents sub-schema", () => {
 describe("when conditions", () => {
 	test("unfamiliar code in build", () => {
 		const specs = [spec("auth", ["src/auth/**"])];
-		expect(unfamiliarCode("build", unit({ files: ["src/new/x.ts"] }), specs)).toBe(true);
-		expect(unfamiliarCode("build", unit({ files: ["src/auth/a.ts"] }), specs)).toBe(false);
+		expect(unfamiliarCode("build", unit({ files: ["src/new/x.ts"] }), specs, ["auth"])).toBe(true);
+		expect(unfamiliarCode("build", unit({ files: ["src/auth/a.ts"] }), specs, ["auth"])).toBe(false);
 	});
 
-	test("unfamiliar code in plan, for a capability without paths", () => {
-		const specs = [spec("billing", [])];
-		expect(unfamiliarCode("plan", unit({ covers: ["billing/Requirement: x"] }), specs)).toBe(true);
+	test("unfamiliar code in plan with no unit: a capability has no spec", () => {
+		const specs = [spec("auth", ["src/auth/**"])];
+		expect(unfamiliarCode("plan", undefined, specs, ["auth", "billing"])).toBe(true);
+	});
+
+	test("unfamiliar code in plan with no unit: a spec has paths []", () => {
+		const specs = [spec("auth", ["src/auth/**"]), spec("billing", [])];
+		expect(unfamiliarCode("define", undefined, specs, ["auth", "billing"])).toBe(true);
+	});
+
+	test("no unfamiliar code in plan when every capability has a spec with paths", () => {
+		const specs = [spec("auth", ["src/auth/**"]), spec("billing", ["src/billing/**"])];
+		expect(unfamiliarCode("plan", undefined, specs, ["auth", "billing"])).toBe(false);
+	});
+
+	test("unfamiliar code in shape when the repository has no specs", () => {
+		expect(unfamiliarCode("shape", undefined, [], [])).toBe(true);
 	});
 
 	test("context threshold with margin", () => {
