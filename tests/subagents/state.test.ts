@@ -1,3 +1,4 @@
+// Tests of the lane records and the unit worktree resolution.
 import { describe, expect, it } from "vitest";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { laneComment, openLanes, unitRoot } from "../../src/subagents/state.ts";
@@ -22,5 +23,12 @@ describe("lanes", () => {
 		const state = stateFor("apply", { subagents: { executor: { ok: true, missing: [] }, turnsCompleted: 0, lanes: { U2: lane } } });
 		expect(unitRoot(state, "U2", "/w")).toBe(lane.path);
 		expect(unitRoot(state, "U1", "/w")).toBe("/w");
+	});
+});
+
+describe("lane validation", () => {
+	it("a null or incomplete lane record is skipped", () => {
+		const m = (data: unknown): MarkedComment => ({ commentId: "x", kind: "lane", id: "lane.U9", author: "me", data });
+		expect(openLanes([m(null), m({ unit: "U9" }), mark(laneComment(lane))])).toEqual({ U2: lane });
 	});
 });

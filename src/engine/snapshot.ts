@@ -10,8 +10,8 @@ import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { readRequests } from "../interaction/requests.ts";
 import { findExecutor } from "../subagents/executor.ts";
-import { pendingQuestion } from "../subagents/records.ts";
-import { openLanes } from "../subagents/state.ts";
+import { invalidRecords, pendingQuestion } from "../subagents/records.ts";
+import { invalidLanes, openLanes } from "../subagents/state.ts";
 import type { CommentsCache } from "./comments-cache.ts";
 import { deriveUnitEvidence } from "../evidence/unit-state.ts";
 import { readCounters } from "./counters.ts";
@@ -81,6 +81,8 @@ type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" |
 
 type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
 
+const invalidWarnings = (marked: MarkedComment[]): string[] => [...invalidRecords(marked), ...invalidLanes(marked)];
+
 const UNKNOWN_LOGIN_WARNING = "the forge is unreachable and the current login is unknown: own marked comments are not read";
 
 /** Pure: every fact derived from the own marked comments and the parsed body. */
@@ -123,7 +125,7 @@ async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): 
 	return {
 		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts }),
 		stale: read.stale || login === undefined,
-		warnings: own.warnings,
+		warnings: [...own.warnings, ...invalidWarnings(own.comments)],
 	};
 }
 

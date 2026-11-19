@@ -1,3 +1,4 @@
+// Tests of the dispatch and finding-summary records and the queries over them.
 import { describe, expect, it } from "vitest";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import {
@@ -7,6 +8,7 @@ import {
 	type FindingSummaryData,
 	findingKey,
 	findingSummaryComment,
+	invalidRecords,
 	latestDispatch,
 	pendingQuestion,
 	rebuttalComment,
@@ -116,5 +118,45 @@ describe("pendingQuestion", () => {
 		expect(pendingQuestion([q, a])).toBeUndefined();
 		expect(pendingQuestion([q, a, summary({ agentId: "r1" })])).toBeUndefined();
 		expect(pendingQuestion([q, summary({ agentId: "r1" })])).toBeUndefined();
+	});
+});
+
+describe("fix round 1", () => {
+	const sameId = (m: MarkedComment, over: Partial<MarkedComment>): MarkedComment => ({ ...m, commentId: `c${++counter}`, ...over });
+
+	it("superseded summary neither satisfies a review nor resolves a finding", () => {
+		const good = summary({ head: "h1" });
+		const redo = sameId(good, { data: { ...(good.data as object), completed: false, status: "BLOCKED" } });
+		expect(completedReviewAt([good, redo], "U1", ["h1"])).toBe(false);
+		const r1 = summary({ findings: [finding()] });
+		const r2 = summary({ round: 2 });
+		const r2again = sameId(r2, { data: { ...(r2.data as object), completed: false } });
+		expect(unresolvedBlocking([r1, r2, r2again], "U1", new Set(), new Set())).toHaveLength(1);
+	});
+
+	it("advisory summary does not satisfy completedReviewAt", () => {
+		expect(completedReviewAt([summary({ advisory: true, head: "h1" })], "U1", ["h1"])).toBe(false);
+	});
+
+	it("advisory round does not resolve findings of a non-advisory review", () => {
+		const r1 = summary({ findings: [finding()] });
+		const adv = summary({ round: 2, advisory: true });
+		expect(unresolvedBlocking([r1, adv], "U1", new Set(), new Set())).toHaveLength(1);
+	});
+
+	it("invalid records are skipped, not thrown", () => {
+		const bad = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+		const junk = [
+			bad("dispatch", "d1", null),
+			bad("dispatch", "d2", { status: "QUESTION", agentId: "a" }),
+			bad("dispatch", "d3", { status: "QUESTION", role: "implementer", question: "q" }),
+			bad("finding-summary", "f1", null),
+			bad("finding-summary", "f2", { unit: "U1", findings: [{ severity: "WARNING" }], completed: true }),
+		];
+		expect(pendingQuestion(junk)).toBeUndefined();
+		expect(latestDispatch(junk, "U1")).toBeUndefined();
+		expect(unresolvedBlocking(junk, "U1", new Set(), new Set())).toEqual([]);
+		expect(completedReviewAt(junk, "U1", ["h"])).toBe(false);
+		expect(invalidRecords(junk)).toHaveLength(5);
 	});
 });

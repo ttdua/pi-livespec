@@ -87,7 +87,7 @@ const isResultRecord = (m: MarkedComment): boolean => {
 
 /** The unit's latest settled `dispatch` record (questions and answers excluded), optionally of one role. */
 export function latestDispatch(marked: MarkedComment[], unit: string, role?: Role): DispatchData | undefined {
-	const found = marked.filter((m) => {
+	const found = current(marked).filter((m) => {
 		if (!isResultRecord(m)) return false;
 		const data = m.data as DispatchData;
 		return data.unit === unit && (role === undefined || data.role === role);
@@ -100,14 +100,55 @@ export function computeCompleted(result: Pick<SubagentResult, "status" | "source
 	return COMPLETED_STATUSES.includes(result.status) && required.every((id) => result.sources_used.includes(id));
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isStrList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
+const ROLE_NAMES = ["scout", "implementer", "reviewer", "verifier"];
+const FINDING_KEYS = ["severity", "kind", "location", "evidence", "fix", "scope"] as const;
+
+const isFinding = (v: unknown): v is Finding => isRecord(v) && FINDING_KEYS.every((k) => isStr(v[k]));
+const hasRole = (d: Record<string, unknown>): boolean => isStr(d.role) && ROLE_NAMES.includes(d.role);
+
+function validDispatch(d: unknown): boolean {
+	if (!isRecord(d) || !hasRole(d)) return false;
+	if (d.status === "QUESTION") return isStr(d.agentId) && isStr(d.question);
+	if (d.status === "ANSWERED") return isStr(d.agentId);
+	return isStr(d.status);
+}
+
+function validSummary(d: unknown): boolean {
+	if (!isRecord(d)) return false;
+	if (isStr(d.rebuts)) return Array.isArray(d.items) && d.items.every((i) => isRecord(i) && typeof i.index === "number");
+	return hasRole(d) && isStr(d.subject) && typeof d.completed === "boolean" && isStr(d.head) && Array.isArray(d.findings) && d.findings.every(isFinding);
+}
+
+const VALID: Record<string, (d: unknown) => boolean> = { dispatch: validDispatch, "finding-summary": validSummary };
+
+/** Own `dispatch` and `finding-summary` records whose data does not have the expected shape. */
+export function invalidRecords(marked: MarkedComment[]): string[] {
+	return marked.filter((m) => m.kind in VALID && !(VALID[m.kind] as (d: unknown) => boolean)(m.data)).map((m) => `ignored invalid ${m.kind} record ${m.commentId} (${m.id})`);
+}
+
+/** Valid records only, and of those the latest comment per marker identity: superseded comments are history. */
+function current(marked: MarkedComment[]): MarkedComment[] {
+	const latest = new Map<string, MarkedComment>();
+	for (const m of marked) {
+		const valid = VALID[m.kind];
+		if (valid === undefined || !valid(m.data)) continue;
+		const key = `${m.kind}:${m.id}`;
+		latest.delete(key);
+		latest.set(key, m);
+	}
+	const kept = new Set(latest.values());
+	return marked.filter((m) => kept.has(m));
+}
+
 type Summary = { commentId: string; at: number; data: FindingSummaryData };
 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
-	marked.forEach((m, at) => {
-		if (m.kind !== "finding-summary") return;
-		const data = m.data as Partial<FindingSummaryData> | null;
-		if (data && Array.isArray(data.findings)) found.push({ commentId: m.commentId, at, data: data as FindingSummaryData });
+	current(marked).forEach((m, at) => {
+		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.commentId, at, data: m.data as FindingSummaryData });
 	});
 	return found;
 }
@@ -115,8 +156,8 @@ function summariesOf(marked: MarkedComment[]): Summary[] {
 /** Rebuttals as `commentId:index` keys; a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
 function rebuttedKeys(marked: MarkedComment[]): Set<string> {
 	const keys = new Set<string>();
-	for (const m of marked) {
-		const data = m.kind === "finding-summary" ? (m.data as Partial<RebuttalData> | null) : null;
+	for (const m of current(marked)) {
+		const data = m.kind === "finding-summary" ? (m.data as Partial<RebuttalData>) : null;
 		if (!data || typeof data.rebuts !== "string" || !Array.isArray(data.items)) continue;
 		for (const item of data.items) keys.add(findingKey(data.rebuts, item.index));
 	}
@@ -129,7 +170,7 @@ const sameSpot = (a: Finding, b: Finding): boolean => a.location === b.location 
 
 /** True when the latest completed round after `s` for the same unit and subject no longer reports `f`. */
 function fixedByLaterReview(s: Summary, f: Finding, all: Summary[]): boolean {
-	const later = all.filter((o) => o.at > s.at && o.data.completed && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
+	const later = all.filter((o) => o.at > s.at && o.data.completed && !o.data.advisory && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
 	const latest = later.at(-1);
 	return latest !== undefined && !latest.data.findings.some((g) => isBlocking(g) && sameSpot(f, g));
 }
@@ -164,14 +205,14 @@ export function unresolvedBlocking(marked: MarkedComment[], unit: string, answer
 /** True when a completed unit review of `unit` records one of `commits` (HEAD, plus a lane merge's second parent). */
 export function completedReviewAt(marked: MarkedComment[], unit: string, commits: string[]): boolean {
 	return summariesOf(marked).some(
-		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && commits.includes(s.data.head),
+		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
 	);
 }
 
 /** The latest launched run whose last record is an unanswered `QUESTION`; rebuilt from comments only. */
 export function pendingQuestion(marked: MarkedComment[]): PendingQuestion | undefined {
 	const lastByAgent = new Map<string, MarkedComment>();
-	for (const m of marked) {
+	for (const m of current(marked)) {
 		if (m.kind !== "dispatch" && m.kind !== "finding-summary") continue;
 		const agentId = (m.data as { agentId?: unknown } | null)?.agentId;
 		if (typeof agentId === "string") lastByAgent.delete(agentId), lastByAgent.set(agentId, m);

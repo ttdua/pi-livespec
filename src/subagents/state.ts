@@ -12,12 +12,21 @@ export function laneComment(data: LaneData): string {
 	return writeMarked("lane", `lane.${data.unit}`, data);
 }
 
+const isLane = (d: unknown): d is LaneData =>
+	typeof d === "object" && d !== null && ["unit", "path", "branch", "base"].every((k) => typeof (d as Record<string, unknown>)[k] === "string");
+
+/** Lane records whose data does not have the expected shape. */
+export function invalidLanes(marked: MarkedComment[]): string[] {
+	return marked.filter((m) => m.kind === "lane" && !isLane(m.data)).map((m) => `ignored invalid lane record ${m.commentId} (${m.id})`);
+}
+
 /** Units whose latest own `lane` record is not closed. */
 export function openLanes(marked: MarkedComment[]): Record<string, LaneRecord> {
 	const latest = new Map<string, LaneData>();
 	for (const m of marked) {
 		if (m.kind !== "lane") continue;
-		const data = m.data as LaneData;
+		if (!isLane(m.data)) continue;
+		const data = m.data;
 		latest.set(data.unit, data);
 	}
 	const open: Record<string, LaneRecord> = {};
