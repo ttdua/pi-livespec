@@ -159,7 +159,7 @@ Child sessions are detected in the existing hooks. `unit_start` and `unit_finish
   - `FINDING_SCHEMA`, `ROLE_SUBJECTS`;
   - `entriesFor(pack, phaseId): SubagentEntry[]`;
   - `holds(entry, facts: PolicyFacts): boolean`, where `PolicyFacts = { units: number; difficulty?: "low"|"medium"|"high"; maxDifficulty?: ...; tags: string[]; unfamiliar: boolean; contextPercent?: number; turnsCompleted: number }`;
-  - `unfamiliarCode(phase, unit | undefined, specs): boolean`.
+  - `unfamiliarCode(phase, unit | undefined, specs, capabilities: string[]): boolean`. Contract deviation (internal, Task 3): it takes the change's `Capabilities` names, because shape, define and plan have no unit to read capabilities from.
 
 - [ ] **Step 1:** Write the failing tests:
   - `valid entry`.

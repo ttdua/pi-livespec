@@ -19,10 +19,10 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 3.1 `src/subagents/roles.ts`: role → agent name, reviewer subjects, per-role result schema in the executor's JSON Schema subset, and the finding schema (spec `review-findings` Finding schema)
-- [ ] 3.2 `src/subagents/policy.ts`: the `subagents` sub-schema validator registered with `registerPackSchema("subagents", …)` (personas reported), and pure `when` evaluation (`units>=`, `difficulty>=`, `tags:`, `unfamiliar-code` for shape/define/plan/build, `context>=N%` with a 2-point margin, never before the first turn)
-- [ ] 3.3 `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`: the default `subagents` entries (spec `subagent-policy` Default pack entries)
-- [ ] 3.4 Tests: schema errors with line/column, every `when` scenario, the default pack validates
+- [x] 3.1 `src/subagents/roles.ts`: role → agent name, reviewer subjects, per-role result schema in the executor's JSON Schema subset, and the finding schema (spec `review-findings` Finding schema)
+- [x] 3.2 `src/subagents/policy.ts`: the `subagents` sub-schema validator registered with `registerPackSchema("subagents", …)` (personas reported), and pure `when` evaluation (`units>=`, `difficulty>=`, `tags:`, `unfamiliar-code` for shape/define/plan/build, `context>=N%` with a 2-point margin, never before the first turn)
+- [x] 3.3 `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`: the default `subagents` entries (spec `subagent-policy` Default pack entries)
+- [x] 3.4 Tests: schema errors with line/column, every `when` scenario, the default pack validates
 
 ## 4. Records: dispatch and finding-summary
 
