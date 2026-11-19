@@ -88,7 +88,7 @@ export function gateRequest(
 	plan: GatePlan,
 	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date },
 ): ApprovalRequest {
-	const snapshot: GateSnapshot = { target, failingWaivable: plan.failingWaivable };
+	const snapshot: GateSnapshot = { target, failingWaivable: plan.failingWaivable, ...(input.payload.findings.length === 0 ? {} : { findings: input.payload.findings }) };
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });

@@ -2,7 +2,6 @@
 
 import type { Question } from "../core/change.ts";
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
-import { REQUEST_KIND } from "../interaction/approver.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
@@ -216,13 +215,13 @@ export function reviewedUnits(marked: MarkedComment[]): string[] {
 	return [...new Set(summariesOf(marked).filter((s) => !s.data.advisory && s.data.unit !== undefined).map((s) => s.data.unit as string))];
 }
 
-/** Keys of every finding whose summary comment precedes the latest gate request: that gate's payload listed it. */
+/** Finding keys recorded in the `findings` of `gate` comments (written when a gate completes); malformed lists are ignored. */
 export function gatesShownKeys(marked: MarkedComment[]): Set<string> {
-	const isGate = (m: MarkedComment): boolean => m.kind === REQUEST_KIND && (m.data as { kind?: unknown } | null)?.kind === "gate";
-	const lastGate = marked.reduce((at, m, i) => (isGate(m) ? i : at), -1);
-	const before = new Set(marked.slice(0, Math.max(lastGate, 0)).map((m) => m.commentId));
 	const keys = new Set<string>();
-	for (const s of summariesOf(marked)) if (before.has(s.commentId)) s.data.findings.forEach((_f, index) => keys.add(findingKey(s.commentId, index)));
+	for (const m of marked) {
+		const list = m.kind === "gate" ? (m.data as { findings?: unknown } | null)?.findings : undefined;
+		if (Array.isArray(list) && list.every((k) => typeof k === "string")) for (const k of list) keys.add(k as string);
+	}
 	return keys;
 }
 

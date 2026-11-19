@@ -4,7 +4,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { entriesFor } from "./policy.ts";
-import { current, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking } from "./records.ts";
+import { current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking } from "./records.ts";
 import type { Finding } from "./roles.ts";
 
 const HEADING = "Subagent findings:";
@@ -13,17 +13,22 @@ const isRebuttal = (d: unknown): d is RebuttalData => typeof (d as Partial<Rebut
 
 const findingLine = (f: Finding): string => `- ${f.severity} ${f.kind} at ${untrusted(f.location)}: ${untrusted(f.evidence)} (fix: ${untrusted(f.fix)})`;
 
+type Listed = { lines: string[]; keys: string[] };
+
 /** Advisory reviews of the phase's own advisory reviewer entries: valid, current summaries only. */
-function advisoryLines(marked: MarkedComment[], pack: Pack, target: string): string[] {
+function advisoryListed(marked: MarkedComment[], pack: Pack, target: string): Listed {
 	const subjects = new Set(entriesFor(pack, target).filter((e) => e.role === "reviewer" && e.advisory === true).map((e) => e.subject));
-	const lines: string[] = [];
+	const out: Listed = { lines: [], keys: [] };
 	for (const m of current(marked)) {
 		if (m.kind !== "finding-summary" || isRebuttal(m.data)) continue;
 		const data = m.data as FindingSummaryData;
 		if (data.advisory !== true || !subjects.has(data.subject)) continue;
-		lines.push(...data.findings.map(findingLine));
+		data.findings.forEach((f, i) => {
+			out.lines.push(findingLine(f));
+			out.keys.push(findingKey(m.commentId, i));
+		});
 	}
-	return lines;
+	return out;
 }
 
 /** Rebuttals as `summary:index reason — evidence`; reason and evidence are the parent's text, shown as data. */
@@ -32,23 +37,26 @@ function rebuttalLines(marked: MarkedComment[]): string[] {
 	return found.flatMap((m) => (m.data as RebuttalData).items.map((i) => `- ${(m.data as RebuttalData).rebuts}:${i.index} ${untrusted(i.reason)} — ${untrusted(i.evidence)}`));
 }
 
-/** Blocking `out-of-scope` findings no gate has shown yet: this gate's payload carries them. */
-function outOfScopeLines(marked: MarkedComment[]): string[] {
+/** Blocking `out-of-scope` findings no completed gate has recorded yet: this gate's payload carries them. */
+function outOfScopeListed(marked: MarkedComment[]): Listed {
 	const shown = gatesShownKeys(marked);
-	const open = reviewedUnits(marked).flatMap((unit) => unresolvedBlocking(marked, unit, new Set(), shown));
-	return open.filter((o) => o.finding.scope === "out-of-scope").map((o) => findingLine(o.finding));
+	const open = reviewedUnits(marked).flatMap((unit) => unresolvedBlocking(marked, unit, new Set(), shown)).filter((o) => o.finding.scope === "out-of-scope");
+	return { lines: open.map((o) => findingLine(o.finding)), keys: open.map((o) => findingKey(o.comment, o.index)) };
 }
 
-/** The "Subagent findings" section of a gate payload, or an empty list when there is nothing to show. */
-export function subagentFindingsSection(marked: MarkedComment[], pack: Pack, target: string): string[] {
-	const advisory = advisoryLines(marked, pack, target);
+export type FindingsSection = { lines: string[]; keys: string[] };
+
+/** The "Subagent findings" section of a gate payload and the keys of the findings it lists; empty when there is nothing to show. */
+export function subagentFindingsSection(marked: MarkedComment[], pack: Pack, target: string): FindingsSection {
+	const advisory = advisoryListed(marked, pack, target);
 	const rebuttals = rebuttalLines(marked);
-	const outOfScope = outOfScopeLines(marked);
-	if (advisory.length === 0 && rebuttals.length === 0 && outOfScope.length === 0) return [];
-	return [
+	const outOfScope = outOfScopeListed(marked);
+	if (advisory.lines.length === 0 && rebuttals.length === 0 && outOfScope.lines.length === 0) return { lines: [], keys: [] };
+	const lines = [
 		HEADING,
-		...advisory,
-		...(outOfScope.length === 0 ? [] : ["Out-of-scope findings:", ...outOfScope]),
+		...advisory.lines,
+		...(outOfScope.lines.length === 0 ? [] : ["Out-of-scope findings:", ...outOfScope.lines]),
 		...(rebuttals.length === 0 ? [] : ["Rebuttals:", ...rebuttals]),
 	];
+	return { lines, keys: [...advisory.keys, ...outOfScope.keys] };
 }

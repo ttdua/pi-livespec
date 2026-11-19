@@ -226,6 +226,21 @@ describe("completion engine", () => {
 		expect(gate.answer_comment).toMatchObject({ id: polled.answerComment?.id, author: "alice" });
 	});
 
+	test("gate comment records the findings of the request snapshot, in-session and forge", async () => {
+		const f = await fixture("define");
+		const snapshot = { target: "define", failingWaivable: [], findings: ["c9:0", "c9:2"] };
+		const inSession = await prepare(f, "gate", "gate:define", snapshot);
+		await completeAnswer(await ctxOf(f), inSession, answer());
+		expect((ofKind(await markedOf(f), "gate").at(-1)?.data as { findings?: string[] }).findings).toEqual(["c9:0", "c9:2"]);
+		const g = await fixture("define");
+		const record = await prepare(g, "gate", "gate:define", snapshot);
+		const polled = await forgeAnswer(g, record, "/livespec approve");
+		await completeAnswer(await ctxOf(g), record, polled);
+		const data = ofKind(await markedOf(g), "gate").at(-1)?.data as { adapter: string; findings?: string[] };
+		expect(data.adapter).toBe("forge");
+		expect(data.findings).toEqual(["c9:0", "c9:2"]);
+	});
+
 	test("Foreign marked gate ignored", async () => {
 		const f = await fixture("plan");
 		await f.world.postComment(f.n, OTHER_LOGIN, writeMarked("gate", "plan.self-1", { phase: "plan", outcome: "approved", notes: "", by: OTHER_LOGIN, at: AT, adapter: "forge", head_sha: f.head, waivers: [] }));

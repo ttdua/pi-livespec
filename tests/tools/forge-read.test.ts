@@ -122,12 +122,19 @@ describe("forge_read provenance", () => {
 		void n;
 	});
 
-	test("the content hash changes with the item", async () => {
+	test("the content hash changes with the same item and ignores key order", async () => {
 		const { h } = await harness();
-		const pr = await h.world.seedPullRequest({ head: "feat", files: ["a.ts"] });
-		const before = text(await read(h, { target: "pr-files", number: pr }));
-		await h.world.seedPullRequest({ head: "other" });
-		const same = text(await read(h, { target: "pr-files", number: pr }));
-		expect(same).toBe(before);
+		const pr = await h.world.seedPullRequest({ head: "feat" });
+		await h.world.seedReview(pr, { author: "alice", state: "approved", body: "ok" });
+		const version = async () => /version ([0-9a-f]{64})/.exec(text(await read(h, { target: "reviews", number: pr })))?.[1];
+		const before = await version();
+		await h.world.seedReview(pr, { body: "ok", state: "approved", author: "alice" });
+		const reordered = text(await read(h, { target: "reviews", number: pr })).match(/version ([0-9a-f]{64})/g);
+		expect(reordered?.[0]).toBe(reordered?.[1]);
+		expect(reordered?.[0]).toBe(`version ${before}`);
+		const other = await h.world.seedPullRequest({ head: "feat2" });
+		await h.world.seedReview(other, { author: "alice", state: "approved", body: "changed" });
+		const changed = /version ([0-9a-f]{64})/.exec(text(await read(h, { target: "reviews", number: other })))?.[1];
+		expect(changed).not.toBe(before);
 	});
 });

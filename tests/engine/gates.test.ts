@@ -214,7 +214,7 @@ describe("gatePayload", () => {
 
 	test("named gate payload is the header", () => {
 		registerGate("new-dependency", { checks: [] });
-		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [] });
+		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [], findings: [] });
 	});
 });
 
@@ -292,13 +292,36 @@ describe("subagent findings in the gate payload", () => {
 		expect(text).not.toContain("stale complaint");
 	});
 
-	test("out-of-scope blocking findings are listed until a gate request has shown them", () => {
-		const review = reviewed({ findings: [finding({ scope: "out-of-scope", evidence: "unrelated module leaks" })] });
-		const before = gatePayload(ready("define", { marked: [review] }), pack, "define", FACTS).summary;
-		expect(before).toContain("Out-of-scope findings");
-		expect(before).toContain("unrelated module leaks");
-		const request = mark(writeMarked("request", "gate-define.x", { kind: "gate", subject: "gate:define", mode: "blocking", head_sha: "f", snapshot: { target: "define", failingWaivable: [] }, summary: "s" }));
-		const after = gatePayload(ready("define", { marked: [review, request] }), pack, "define", FACTS).summary;
-		expect(after).not.toContain("Out-of-scope findings");
+	const oos = () => reviewed({ findings: [finding({ scope: "out-of-scope", evidence: "unrelated module leaks" })] });
+	const gateComment = (findings: unknown): MarkedComment =>
+		mark(writeMarked("gate", "define.x", { phase: "define", outcome: "approved", notes: "", by: "a", at: "t", adapter: "in-session", head_sha: "f", waivers: [], findings }));
+
+	test("gatePayload returns the keys of the findings it lists", () => {
+		const review = oos();
+		const advisory = reviewer("spec");
+		const payload = gatePayload(ready("define", { marked: [review, advisory] }), pack, "define", FACTS);
+		expect([...payload.findings].sort()).toEqual([`${advisory.commentId}:0`, `${review.commentId}:0`].sort());
+	});
+
+	test("out-of-scope findings are listed until a gate comment has recorded them", () => {
+		const review = oos();
+		expect(gatePayload(ready("define", { marked: [review] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+		const shown = gateComment([`${review.commentId}:0`]);
+		const after = gatePayload(ready("define", { marked: [review, shown] }), pack, "define", FACTS);
+		expect(after.summary).not.toContain("Out-of-scope findings");
+		expect(after.findings).toEqual([]);
+	});
+
+	test("an unrelated amendment request does not mark findings shown", () => {
+		const review = oos();
+		const amend = mark(writeMarked("request", "amend-1.x", { kind: "gate", subject: "amend:1", mode: "blocking", head_sha: "f", snapshot: { action: "edit", unit: "U1", records: [] }, summary: "s" }));
+		expect(gatePayload(ready("define", { marked: [review, amend] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+	});
+
+	test("malformed findings in a gate comment are ignored", () => {
+		const review = oos();
+		for (const bad of ["x", [1], { a: 1 }, null]) {
+			expect(gatePayload(ready("define", { marked: [review, gateComment(bad)] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+		}
 	});
 });
