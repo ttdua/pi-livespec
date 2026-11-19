@@ -9,6 +9,9 @@ import { phaseLabel } from "../forge/labels.ts";
 import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { readRequests } from "../interaction/requests.ts";
+import { findExecutor } from "../subagents/executor.ts";
+import { pendingQuestion } from "../subagents/records.ts";
+import { openLanes } from "../subagents/state.ts";
 import type { CommentsCache } from "./comments-cache.ts";
 import { deriveUnitEvidence } from "../evidence/unit-state.ts";
 import { readCounters } from "./counters.ts";
@@ -74,7 +77,7 @@ async function currentLogin(forge: Forge): Promise<string | undefined> {
 	}
 }
 
-type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence">;
+type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents">;
 
 type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
 
@@ -97,6 +100,19 @@ export function deriveCommentFacts(
 		requests: readRequests(marked),
 		lock: deriveLocks(change, marked),
 		iterations,
+		subagents: deriveSubagents(marked),
+	};
+}
+
+/** Executor facts come from the live service; lanes and the pending question only from own comments. */
+function deriveSubagents(marked: MarkedComment[]): ChangeState["subagents"] {
+	const found = findExecutor();
+	const pending = pendingQuestion(marked);
+	return {
+		executor: { ok: found.ok, missing: found.ok ? [] : found.missing },
+		turnsCompleted: 0,
+		lanes: openLanes(marked),
+		...(pending === undefined ? {} : { pending: { ...(pending.unit === undefined ? {} : { unit: pending.unit }), agentId: pending.agentId, question: pending.question } }),
 	};
 }
 
@@ -152,5 +168,6 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		iterations: comments.iterations,
 		commandWarnings: [],
 		evidence: comments.evidence,
+		subagents: comments.subagents,
 	};
 }
