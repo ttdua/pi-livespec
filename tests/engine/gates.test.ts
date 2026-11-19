@@ -14,7 +14,8 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
-import { finding, rebutted, reviewed } from "../subagents/helpers.ts";
+import { finding, mark, rebutted, reviewed } from "../subagents/helpers.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 
 /** The fixture body with Q1 answered, so no blocking question is open. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", "- [x] Q1 (blocking): Which header carries the client IP behind the proxy? — Answer: X-Forwarded-For");
@@ -275,5 +276,29 @@ describe("subagent findings in the gate payload", () => {
 		expect(text).toContain("Rebuttals");
 		expect(text).toContain(untrusted("limit is inclusive"));
 		expect(text).toContain(untrusted("see ratelimit.ts:12"));
+	});
+
+	test("a malformed advisory summary is skipped", () => {
+		const bad = { ...reviewer("spec"), data: { ...(reviewer("spec").data as object), findings: "oops" } } as MarkedComment;
+		const s = ready("define", { marked: [bad] });
+		expect(gatePayload(s, pack, "define", FACTS).summary).not.toContain("Subagent findings");
+	});
+
+	test("a superseded advisory summary is not listed", () => {
+		const old = reviewer("spec", { findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:3", evidence: "stale complaint" })] });
+		const latest = reviewer("spec", { findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:9", evidence: "fresh complaint" })] });
+		const text = gatePayload(ready("define", { marked: [old, latest] }), pack, "define", FACTS).summary;
+		expect(text).toContain("fresh complaint");
+		expect(text).not.toContain("stale complaint");
+	});
+
+	test("out-of-scope blocking findings are listed until a gate request has shown them", () => {
+		const review = reviewed({ findings: [finding({ scope: "out-of-scope", evidence: "unrelated module leaks" })] });
+		const before = gatePayload(ready("define", { marked: [review] }), pack, "define", FACTS).summary;
+		expect(before).toContain("Out-of-scope findings");
+		expect(before).toContain("unrelated module leaks");
+		const request = mark(writeMarked("request", "gate-define.x", { kind: "gate", subject: "gate:define", mode: "blocking", head_sha: "f", snapshot: { target: "define", failingWaivable: [] }, summary: "s" }));
+		const after = gatePayload(ready("define", { marked: [review, request] }), pack, "define", FACTS).summary;
+		expect(after).not.toContain("Out-of-scope findings");
 	});
 });

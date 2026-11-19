@@ -96,3 +96,38 @@ describe("forge_read", () => {
 		expect(writes).toEqual([]);
 	});
 });
+
+describe("forge_read provenance", () => {
+	const SHA = /version [0-9a-f]{64}/;
+
+	test("every item of every target carries an id and a version", async () => {
+		const { h, n } = await harness();
+		const pr = await h.world.seedPullRequest({ head: "feat", files: ["a.ts", "b.ts"] });
+		await h.world.seedReview(pr, { author: "alice", state: "approved", body: "ok" });
+		await h.world.seedReview(pr, { author: "bob", state: "commented", body: "hm" });
+		await h.world.forge.createReviewComment(pr, { path: "a.ts", line: 3, body: "nit" });
+		await h.world.seedStatus("main", { name: "ci", state: "success" });
+		const files = text(await read(h, { target: "pr-files", number: pr }));
+		expect(files).toContain(`pr#${pr}:files`);
+		expect(files).toMatch(SHA);
+		const reviews = text(await read(h, { target: "reviews", number: pr }));
+		for (const id of [`review:${pr}.0`, `review:${pr}.1`]) expect(reviews).toContain(id);
+		expect(reviews.match(new RegExp(SHA, "g"))).toHaveLength(2);
+		const comments = text(await read(h, { target: "review-comments", number: pr }));
+		expect(comments).toContain(`review:${pr}.c0`);
+		expect(comments).toMatch(SHA);
+		const checks = text(await read(h, { target: "checks", ref: "main" }));
+		expect(checks).toContain("check:main:ci");
+		expect(checks).toMatch(SHA);
+		void n;
+	});
+
+	test("the content hash changes with the item", async () => {
+		const { h } = await harness();
+		const pr = await h.world.seedPullRequest({ head: "feat", files: ["a.ts"] });
+		const before = text(await read(h, { target: "pr-files", number: pr }));
+		await h.world.seedPullRequest({ head: "other" });
+		const same = text(await read(h, { target: "pr-files", number: pr }));
+		expect(same).toBe(before);
+	});
+});

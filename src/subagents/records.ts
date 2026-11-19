@@ -1,6 +1,8 @@
 // Forge records of subagent runs: `dispatch` and `finding-summary` comments, and the queries the flow reads from them.
 
+import type { Question } from "../core/change.ts";
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { REQUEST_KIND } from "../interaction/approver.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
@@ -186,6 +188,42 @@ export function completedReviewAt(marked: MarkedComment[], unit: string, commits
 	return summariesOf(marked).some(
 		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
 	);
+}
+
+/** True when a completed unit review of `unit` at one of `commits` has the given advisory flag: the review step is done. Blocking and required semantics stay in `completedReviewAt`. */
+export function reviewStepDoneAt(marked: MarkedComment[], unit: string, commits: string[], advisory: boolean): boolean {
+	return summariesOf(marked).some(
+		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && s.data.advisory === advisory && commits.includes(s.data.head),
+	);
+}
+
+/** Valid, current, completed, non-advisory unit reviews of `unit`; rebuttals and superseded comments never count. */
+export function completedUnitRounds(marked: MarkedComment[], unit: string): number {
+	return summariesOf(marked).filter((s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
+}
+
+const FINDING_REF = /finding:([^\s:]+:\d+)/g;
+
+/** Finding keys named as `finding:<commentId>:<index>` in the text of an answered question. */
+export function answeredFindingKeys(questions: Question[]): Set<string> {
+	const keys = new Set<string>();
+	for (const q of questions) if (q.checked) for (const m of q.text.matchAll(FINDING_REF)) keys.add(m[1] as string);
+	return keys;
+}
+
+/** Units with a valid, current non-advisory review summary. */
+export function reviewedUnits(marked: MarkedComment[]): string[] {
+	return [...new Set(summariesOf(marked).filter((s) => !s.data.advisory && s.data.unit !== undefined).map((s) => s.data.unit as string))];
+}
+
+/** Keys of every finding whose summary comment precedes the latest gate request: that gate's payload listed it. */
+export function gatesShownKeys(marked: MarkedComment[]): Set<string> {
+	const isGate = (m: MarkedComment): boolean => m.kind === REQUEST_KIND && (m.data as { kind?: unknown } | null)?.kind === "gate";
+	const lastGate = marked.reduce((at, m, i) => (isGate(m) ? i : at), -1);
+	const before = new Set(marked.slice(0, Math.max(lastGate, 0)).map((m) => m.commentId));
+	const keys = new Set<string>();
+	for (const s of summariesOf(marked)) if (before.has(s.commentId)) s.data.findings.forEach((_f, index) => keys.add(findingKey(s.commentId, index)));
+	return keys;
 }
 
 /** The latest launched run whose last record is an unanswered `QUESTION`; rebuilt from comments only. */

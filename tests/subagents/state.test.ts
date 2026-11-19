@@ -20,7 +20,7 @@ describe("lanes", () => {
 	});
 
 	it("unitRoot returns the open lane, else the change root", () => {
-		const state = stateFor("apply", { subagents: { executor: { ok: true, missing: [] }, turnsCompleted: 0, lanes: { U2: lane } } });
+		const state = stateFor("apply", { subagents: { executor: { ok: true, missing: [] }, turnsCompleted: 0, unfamiliar: { change: false, units: {} }, lanes: { U2: lane } } });
 		expect(unitRoot(state, "U2", "/w")).toBe(lane.path);
 		expect(unitRoot(state, "U1", "/w")).toBe("/w");
 	});

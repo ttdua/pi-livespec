@@ -3,6 +3,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
+import { createHash } from "node:crypto";
 import { type Comment, type Forge, type Issue } from "../forge/types.ts";
 import { parseMarked } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
@@ -17,6 +18,12 @@ export type ForgeReadParams = { target: string; number?: number; ref?: string; l
 
 const CHILD_REFUSAL = "forge_read is not available in a child session: read your packet and its spill files instead.";
 const NUMBER_TARGETS: Target[] = ["issue", "comments", "pr", "pr-files", "reviews", "review-comments"];
+
+/** Content-hash version: SHA-256 of the item's JSON with sorted keys (the forge gives these items no version). */
+function contentVersion(item: unknown): string {
+	const canonical = JSON.stringify(item, (_k, v: unknown) => (v !== null && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v));
+	return createHash("sha256").update(canonical).digest("hex");
+}
 
 const isTarget = (v: string): v is Target => (FORGE_READ_TARGETS as readonly string[]).includes(v);
 const fail = (message: string): ToolResult<null> => toolResult(message, null, true);
@@ -49,15 +56,20 @@ const READERS: Record<Exclude<Target, "checks" | "search">, Reader> = {
 		const pr = await f.getPullRequest(n);
 		return `pr:${pr.number} version ${pr.version} ${pr.state}${pr.merged ? " merged" : ""} head ${untrusted(pr.head)} base ${untrusted(pr.base)}\n  title: ${untrusted(pr.title)}\n  body:\n${untrusted(pr.body)}`;
 	},
-	"pr-files": async (f, _p, n) => (await f.getPullRequestFiles(n)).map((p) => `- ${untrusted(p)}`).join("\n") || "No files.",
-	reviews: async (f, _p, n) => (await f.listReviews(n)).map((r) => `review by ${untrusted(r.author)} ${r.state}\n${untrusted(r.body)}`).join("\n") || "No reviews.",
+	"pr-files": async (f, _p, n) => {
+		const files = await f.getPullRequestFiles(n);
+		return files.length === 0 ? `pr#${n}:files version ${contentVersion(files)}\nNo files.` : [`pr#${n}:files version ${contentVersion(files)}`, ...files.map((p) => `- ${untrusted(p)}`)].join("\n");
+	},
+	reviews: async (f, _p, n) =>
+		(await f.listReviews(n)).map((r, i) => `review:${n}.${i} version ${contentVersion(r)}\n  by ${untrusted(r.author)} ${r.state}\n${untrusted(r.body)}`).join("\n") || "No reviews.",
 	"review-comments": async (f, _p, n) =>
-		(await f.listReviewComments(n)).map((c) => `${untrusted(c.path)}:${c.line} by ${untrusted(c.author)}\n${untrusted(c.body)}`).join("\n") || "No review comments.",
+		(await f.listReviewComments(n)).map((c, i) => `review:${n}.c${i} version ${contentVersion(c)}\n  ${untrusted(c.path)}:${c.line} by ${untrusted(c.author)}\n${untrusted(c.body)}`).join("\n") || "No review comments.",
 };
 
 async function readChecks(forge: Forge, ref: string): Promise<string> {
 	const summary = await forge.getChecks(ref);
-	return [`checks for ${untrusted(ref)}: ${summary.state}`, ...summary.checks.map((c) => `- ${untrusted(c.name)}: ${c.state}`)].join("\n");
+	const items = summary.checks.map((c) => `- ${untrusted(`check:${ref}:${c.name}`)} version ${contentVersion(c)} ${c.state}`);
+	return [`checks for ${untrusted(ref)}: ${summary.state}`, ...items].join("\n");
 }
 
 async function readSearch(forge: Forge, p: ForgeReadParams): Promise<string> {
