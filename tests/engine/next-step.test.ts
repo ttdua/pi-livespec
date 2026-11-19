@@ -608,6 +608,11 @@ describe("build loop with subagents", () => {
 		expect(nextStep(pack, s).dispatch?.role).toBe("implementer");
 	});
 
+	test("a launch mismatch after a settled implementer run does not undo it", () => {
+		const mismatch = implemented("U3", { attempt: 2, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd", launchMismatch: true });
+		expect(nextStep(pack, build("U3", [implemented("U3"), mismatch])).dispatch?.role).toBe("reviewer");
+	});
+
 	test("a BLOCKED implementer run does not count as a dispatch record", () => {
 		expect(nextStep(pack, build("U3", [implemented("U3", { status: "BLOCKED" })])).dispatch?.role).toBe("implementer");
 	});

@@ -5,7 +5,7 @@ import { checkLaunch, type EventsLike, type Mismatch, spawnOptions, watchLaunch 
 import { dispatchComment, type QuestionLaunch, type Thinking } from "./records.ts";
 import { type DispatchHistory, interpret, type ResultDecision } from "./result.ts";
 import { AGENT_OF, type ReviewSubject, type Role, type SubagentEntry, type SubagentResult } from "./roles.ts";
-import { blockedResult, LAUNCH_MISMATCH, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
+import { blockedResult, LAUNCH_MISMATCH, mismatchComment, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
 import type { Packet } from "./source-types.ts";
 
 export type DispatchOutcome =
@@ -57,7 +57,7 @@ function runFacts(request: DispatchRequest, run: Run): RunFacts {
 		agentId: run.agentId, attempt: request.attempt, round: request.round, packet: request.packet, agentSource: run.agentSource,
 		requested: { thinking: run.thinking },
 		effective: { ...(run.facts.effectiveModel === undefined ? {} : { model: run.facts.effectiveModel }), ...(run.facts.effectiveThinking === undefined ? {} : { thinking: run.facts.effectiveThinking }) },
-		advisory: request.entry?.advisory === true,
+		advisory: request.entry?.advisory === true, needsContext: request.needsContext,
 	};
 }
 
@@ -109,8 +109,7 @@ async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run
 	deps.service.abort(run.agentId);
 	waited.catch(() => undefined);
 	const evidence = mismatchEvidence(check.mismatches);
-	const result: SubagentResult = { ...blockedResult(LAUNCH_MISMATCH), notes: `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence };
-	await recordResult(deps, runFacts(request, run), request.packet.cwd, result);
+	await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence));
 	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${evidence}); re-run ${request.unit} sequentially` };
 	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${LAUNCH_MISMATCH} recorded (mismatch: ${evidence}); ${request.role} runs inline`, packet: request.packet };
 }

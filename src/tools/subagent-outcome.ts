@@ -1,5 +1,6 @@
 // What the parent reads after a subagent run: the recorded result with its reason, evidence and named sources, a question, or the next step.
 
+import { untrusted } from "../hooks/phase-card.ts";
 import type { DispatchOutcome } from "../subagents/dispatch.ts";
 import type { SubagentResult } from "../subagents/roles.ts";
 import type { Packet } from "../subagents/source-types.ts";
@@ -23,12 +24,12 @@ const STATUS_HINT: Partial<Record<SubagentResult["status"], string>> = {
 export function resultText(t: Target, r: SubagentResult, named: string[] | undefined, capped = false): string {
 	const lines = [
 		`${argsOf(t)} settled with ${r.status} and was recorded.`,
-		`Notes: ${r.notes}`,
-		...(r.reason === undefined ? [] : [`Reason: ${r.reason}`]),
-		...(r.evidence === undefined ? [] : [`Evidence: ${r.evidence}`]),
-		...(named === undefined ? [] : [`Sources named: ${named.length === 0 ? "none" : named.join(", ")}`]),
-		`Commits: ${(r.commits ?? []).join(", ") || "none"}`,
-		`Discoveries: ${r.discoveries.join("; ") || "none"}`,
+		`Notes: ${untrusted(r.notes)}`,
+		...(r.reason === undefined ? [] : [`Reason: ${untrusted(r.reason)}`]),
+		...(r.evidence === undefined ? [] : [`Evidence: ${untrusted(r.evidence)}`]),
+		...(named === undefined ? [] : [`Sources named: ${named.length === 0 ? "none" : untrusted(named.join(", "))}`]),
+		`Commits: ${(r.commits ?? []).length === 0 ? "none" : untrusted((r.commits ?? []).join(", "))}`,
+		`Discoveries: ${r.discoveries.length === 0 ? "none" : untrusted(r.discoveries.join("; "))}`,
 		...(r.findings === undefined ? [] : [`Findings: ${r.findings.length}`]),
 	];
 	const hint = capped && r.status === "NEEDS_CONTEXT" ? STUCK_HINT(t) : (STATUS_HINT[r.status] ?? "");
@@ -41,7 +42,7 @@ export function outcomeText(t: Target, outcome: DispatchOutcome): string {
 		case "result":
 			return resultText(t, outcome.result, outcome.sourcesNamed);
 		case "question":
-			return `Child ${outcome.id} asks: ${outcome.text}\nAnswer it with subagent_answer ${outcome.id} "<answer>". If only the user can decide (scope, a requirement, a public contract or an acceptance criterion), raise it with spec_question first and answer the child with the user's answer.`;
+			return `Child ${outcome.id} asks: ${untrusted(outcome.text)}\nAnswer it with subagent_answer ${outcome.id} "<answer>". If only the user can decide (scope, a requirement, a public contract or an acceptance criterion), raise it with spec_question first and answer the child with the user's answer.`;
 		case "inline":
 			return inlineText(t, outcome.reason, outcome.packet);
 		case "sequential":

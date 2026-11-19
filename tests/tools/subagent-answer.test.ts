@@ -26,7 +26,7 @@ async function asked(question = "Which config file?") {
 describe("questions from a child", () => {
 	test("ask and answer", async () => {
 		const { h, out } = await asked();
-		expect(textOf(out)).toContain("Child agent-1 asks: Which config file?");
+		expect(textOf(out)).toContain("Child agent-1 asks: <untrusted>Which config file?</untrusted>");
 		expect((await h.latest("dispatch"))?.data).toMatchObject({ status: "QUESTION", agentId: "agent-1", question: "Which config file?" });
 		h.fake.records.push({ structuredResult: done({ sources_used: [...required(h), "answer:agent-1:1"] }) });
 		const answered = await h.call("subagent_answer", { id: "agent-1", answer: "the project one" });

@@ -65,7 +65,7 @@ export async function dispatchRequest(w: WriteContext, state: ChangeState, t: Ta
 		...(entry === undefined ? {} : { entry }), ...(lane === undefined ? {} : { lane }),
 		difficulty: difficultyOf(state, t.unit), failedAttempts: t.unit === undefined ? 0 : (state.evidence.attempts[t.unit] ?? 0),
 		exclusions: await exclusionsOf(w.session, deps),
-		attempt: nextAttempt(state.marked, t.role, t.unit), round: nextRound(state.marked, t.role, t.unit, t.subject), needsContext: needsContextCount(state.marked, t.unit),
+		attempt: nextAttempt(state.marked, t.role, t.unit), round: nextRound(state.marked, t.role, t.unit, t.subject), needsContext: needsContextCount(state.marked, t.unit, t.role),
 	};
 }
 

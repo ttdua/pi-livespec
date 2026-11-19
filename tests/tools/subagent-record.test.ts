@@ -76,7 +76,7 @@ describe("inline fallback", () => {
 		const h = await subagentHarness({ units: [U1] });
 		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "implementer", unit: "U1" })));
 		const nc = done({ status: "NEEDS_CONTEXT", reason: "need spec:auth", evidence: "missing", sources_used: cited });
-		for (let i = 0; i < 2; i++) expect(textOf(await h.call("subagent_record", { role: "implementer", unit: "U1", result: nc }))).toContain("Sources named: spec:auth");
+		for (let i = 0; i < 2; i++) expect(textOf(await h.call("subagent_record", { role: "implementer", unit: "U1", result: nc }))).toContain("Sources named: <untrusted>spec:auth");
 		const third = await h.call("subagent_record", { role: "implementer", unit: "U1", result: nc });
 		expect(textOf(third)).toContain("spec_stuck");
 	});

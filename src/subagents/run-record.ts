@@ -1,6 +1,7 @@
 // The forge record of one settled run, dispatched or inline: a `dispatch` comment for writers and scouts, a `finding-summary` for reviewers and verifiers.
 
 import type { MarkedComment } from "../forge/markers.ts";
+import { isLaunchMismatch } from "./records.ts";
 import { computeCompleted, current, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
 import type { ReviewSubject, Role, SubagentResult } from "./roles.ts";
 import type { Packet } from "./source-types.ts";
@@ -18,6 +19,8 @@ export type RunFacts = {
 	requested: { thinking: Thinking };
 	effective: { model?: string; thinking?: string };
 	advisory: boolean;
+	/** The unit's earlier `NEEDS_CONTEXT` records of this role; a new one is numbered after them. */
+	needsContext: number;
 };
 
 export const INLINE_SOURCE = "inline";
@@ -25,15 +28,14 @@ export const INLINE_SOURCE = "inline";
 /** The reason of the `BLOCKED` record a post-launch mismatch leaves; such a record is no attempt. */
 export const LAUNCH_MISMATCH = "launch-mismatch";
 
-const isLaunchMismatch = (d: Partial<DispatchData>): boolean => d.reason === LAUNCH_MISMATCH;
-
 const isReviewRole = (role: Role): boolean => role === "reviewer" || role === "verifier";
 
 /** Next `attempt` of a dispatch record for the unit and role: one more than the settled records so far. */
 export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<DispatchData>;
-		return m.kind === "dispatch" && d.role === role && d.unit === unit && d.status !== undefined && !["QUESTION", "ANSWERED"].includes(d.status) && !isLaunchMismatch(d);
+		const settled = d.status !== undefined && !["QUESTION", "ANSWERED"].includes(d.status);
+		return m.kind === "dispatch" && d.role === role && d.unit === unit && settled && !isLaunchMismatch(d) && d.contextRequest === undefined;
 	}).length + 1;
 }
 
@@ -45,9 +47,12 @@ export function nextRound(marked: MarkedComment[], role: Role, unit: string | un
 	}).length + 1;
 }
 
-/** Earlier `NEEDS_CONTEXT` dispatch records of the unit: the cap counts these only. */
-export function needsContextCount(marked: MarkedComment[], unit: string | undefined): number {
-	return current(marked).filter((m) => m.kind === "dispatch" && (m.data as Partial<DispatchData>).unit === unit && (m.data as Partial<DispatchData>).status === "NEEDS_CONTEXT").length;
+/** Earlier `NEEDS_CONTEXT` dispatch records of the unit and role: the cap counts these only. */
+export function needsContextCount(marked: MarkedComment[], unit: string | undefined, role: Role): number {
+	return current(marked).filter((m) => {
+		const d = m.data as Partial<DispatchData>;
+		return m.kind === "dispatch" && d.unit === unit && d.role === role && d.status === "NEEDS_CONTEXT";
+	}).length;
 }
 
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : ({ [key]: value } as Record<K, V>));
@@ -59,7 +64,14 @@ function dispatchData(run: RunFacts, result: SubagentResult): DispatchData {
 		attempt: run.attempt, packet: run.packet.hash, agentSource: run.agentSource, requested: run.requested, effective: run.effective,
 		status: result.status, commits: result.commits ?? [], notes, discoveries: result.discoveries, sources_used: result.sources_used,
 		...optional("reason", result.reason), ...optional("evidence", result.evidence),
+		...(result.status === "NEEDS_CONTEXT" ? { contextRequest: run.needsContext + 1 } : {}),
 	};
+}
+
+/** The parent's record of a post-launch mismatch, for every role: a `dispatch` comment, never a review round. */
+export function mismatchComment(run: RunFacts, notes: string, evidence: string): string {
+	const result = { ...blockedResult(LAUNCH_MISMATCH), notes, evidence };
+	return dispatchComment({ ...dispatchData(run, result), launchMismatch: true });
 }
 
 function summaryData(run: RunFacts, result: SubagentResult, head: string): FindingSummaryData {

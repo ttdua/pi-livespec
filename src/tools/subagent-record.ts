@@ -48,7 +48,7 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
-		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true,
+		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true, needsContext: request.needsContext,
 	};
 	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;

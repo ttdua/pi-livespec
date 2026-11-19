@@ -25,10 +25,17 @@ export type DispatchData = {
 	notes: string;
 	discoveries: string[];
 	sources_used: string[];
-	/** The child's `reason` and `evidence` of a `BLOCKED` or `NEEDS_CONTEXT` result, or the parent's (`launch-mismatch`). */
+	/** The child's `reason` and `evidence` of a `BLOCKED` or `NEEDS_CONTEXT` result, or the parent's for a launch mismatch. */
 	reason?: string;
 	evidence?: string;
+	/** Set only by the parent for a post-launch mismatch: no child result, no attempt. */
+	launchMismatch?: true;
+	/** The unit's n-th `NEEDS_CONTEXT` request (set by the parent): no failed attempt, so the attempt is not raised. */
+	contextRequest?: number;
 };
+
+/** A parent-made launch-mismatch record: evidence only, never a settled run. */
+export const isLaunchMismatch = (d: unknown): boolean => (d as { launchMismatch?: unknown } | null)?.launchMismatch === true;
 
 /** A child's question, or its answer; both carry the agent id that links them to the later result. */
 export type DispatchQuestionData =
@@ -72,11 +79,15 @@ const token = (value: string | number): string => String(value).replace(/[^A-Za-
 /** The key `unresolvedBlocking` expects in `answered` and `gatesShown`: one finding of one summary comment. */
 export const findingKey = (commentId: string, index: number): string => `${commentId}:${index}`;
 
+/** Mismatch and NEEDS_CONTEXT records keep the attempt number, so each needs its own id to not supersede the attempt's run record. */
+function runSuffix(data: DispatchData): string {
+	if (data.launchMismatch === true) return ".mismatch";
+	return data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
+}
+
 export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	// A launch-mismatch record keeps the attempt number, so it needs its own id to not supersede the attempt's run record.
-	const mismatch = "reason" in data && data.reason === "launch-mismatch" ? ".mismatch" : "";
-	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : mismatch;
+	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : runSuffix(data);
 	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
 }
 
@@ -92,7 +103,7 @@ export function rebuttalComment(data: RebuttalData): string {
 const isResultRecord = (m: MarkedComment): boolean => {
 	if (m.kind !== "dispatch") return false;
 	const status = (m.data as { status?: unknown }).status;
-	return status !== "QUESTION" && status !== "ANSWERED";
+	return status !== "QUESTION" && status !== "ANSWERED" && !isLaunchMismatch(m.data);
 };
 
 /** The unit's latest settled `dispatch` record (questions and answers excluded), optionally of one role. */

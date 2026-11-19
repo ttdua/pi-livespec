@@ -4,8 +4,8 @@ import { parseMarked } from "../../src/forge/markers.ts";
 import { type DispatchDeps, type DispatchRequest, runDispatch } from "../../src/subagents/dispatch.ts";
 import { checkLaunch, raisedThinking, spawnOptions } from "../../src/subagents/launch.ts";
 import { interpret } from "../../src/subagents/result.ts";
-import { needsContextCount } from "../../src/subagents/run-record.ts";
-import { dispatchComment } from "../../src/subagents/records.ts";
+import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/run-record.ts";
+import { current, dispatchComment, latestDispatch } from "../../src/subagents/records.ts";
 import { mark } from "./helpers.ts";
 import { checkSchema, resultSchema } from "../../src/subagents/roles.ts";
 import type { Packet } from "../../src/subagents/source-types.ts";
@@ -112,19 +112,46 @@ describe("result interpretation", () => {
 });
 
 describe("records", () => {
-	test("needsContextCount counts NEEDS_CONTEXT dispatch records of the unit only", () => {
-		const rec = (unit: string, status: string, attempt: number) =>
-			mark(dispatchComment({ role: "implementer", unit, attempt, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: status as never, commits: [], notes: "", discoveries: [], sources_used: [] }));
-		const marked = [rec("U1", "NEEDS_CONTEXT", 1), rec("U1", "DONE", 2), rec("U2", "NEEDS_CONTEXT", 1), rec("U1", "NEEDS_CONTEXT", 3)];
-		expect(needsContextCount(marked, "U1")).toBe(2);
-		expect(needsContextCount(marked, "U2")).toBe(1);
+	const base = { role: "implementer" as const, unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" as const }, effective: {}, commits: [], notes: "", discoveries: [], sources_used: [] };
+	const rec = (over: Record<string, unknown>) => mark(dispatchComment({ ...base, status: "DONE", ...over } as never));
+
+	test("needsContextCount counts NEEDS_CONTEXT dispatch records of the unit and role only", () => {
+		const marked = [
+			rec({ status: "NEEDS_CONTEXT", contextRequest: 1 }), rec({ status: "DONE" }), rec({ unit: "U2", status: "NEEDS_CONTEXT", contextRequest: 1 }),
+			rec({ status: "NEEDS_CONTEXT", contextRequest: 2 }), rec({ role: "scout", status: "NEEDS_CONTEXT", contextRequest: 1 }),
+		];
+		expect(needsContextCount(marked, "U1", "implementer")).toBe(2);
+		expect(needsContextCount(marked, "U2", "implementer")).toBe(1);
+		expect(needsContextCount(marked, "U1", "scout")).toBe(1);
 	});
 
 	test("a launch-mismatch record does not supersede the run of the same attempt", () => {
-		const base = { role: "implementer" as const, unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" as const }, effective: {}, commits: [], notes: "", discoveries: [], sources_used: [] };
-		const mismatch = mark(dispatchComment({ ...base, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd" }));
-		const run = mark(dispatchComment({ ...base, status: "DONE" }));
+		const mismatch = rec({ status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd", launchMismatch: true });
+		const run = rec({ status: "DONE" });
 		expect(mismatch.id).not.toBe(run.id);
+		expect(current([mismatch, run])).toEqual([mismatch, run]);
+		expect(nextAttempt([mismatch], "implementer", "U1")).toBe(1);
+	});
+
+	test("a child's own launch-mismatch reason is a normal BLOCKED run", () => {
+		const child = rec({ status: "BLOCKED", reason: "launch-mismatch", evidence: "the child says so" });
+		expect(child.id).toBe("dispatch.U1.implementer.1");
+		expect(nextAttempt([child], "implementer", "U1")).toBe(2);
+		expect(latestDispatch([child], "U1")).toBeDefined();
+	});
+
+	test("latestDispatch ignores launch-mismatch records", () => {
+		const run = rec({ status: "DONE", discoveries: ["d"] });
+		const mismatch = rec({ attempt: 2, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd", launchMismatch: true });
+		expect(latestDispatch([run, mismatch], "U1")?.status).toBe("DONE");
+	});
+
+	test("NEEDS_CONTEXT records do not raise the attempt and are not superseded by the next run", () => {
+		const nc = rec({ status: "NEEDS_CONTEXT", reason: "r", evidence: "e", contextRequest: 1 });
+		expect(nextAttempt([nc], "implementer", "U1")).toBe(1);
+		const next = rec({ status: "DONE" });
+		expect(current([nc, next])).toEqual([nc, next]);
+		expect(needsContextCount([nc, next], "U1", "implementer")).toBe(1);
 	});
 });
 
@@ -173,6 +200,18 @@ describe("runDispatch", () => {
 		const out = await runDispatch(d, request({ lane: "U1" }));
 		expect(out.kind).toBe("sequential");
 		expect(String(posted[0]?.data.notes)).toMatch(/cwd: requested \/w\/c, effective \/moved/);
+	});
+
+	test("a reviewer mismatch posts a dispatch record, not a finding-summary", async () => {
+		const fake = fakeExecutor({ facts: () => ({ inheritSkills: true }) });
+		const { d, posted } = deps(fake);
+		const out = await runDispatch(d, request({ role: "reviewer", subject: "unit" }));
+		expect(out.kind).toBe("inline");
+		expect(posted.map((p) => p.kind)).toEqual(["dispatch"]);
+		expect(posted[0]?.data).toMatchObject({ role: "reviewer", subject: "unit", status: "BLOCKED", reason: "launch-mismatch", launchMismatch: true });
+		expect(String(posted[0]?.data.evidence)).toContain("inheritSkills: requested false, effective true");
+		const marked = posted.map((p) => mark(dispatchComment(p.data as never)));
+		expect(nextRound(marked, "reviewer", "U1", "unit")).toBe(1);
 	});
 
 	test("a rejected wait is retried as a crash", async () => {

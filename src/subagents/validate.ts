@@ -38,7 +38,8 @@ const hasCommonFields = (d: Obj): boolean => isRole(d.role) && optional(d.unit, 
 function isResultDispatch(d: Obj): boolean {
 	return (
 		isStatus(d.status) && isNum(d.attempt) && isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
-		isStrList(d.commits) && isStr(d.notes) && isStrList(d.discoveries) && isStrList(d.sources_used) && optional(d.reason, isStr) && optional(d.evidence, isStr)
+		isStrList(d.commits) && isStr(d.notes) && isStrList(d.discoveries) && isStrList(d.sources_used) && optional(d.reason, isStr) && optional(d.evidence, isStr) &&
+		optional(d.launchMismatch, (v) => typeof v === "boolean") && optional(d.contextRequest, isNum)
 	);
 }
 
