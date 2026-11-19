@@ -11,9 +11,9 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 `src/config.ts`: user config keys `lanes` (default 3), `packetBudgetTokens` (default 24000) and `isolation.excludePackages`, with warnings for invalid values (spec `init-and-doctor` Config files)
-- [ ] 2.2 `src/subagents/isolation.ts`: built-in patterns for known other flows (Superpowers, pi-superspec), matched against the packages configured in pi's user and project settings, merged with `isolation.excludePackages` without duplicates
-- [ ] 2.3 Tests for every new config scenario and the isolation list
+- [x] 2.1 `src/config.ts`: user config keys `lanes` (default 3), `packetBudgetTokens` (default 24000) and `isolation.excludePackages`, with warnings for invalid values (spec `init-and-doctor` Config files)
+- [x] 2.2 `src/subagents/isolation.ts`: built-in patterns for known other flows (Superpowers, pi-superspec), matched against the packages configured in pi's user and project settings, merged with `isolation.excludePackages` without duplicates
+- [x] 2.3 Tests for every new config scenario and the isolation list
 
 ## 3. Roles, result schemas and the subagents policy
 
