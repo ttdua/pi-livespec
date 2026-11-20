@@ -13,6 +13,7 @@ import type { Answered, RequestKind, RequestRecord, Subject } from "../../src/in
 import type { AppliedAnswer, PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
+import { dispatchComment } from "../../src/subagents/records.ts";
 import { finding, implemented, mark, pad, reviewed } from "../subagents/helpers.ts";
 
 /** Fixture with Q1 answered: no open blocking question. */
@@ -43,6 +44,17 @@ beforeAll(async () => {
 
 function state(phase: string, body: string, overrides: Partial<ChangeState> = {}): ChangeState {
 	return stateFor(phase, { change: parseChange(body), ...overrides });
+}
+
+/** A completed advisory review of a whole-change subject at the fixture HEAD: the phase's reviewer step is done. */
+function changeReview(subject: "spec" | "plan"): MarkedComment {
+	const { unit: _unit, ...data } = JSON.parse(JSON.stringify(reviewed({ subject, advisory: true }).data)) as Record<string, unknown>;
+	return mark(writeMarked("finding-summary", `finding-summary.change.${subject}.1`, data));
+}
+
+/** A define or plan state whose default `always` reviewer already ran, so the gate is next. */
+function reviewedState(phase: "define" | "plan", body: string, overrides: Partial<ChangeState> = {}): ChangeState {
+	return state(phase, body, { ...overrides, marked: [changeReview(phase === "define" ? "spec" : "plan"), ...(overrides.marked ?? [])] });
 }
 
 function phaseOf(id: string, over: Partial<Phase> = {}): Phase {
@@ -162,7 +174,7 @@ describe("nextStep", () => {
 	});
 
 	test("warnings alone do not block the gate", () => {
-		expect(nextStep(pack, state("define", NO_QUESTION, { checks: [WARNING] })).next).toBe("Ready for the define gate.");
+		expect(nextStep(pack, reviewedState("define", NO_QUESTION, { checks: [WARNING] })).next).toBe("Ready for the define gate.");
 	});
 
 	test("last phase with a human gate has no further phase", () => {
@@ -204,7 +216,7 @@ describe("nextStep", () => {
 	});
 
 	test("Human gate ready", () => {
-		const step = nextStep(pack, state("plan", NO_QUESTION));
+		const step = nextStep(pack, reviewedState("plan", NO_QUESTION));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -384,7 +396,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 
 	test("async question request does not block", () => {
 		const body = NO_QUESTION.replace("- [x] Q2 (non-blocking)", "- [ ] Q2 (non-blocking)");
-		const step = nextStep(pack, state("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
+		const step = nextStep(pack, reviewedState("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.pending).toEqual([{ id: "question-Q2.lx3k2a", subject: "question:Q2", mode: "async", adapter: "forge" }]);
 	});
@@ -401,7 +413,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 	});
 
 	test("frozen units do not block define", () => {
-		const step = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ frozen: ["U2"], staleUnits: ["U3"] }) }));
+		const step = nextStep(pack, reviewedState("define", NO_QUESTION, { lock: lockWith({ frozen: ["U2"], staleUnits: ["U3"] }) }));
 		expect(step.next).toBe("Ready for the define gate.");
 		expect(step.frozenUnits).toEqual([]);
 		expect(step.staleUnits).toEqual([]);
@@ -756,5 +768,42 @@ describe("parallel lanes in the build loop", () => {
 		expect(nextStep(pack, s).next).toBe("Finish U3 with unit_finish once Verify passes.");
 		const moved = { ...s, subagents: subagents() };
 		expect(nextStep(pack, moved).dispatch).toMatchObject({ role: "reviewer", unit: "U3" });
+	});
+});
+
+describe("phase-level subagent suggestions before the gate", () => {
+	const withExecutor = (over: Partial<ChangeState["subagents"]> = {}): ChangeState["subagents"] => ({ executor: { ok: true, missing: [] }, turnsCompleted: 0, lanes: {}, unfamiliar: { change: false, units: {} }, ...over });
+
+	test("define suggests the spec reviewer before the gate", () => {
+		const step = nextStep(pack, state("define", NO_QUESTION, { subagents: withExecutor() }));
+		expect(step.next).toContain("subagent_dispatch reviewer spec");
+		expect(step.dispatch).toEqual({ role: "reviewer", subject: "spec", inline: false });
+	});
+
+	test("plan suggests the plan reviewer inline without an executor", () => {
+		const step = nextStep(pack, state("plan", NO_QUESTION));
+		expect(step.next).toContain("subagent_packet reviewer plan");
+		expect(step.next).toContain("subagent_record reviewer plan");
+		expect(step.dispatch).toEqual({ role: "reviewer", subject: "plan", inline: true });
+	});
+
+	test("a completed review at HEAD clears the suggestion; one at an older HEAD does not", () => {
+		expect(nextStep(pack, reviewedState("plan", NO_QUESTION)).next).toBe("Ready for the plan gate.");
+		expect(nextStep(pack, reviewedState("plan", NO_QUESTION, { git: { branch: "b", head: "e".repeat(40), dirty: false, specsChanged: true } })).dispatch?.subject).toBe("plan");
+	});
+
+	test("unfamiliar code suggests a scout in shape, until a scout record exists", () => {
+		const unfamiliar = withExecutor({ unfamiliar: { change: true, units: {} } });
+		const step = nextStep(pack, state("shape", NO_QUESTION, { subagents: unfamiliar }));
+		expect(step.dispatch).toEqual({ role: "scout", inline: false });
+		const scouted = mark(dispatchComment({ role: "scout", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] }));
+		expect(nextStep(pack, state("shape", NO_QUESTION, { subagents: unfamiliar, marked: [scouted] })).next).toBe("Checks pass; the shape gate can pass.");
+	});
+
+	test("no suggestion once the gate is requested or decided", () => {
+		const requested = state("define", NO_QUESTION, { requests: requests([request("gate:define", "gate", "blocking")]) });
+		expect(nextStep(pack, requested).dispatch).toBeUndefined();
+		const decided = state("define", NO_QUESTION, { lock: lockWith({ gates: { define: gateResult("changes_requested") } }) });
+		expect(nextStep(pack, decided).dispatch).toBeUndefined();
 	});
 });

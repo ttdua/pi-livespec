@@ -10,6 +10,7 @@ import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
+import { phaseEntryStep } from "../subagents/phase-entries.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
@@ -242,6 +243,9 @@ const childQuestion: Rule = ({ state }) => {
 	return { next: `Child ${pending.agentId} asks: ${pending.question} Answer it with subagent_answer ${pending.agentId} "<answer>", or raise it with spec_question when only the user can decide.` };
 };
 
+/** Rule 11a': outside `per: unit`, a scout or whole-change reviewer the policy holds that has not run, before the gate is requested. */
+const phaseEntry: Rule = ({ pack, state, phase }) => phaseEntryStep(pack, state, phase);
+
 /**
  * Rule 11b, lanes: open a lane for each eligible ready unit when two or more units would run in lanes
  * together and the implementer entry holds for each, before any unit is started; then start every open
@@ -332,6 +336,7 @@ const RULES: Rule[] = [
 	failingCheck,
 	blockedUnit,
 	childQuestion,
+	phaseEntry,
 	laneUnits,
 	startedUnit,
 	receiptedUnit,

@@ -234,6 +234,16 @@ export function reviewStepDoneAt(marked: MarkedComment[], unit: string, commits:
 	);
 }
 
+/** True when a completed review of the whole-change `subject` (`spec`, `plan`, `change`, a persona) records `head`. */
+export function changeReviewDoneAt(marked: MarkedComment[], subject: ReviewSubject, head: string): boolean {
+	return summariesOf(marked).some((s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === subject && s.data.unit === undefined && s.data.completed && s.data.head === head);
+}
+
+/** True when `marked` holds a settled `dispatch` record of `role` (questions, answers and launch mismatches excluded). */
+export function settledRunSince(marked: MarkedComment[], role: Role): boolean {
+	return current(marked).some((m) => isResultRecord(m) && (m.data as DispatchData).role === role);
+}
+
 /** Valid, current, completed, non-advisory unit reviews of `unit`; rebuttals and superseded comments never count. */
 export function completedUnitRounds(marked: MarkedComment[], unit: string): number {
 	return summariesOf(marked).filter((s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
