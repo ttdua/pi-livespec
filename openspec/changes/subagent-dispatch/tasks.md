@@ -66,10 +66,10 @@ Blocked by: 4, 5
 
 Blocked by: 6, 7
 
-- [ ] 8.1 `src/subagents/lanes.ts`: eligibility (no `Depends` path, disjoint `Files`, no shared spec file, at most `lanes`), create `.worktrees/<change>--<unit>` on `livespec/<change>--lane-<unit>` through the engine's git exec, remove after the tick
-- [ ] 8.2 Merge one at a time with `git merge --no-ff`; sequential re-run on a files violation (post a `files-violation` finding), a merge conflict (abort the merge), red after merge (undo and count a failed attempt) or a moved cwd
-- [ ] 8.3 Tools `lane_open` and `lane_merge` (`src/tools/lane-open.ts`, `lane-merge.ts`), registered in `change-tools.ts`, and the build-loop steps that suggest them
-- [ ] 8.4 Tests in temporary git repositories for every `parallel-lanes` scenario
+- [x] 8.1 `src/subagents/lanes.ts`: eligibility (no `Depends` path, disjoint `Files`, no shared spec file, at most `lanes`), create `.worktrees/<change>--<unit>` on `livespec/<change>--lane-<unit>` through the engine's git exec, remove after the tick
+- [x] 8.2 Merge one at a time with `git merge --no-ff`; sequential re-run on a files violation (post a `files-violation` finding), a merge conflict (abort the merge), red after merge (undo and count a failed attempt) or a moved cwd
+- [x] 8.3 Tools `lane_open` and `lane_merge` (`src/tools/lane-open.ts`, `lane-merge.ts`), registered in `change-tools.ts`, and the build-loop steps that suggest them
+- [x] 8.4 Tests in temporary git repositories for every `parallel-lanes` scenario
 
 ## 9. Phase card, build loop and forge_read
 
