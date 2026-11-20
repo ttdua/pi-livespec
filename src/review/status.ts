@@ -2,7 +2,7 @@
 
 import type { Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
-import { liftsCap } from "../engine/iterations.ts";
+import { ANSWER_SUFFIX, isStuckReport, liftsCap } from "../engine/iterations.ts";
 import { type CheckFn, registerCheck } from "../engine/registry.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { type AggregateFinding, aggregateFinding, answeredFindingKeys, findingKey, isBlocking, rebuttedKeys } from "../subagents/records.ts";
@@ -14,12 +14,11 @@ const NEVER_BLOCKS = new Set<AggregateFinding["route"]>(["out-of-scope", "record
 /** Routes whose blocking findings count for the cap; a `question` finding waits for its answer instead. */
 const CAP_ROUTES = new Set<AggregateFinding["route"]>(["unit", "in-change"]);
 
-/** The verifier's verdict on a finding that needs it; a `BLOCKED` run confirms (fail closed), any other incomplete run is no verdict. */
+/** The verifier's verdict on a finding that needs it; a `BLOCKED` run confirms (fail closed), no completed or blocked run is no verdict. */
 function verdictOf(marked: MarkedComment[], key: string): "confirmed" | "refuted" | undefined {
 	const record = verifierRecord(marked, key);
 	if (record === undefined) return undefined;
-	if (record.completed) return record.verdict === "refuted" ? "refuted" : "confirmed";
-	return record.status === "BLOCKED" ? "confirmed" : undefined;
+	return record.completed && record.verdict === "refuted" ? "refuted" : "confirmed";
 }
 
 /** The derived state of aggregate finding `index` of `aggregateCommentId`; `open` never blocks. */
@@ -46,9 +45,6 @@ export function blockingFindings(marked: MarkedComment[], aggregateCommentId: st
 	});
 }
 
-const STUCK_KIND = "stuck";
-const ANSWER_SUFFIX = "-answer";
-const isStuckReport = (m: MarkedComment): boolean => m.kind === STUCK_KIND && /^S\d+$/.test(m.id);
 
 const countAfter = (marked: MarkedComment[], lift: number): number => aggregates(marked).filter((a) => a.at > lift).length;
 

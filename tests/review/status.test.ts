@@ -27,6 +27,20 @@ describe("findingState", () => {
 		expect(findingState([a, blocked], a.commentId, 0, [])).toBe("blocking");
 	});
 
+	it("refuted, then incomplete run stays disputed", () => {
+		const a = aggregate([agg()]);
+		const refuted = verifier(key(a, 0), { verdict: "refuted" });
+		const partial = verifier(key(a, 0), { round: 2, status: "DONE", completed: false, verdict: "confirmed" });
+		expect(findingState([a, refuted, partial], a.commentId, 0, [])).toBe("disputed");
+	});
+
+	it("refuted, then a BLOCKED run counts as confirming", () => {
+		const a = aggregate([agg()]);
+		const refuted = verifier(key(a, 0), { verdict: "refuted" });
+		const blocked = verifier(key(a, 0), { round: 2, status: "BLOCKED", completed: false, verdict: undefined });
+		expect(findingState([a, refuted, blocked], a.commentId, 0, [])).toBe("blocking");
+	});
+
 	it("an incomplete, not blocked verifier run leaves the finding unverified", () => {
 		const a = aggregate([agg()]);
 		const partial = verifier(key(a, 0), { status: "DONE", completed: false, verdict: "refuted" });

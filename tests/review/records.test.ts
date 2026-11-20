@@ -23,6 +23,9 @@ describe("review-run", () => {
 	it("malformed review-run data is ignored", () => {
 		const bad = { ...run(), data: { round: "one" } };
 		expect(latestRun([bad])).toBeUndefined();
+		const good = run();
+		const badFinding = { ...good, data: { ...(good.data as object), parentFindings: [{ severity: "HIGH", kind: "defect", location: "a:1", evidence: "e", fix: "f", scope: "unit" }] } };
+		expect(latestRun([badFinding])).toBeUndefined();
 	});
 });
 
@@ -35,10 +38,13 @@ describe("aggregate and verifier records", () => {
 		expect(aggregateOf([a], 1)).toBeUndefined();
 	});
 
-	it("verifierRecord is the latest verifier record of the key", () => {
+	it("verifierRecord is the latest completed or BLOCKED verifier record of the key", () => {
 		const first = verifier("c1:0", { status: "BLOCKED", completed: false, verdict: undefined });
 		const second = verifier("c1:0", { round: 2, verdict: "refuted" });
-		expect(verifierRecord([first, second, verifier("c1:1")], "c1:0")).toMatchObject({ verdict: "refuted" });
+		const partial = verifier("c1:0", { round: 3, status: "DONE_WITH_CONCERNS", completed: false, verdict: "confirmed" });
+		expect(verifierRecord([first, second, partial, verifier("c1:1")], "c1:0")).toMatchObject({ verdict: "refuted" });
+		expect(verifierRecord([first], "c1:0")).toMatchObject({ status: "BLOCKED" });
+		expect(verifierRecord([partial], "c1:0")).toBeUndefined();
 		expect(verifierRecord([first], "c1:9")).toBeUndefined();
 	});
 });

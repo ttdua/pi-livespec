@@ -7,7 +7,7 @@ export type IterationState = { count: number; cap: number | undefined; blocking:
 
 const STALE_KIND = "stale";
 const STUCK_KIND = "stuck";
-const ANSWER_SUFFIX = "-answer";
+export const ANSWER_SUFFIX = "-answer";
 const REPORT_ID = /^S\d+$/;
 
 const isCountedCascade = (m: MarkedComment): boolean =>
@@ -21,7 +21,7 @@ export function liftsCap(m: MarkedComment): boolean {
 	const { outcome, choice } = m.data as { outcome?: unknown; choice?: unknown };
 	return typeof outcome === "string" && LIFTING_OUTCOMES.has(outcome) && typeof choice === "string" && choice !== "";
 }
-const isStuckReport = (m: MarkedComment): boolean => m.kind === STUCK_KIND && REPORT_ID.test(m.id);
+export const isStuckReport = (m: MarkedComment): boolean => m.kind === STUCK_KIND && REPORT_ID.test(m.id);
 
 /** The latest stuck report with no `<id>-answer` comment, if any. */
 function openStuckReport(marked: MarkedComment[]): string | undefined {

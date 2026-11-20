@@ -2,6 +2,7 @@
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
 import { type AggregateFinding, current, type FindingSummaryData } from "../subagents/records.ts";
+import { isFindingData } from "../subagents/validate.ts";
 import type { Finding, ReviewSubject } from "../subagents/roles.ts";
 
 const RUN_KIND = "review-run";
@@ -29,7 +30,7 @@ const isStrList = (v: unknown): boolean => Array.isArray(v) && v.every((x) => ty
 function isRunData(d: unknown): d is ReviewRunData {
 	return (
 		isObj(d) && typeof d.round === "number" && Number.isInteger(d.round) && typeof d.head === "string" && isStrList(d.selected) &&
-		isStrList(d.tags) && isObj(d.verify) && Array.isArray(d.parentFindings) && typeof d.routed === "boolean" &&
+		isStrList(d.tags) && isObj(d.verify) && Array.isArray(d.parentFindings) && d.parentFindings.every(isFindingData) && typeof d.routed === "boolean" &&
 		(d.prComments === undefined || isStrList(d.prComments))
 	);
 }
@@ -44,7 +45,10 @@ export const aggregateId = (round: number): string => `finding-summary.change.re
 export function aggregateComment(data: { round: number; head: string; reviews: string[]; findings: AggregateFinding[] }): string {
 	const summary: FindingSummaryData = {
 		role: "reviewer", subject: "change", round: data.round, status: "DONE", advisory: false, head: data.head, packet: "", sources_used: [], required: [],
-		completed: true, agentSource: PARENT_SOURCE, requested: { thinking: "low" }, effective: {}, findings: data.findings, aggregate: true, reviews: data.reviews,
+		completed: true, agentSource: PARENT_SOURCE, findings: data.findings, aggregate: true, reviews: data.reviews,
+		// Placeholders: `FindingSummaryData` and `isSummaryData` require launch facts, but a parent-made record launched no child.
+		requested: { thinking: "low" },
+		effective: {},
 	};
 	return writeMarked("finding-summary", aggregateId(data.round), summary);
 }
@@ -85,9 +89,13 @@ export function aggregateOf(marked: MarkedComment[], round: number): { commentId
 	return found === undefined ? undefined : { commentId: found.commentId, data: found.data };
 }
 
-/** The latest verifier record of the aggregate finding `key` (`<aggregateCommentId>:<index>`). */
+/** A run that decides the verdict: completed, or `BLOCKED` (fail closed). Any other incomplete run is dispatched again. */
+const decides = (d: FindingSummaryData): boolean => d.completed || d.status === "BLOCKED";
+
+/** The latest completed or `BLOCKED` verifier record of the aggregate finding `key` (`<aggregateCommentId>:<index>`). */
 export function verifierRecord(marked: MarkedComment[], key: string): FindingSummaryData | undefined {
 	return current(marked)
-		.filter((m) => m.kind === "finding-summary" && (m.data as FindingSummaryData).role === "verifier" && (m.data as FindingSummaryData).verifies === key)
-		.at(-1)?.data as FindingSummaryData | undefined;
+		.map((m) => (m.kind === "finding-summary" ? (m.data as FindingSummaryData) : undefined))
+		.filter((d): d is FindingSummaryData => d !== undefined && d.role === "verifier" && d.verifies === key && decides(d))
+		.at(-1);
 }
