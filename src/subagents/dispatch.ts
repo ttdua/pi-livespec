@@ -157,6 +157,7 @@ async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run
 	deps.service.abort(run.agentId);
 	const limit = deps.abortSettleMs ?? ABORT_SETTLE_MS;
 	const confirmed = await settledWithin(waited, limit);
+	if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 	const found = mismatchEvidence(check.mismatches);
 	const evidence = confirmed ? found : `${found}; the child did not confirm the abort within ${limit / 1000} s`;
 	await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence));

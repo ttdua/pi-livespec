@@ -12,7 +12,7 @@ const packet: Packet = { text: "PACKET", hash: "a".repeat(64), sources: [], skil
 const request: DispatchRequest = { role: "implementer", unit: "U1", packet, change: "c", difficulty: "low", failedAttempts: 0, exclusions: [], attempt: 1, round: 1, needsContext: 0 };
 
 /** A child whose `wait` settles `settleMs` after `abort` (never, when `settleMs` is undefined). */
-function abortableChild(settleMs: number | undefined, abortSettleMs?: number) {
+function abortableChild(settleMs: number | undefined, abortSettleMs?: number, signal?: AbortSignal) {
 	const fake = fakeExecutor({ facts: () => ({ inheritSkills: true }) });
 	let settled = false;
 	let release: (r: RecordLike) => void = () => undefined;
@@ -35,6 +35,7 @@ function abortableChild(settleMs: number | undefined, abortSettleMs?: number) {
 		reachable: async (_cwd, commits) => commits,
 		onOverride: () => undefined,
 		...(abortSettleMs === undefined ? {} : { abortSettleMs }),
+		...(signal === undefined ? {} : { signal }),
 	};
 	return { d, posted };
 }
@@ -53,4 +54,13 @@ test("when the child never settles, the record is posted after the timeout and s
 	expect(Date.now() - started).toBeGreaterThanOrEqual(25);
 	expect(posted).toHaveLength(1);
 	expect(posted[0]?.evidence).toContain("the child did not confirm the abort within");
+});
+
+test("a cancel during the settle wait records nothing and returns cancelled", async () => {
+	const controller = new AbortController();
+	const { d, posted } = abortableChild(40, undefined, controller.signal);
+	setTimeout(() => controller.abort(), 10);
+	const out = await runDispatch(d, request);
+	expect(posted).toHaveLength(0);
+	expect(out.kind).toBe("cancelled");
 });
