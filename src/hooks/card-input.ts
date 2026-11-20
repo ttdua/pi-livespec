@@ -7,11 +7,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
 import { runChecks } from "../engine/checks.ts";
-import { createGit } from "../engine/git.ts";
+import { createGit, type Git } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
+import { latestLaneClose } from "../subagents/state.ts";
 import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { isOffline } from "../forge/errors.ts";
@@ -60,6 +61,18 @@ async function readLaneHeads(lanes: ChangeState["subagents"]["lanes"]): Promise<
 	return heads;
 }
 
+/** Units whose latest merged lane head is the second parent of the merge commit at HEAD. */
+async function readMergedLaneHeads(git: Git, marked: ChangeState["marked"]): Promise<Record<string, string>> {
+	const second = (await git.parents(await git.head()).catch(() => []))[1];
+	const heads: Record<string, string> = {};
+	if (second === undefined) return heads;
+	for (const unit of new Set(marked.filter((m) => m.kind === "lane").map((m) => (m.data as { unit?: string } | null)?.unit))) {
+		const close = unit === undefined ? undefined : latestLaneClose(marked, unit);
+		if (unit !== undefined && close?.data.outcome === "merged" && close.data.head === second) heads[unit] = second;
+	}
+	return heads;
+}
+
 type Resolved = { kind: "change"; number: number; warning?: string } | Exclude<CardInput, { kind: "change" }>;
 
 /**
@@ -92,7 +105,7 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
 	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
-	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), laneLimit: session.config.user.lanes };
+	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
 	return { ...snapshot, subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 

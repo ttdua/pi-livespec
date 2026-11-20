@@ -57,6 +57,7 @@ Otherwise it SHALL record HEAD as the pre SHA. For a unit that is not verifier p
 A unit is **started** when its latest own `unit-start` comment is newer than its latest own `receipt` and its status line is pending. A unit is **receipted, not ticked** when its latest receipt is newer than its latest `unit-start`, matches its current digest, and its status line is pending. Before any other check, `unit_finish` MUST refuse, writing nothing, when the unit has an unresolved blocking finding (see `review-findings`), or when the pack's non-advisory unit-reviewer entry holds for the unit (evaluated without `context>=N%` conditions) and no completed unit review (see `review-findings`) records the reviewed commit. The reviewed commit SHALL be HEAD; for a unit that ran in a lane and was merged, it SHALL be the lane head that the merge commit at HEAD brought in as its second parent. Findings of an advisory entry MUST NOT refuse a tick. For a receipted, not-ticked unit, `unit_finish` SHALL only tick the unit, without running `Verify` and without posting another receipt, provided the tree is clean and the unit is neither frozen nor stale. Otherwise it MUST refuse, writing nothing, when:
 - the unit is not started;
 - the unit is frozen or stale, or its digest differs from the digest in its `unit-start` comment;
+- the unit has an open lane (it names `lane_merge` as the next step);
 - the unit is blocked;
 - the working tree is dirty;
 - the guard blocks its `Verify` command.
@@ -78,6 +79,10 @@ When the run is `red` or `invalid`, the tool SHALL post a `progress` decision re
 #### Scenario: Not started
 - **WHEN** U1 is pending and has no `unit-start` comment
 - **THEN** `unit_finish U1` refuses and says to run `unit_start U1`
+
+#### Scenario: Open lane refuses finish
+- **WHEN** U2's lane is open and `unit_finish U2` is called
+- **THEN** it refuses, names `lane_merge`, and writes nothing
 
 #### Scenario: Crash between receipt and tick
 - **WHEN** U1's receipt was posted and the tick write failed

@@ -9,8 +9,9 @@ import type { StartRecord } from "../evidence/records.ts";
 import { classifyRun, postOk } from "../evidence/red-green.ts";
 import { runVerify, type VerifyRun } from "../evidence/runner.ts";
 import { RECEIPT_OUTPUT_BYTES } from "../evidence/verify-env.ts";
+import { unitInvariantRefusal } from "../evidence/refusals.ts";
 import { buildLoopStep } from "../subagents/build-loop.ts";
-import { type LaneOps, mergeLane, type MergeOutcome } from "../subagents/lane-ops.ts";
+import { type LaneOps, laneDirty, mergeLane, type MergeOutcome } from "../subagents/lane-ops.ts";
 import { nextRound } from "../subagents/run-record.ts";
 import type { LaneRecord } from "../subagents/state.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
@@ -37,7 +38,7 @@ async function laneStep(state: ChangeState, pack: Pack, unit: string, lane: Lane
 const unfinished = (state: ChangeState, unit: string): string | undefined =>
 	Object.keys(state.evidence.started).find((id) => id !== unit && !(id in state.subagents.lanes));
 
-/** No open lane, a dirty change worktree, another unfinished unit there, an unstarted unit, or a lane whose work or unit review is not done. */
+/** No open lane, a dirty change worktree or lane worktree, a unit that is frozen, stale, amended or blocked, another unfinished unit there, an unstarted unit, or a lane whose work or unit review is not done. */
 function precheck(unit: string) {
 	return async (state: ChangeState, pack: Pack): Promise<Precheck> => {
 		const lane = state.subagents.lanes[unit];
@@ -46,6 +47,9 @@ function precheck(unit: string) {
 		const other = unfinished(state, unit);
 		if (other !== undefined) return { refused: `${other} is started in the change worktree: finish it with unit_finish ${other} first; lanes merge one at a time.` };
 		if (!(unit in state.evidence.started)) return { refused: `${unit} is not started: run unit_start ${unit} in its lane first.` };
+		const invalid = unitInvariantRefusal(state, pack, unit);
+		if (invalid !== undefined) return { refused: invalid };
+		if (existsSync(lane.path) && (await laneDirty(lane))) return { refused: `the lane worktree of ${unit} has uncommitted changes (${lane.path}); commit or discard them, then call lane_merge again.` };
 		const pending = await laneStep(state, pack, unit, lane);
 		return pending === undefined ? { ok: true } : { refused: `the lane of ${unit} is not ready to merge. Next: ${pending}` };
 	};

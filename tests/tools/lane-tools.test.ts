@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { gatePayload } from "../../src/engine/gate-payload.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { asChild } from "../hooks/fake-pi.ts";
@@ -127,6 +128,20 @@ describe("parallel-lanes tools", () => {
 		expect(await h.ofKind("lane")).toHaveLength(1);
 	});
 
+	test("a leftover worktree on another branch or detached is refused, naming the branch found", async () => {
+		const h = await laneHarness();
+		await createGit(h.root).worktreeAddBranch(h.lanePath("U2"), "other-branch", h.head);
+		const out = await h.open("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("other-branch");
+		await createGit(h.root).worktreeRemove(h.lanePath("U2"));
+		await createGit(h.root).worktreeAdd(h.lanePath("U2"), h.head);
+		const detached = await h.open("U2");
+		expect(detached.isError).toBe(true);
+		expect(textOf(detached)).toContain("detached");
+		expect(await h.ofKind("lane")).toHaveLength(0);
+	});
+
 	test("Merge before review refused", async () => {
 		const h = await laneHarness({ difficulty: "medium" });
 		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
@@ -172,12 +187,96 @@ describe("parallel-lanes tools", () => {
 		expect(cardState(h).step.dispatch).toEqual({ role: "implementer", unit: "U2", inline: false });
 	});
 
+	test("after a files violation and the sequential re-run, the human gate payload lists the finding", async () => {
+		const h = await laneHarness({ difficulty: "medium" });
+		const laneHead = await laneDone(h, "U2", { "src/u2.ts": "x\n", "src/other.ts": "y\n" });
+		await seedSummary(h, { unit: "U2", head: laneHead });
+		await h.merge("U2");
+		const summary = (await kinds(h, "finding-summary")).at(-1) as { advisory: boolean; completed: boolean; system?: string; findings: { scope: string }[] };
+		expect(summary).toMatchObject({ advisory: false, system: "files-violation" });
+		expect(summary.findings[0]?.scope).toBe("out-of-scope");
+		const { state } = cardState(h);
+		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const payload = gatePayload(state, h.session.pack.ok ? h.session.pack.pack : (undefined as never), "build", facts);
+		expect(payload.summary).toContain("Out-of-scope findings");
+		expect(payload.summary).toContain("src/other.ts");
+		expect(payload.findings).toHaveLength(1);
+		// The system record neither counts as a review round nor as a review of any head.
+		expect(cardState(h).step.dispatch?.role).toBe("implementer");
+	});
+
+	test.each([
+		["tracked changes", { "src/u2.ts": "changed\n" }],
+		["untracked changes", { "src/new.ts": "n\n" }],
+	])("a lane worktree with %s refuses lane_merge and is left untouched", async (_name, dirty) => {
+		const h = await laneHarness();
+		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		for (const [p, t] of Object.entries(dirty)) await writeIn(h.lanePath("U2"), p, t);
+		const before = (await h.marked()).length;
+		const head = h.git("rev-parse", "HEAD");
+		const out = await h.merge("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("uncommitted");
+		expect(existsSync(h.lanePath("U2"))).toBe(true);
+		expect(await h.marked()).toHaveLength(before);
+		expect(h.git("rev-parse", "HEAD")).toBe(head);
+	});
+
+	test("lane_merge refuses a blocked unit", async () => {
+		const h = await laneHarness();
+		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		await h.seed("decision", "progress.U2", { point: "progress", subject: "U2", outcome: "stop", reason: "same failure" });
+		expect(cardState(h).state.evidence.blocked).toHaveProperty("U2");
+		const before = (await h.marked()).length;
+		const out = await h.merge("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("BLOCKED");
+		expect(existsSync(h.lanePath("U2"))).toBe(true);
+		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("lane_merge refuses an amended unit", async () => {
+		const h = await laneHarness();
+		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Verify: `sh check2.sh`", "Verify: `sh check2.sh --strict`"));
+		await h.session.refresh();
+		const before = (await h.marked()).length;
+		const out = await h.merge("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("unit_amend");
+		expect(existsSync(h.lanePath("U2"))).toBe(true);
+		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("unit_finish refuses while the unit has an open lane", async () => {
+		const h = await laneHarness();
+		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		const before = (await h.marked()).length;
+		const out = await h.finish("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("lane_merge");
+		expect(await h.marked()).toHaveLength(before);
+		expect(h.writes.written).toBe(0);
+	});
+
+	test("after a new commit on the change branch the old lane review no longer counts", async () => {
+		const h = await laneHarness({ difficulty: "medium" });
+		const laneHead = await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		await seedSummary(h, { unit: "U2", head: laneHead });
+		ok(await h.merge("U2"));
+		await h.commit({ "src/extra.ts": "e\n" });
+		expect(cardState(h).step.dispatch).toMatchObject({ role: "reviewer", unit: "U2" });
+	});
+
 	test("after an unmerged close the unit re-runs in the change worktree and finishes with a receipt", async () => {
 		const h = await laneHarness();
 		await laneDone(h, "U2", { "src/u2.ts": "x\n", "src/other.ts": "y\n" });
 		await h.merge("U2");
 		const step = cardState(h).step;
 		expect(step.dispatch?.role).toBe("implementer");
+		// The files-violation finding is out-of-scope: it blocks finishing until a human gate has shown it.
+		const violation = (await h.ofKind("finding-summary")).at(-1)?.commentId as string;
+		await h.seed("gate", "build.x", { findings: [`${violation}:0`] });
 		ok(await h.call("subagent_dispatch", { role: "implementer", unit: "U2" }));
 		expect(h.fake.spawned.at(-1)?.options.cwd).toBe(h.root);
 		await h.commit({ "src/u2.ts": "x\n" });

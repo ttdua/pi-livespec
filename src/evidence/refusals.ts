@@ -112,8 +112,18 @@ const digestChanged: Rule = ({ state, unit, target }) => {
 	return `${displayUnitId(unit)} changed since unit_start: ${AMEND}, then run unit_start ${displayUnitId(unit)} again.`;
 };
 
-const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
+/** A unit whose lane is still open merges with `lane_merge` first: finishing would run `Verify` in the wrong worktree. */
+const openLane: Rule = ({ state, unit }) =>
+	unit in state.subagents.lanes ? `${displayUnitId(unit)} has an open lane: merge it with lane_merge ${displayUnitId(unit)} first.` : undefined;
+
+const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
+const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
 const RECONCILE_RULES: Rule[] = [dirtyTree, changedSinceLock];
+
+/** The unit invariants `lane_merge` shares with `unit_finish`: known, not frozen or stale, digest as at the start, not blocked. */
+export function unitInvariantRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
+	return firstRefusal(INVARIANT_RULES, state, pack, unit);
+}
 
 /** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the clean-tree, frozen and stale rules. */
 export function unitFinishRefusal(state: ChangeState, pack: Pack, unit: string, mode: FinishMode): string | undefined {

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import {
 	completedReviewAt,
+	completedUnitRounds,
+	reviewStepDoneAt,
 	computeCompleted,
 	dispatchComment,
 	type FindingSummaryData,
@@ -14,6 +16,7 @@ import {
 	rebuttalComment,
 	unresolvedBlocking,
 } from "../../src/subagents/records.ts";
+import { nextRound } from "../../src/subagents/run-record.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
@@ -90,6 +93,17 @@ describe("records", () => {
 	it("incomplete review does not count", () => {
 		const r = summary({ status: "NEEDS_CONTEXT", completed: false, head: "h1" });
 		expect(completedReviewAt([r], "U1", ["h1"])).toBe(false);
+	});
+
+	it("a system summary is no review, no round, and no later review resolves it", () => {
+		const v = summary({ system: "files-violation", completed: true, findings: [finding({ scope: "out-of-scope", kind: "files-violation" })] });
+		expect(completedReviewAt([v], "U1", ["h1"])).toBe(false);
+		expect(reviewStepDoneAt([v], "U1", ["h1"], false)).toBe(false);
+		expect(completedUnitRounds([v], "U1")).toBe(0);
+		expect(nextRound([v], "reviewer", "U1", "unit")).toBe(1);
+		const later = summary({ round: 2, findings: [] });
+		expect(unresolvedBlocking([v, later], "U1", new Set(), new Set())).toHaveLength(1);
+		expect(unresolvedBlocking([v], "U1", new Set(), new Set([findingKey(v.commentId, 0)]))).toEqual([]);
 	});
 
 	it("computeCompleted needs status and every required source", () => {

@@ -64,6 +64,8 @@ export type FindingSummaryData = {
 	findings: Finding[];
 	/** The unit's n-th `NEEDS_CONTEXT` request of this role (set by the parent): no review round is used. */
 	contextRequest?: number;
+	/** Set only by lane code for a record the parent makes itself: never a review, a round or a resolution of other findings. */
+	system?: "files-violation";
 };
 
 export type RebuttalData = { rebuts: string; items: { index: number; reason: string; evidence: string }[] };
@@ -147,6 +149,9 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 
 type Summary = { commentId: string; at: number; data: FindingSummaryData };
 
+/** A parent-made record (a `Files` violation): it carries findings, but is no review of any commit. */
+const isSystem = (d: FindingSummaryData): boolean => d.system !== undefined;
+
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
 	current(marked).forEach((m, at) => {
@@ -172,7 +177,8 @@ const sameSpot = (a: Finding, b: Finding): boolean => a.location === b.location 
 
 /** True when the latest completed round after `s` for the same unit and subject no longer reports `f`. */
 function fixedByLaterReview(s: Summary, f: Finding, all: Summary[]): boolean {
-	const later = all.filter((o) => o.at > s.at && o.data.completed && !o.data.advisory && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
+	if (isSystem(s.data)) return false;
+	const later = all.filter((o) => o.at > s.at && o.data.completed && !o.data.advisory && !isSystem(o.data) && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
 	const latest = later.at(-1);
 	return latest !== undefined && !latest.data.findings.some((g) => isBlocking(g) && sameSpot(f, g));
 }
@@ -207,20 +213,20 @@ export function unresolvedBlocking(marked: MarkedComment[], unit: string, answer
 /** True when a completed unit review of `unit` records one of `commits` (HEAD, plus a lane merge's second parent). */
 export function completedReviewAt(marked: MarkedComment[], unit: string, commits: string[]): boolean {
 	return summariesOf(marked).some(
-		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
+		(s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
 	);
 }
 
 /** True when a completed unit review of `unit` at one of `commits` has the given advisory flag: the review step is done. Blocking and required semantics stay in `completedReviewAt`. */
 export function reviewStepDoneAt(marked: MarkedComment[], unit: string, commits: string[], advisory: boolean): boolean {
 	return summariesOf(marked).some(
-		(s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && s.data.advisory === advisory && commits.includes(s.data.head),
+		(s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && s.data.advisory === advisory && commits.includes(s.data.head),
 	);
 }
 
 /** Valid, current, completed, non-advisory unit reviews of `unit`; rebuttals and superseded comments never count. */
 export function completedUnitRounds(marked: MarkedComment[], unit: string): number {
-	return summariesOf(marked).filter((s) => s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
+	return summariesOf(marked).filter((s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
 }
 
 const FINDING_REF = /finding:([^\s:]+:\d+)/g;

@@ -35,17 +35,18 @@ export async function excludeLanes(root: string): Promise<void> {
 	await appendFile(file, `${text === "" || text.endsWith("\n") ? "" : "\n"}${EXCLUDE_LINE}\n`);
 }
 
-/** A leftover worktree at the lane path is reused only when it is clean at the change HEAD. */
-async function leftoverRefusal(path: string, head: string): Promise<string | undefined> {
+/** A leftover worktree at the lane path is reused only when it is on the lane branch and clean at the change HEAD. */
+async function leftoverRefusal(path: string, branch: string, head: string): Promise<string | undefined> {
 	const git = createGit(path);
-	const [at, dirty] = await Promise.all([git.head().catch(() => ""), git.isDirty().catch(() => true)]);
+	const [at, dirty, on] = await Promise.all([git.head().catch(() => ""), git.isDirty().catch(() => true), git.branch().catch(() => "")]);
+	if (on !== branch) return `a leftover worktree exists at ${path} on ${on === "" ? "a detached HEAD" : `the branch ${on}`}, not ${branch}; remove it, then run lane_open again.`;
 	if (at === head && !dirty) return undefined;
 	return `a leftover worktree exists at ${path} ${at === head ? "with uncommitted changes" : "at a commit other than the change branch HEAD"}; remove it, then run lane_open again.`;
 }
 
 /** Creates the lane worktree on its branch, or reuses a clean leftover at HEAD; a leftover branch elsewhere is refused. */
 async function prepareWorktree(ops: LaneOps, path: string, branch: string, head: string): Promise<string | undefined> {
-	if (existsSync(path)) return leftoverRefusal(path, head);
+	if (existsSync(path)) return leftoverRefusal(path, branch, head);
 	if (await ops.git.branchExists(branch)) {
 		if ((await ops.git.revParse(branch)) !== head) return `the branch ${branch} exists at a commit other than the change branch HEAD; delete it, then run lane_open again.`;
 		await ops.git.deleteBranch(branch);
@@ -66,6 +67,9 @@ export async function openLane(ops: LaneOps, change: string, unit: string): Prom
 	return { ok: true, path };
 }
 
+/** Whether the lane worktree has tracked or untracked changes; merging or removing it would lose them. */
+export const laneDirty = (lane: LaneRecord): Promise<boolean> => createGit(lane.path).isDirty();
+
 /** Files the lane's commits changed that are not in the unit's `Files`. */
 export async function filesViolation(git: Git, lane: LaneRecord, files: string[]): Promise<string[]> {
 	const changed = await git.diffNames(lane.base, lane.branch, ".");
@@ -80,10 +84,10 @@ export async function closeLane(ops: LaneOps, lane: LaneRecord, how: { outcome: 
 	if (await ops.git.branchExists(lane.branch)) await ops.git.deleteBranch(lane.branch);
 }
 
-/** An advisory, not-completed summary: it records the violation for the next plan review without blocking or counting as a review. */
+/** A system summary (no review, no round): a blocking out-of-scope finding that the next human gate shows. */
 function violationSummary(lane: LaneRecord, paths: string[], round: number, head: string): FindingSummaryData {
 	return {
-		role: "reviewer", subject: "unit", unit: lane.unit, round, status: "DONE_WITH_CONCERNS", advisory: true, head, packet: "", sources_used: [], required: [],
+		role: "reviewer", subject: "unit", unit: lane.unit, round, status: "DONE_WITH_CONCERNS", advisory: false, system: "files-violation", head, packet: "", sources_used: [], required: [],
 		completed: false, agentSource: "livespec", requested: { thinking: "low" }, effective: {},
 		findings: paths.map((path) => ({
 			severity: "WARNING", kind: "files-violation", location: `${path}:1`, evidence: `the lane of ${lane.unit} changed ${path}, which is not in its Files`,

@@ -53,6 +53,8 @@ export type ChangeState = {
 		lanes: Record<string, LaneRecord>;
 		/** HEAD of each open lane worktree that exists, read at refresh. */
 		laneHeads?: Record<string, string>;
+		/** Units whose latest merged lane head is the second parent of the merge commit at HEAD, read at refresh. */
+		mergedLaneHeads?: Record<string, string>;
 		/** The user's `lanes` limit, copied at refresh; the default when absent. */
 		laneLimit?: number;
 		/** The `unfamiliar-code` fact, read from the living specs at refresh. */

@@ -743,9 +743,12 @@ describe("parallel lanes in the build loop", () => {
 	test("after a merged close the lane-head review counts", () => {
 		const laneHead = "e".repeat(40);
 		const s = at({
+			subagents: subagents({ mergedLaneHeads: { U3: laneHead } }),
 			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
 			marked: [pad(), implemented("U3"), reviewed({ head: laneHead }), closed("U3", { outcome: "merged", head: laneHead })],
 		});
 		expect(nextStep(pack, s).next).toBe("Finish U3 with unit_finish once Verify passes.");
+		const moved = { ...s, subagents: subagents() };
+		expect(nextStep(pack, moved).dispatch).toMatchObject({ role: "reviewer", unit: "U3" });
 	});
 });

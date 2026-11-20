@@ -132,6 +132,29 @@ describe("parallel-lanes worktrees", () => {
 		expect(await filesViolation(r.ops.git, l, ["src/u2.ts"])).toEqual(["src/other.ts"]);
 	});
 
+	test("a leftover on another branch or detached is refused with the branch found", async () => {
+		const r = await repo();
+		const path = join(r.root, ".worktrees", "per-ip-cap--U2");
+		const head = git(r.root, "rev-parse", "HEAD");
+		await r.ops.git.worktreeAddBranch(path, "wrong", head);
+		const other = await openLane(r.ops, "per-ip-cap", "U2");
+		expect(other.ok ? "" : other.message).toContain("wrong");
+		await r.ops.git.worktreeRemove(path);
+		await r.ops.git.worktreeAdd(path, head);
+		const detached = await openLane(r.ops, "per-ip-cap", "U2");
+		expect(detached.ok ? "" : detached.message).toContain("detached");
+		expect(r.posted).toHaveLength(0);
+	});
+
+	test("the files-violation record is a system, non-advisory, out-of-scope finding", async () => {
+		const r = await repo();
+		const l = await laneWith(r, "U2", { "src/other.ts": "y\n" });
+		await mergeLane(r.ops, l, { files: ["src/u2.ts"], round: 1, verify: async () => "green" });
+		const summary = r.posted.map((b) => parseMarked(b)).find((m) => m?.kind === "finding-summary")?.data as { advisory: boolean; system?: string; findings: { scope: string }[] };
+		expect(summary).toMatchObject({ advisory: false, system: "files-violation" });
+		expect(summary.findings[0]?.scope).toBe("out-of-scope");
+	});
+
 	test("merged lane: merge commit with the lane head as second parent, lane removed", async () => {
 		const r = await repo();
 		const l = await laneWith(r, "U2", { "src/u2.ts": "x\n" });

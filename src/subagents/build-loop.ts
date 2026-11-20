@@ -61,10 +61,11 @@ function loopStart(state: ChangeState, unitId: string, startIndex: number): numb
 	return close !== undefined && close.index > startIndex && close.data.outcome !== "merged" ? close.index : startIndex;
 }
 
-/** The head of a lane merged after the unit's start, whose review the merge commit carries. */
+/** The head of a lane merged after the unit's start, whose review counts while the merge commit at HEAD still has it as second parent. */
 function mergedLaneHead(state: ChangeState, unitId: string, startIndex: number): string | undefined {
 	const close = latestLaneClose(state.marked, unitId);
-	return close !== undefined && close.index > startIndex && close.data.outcome === "merged" ? close.data.head : undefined;
+	if (close === undefined || close.index <= startIndex || close.data.outcome !== "merged") return undefined;
+	return close.data.head !== undefined && state.subagents.mergedLaneHeads?.[unitId] === close.data.head ? close.data.head : undefined;
 }
 
 function loopOf(pack: Pack, state: ChangeState, phase: Phase, unitId: string): Loop | undefined {

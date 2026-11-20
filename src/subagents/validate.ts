@@ -41,7 +41,8 @@ function isResultDispatch(d: Obj): boolean {
 	return (
 		isStatus(d.status) && isNum(d.attempt) && isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
 		isStrList(d.commits) && isStr(d.notes) && isStrList(d.discoveries) && isStrList(d.sources_used) && optional(d.reason, isStr) && optional(d.evidence, isStr) &&
-		optional(d.launchMismatch, (v) => v === true) && optional(d.contextRequest, isNum)
+		optional(d.launchMismatch, (v) => v === true) && optional(d.contextRequest, isNum) &&
+		optional(d.system, oneOf(["files-violation"]))
 	);
 }
 
