@@ -38,7 +38,7 @@ function phase(r: LoadedPack, id: string) {
 beforeEach(() => {
 	resetRegistryForTests();
 	registerBuiltinRules();
-	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base"]) {
+	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean"]) {
 		registerCheck(name, async () => []);
 	}
 });
@@ -85,6 +85,9 @@ describe("default pack", () => {
 		expect(phase(r, "plan").checks).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base"]);
 		expect((okPack(r).decisions.difficulty as { mode: string }).mode).toBe("rule");
 		expect((okPack(r).decisions.progress as { mode: string }).mode).toBe("rule");
+		expect(phase(r, "review").checks).toEqual(["review-clean"]);
+		expect(phase(r, "review").gate).toBe("self");
+		expect((okPack(r).decisions["finding-scope"] as { mode: string }).mode).toBe("rule");
 	});
 
 	test("Registered check name", async () => {

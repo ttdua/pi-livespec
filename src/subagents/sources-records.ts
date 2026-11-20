@@ -36,16 +36,25 @@ export const planGateNotes: Provider = {
 	},
 };
 
-/** Earlier non-empty finding summaries of the unit. */
+type SummaryShape = { unit?: unknown; findings?: unknown; role?: unknown; aggregate?: unknown } | null;
+
+/** The findings of `m` that concern `unit`: a unit review's findings, or an aggregate's findings routed to the unit. */
+function findingsFor(m: MarkedComment, unit: string | undefined): unknown[] {
+	const d = m.data as SummaryShape;
+	if (m.kind !== "finding-summary" || !d || d.role === "verifier" || !Array.isArray(d.findings)) return [];
+	if (d.aggregate === true) return unit === undefined ? [] : d.findings.filter((f) => (f as { routeUnit?: unknown } | null)?.routeUnit === unit);
+	return d.unit === unit ? d.findings : [];
+}
+
+/** Earlier non-empty finding summaries of the unit, and aggregate review findings routed to it. */
 export const unitFindings: Provider = {
 	name: "unit-findings",
 	async run(cx) {
 		const unit = cx.target.unit?.id;
 		const out: Placed[] = [];
 		for (const m of cx.ctx.state.marked) {
-			const d = m.data as { unit?: unknown; findings?: unknown; role?: unknown; aggregate?: unknown } | null;
-			if (m.kind !== "finding-summary" || !d || d.unit !== unit || d.role === "verifier" || d.aggregate === true || !Array.isArray(d.findings) || d.findings.length === 0) continue;
-			out.push(await commentSource(cx, m, `Earlier findings on ${unit}`, stringify(d.findings)));
+			const findings = findingsFor(m, unit);
+			if (findings.length > 0) out.push(await commentSource(cx, m, `Earlier findings on ${unit}`, stringify(findings)));
 		}
 		return out;
 	},

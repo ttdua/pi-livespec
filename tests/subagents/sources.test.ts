@@ -8,6 +8,7 @@ import { writeIn } from "../helpers/repo.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
+import { aggregateComment } from "../../src/review/records.ts";
 import { collectSources, registerPacketSource, resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { resolveTarget } from "../../src/subagents/target.ts";
 import type { Role, ReviewSubject } from "../../src/subagents/roles.ts";
@@ -229,6 +230,21 @@ describe("manifest", () => {
 			throw new Error("boom");
 		});
 		await expect(sourcesOf(world, "reviewer", "U3", "unit")).rejects.toThrow(/brokenProvider.*boom/);
+	});
+});
+
+describe("Unit unticked", () => {
+	test("the implementer packet lists the aggregate finding routed to the unit", async () => {
+		const world = await makeWorld();
+		const routed = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "off by one at the cap", fix: "use >", scope: "out-of-scope" as const, from: ["r1:0"], needsDecision: false };
+		const other = { ...routed, location: "src/context.ts:1", evidence: "context bug", route: "unit" as const, routeUnit: "U1", verify: "required" as const };
+		const posted = world.post(BOT, aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [{ ...routed, route: "unit", routeUnit: "U3", verify: "required" }, other] }));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.id}`);
+		expect(found?.source.text).toContain("off by one at the cap");
+		expect(found?.source.text).not.toContain("context bug");
+		expect(found?.source.untrusted).toBe(true);
+		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `comment:${posted.id}`);
+		expect(u1?.source.text).toContain("context bug");
 	});
 });
 

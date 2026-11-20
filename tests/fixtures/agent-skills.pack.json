@@ -66,6 +66,9 @@
 		},
 		"progress": {
 			"mode": "rule"
+		},
+		"finding-scope": {
+			"mode": "rule"
 		}
 	},
 	"init": {
@@ -249,7 +252,9 @@
 			},
 			"outputs": [],
 			"redirects": [],
-			"checks": [],
+			"checks": [
+				"review-clean"
+			],
 			"gate": "self",
 			"subagents": [
 				{

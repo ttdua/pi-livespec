@@ -550,7 +550,7 @@ describe("unit evidence rules", () => {
 	test("Derived unit attempts", () => {
 		const prog = (n: number): MarkedComment => ({ commentId: `p${n}`, kind: "decision", id: "progress.U3", author: "bot", data: { point: "progress", outcome: "retry", attempt: n } });
 		const counter: MarkedComment = { commentId: "k", kind: "counter", id: "unit_attempts.U3", author: "bot", data: { value: 9 } };
-		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3 });
+		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
 		const s = state("build", NO_QUESTION, { counters: facts.counters, evidence: facts.evidence });
 		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
 	});

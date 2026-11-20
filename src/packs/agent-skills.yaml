@@ -18,6 +18,7 @@ decisions:
       api: [endpoint, public api]
   difficulty: { mode: rule }
   progress: { mode: rule }
+  finding-scope: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -65,6 +66,7 @@ phases:
     skills:
       required: [code-review-and-quality]
       optional: [code-simplification, security-and-hardening, performance-optimization]
+    checks: [review-clean]
     gate: self
     subagents:
       - { role: reviewer, subject: change, mode: always, skills: [code-review-and-quality] }

@@ -272,7 +272,7 @@ describe("Incomplete line", () => {
 	test("shows the comment items, not ids", () => {
 		const body = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
 		const item = (id: string, items: string[]): MarkedComment => ({ commentId: id, kind: "incomplete", id, author: "bot", data: { items, at: "t", head_sha: "x" } });
-		const facts = deriveCommentFacts([item("1", ["old"]), item("2", ["finish the header test", "docs"])], parseChange(body), { iterations: 5, unitAttempts: 3 });
+		const facts = deriveCommentFacts([item("1", ["old"]), item("2", ["finish the header test", "docs"])], parseChange(body), { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
 		const card = renderCard(changeCard(stateFor("build", { incomplete: facts.incomplete }, body)));
 		expect(card).toContain(`Incomplete: ${untrusted("finish the header test")}, ${untrusted("docs")}`);
 	});

@@ -196,7 +196,7 @@ function summariesOf(marked: MarkedComment[]): Summary[] {
 }
 
 /** Rebuttals as `commentId:index` keys; a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
-function rebuttedKeys(marked: MarkedComment[]): Set<string> {
+export function rebuttedKeys(marked: MarkedComment[]): Set<string> {
 	const keys = new Set<string>();
 	for (const m of current(marked)) {
 		const data = m.kind === "finding-summary" ? (m.data as Partial<RebuttalData>) : null;
