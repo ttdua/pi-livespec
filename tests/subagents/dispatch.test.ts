@@ -74,6 +74,15 @@ describe("launch options", () => {
 		const o = spawnOptions(packet(), "implementer", undefined, "low", 0, [], { change: "c", unit: "U1", lane: "U1" });
 		expect(checkLaunch(o, { ...applied(o), cwd: "/other" })).toMatchObject({ ok: false, field: "cwd", laneCwd: true });
 	});
+
+	test("a lane cwd mismatch with another mismatch still re-runs sequentially", async () => {
+		const o = spawnOptions(packet(), "implementer", undefined, "low", 0, [], { change: "c", unit: "U1", lane: "U1" });
+		const facts = { ...applied(o), cwd: "/other", inheritSkills: true };
+		expect(checkLaunch(o, facts)).toMatchObject({ ok: false, laneCwd: true });
+		const fake = fakeExecutor({ facts: () => ({ cwd: "/other", inheritSkills: true }) });
+		const out = await runDispatch(deps(fake).d, request({ lane: "U1" }));
+		expect(out.kind).toBe("sequential");
+	});
 });
 
 describe("result interpretation", () => {

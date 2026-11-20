@@ -111,11 +111,11 @@ function mismatches(requested: SpawnOptionsLike, facts: LaunchFacts | undefined)
 	return out;
 }
 
-/** Compares the effective launch with the request; a `cwd`-only mismatch of a lane launch re-runs the unit sequentially. */
+/** Compares the effective launch with the request; a `cwd` mismatch of a lane launch (whatever else differs) re-runs the unit sequentially. */
 export function checkLaunch(requested: SpawnOptionsLike, facts?: LaunchFacts): LaunchCheck {
 	const found = mismatches(requested, facts);
 	const first = found[0];
 	if (first === undefined) return { ok: true };
-	const laneCwd = requested.metadata.lane !== undefined && found.length === 1 && first.field === "cwd";
+	const laneCwd = requested.metadata.lane !== undefined && found.some((m) => m.field === "cwd");
 	return { ok: false, field: first.field, laneCwd, mismatches: found };
 }
