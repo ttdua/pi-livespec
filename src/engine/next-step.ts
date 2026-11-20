@@ -245,12 +245,12 @@ const childQuestion: Rule = ({ state }) => {
 /**
  * Rule 11b, lanes: open a lane for each eligible ready unit when two or more units would run in lanes
  * together and the implementer entry holds for each, before any unit is started; then start every open
- * lane's unit in its lane.
+ * lane's unit in its lane. A receipted unit missing its tick is ticked first (rule 12), so no lane opens before it.
  */
 const laneUnits: Rule = ({ pack, state, phase }) => {
 	if (phase.per !== "unit") return undefined;
 	const lanes = Object.keys(state.subagents.lanes);
-	if (Object.keys(state.evidence.started).length === 0) {
+	if (Object.keys(state.evidence.started).length === 0 && state.evidence.untickedReceipts.length === 0) {
 		const eligible = eligibleLanes(state, state.subagents.laneLimit ?? DEFAULT_LANES).filter((id) => implementerHolds(pack, state, phase, id));
 		if (eligible.length > 0 && lanes.length + eligible.length >= 2) return { next: `Run these units in parallel lanes: ${eligible.map((id) => `lane_open ${id}`).join(", ")}.` };
 	}

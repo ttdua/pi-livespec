@@ -31,6 +31,7 @@ export function laneRefusal(state: LaneFacts, unit: string, max: number): string
 	const target = state.change.units.find((u) => u.id === unit);
 	if (target === undefined || !isReady(target, doneIds(state))) return `${unit} is not a ready unit.`;
 	if (unit in state.evidence.started) return `${unit} is already started.`;
+	if (state.evidence.untickedReceipts.includes(unit)) return `${unit} has a receipt but no tick: run unit_finish ${unit} again instead.`;
 	if (unit in lanes) return `${unit} already has an open lane.`;
 	const open = Object.keys(lanes);
 	if (open.length >= max) return `${open.length} lane(s) are open and the limit (lanes) is ${max}.`;
@@ -38,7 +39,7 @@ export function laneRefusal(state: LaneFacts, unit: string, max: number): string
 	return clash === undefined ? undefined : `${unit} shares Files with ${clash.id}, whose lane is open.`;
 }
 
-/** Ready, unstarted units that may run together, in change order, at most `max` minus the open lanes. */
+/** Ready, unstarted, unreceipted units that may run together, in change order, at most `max` minus the open lanes. */
 export function eligibleLanes(state: LaneFacts, max: number): string[] {
 	if (!state.subagents.executor.ok) return [];
 	const room = max - Object.keys(state.subagents.lanes).length;
@@ -47,7 +48,8 @@ export function eligibleLanes(state: LaneFacts, max: number): string[] {
 	const picked: string[] = [];
 	for (const u of state.change.units) {
 		if (picked.length >= room) break;
-		if (!isReady(u, done) || u.id in state.evidence.started || u.id in state.subagents.lanes || overlaps(u, taken)) continue;
+		const busy = u.id in state.evidence.started || u.id in state.subagents.lanes || state.evidence.untickedReceipts.includes(u.id);
+		if (!isReady(u, done) || busy || overlaps(u, taken)) continue;
 		picked.push(u.id);
 		taken.push(u);
 	}

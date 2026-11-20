@@ -706,6 +706,12 @@ describe("parallel lanes in the build loop", () => {
 		expect(nextStep(pack, at()).next).toBe("Run these units in parallel lanes: lane_open U1, lane_open U3.");
 	});
 
+	test("a receipted unticked unit is ticked before lanes open", () => {
+		const s = at();
+		const step = nextStep(pack, { ...s, evidence: { ...s.evidence, untickedReceipts: ["U1"] } });
+		expect(step.next).toBe("Run unit_finish U1 again to tick it.");
+	});
+
 	test("no lanes without an executor, with one ready unit, or when the implementer entry does not hold", () => {
 		expect(nextStep(pack, at({ subagents: subagents({ executor: { ok: false, missing: ["spawn"] } }) })).next).toContain("Build U1");
 		expect(nextStep(pack, state("build", NO_QUESTION.replace("Difficulty: low", "Difficulty: medium"), { subagents: subagents() })).next).not.toContain("lane_open");

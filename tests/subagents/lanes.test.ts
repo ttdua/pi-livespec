@@ -57,6 +57,14 @@ describe("parallel-lanes eligibility", () => {
 		expect(laneRefusal(lanesState(units, {}, ["U1"]), "U1", 3)).toContain("already started");
 	});
 
+	test("a receipted unticked unit gets no lane", () => {
+		const units = [spec("U1", ["a"]), spec("U2", ["b"]), spec("U3", ["c"])];
+		const s = lanesState(units);
+		const receipted = { ...s, evidence: { ...s.evidence, untickedReceipts: ["U1"] } };
+		expect(eligibleLanes(receipted, 3)).toEqual(["U2", "U3"]);
+		expect(laneRefusal(receipted, "U1", 3)).toContain("unit_finish U1");
+	});
+
 	test("open refused over the limit (pure)", () => {
 		const s = lanesState([spec("U2", ["a"]), spec("U3", ["b"])], { lanes: { U2: lane("U2") } });
 		expect(laneRefusal(s, "U3", 1)).toContain("limit (lanes) is 1");
