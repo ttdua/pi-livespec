@@ -16,7 +16,7 @@
 - **Branch**: `ls-07`
 - **Base branch**: `main`
 - **Final state**: `pr-updated`
-- **PR URL**: `N/A` (no PR existed at push time; see "PR comment")
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/30` (opened at finalize step 11, after the user agreed; closes #7)
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/30#issuecomment-7045521629)
 
 ---
 
