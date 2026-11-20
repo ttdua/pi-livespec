@@ -21,7 +21,7 @@ It takes ideas from [OpenSpec](https://github.com/Fission-AI/OpenSpec) (spec for
 
 ## Subagents
 
-livespec can hand role work (`scout`, `implementer`, `reviewer`, `verifier`) to subagent children, and it can run independent units in parallel lanes. Without an executor, every role runs inline in the main session and leaves the same evidence. See [Architecture: Subagents](docs/architecture.md#subagents).
+livespec can hand role work (`scout`, `implementer`, `reviewer`) to subagent children, and it can run independent units in parallel lanes. The `verifier` role is reserved for LS-08 (no tool can give it a finding yet). Without an executor, every role runs inline in the main session and leaves the same evidence. See [Architecture: Subagents](docs/architecture.md#subagents).
 
 **Executor setup.** Install one of:
 
@@ -36,6 +36,10 @@ livespec detects the executor by capability: the published service must provide 
 - **Without Jev**, the role's agent file and your pi settings choose the model, and the requested thinking level applies.
 
 Each `dispatch` record stores the requested thinking and the effective model and thinking, so you can audit the routing.
+
+**Findings.** A blocking review finding refuses `unit_finish` until it is fixed, rebutted with `finding_rebut` or, for `needs-decision`, answered. An `out-of-scope` finding never refuses the tick; it is listed at the next human gate.
+
+**Known limit.** A pi `/fork` or `/clone` of your main session is treated as a child when no executor is installed: it shows no phase card and the subagent and lane tools refuse there. With an executor, only the executor decides which sessions are children.
 
 **Role guidance.** Give `reviewer` and `verifier` strong models, because their findings gate `unit_finish`. A fast, cheap model suits `scout`, which only reads. Override a role by placing an agent file with its name (for example `~/.pi/agent/agents/reviewer.md`). livespec uses the override as is and doctor lists it.
 
