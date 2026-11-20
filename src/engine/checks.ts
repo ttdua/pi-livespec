@@ -2,6 +2,7 @@
 // checks the active phase lists. Later specs add checks through registerCheck.
 
 import { registerRedOnBase } from "../evidence/red-on-base.ts";
+import { registerReviewPayload } from "../review/payload.ts";
 import { registerReviewClean } from "../review/status.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,6 +83,7 @@ export function registerBuiltinChecks(): void {
 	for (const [name, fn] of Object.entries(BUILTIN_CHECKS)) registerCheck(name, fn);
 	registerRedOnBase();
 	registerReviewClean();
+	registerReviewPayload();
 }
 
 registerBuiltinChecks();

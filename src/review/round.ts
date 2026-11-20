@@ -37,7 +37,7 @@ export function completedReview(marked: MarkedComment[], subject: ReviewSubject,
 }
 
 /** The latest run of `subject` at `head` ended `BLOCKED` and no lifting stuck answer came after it. */
-function stillBlocked(marked: MarkedComment[], subject: ReviewSubject, head: string): boolean {
+export function stillBlocked(marked: MarkedComment[], subject: ReviewSubject, head: string): boolean {
 	const latest = reviewerRuns(marked, subject, head).at(-1);
 	if (latest === undefined || latest.data.completed || latest.data.status !== "BLOCKED") return false;
 	return !marked.some((m, i) => i > latest.at && liftsCap(m));

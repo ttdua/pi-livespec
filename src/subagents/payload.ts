@@ -2,7 +2,9 @@
 
 import { untrusted } from "../hooks/phase-card.ts";
 import type { MarkedComment } from "../forge/markers.ts";
-import { current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
+import { aggregateOf, latestRun } from "../review/records.ts";
+import { findingState } from "../review/status.ts";
+import { type AggregateFinding, current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
 import type { Finding } from "./roles.ts";
 
 const HEADING = "Subagent findings:";
@@ -42,7 +44,26 @@ function outOfScopeListed(marked: MarkedComment[]): Listed {
 	const shown = gatesShownKeys(marked);
 	const open = reviewedUnits(marked).flatMap((unit) => unresolvedBlocking(marked, unit, new Set(), shown)).filter((o) => o.finding.scope === "out-of-scope");
 	const system = unshownSystemFindings(marked, shown);
-	return { lines: [...open.map((o) => findingLine(o.finding)), ...system.map((o) => findingLine(o.finding))], keys: [...open.map((o) => findingKey(o.comment, o.index)), ...system.map((o) => o.key)] };
+	const followUps = aggregateFollowUps(marked, shown);
+	return {
+		lines: [...open.map((o) => findingLine(o.finding)), ...system.map((o) => findingLine(o.finding)), ...followUps.lines],
+		keys: [...open.map((o) => findingKey(o.comment, o.index)), ...system.map((o) => o.key), ...followUps.keys],
+	};
+}
+
+/** The latest routed round's non-disputed `out-of-scope` follow-ups no completed gate has shown yet. */
+function aggregateFollowUps(marked: MarkedComment[], shown: Set<string>): Listed {
+	const out: Listed = { lines: [], keys: [] };
+	const run = latestRun(marked);
+	const aggregate = run?.routed ? aggregateOf(marked, run.round) : undefined;
+	if (aggregate === undefined) return out;
+	(aggregate.data.findings as AggregateFinding[]).forEach((f, i) => {
+		const key = findingKey(aggregate.commentId, i);
+		if (f.route !== "out-of-scope" || shown.has(key) || findingState(marked, aggregate.commentId, i, []) === "disputed") return;
+		out.lines.push(findingLine(f));
+		out.keys.push(key);
+	});
+	return out;
 }
 
 export type FindingsSection = { lines: string[]; keys: string[] };

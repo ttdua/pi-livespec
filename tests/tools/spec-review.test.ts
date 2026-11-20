@@ -223,12 +223,13 @@ describe("spec_review refusals write nothing", () => {
 		await refusedWith(await reviewHarness({ phase: "define" }), "not review");
 	});
 
-	test("Unit not done", async () => {
+	// The planner's own refusal is pinned in tests/review/round.test.ts; here the next step has already sent the change back to build.
+	test("Unit not done sends the change back to build", async () => {
 		const h = await reviewHarness();
 		const issue = await h.world.forge.getIssue(h.n);
 		await h.world.forge.updateIssueBody(h.n, issue.body.replace(/(Verify: `true`\n)- \[x\] done(\n\n## Durable)/, "$1- [ ] pending$2"), issue.version);
 		await h.session.comments?.invalidate(h.n);
-		await refusedWith(h, "U2");
+		await refusedWith(h, "in build, not review");
 	});
 
 	test("No Base", async () => {

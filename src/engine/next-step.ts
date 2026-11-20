@@ -10,11 +10,10 @@ import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
-import { phaseEntryStep } from "../subagents/phase-entries.ts";
+import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase-entries.ts";
+import { reviewStep } from "../review/next.ts";
 import { effectiveMode } from "./request-mode.ts";
-import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
-
-type Decision = { next: string; advance?: string; dispatch?: NextStep["dispatch"] };
+import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
 
 type UnitPlan = { ready: Unit[]; waiting: { id: string; waitingOn: string[] }[] };
 
@@ -291,6 +290,9 @@ const nextUnit: Rule = ({ units, state }) => {
 	return { next: `No unit is ready: ${waits}.` };
 };
 
+/** Rule 14: in the review phase, the review steps before the gate (review-phase "Review next steps"). */
+const reviewPhase: Rule = ({ pack, state, phase }) => (reviewEntriesRunBySpecReview(phase.id) ? reviewStep(pack, state) : undefined);
+
 /** Appends the human's notes; `next` is wrapped as untrusted where it is shown, so they are not wrapped here. */
 function withNotes(text: string, notes: string): string {
 	return notes === "" ? text : `${text} Notes: ${notes}`;
@@ -344,6 +346,7 @@ const RULES: Rule[] = [
 	startedUnit,
 	receiptedUnit,
 	nextUnit,
+	reviewPhase,
 ];
 
 /** Rule 1, when no active phase resolves: no phase label, several, or one naming a phase the pack does not have. */

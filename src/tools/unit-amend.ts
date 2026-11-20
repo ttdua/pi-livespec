@@ -39,6 +39,8 @@ const TOOL = "unit_amend";
 const AMEND_PREFIX = "amend:";
 const FORMS = "Call unit_amend as { unit, replacement } to edit, { add: true, replacement } to add, or { drop: true, unit } to drop.";
 
+const SIMPLIFY_TITLE = "simplify";
+
 const refusal = (message: string): { refused: string } => ({ refused: `${TOOL} refused: ${message}` });
 
 // --- pure planning -------------------------------------------------------------------
@@ -53,6 +55,13 @@ export function amendForm(p: UnitAmendParams): AmendForm | { refused: string } {
 	if (drop && !add && unit !== undefined && !hasReplacement) return { action: "drop", unit };
 	if (!add && !drop && unit !== undefined && hasReplacement) return { action: "edit", unit, replacement: normalizeUnitInput(p.replacement) };
 	return refusal(FORMS);
+}
+
+/** A unit titled `simplify` must be a refactor (unit-planning "Simplify unit kind"). */
+function simplifyRefusal(form: AmendForm): { refused: string } | undefined {
+	if (form.action === "drop") return undefined;
+	const { title, kind } = form.replacement;
+	return title.trim().toLowerCase() === SIMPLIFY_TITLE && kind !== "refactor" ? refusal("a simplify unit must be Kind: refactor") : undefined;
 }
 
 /** Refusals that hold whatever the form: no lock yet, a blocking state, or a blocking request pending or applying. */
@@ -192,6 +201,8 @@ export async function runUnitAmend(p: UnitAmendParams, ctx: ApproverCtx): Promis
 	const { state } = change;
 	const form = amendForm(p);
 	if ("refused" in form) return toolResult(form.refused, undefined, true);
+	const simplify = simplifyRefusal(form);
+	if (simplify) return toolResult(simplify.refused, undefined, true);
 	const blocked = stateRefusal(state);
 	if (blocked) return toolResult(blocked.refused, undefined, true);
 	const body = (await w.forge.getIssue(state.issue.number)).body;
