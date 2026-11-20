@@ -12,14 +12,14 @@ export type PhaseEntryStep = { next: string; dispatch: NonNullable<NextStep["dis
 const LEVELS = ["low", "medium", "high"] as const;
 type Level = (typeof LEVELS)[number];
 
-/** Change-level policy facts: the highest unit `Difficulty`, the change's `unfamiliar-code` fact, no unit tags. */
+/** Change-level policy facts: the highest unit `Difficulty`, the change's `unfamiliar-code` fact, the union of the units' tags. */
 function changeFacts(state: ChangeState): PolicyFacts {
 	const { contextPercent, turnsCompleted, unfamiliar } = state.subagents;
 	const ranks = state.change.units.map((u) => LEVELS.indexOf(u.difficulty as Level)).filter((r) => r >= 0);
 	return {
 		units: state.change.units.length,
 		...(ranks.length === 0 ? {} : { maxDifficulty: LEVELS[Math.max(...ranks)] as Level }),
-		tags: [],
+		tags: [...new Set(state.change.units.flatMap((u) => u.tags ?? []))],
 		unfamiliar: unfamiliar.change,
 		turnsCompleted,
 		...(contextPercent === undefined ? {} : { contextPercent }),

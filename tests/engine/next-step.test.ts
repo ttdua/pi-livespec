@@ -800,6 +800,14 @@ describe("phase-level subagent suggestions before the gate", () => {
 		expect(nextStep(pack, state("shape", NO_QUESTION, { subagents: unfamiliar, marked: [scouted] })).next).toBe("Checks pass; the shape gate can pass.");
 	});
 
+	test("a change-level tags condition holds when a unit carries the tag", () => {
+		const tagged: Pack = { ...pack, phases: pack.phases.map((p) => (p.id === "shape" ? { ...p, subagents: [{ role: "scout", mode: "auto", when: ["tags:security"] }] } : p)) };
+		const withTag = NO_QUESTION.replace("Difficulty: low", "Difficulty: low\nTags: [security]");
+		expect(withTag).not.toBe(NO_QUESTION);
+		expect(nextStep(tagged, state("shape", withTag, { subagents: withExecutor() })).dispatch).toEqual({ role: "scout", inline: false });
+		expect(nextStep(tagged, state("shape", NO_QUESTION, { subagents: withExecutor() })).dispatch).toBeUndefined();
+	});
+
 	test("no suggestion once the gate is requested or decided", () => {
 		const requested = state("define", NO_QUESTION, { requests: requests([request("gate:define", "gate", "blocking")]) });
 		expect(nextStep(pack, requested).dispatch).toBeUndefined();
