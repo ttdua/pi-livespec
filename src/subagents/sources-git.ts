@@ -44,7 +44,8 @@ export const declaredSpecs: Provider = {
 
 async function diffSource(cx: Cx, from: string | undefined, path: string, title: string, missing: string): Promise<Placed[]> {
 	if (from === undefined) throw new Error(`${missing}, so the diff source (diff:<from>..<to>) cannot be built`);
-	const to = cx.ctx.state.git.head;
+	// `ctx.git` is the unit's root: its lane when one is open, so a lane unit's diff ends at the lane head.
+	const to = await cx.ctx.git.head();
 	const text = await cx.ctx.git.diff(from, to, path);
 	return [placed({ id: `diff:${from}..${to}`, version: sha256(text), title, text, untrusted: true }, "file")];
 }

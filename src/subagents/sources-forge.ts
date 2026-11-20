@@ -54,10 +54,12 @@ export const pullRequestAndChecks: Provider = {
 	async run(cx) {
 		const pr = prNumber(cx.ctx.state.change);
 		if (pr === undefined) return [];
-		const [request, checks] = await Promise.all([cx.ctx.forge.getPullRequest(pr), cx.ctx.forge.getChecks(cx.ctx.state.git.head)]);
+		// The unit's root HEAD (its lane when one is open), as for the diff.
+		const head = await cx.ctx.git.head();
+		const [request, checks] = await Promise.all([cx.ctx.forge.getPullRequest(pr), cx.ctx.forge.getChecks(head)]);
 		const out = [placed({ id: `pr#${pr}`, version: request.version, title: `Pull request #${pr}: ${request.title}`, text: request.body, untrusted: true })];
 		for (const c of checks.checks) {
-			out.push(placed({ id: `check:${cx.ctx.state.git.head}:${c.name}`, version: c.state, title: `Check ${c.name}`, text: `${c.name}: ${c.state}${c.url ? ` ${c.url}` : ""}`, untrusted: true }));
+			out.push(placed({ id: `check:${head}:${c.name}`, version: c.state, title: `Check ${c.name}`, text: `${c.name}: ${c.state}${c.url ? ` ${c.url}` : ""}`, untrusted: true }));
 		}
 		return out;
 	},

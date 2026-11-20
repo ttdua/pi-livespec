@@ -382,6 +382,15 @@ describe("parallel-lanes tools", () => {
 		expect(cardState(h).step.dispatch?.role).toBe("implementer");
 	});
 
+	test("a lane unit's reviewer packet carries the lane diff", async () => {
+		const h = await laneHarness();
+		ok(await h.open("U2"));
+		ok(await h.start("U2"));
+		const laneHead = await laneCommit(h, "U2", { "src/u2.ts": "export const laneWork = 1;\n" });
+		const out = ok(await h.call("subagent_packet", { role: "reviewer", unit: "U2", subject: "unit" }));
+		expect(textOf(out)).toContain(`diff:${h.head}..${laneHead}`);
+	});
+
 	test("both tools refuse in a child", async () => {
 		const h = await laneHarness();
 		h.fake.service.childSession = (() => ({ agentId: "a", agentType: "implementer", metadata: {} })) as never;
