@@ -51,7 +51,6 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
 		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true, needsContext: request.needsContext,
-		...(target.finding === undefined ? {} : { finding: target.finding }),
 	};
 	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { receiptComment } from "../../src/evidence/records.ts";
 import { buildPacket } from "../../src/subagents/packet.ts";
+import { writeIn } from "../helpers/repo.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
@@ -237,7 +238,9 @@ describe("verifier of an in-change finding", () => {
 		const finding = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "e", fix: "f", scope: "in-change" as const };
 		const target = resolveTarget(world.ctx.state, "verifier");
 		if (!target.ok) throw new Error(target.message);
+		await writeIn(world.root, "src/free/clock.ts", "export const now = () => 0;\n");
 		const placed = await collectSources({ ...world.refreshed(), finding: { ...finding, location: "src/free/clock.ts:4" } }, target.target);
+		expect(placed.find((p) => p.source.id === "file:src/free/clock.ts")?.source.text).toContain("export const now");
 		expect(placed.some((p) => p.source.id.startsWith("comment:finding-"))).toBe(true);
 		expect(placed.some((p) => p.source.id.startsWith("receipt:"))).toBe(false);
 	});
