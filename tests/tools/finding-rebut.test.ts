@@ -43,6 +43,14 @@ describe("review-findings", () => {
 		expect(await unresolved(h)).toEqual([]);
 	});
 
+	test("two parallel rebuttals of one summary both land", async () => {
+		const { h, rebut } = await harness();
+		const id = await seedSummary(h, { findings: [warning(), warning({ location: "b.ts:2" })] });
+		const outs = await Promise.all([rebut({ comment: id, index: 0, reason: "r1", evidence: "e1" }), rebut({ comment: id, index: 1, reason: "r2", evidence: "e2" })]);
+		for (const out of outs) expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await unresolved(h)).toEqual([]);
+	});
+
 	test("rebut missed-context refused", async () => {
 		const { h, rebut } = await harness();
 		const id = await seedSummary(h, { findings: [warning({ kind: "missed-context" })] });

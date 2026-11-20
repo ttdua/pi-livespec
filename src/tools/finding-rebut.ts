@@ -1,6 +1,7 @@
 // `finding_rebut`: the parent rebuts a blocking finding of a review summary with a reason and evidence.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { withEvidenceLock } from "../evidence/lock.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { isChildSession, type ChildCheckContext } from "../subagents/child.ts";
 import { isBlocking, rebuttalComment, type RebuttalData } from "../subagents/records.ts";
@@ -41,6 +42,11 @@ export async function runFindingRebut(p: RebutParams, ctx?: ChildCheckContext): 
 	if (ctx !== undefined && isChildSession(ctx)) return refuse("only the main session rebuts findings; this is a child session.");
 	if (blank(p.reason)) return refuse("a reason is required.");
 	if (blank(p.evidence)) return refuse("evidence is required.");
+	// A rebuttal rewrites the summary's item list read from the state: two parallel calls must not drop an item.
+	return withEvidenceLock(() => postRebuttal(p));
+}
+
+async function postRebuttal(p: RebutParams): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refuse(w.message);
 	const change = requireChange(w.session);
