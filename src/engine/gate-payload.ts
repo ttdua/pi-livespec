@@ -94,7 +94,7 @@ export function gatePayload(state: ChangeState, pack: Pack, target: string, fact
 	const isPhase = pack.phases.some((p) => p.id === target);
 	const head = [`Gate ${target} for #${state.issue.number} ${state.issue.title}.`];
 	const registered = isPhase ? registeredPayload(target, state, facts).map((t) => [t]) : [];
-	const subagent = subagentFindingsSection(state.marked, pack, target);
+	const subagent = subagentFindingsSection(state.marked);
 	const sections = [...(isPhase ? phaseSections(state, target, facts) : []), gateCheckSection(state), subagent.lines, ...registered];
 	const summary = [head, ...sections.filter((s) => s.length > 0)].map((s) => s.join("\n")).join("\n\n");
 	return {

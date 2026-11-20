@@ -1,9 +1,7 @@
-// Gate payload text for subagent output: advisory findings of the phase's reviewers and the parent's rebuttals.
+// Gate payload text for subagent output: advisory findings not yet shown at a gate and the parent's rebuttals.
 
 import { untrusted } from "../hooks/phase-card.ts";
-import type { Pack } from "../engine/pack-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
-import { entriesFor } from "./policy.ts";
 import { current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
 import type { Finding } from "./roles.ts";
 
@@ -15,17 +13,19 @@ const findingLine = (f: Finding): string => `- ${f.severity} ${f.kind} at ${untr
 
 type Listed = { lines: string[]; keys: string[] };
 
-/** Advisory reviews of the phase's own advisory reviewer entries: valid, current summaries only. */
-function advisoryListed(marked: MarkedComment[], pack: Pack, target: string): Listed {
-	const subjects = new Set(entriesFor(pack, target).filter((e) => e.role === "reviewer" && e.advisory === true).map((e) => e.subject));
+/** Every valid, current advisory finding no completed gate has shown yet, whatever its phase or reviewer entry. */
+function advisoryListed(marked: MarkedComment[]): Listed {
+	const shown = gatesShownKeys(marked);
 	const out: Listed = { lines: [], keys: [] };
 	for (const m of current(marked)) {
 		if (m.kind !== "finding-summary" || isRebuttal(m.data)) continue;
 		const data = m.data as FindingSummaryData;
-		if (data.advisory !== true || !subjects.has(data.subject)) continue;
+		if (data.advisory !== true) continue;
 		data.findings.forEach((f, i) => {
+			const key = findingKey(m.commentId, i);
+			if (shown.has(key)) return;
 			out.lines.push(findingLine(f));
-			out.keys.push(findingKey(m.commentId, i));
+			out.keys.push(key);
 		});
 	}
 	return out;
@@ -48,8 +48,8 @@ function outOfScopeListed(marked: MarkedComment[]): Listed {
 export type FindingsSection = { lines: string[]; keys: string[] };
 
 /** The "Subagent findings" section of a gate payload and the keys of the findings it lists; empty when there is nothing to show. */
-export function subagentFindingsSection(marked: MarkedComment[], pack: Pack, target: string): FindingsSection {
-	const advisory = advisoryListed(marked, pack, target);
+export function subagentFindingsSection(marked: MarkedComment[]): FindingsSection {
+	const advisory = advisoryListed(marked);
 	const rebuttals = rebuttalLines(marked);
 	const outOfScope = outOfScopeListed(marked);
 	if (advisory.lines.length === 0 && rebuttals.length === 0 && outOfScope.lines.length === 0) return { lines: [], keys: [] };
