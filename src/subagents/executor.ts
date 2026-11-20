@@ -2,6 +2,9 @@
 
 export const SERVICE_KEYS = ["@ttdua/pi-subagents:service", "@gotgenes/pi-subagents:service"] as const;
 
+/** The `source` the executor reports for its own role agent; any other source is a user or project override. */
+export const BUILTIN_SOURCE = "builtin";
+
 const CAPABILITIES = ["spawn", "wait", "resume", "abort", "childSession", "getAgentType"] as const;
 
 export type JsonSchema = Readonly<Record<string, unknown>>;

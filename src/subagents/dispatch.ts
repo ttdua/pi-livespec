@@ -1,6 +1,6 @@
 // Orchestration of one dispatch: watch → spawn → check → wait → interpret → record. Counters come from forge records only.
 
-import type { LaunchFacts, RecordLike, SubagentsServiceLike } from "./executor.ts";
+import { BUILTIN_SOURCE, type LaunchFacts, type RecordLike, type SubagentsServiceLike } from "./executor.ts";
 import { checkLaunch, type EventsLike, type Mismatch, spawnOptions, watchLaunch } from "./launch.ts";
 import { dispatchComment, type QuestionLaunch, type Thinking } from "./records.ts";
 import { type DispatchHistory, interpret, type ResultDecision } from "./result.ts";
@@ -41,8 +41,6 @@ export type DispatchRequest = {
 	round: number;
 	needsContext: number;
 };
-
-const BUILTIN_SOURCE = "builtin";
 
 /** One launch's identity and the facts the record needs. */
 export type Run = { agentId: string; facts: LaunchFacts; thinking: Thinking; agentSource: string };
