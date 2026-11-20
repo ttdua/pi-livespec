@@ -21,7 +21,7 @@ export type RouteResult = { route: Route; unit?: string };
 export function normalizeLocation(location: string): { path: string; line: number } {
 	const match = /^(.*?)(?::(\d+))?(?::\d+)?$/.exec(location.trim());
 	const raw = (match?.[1] ?? location).replaceAll("\\", "/");
-	const path = raw.replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
+	const path = raw.replace(/^(?:\.?\/)+/, "");
 	const line = Number(match?.[2] ?? 1);
 	return { path, line: line > 0 ? line : 1 };
 }

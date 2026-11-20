@@ -70,6 +70,9 @@ describe("normalizeLocation", () => {
 	test("strips a leading slash and keeps the line of path:line:col", () => {
 		expect(normalizeLocation("/src/a.ts:3:7")).toEqual({ path: "src/a.ts", line: 3 });
 	});
+	test("strips any mix of leading ./ and /", () => {
+		expect(normalizeLocation("/./src/a.ts:2")).toEqual({ path: "src/a.ts", line: 2 });
+	});
 	test("keeps the line of path:line", () => {
 		expect(normalizeLocation("src/a.ts:12")).toEqual({ path: "src/a.ts", line: 12 });
 	});
