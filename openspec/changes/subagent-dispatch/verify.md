@@ -6,13 +6,17 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `subagent-dispatch`
-**Verified at**: `2026-11-20 20:58`
-**Iteration**: `2`
+**Verified at**: `2026-11-20 23:15`
+**Iteration**: `3`
 **Verifier**:
-- The parent session ran checks 1, 2 and 6, the fresh typecheck and the fresh full suite.
-- Four independent read-only verifiers collected the evidence for checks 3 and 4, one part each: (1) `subagent-dispatch`; (2) `subagent-packets` and `review-findings`; (3) `subagent-policy`, `parallel-lanes` and `unit-evidence`; (4) `child-sessions`, `context-injection`, `forge-read` and `init-and-doctor`, plus check 5. Their tables are in the Appendix.
-- Parts 2 and 3 were re-run after a model quota error (429).
-- The parent checked every reported fail against the spec text and the code before classifying it.
+- The parent session ran checks 1, 2 and 6, a fresh typecheck and a fresh full suite.
+- Four independent read-only verifiers collected the evidence for checks 3 and 4, one part each:
+  1. `subagent-dispatch`;
+  2. `subagent-packets` and `review-findings`;
+  3. `subagent-policy`, `parallel-lanes` and `unit-evidence`;
+  4. `child-sessions`, `context-injection`, `forge-read` and `init-and-doctor`. Part 4 also covered check 5.
+- Their tables are in the Appendix.
+- The parent checked the reported fail against the code: `src/hooks/settle.ts:129–142` does not check `isChildSession`.
 
 ---
 
@@ -23,7 +27,7 @@
 **Result**:
 
 ```text
-$ openspec validate subagent-dispatch   (cwd: worktree, HEAD dfbbca2) → exit 0
+$ openspec validate subagent-dispatch   (cwd: worktree, HEAD 9631beb) → exit 0
 Change 'subagent-dispatch' is valid
 22 warnings, all "Requirement text is very long (>500 characters)" (style only)
 ```
@@ -34,7 +38,7 @@ Change 'subagent-dispatch' is valid
 
 - [x] Every box is ticked, or each open box has a recorded reason
 
-`openspec instructions apply --json` reports `progress = {total: 41, complete: 41, remaining: 0}`. `tasks.md` has 0 open `- [ ]` boxes.
+`openspec instructions apply --json` reports `progress = {total: 41, complete: 41, remaining: 0}`. `tasks.md` has 0 open boxes.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -44,58 +48,60 @@ Change 'subagent-dispatch' is valid
 
 ## 3. Requirement Evidence
 
-- [ ] ADDED / MODIFIED: implementation evidence (file / line). 44 pass, 6 fail, 0 not verified.
+- [ ] ADDED / MODIFIED: implementation evidence (file / line). 49 pass, 1 fail, 0 not verified.
 - [x] REMOVED: not applicable
 - [x] RENAMED: not applicable
 
 | Part | Pass | Fail | Not verified |
 |---|---|---|---|
-| 1 `subagent-dispatch` | 10 | 2 | 0 |
-| 2 `subagent-packets`, `review-findings` | 11 | 3 | 0 |
-| 3 `subagent-policy`, `parallel-lanes`, `unit-evidence` | 12 | 1 | 0 |
-| 4 `child-sessions`, `context-injection`, `forge-read`, `init-and-doctor` | 11 | 0 | 0 |
+| 1 `subagent-dispatch` | 12 | 0 | 0 |
+| 2 `subagent-packets`, `review-findings` | 14 | 0 | 0 |
+| 3 `subagent-policy`, `parallel-lanes`, `unit-evidence` | 13 | 0 | 0 |
+| 4 `child-sessions`, `context-injection`, `forge-read`, `init-and-doctor` | 10 | 1 | 0 |
 
-The fails are classified under Issues. The per-requirement tables are in the Appendix.
+The fail is `child-sessions / Child session detection`. See F10 under Issues.
 
 ---
 
 ## 4. Scenario Coverage
 
-- [ ] Every scenario maps to a test. 143 pass, 0 fail, 3 not verified.
+- [x] Every scenario maps to a test. 146 pass, 0 fail. One is not verified: `subagent-policy / Small-fix lane`, deferred to LS-09 by a recorded ruling.
 - [x] The project test command was run fresh in this step
 
-**Test command**: `bun run test`, run fresh by the parent at 19:39 (cwd: worktree, HEAD dfbbca2). `bun run typecheck` → exit 0.
-**Result**: exit 0. `Test Files 164 passed (164)`, `Tests 2429 passed (2429)`.
+**Test command**: `bun run test` (cwd: worktree, HEAD 9631beb), run fresh by the parent at 22:40. `bun run typecheck` exited 0.
+**Result**: exit 0, `Test Files 165 passed (165)`, `Tests 2435 passed (2435)`.
 
 The verifiers also ran focused tests:
-- part 1: 9 files, 170 tests passed;
-- part 2: 12 files, 314 tests passed;
-- part 3: 10 files, 305 tests passed;
-- part 4: 9 files, 137 tests passed.
 
-Not verified:
-- `subagent-policy / Small-fix lane`: deferred to LS-09 by a recorded ruling.
-- `review-findings / Unit review recorded`: the tests post one finding, but the scenario has two.
-- `review-findings / Advisory unit review`: the tests cover "does not refuse", but no test checks that the next human gate lists the finding. Issue F5 below is about that same behaviour.
+| Part | Test files | Tests passed |
+|---|---|---|
+| 1 | 6 | 155 |
+| 2 | 12 | 319 |
+| 3 | 9 | 296 |
+| 4 | 13 | 324 |
 
 ---
 
 ## 5. Design and Contract Coherence (warning only)
 
-- [x] Decisions in design.md match the code. D1–D12 plus D7b: 12 matched, 1 drift (D9).
-- [x] Contracts in plan.md, with the Contract deviations in apply.md, match the code. 34 of 34 Contracts rows and 24 of 24 deviations matched.
+- [ ] Decisions in design.md match the code. D1–D12 plus D7b and D11b were compared:
+  - D7 drifts (see F10);
+  - D3 and D6 are not verified. D3: the role-agent body is placed in the system prompt by the executor, outside this repository. D6: Jev launch-policy replacement can only be observed with a real executor.
+- [x] Contracts in plan.md match the code: 34 of 34 rows.
+- [ ] The Contract deviations recorded in apply.md match the code: 25 of 26 match, 1 drift.
 
 **Drift warnings** (non-blocking):
 
-- **D9:** design.md says the guard takes the lane root from the launch metadata `lane`. The code sets `metadata.lane` (`src/subagents/launch.ts:39`), but the guard reads the child's `ctx.cwd` instead (`src/hooks/guard.ts:72`). The behaviour is the same, because a lane child's cwd is the lane path. Fix the D9 text, or read the metadata.
+- **D7.** Child hooks: the settle hooks are not child-aware. This is the same defect as F10.
+- **The apply.md deviation for `subagentFindingsSection(state)`.** The function actually takes `marked: MarkedComment[]` (`src/subagents/payload.ts:51`). Correct the entry in apply.md.
 
 ---
 
 ## 6. Clean Tree and Commit Range
 
-- [x] Working tree is clean (`git status --porcelain` → 0 lines)
+- [x] Working tree is clean (`git status --porcelain` printed 0 lines)
 
-**Commit range**: `4ad108f..dfbbca2` (73 commits). `verify.md` is committed after it.
+**Commit range**: `4ad108f..9631beb` (83 commits). verify.md is committed after `9631beb`.
 
 ---
 
@@ -103,55 +109,32 @@ Not verified:
 
 ### CRITICAL
 
-- **F1b. The launch-mismatch record is still posted when the aborted child never settles.**
-  - **Where:** `src/subagents/dispatch.ts:158–163`.
-  - **Problem:** after `ABORT_SETTLE_MS`, `mismatchOutcome` posts the record even though `confirmed` is false. Spec `subagent-dispatch` "Dispatch tool" says the tool MUST NOT write to the forge before the child's run has settled.
-  - **Cause:** the fix brief for iteration 2 allowed a post after the timeout. That brief contradicted the spec.
+- **F10. The settle hooks run as the parent inside a child session.**
+  - **Where:** `src/hooks/settle.ts:129–142`.
+  - **What happens:**
+    - The `agent_before_settle` and `agent_settled` handlers never call `isChildSession`.
+    - Parent and child share module state, so in a child `getSession()` returns the parent's `Session`. The previous fix wave (C0) keeps that session from being replaced, which is why the child now sees it.
+    - When a child finishes a turn, `beforeSettle` refreshes the parent's session, which can apply an automatic advance. It can then post or clear the parent change's `incomplete` comment, and it can return a continuation message into the child.
+    - `agent_settled` in a child deletes the parent's asked flag.
+  - **Spec impact:**
+    - `child-sessions` "Child session detection" requires every livespec hook that differs for children to check this first.
+    - The child note forbids forge writes.
+  - **Reproduced** with a hook probe by verifier part 4.
   - **Recommendation:**
-    - When the child has not settled, do not post.
-    - Return the inline or sequential outcome with the mismatch, the aborted child's id and a "not recorded: the child did not settle" note in the tool text.
-    - Change the timeout test so it asserts that nothing was posted.
-- **F6. A lane `cwd` mismatch together with another mismatch runs inline instead of sequentially.**
-  - **Where:** `src/subagents/launch.ts:119`.
-  - **Problem:** `laneCwd` holds only when `cwd` is the sole mismatch. Spec "Post-launch check" says a `cwd` mismatch in a lane SHALL re-run the unit sequentially, whatever else mismatched. design.md D4 wrote "cwd alone", which narrowed the spec.
-  - **Recommendation:**
-    - Set `laneCwd` whenever the launch has a lane and any mismatch is on `cwd`.
-    - Correct the D4 wording.
-    - Add a test with a lane that has both a `cwd` and an `inheritSkills` mismatch.
-- **F5. Advisory unit findings are not listed at the next human gate.**
-  - **Where:** `src/subagents/payload.ts:20–25`.
-  - **Problem:** `advisoryListed` lists advisory findings only when the gate's own phase has an advisory reviewer entry of that subject. A build unit's advisory review is therefore never shown at the `ship` gate. This contradicts scenario `review-findings / Advisory unit review` ("the next human gate lists it").
-  - **Recommendation:**
-    - List every advisory finding that is valid, current and not yet shown, whatever phase the entry came from, recording the keys in `GateSnapshot.findings` as for out-of-scope findings.
-    - Add a gate-payload test for a build advisory unit finding at a later gate.
+    - At the start of both handlers, check `isChildSession(ctx)` and return `undefined` without touching the session.
+    - Add tests: a child `agent_before_settle` neither refreshes nor writes nor continues; a child `agent_settled` leaves the parent's asked flag in place.
+    - Then search `src/hooks` and `src/extension.ts` for any other `pi.on(...)` handler that reads `getSession()` without the child check, and add a test for each one found.
 
 ### WARNING
 
-- **F7. Change-level `tags:<tag>` conditions never hold.**
-  - **Where:** `src/subagents/phase-entries.ts:22`.
-  - **Problem:** `changeFacts` hardcodes `tags: []`. Spec "When conditions" says that for change-level roles, the change's tags hold `<tag>`. The code has no separate change-tag concept, because the decision seam tags units.
-  - **Recommendation:** define the change's tags as the union of its units' tags (record that ruling in design.md), and add a test.
-  - **Why only a warning:** the default pack uses no change-level `tags:` condition.
-- **F8. A check source's version is its state, not a content hash.**
-  - **Where:** `src/subagents/sources-forge.ts:62`.
-  - **Problem:** the version is `c.state`. Spec "Source ids and versions" allows only `updatedAt`/ETag, a git SHA or a content hash.
-  - **Recommendation:** use the SHA-256 of the canonical check JSON, as `forge_read` does.
-  - **Why only a warning:** the id already contains the head SHA, so a stale-version miss is limited.
-- **F9. The closing summary is the last comment of each closed issue.**
-  - **Where:** `src/subagents/sources-forge.ts:120`.
-  - **Problem:** the spec asks for the closing summary comment. The code takes the last comment of each closed same-capability issue.
-  - **Status:** this follows ruling R3 (the closing-summary marker belongs to LS-09), and the source title says so. The ruling is in the SDD ledger, not in `apply.md`.
-  - **Recommendation:** record R3 under the parked items in `apply.md`.
-- **Tests to add.**
-  - **Recommendation:**
-    - make the `Unit review recorded` test post two findings;
-    - add a gate-listing assertion for `Advisory unit review` (together with F5).
+- **Wrong apply.md deviation entry.** The `subagentFindingsSection` entry says the parameter is `state`; the code takes `marked`. Correct the entry.
+- **D3 and D6 not verified.** Neither can be checked inside this repository: one needs the executor's system-prompt assembly, the other a real Jev routing. Record them in the finalize notes as checks to run against a real executor.
 
 ### SUGGESTION
 
-- **D9 drift.** See check 5.
-- **Long requirements.** Split the requirements that `openspec validate` flags as longer than 500 characters before archive.
-- **Parked items.** Review the parked items in `apply.md` at finalize.
+- **Untrusted wrapping.** `src/engine/next-step.ts:243` puts the child's question into `step.next` unwrapped. The phase card wraps the whole `next` (`src/hooks/phase-card.ts:81`) and the card section wraps it too, so nothing is exposed today. Wrapping it at the source would keep it safe if another caller ever renders `next`.
+- **"Question for the user".** This scenario relies on the parent following the guidance text. Nothing enforces it, as the spec intends.
+- **Long requirements.** Split the requirements that `openspec validate` flags as longer than 500 characters.
 
 ---
 
@@ -159,9 +142,13 @@ Not verified:
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
 - [ ] PASS_WITH_WARNINGS: proceed, noting: —
-- [x] FAIL: fix the cause, then re-apply (iteration 3)
+- [x] FAIL: fix the cause, then re-apply (iteration 4)
 
-**Next step**: run `/opsx-apply`. It detects this FAIL and runs fix iteration 3 in the same worktree. That iteration must fix F1b, F6 and F5, and should also cover F7, F8 and the tests to add. Correct design.md D4 (F6) and D9. Then run `/opsx-verify` again. This is fix-loop iteration 2 of 5.
+**Next step**:
+1. Run `/opsx-apply`. It detects the FAIL and runs fix iteration 4: fix F10 and correct the apply.md deviation entry.
+2. Run `/opsx-verify` again.
+
+This is iteration 3 of the 5-iteration fix loop.
 
 > **Convergence loop reminder**:
 > - PASS / PASS_WITH_WARNINGS: `/opsx-continue` advances to the finalize artifact.
@@ -171,409 +158,429 @@ Not verified:
 
 ---
 
-# Appendix: independent verifier tables (iteration 2)
+# Appendix: independent verifier tables (iteration 3)
 
 ## Part 1
 
-### Verify iteration 2 — part 1
+### Verify iteration 3 — part 1: specs/subagent-dispatch/spec.md
 
-Phạm vi: Check 3–4 cho `openspec/changes/subagent-dispatch/specs/subagent-dispatch/spec.md`, worktree `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`, HEAD đã đọc: `dfbbca2`. Mọi đường dẫn tương đối bên dưới tính từ worktree này. Chỉ kiểm chứng và ghi báo cáo; không sửa repository.
+Worktree `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`, HEAD 9631beb. Focused run: `bun run test` on executor, dispatch, subagent-dispatch, subagent-answer, subagent-record and records test files → 6 files, 155 tests passed.
 
-### Check 3 — Implementation evidence
+### Check 3: requirement → implementation evidence
 
-Đã đọc toàn bộ 12 ADDED requirements. `pass` là kết luận từ code đã đọc trong invocation này; không phải xác nhận E2E với executor thật. Những phần hướng dẫn parent được kiểm tra ở tool output/description. `verifier` reserved cho LS-08 theo ngoại lệ được giao; không coi thiếu flow thực tế của role này là failure. Spec này không có scenario “Small-fix lane”.
-
-| Requirement | Status | Evidence đã đọc và kết luận |
+| Requirement | Evidence (file:line) | Status |
 |---|---|---|
-| Executor detection | pass | `src/subagents/executor.ts:3,8,57–75`: thứ tự hai Symbol keys, sáu functions, không kiểm package/version; `src/tools/subagent-dispatch.ts:32–33` lookup mỗi dispatch và trả packet inline khi không capable. |
-| Dispatch tool | fail | Validation/packet/spawn/wait có ở `src/tools/subagent-target.ts:29–38`, `src/tools/subagent-dispatch.ts:19–39`, `src/subagents/dispatch.ts:111–134,209–242`. Nhưng `src/subagents/dispatch.ts:158–163` vẫn post forge khi abort-settle timeout hết mà `confirmed` là false. Vi phạm MUST NOT write trước khi child run settled (`spec.md:31`). Test hiện hữu `tests/subagents/abort-settle.test.ts:50–56` cố ý giữ wait pending mãi và xác nhận vẫn post sau timeout; test đã chạy pass trong invocation này. `apply.md:30,68` mô tả bound 30 s nhưng không phải ngoại lệ được ghi trong requirement. |
-| Role agents | pass | `src/subagents/roles.ts:45–50` map role trực tiếp; `src/subagents/dispatch.ts:71–76,121` dùng executor agent, disabled → inline; `src/tools/subagent-request.ts:90–100` warning một lần/session, tên/file; `src/subagents/run-record.ts:65–67` lưu source. `git ls-files '*agents/*.md' '*agent*.md'` không có shipped agent definitions; các launch paths đã đọc không register/edit agent files. |
-| Launch options | pass | `src/subagents/launch.ts:25–51` tạo fresh/no context files/no inherited skills, paths từ packet, exclusions/cwd/schema/metadata, không model; `src/tools/subagent-request.ts:31–36,60–68` chọn lane/change cwd và request context. `tests/subagents/dispatch.test.ts:46–52` assert options cho U3 và no model. |
-| Other flows excluded | pass | `src/subagents/isolation.ts:8,14–50` đọc user/project settings, nhận string/object source, match Superpowers/pi-superspec, union với extra qua Set; `src/tools/subagent-request.ts:55–56,67` và `src/subagents/launch.ts:48` nối list vào mỗi launch. |
-| Effort and model | pass | `src/tools/subagent-request.ts:43–46,66` chọn unit/max/default medium và failed attempts; `src/subagents/launch.ts:19–21,34,45` tăng/cap high; `src/subagents/dispatch.ts:60–65` lưu requested/effective; `src/subagents/run-record.ts:66,85` persist. Không ghi Difficulty qua các paths này; test `tests/tools/subagent-dispatch.test.ts:193` xác nhận line không đổi. |
-| Post-launch check | fail | Event buffering/id và missing-event handling ở `src/subagents/launch.ts:60–84,97–110`; abort/record ở `src/subagents/dispatch.ts:156–165`. Tuy nhiên `src/subagents/launch.ts:119` chỉ đánh dấu laneCwd khi `found.length === 1`. Lane có cwd mismatch đồng thời inheritSkills mismatch sẽ trả inline, không sequential (`src/subagents/dispatch.ts:164–165`), trái ngoại lệ cwd mismatch trong lane SHALL re-run sequentially (`spec.md:82`, không giới hạn cwd-only). Kết luận từ branch đã đọc, không có test combined-mismatch được chạy. |
-| Return contract | pass | `src/subagents/roles.ts:57–89` schemas/status/base fields/commits/findings/reason/evidence; `src/subagents/result.ts:39–47,69–79` kiểm schema và coi BLOCKED/NEEDS_CONTEXT thiếu reason/evidence là missing result. |
-| Result handling | pass | `src/subagents/result.ts:9–12,39–79` retry/return/cap/prerequisite; `src/subagents/dispatch.ts:193–231` resume một lần/relaunch cùng request packet; `src/subagents/run-record.ts:111–118` loại unreachable commits, `src/tools/subagent-request.ts:80–85` kiểm ancestor tại child cwd. `src/tools/subagent-outcome.ts:16–20,48–59` hướng dẫn parent thêm source/dispatch hoặc spec_stuck; `src/subagents/run-record.ts:33–58` không tính NEEDS_CONTEXT như attempt. Claim DONE không tự thành receipt: `src/tools/unit-finish.ts:200–215` chạy Verify, `src/tools/unit-finish.ts:115–135` post receipt/tick từ actual run; `src/evidence/unit-state.ts:45–55,82–98` lấy evidence từ receipts chứ không từ child notes. |
-| Questions from a child | pass | `src/subagents/result.ts:70`, `src/subagents/dispatch.ts:174–178` ưu tiên question và post QUESTION trước return; `src/tools/subagent-answer.ts:60–85` pending/change/executor checks, ANSWERED trước resume, chung settle; `src/subagents/sources-records.ts:126–140` source answer:id:n; `src/subagents/records.ts:282–299` đóng pending bằng record sau cùng cùng agent id, kể cả finding-summary. `src/subagents/run-record.ts:65,82` mọi launched result giữ agent id. `src/tools/subagent-answer.ts:93`, `src/tools/subagent-outcome.ts:49`, `src/engine/next-step.ts:240–243` hướng dẫn user-only decisions qua spec_question và hiển thị question trên next step. |
-| Inline fallback | pass | `src/tools/subagent-packet.ts:13–31` dùng cùng buildPacket, không spawn; `src/tools/subagent-record.ts:21–56` validate schema/source, gọi chung recordResult; `src/subagents/run-record.ts:91–93,111–118` chung dispatch/finding records. `src/subagents/card.ts:7–16` hiển thị inline pair; `src/subagents/build-loop.ts:71–100` inline theo capability. `tests/tools/subagent-record.test.ts:19–42` đã đọc và chạy qua start/record/review/finish rồi assert một receipt. |
-| Dispatch record | pass | `src/subagents/records.ts:8` register marker; `src/subagents/run-record.ts:62–93,111–118` một post với đầy đủ role/unit/attempt/hash/source/requested/effective/status/commits/notes/discoveries/sources; review → finding-summary. `src/subagents/records.ts:116–123` latest settled record, `src/subagents/sources-records.ts:65–90` đưa discovery/result của dependency vào packet bằng comment source. |
+| Executor detection | `src/subagents/executor.ts:3` (new key first, then legacy), `:8` (six capabilities), `:67-76` (first published key wins, no name/version check, missing → not ok); `src/tools/subagent-dispatch.ts:32-33` (no executor → inline text with packet) | pass |
+| Dispatch tool | `src/tools/subagent-dispatch.ts:20` (child refusal), `:27-28` (checkTarget), `:30-37` (packet, launch, wait, outcome); `src/tools/subagent-target.ts:30-37` (unknown role/subject, unit required, unit must exist); `src/subagents/dispatch.ts:159-163` (forge write only after the aborted child settled) | pass |
+| Role agents | `src/subagents/roles.ts:45` (AGENT_OF by role name); `src/subagents/dispatch.ts:71-77` (disabled agent → inline; non-builtin → onOverride); `src/tools/subagent-request.ts:93-101` (warn once per session, names file); `src/subagents/dispatch.ts:60-66` + `run-record.ts:62-73` (agentSource in record). No agent files shipped (git ls-files shows no agents/*.md outside openspec) | pass |
+| Launch options | `src/subagents/launch.ts:25-52` (fresh, contextFiles false, skills inherit false + paths, excludeExtensionPackages, cwd, metadata owner/change/role/packet + unit/subject/lane/difficulty, resultSchema; no `model`) | pass |
+| Other flows excluded | `src/subagents/isolation.ts:8` (Superpowers + pi-superspec patterns), `:41-45` (user + project settings), `:48-51` (union, dedup); `src/tools/subagent-request.ts:55-56` (adds `isolation.excludePackages`) | pass |
+| Effort and model | `src/tools/subagent-request.ts:43-48` (unit Difficulty / highest / medium), `:67` (failedAttempts from evidence); `src/subagents/launch.ts:19-22` (raise one step, cap high); `src/subagents/dispatch.ts:60-66` (requested + effective model/thinking recorded) | pass |
+| Post-launch check | `src/subagents/launch.ts:97-111` (context, cwd, inheritSkills, skillPaths, contextFiles, excluded ⊇ requested; missing event = mismatch at `:98`), `:115-121` (lane cwd → sequential); `src/subagents/dispatch.ts:132-133`, `:156-168` (abort, record, inline/sequential) | pass |
+| Return contract | `src/subagents/roles.ts:72-92` (base required + reason/evidence accepted; implementer commits; reviewer/verifier findings with FINDING_SCHEMA); `src/subagents/result.ts:45-46` (BLOCKED/NEEDS_CONTEXT without reason+evidence → missing) | pass |
+| Result handling | `src/subagents/result.ts:39-52` (no result → retry once then blocked), `:72-78` (missing source → return once then blocked), `:59-65` (NEEDS_CONTEXT cap 2 → stuck; missing-prerequisite → stuck); `src/subagents/dispatch.ts:211-235` (relaunch same packet / resume naming ids); `src/subagents/run-record.ts:111-118` + `src/tools/subagent-request.ts:80-86` (unreachable commits dropped) | pass |
+| Questions from a child | `src/subagents/dispatch.ts:178-180` (QUESTION record with agent id before return); `src/tools/subagent-answer.ts:69-84` (pending check, unknown-id refusal, ANSWERED post, resume, settle as dispatch); `src/subagents/records.ts:282-300` (pending until a later record with same agentId); `src/subagents/sources-records.ts:140` (`answer:<id>:<n>`); `src/engine/next-step.ts:240-244` + `src/subagents/card.ts:11` (card next step); user-only guidance `src/tools/subagent-outcome.ts:49`, tool description `subagent-answer.ts:94` | pass |
+| Inline fallback | `src/tools/subagent-packet.ts:28-31` (same buildPacket, no launch); `src/tools/subagent-record.ts:21-27` (schema check), `:47-53` (same interpret + recordResult as dispatch) | pass |
+| Dispatch record | `src/subagents/records.ts:8` (registerKind "dispatch"), `:12-35` (fields), `:117-124` (latestDispatch); `src/subagents/run-record.ts:62-73`, `:91-93` (dispatch vs finding-summary by role); `src/subagents/sources-records.ts:65-77` (dependent packet reads latest dispatch, `comment:<id>`) | pass |
 
-**Tổng Check 3:** pass 10 · fail 2 · not verified 0.
+Observation (not a failure): `src/engine/next-step.ts:243` puts the child's question text into the `next` step unwrapped, while the card section (`src/subagents/card.ts:11`) and tool text wrap it as `<untrusted>`.
 
-### Check 4 — Scenario → existing test
+### Check 4: scenario → test
 
-Đã grep xác nhận tất cả test names/file:line bên dưới, rồi đọc những test bodies cần để kiểm tra mapping. Hai scenario key mới/legacy dùng tool tests thực sự launch; scenario cả hai keys dùng detector test xác nhận key được chọn. Pass ở check này xác nhận mapping tới test hiện hữu, không xóa hai lỗi requirement-level của Check 3.
-
-| Scenario | Status | Test file:line — test name |
+| Scenario | Test (file › name) | Status |
 |---|---|---|
-| Capable executor | pass | `tests/subagents/dispatch.test.ts:195` — `capable executor launches` |
-| Missing capability | pass | `tests/tools/subagent-dispatch.test.ts:105` — `missing capability runs inline` |
-| New service key | pass | `tests/tools/subagent-dispatch.test.ts:78` — `capable executor launches through the new key` |
-| Legacy service key | pass | `tests/tools/subagent-dispatch.test.ts:88` — `legacy service key launches` |
-| Both keys published | pass | `tests/subagents/executor.test.ts:55` — `prefers the new key when both are published` |
-| Renamed package | pass | `tests/tools/subagent-dispatch.test.ts:97` — `renamed package launches` |
-| Unit role without a unit | pass | `tests/tools/subagent-dispatch.test.ts:116` — `unit role without a unit refuses` |
-| Called in a child | pass | `tests/tools/subagent-dispatch.test.ts:143` — parameterized `called in a child refuses: %s`, case `subagent_dispatch` |
-| User override used | pass | `tests/tools/subagent-dispatch.test.ts:154` — `user override used with one warning` |
-| Disabled role agent | pass | `tests/subagents/dispatch.test.ts:288` — `disabled role agent runs inline` |
-| Implementer launch | pass | `tests/subagents/dispatch.test.ts:46` — `implementer launch options` |
-| Superpowers installed | pass | `tests/tools/subagent-dispatch.test.ts:166` — `superpowers excluded` |
-| Extra user exclusion | pass | `tests/tools/subagent-dispatch.test.ts:175` — `extra user exclusion` |
-| Raised after a failure | pass | `tests/tools/subagent-dispatch.test.ts:193` — `raised after a failure keeps the Difficulty line` |
-| Routed by another layer | pass | `tests/subagents/dispatch.test.ts:304` — `routed by another layer recorded` |
-| Skills ignored by the executor | pass | `tests/subagents/dispatch.test.ts:267` — `skills ignored aborts` |
-| Exclusion ignored | pass | `tests/subagents/dispatch.test.ts:274` — `exclusion ignored aborts` |
-| Context forced to fork | pass | `tests/subagents/dispatch.test.ts:281` — `context forced to fork returns refusal` |
-| Blocked without evidence | pass | `tests/subagents/dispatch.test.ts:99` — `blocked without evidence treated as missing` |
-| Missing required source | pass | `tests/subagents/dispatch.test.ts:322` — `missing required source resumed once naming it, then BLOCKED` |
-| Needs context capped | pass | `tests/subagents/dispatch.test.ts:108` — `needs context capped at 2` |
-| Crash retried once | pass | `tests/subagents/dispatch.test.ts:311` — `crash retried once with identical hash` |
-| Ask and answer | pass | `tests/tools/subagent-answer.test.ts:27` — `ask and answer` |
-| Question for the user | pass | `tests/tools/subagent-answer.test.ts:48` — `question for the user goes to spec_question` |
-| Pending question on the card | pass | `tests/tools/subagent-answer.test.ts:40` — `pending question on the card` |
-| No executor | pass | `tests/tools/subagent-record.test.ts:19` — `no executor` |
-| Inline review recorded | pass | `tests/tools/subagent-record.test.ts:44` — `inline review recorded` |
-| Discoveries reach the dependent unit | pass | `tests/tools/subagent-dispatch.test.ts:202` — `discoveries reach the dependent unit` |
-| Marker kind registered | pass | `tests/subagents/records.test.ts:43` — `dispatch marker kind registered` |
+| Capable executor | tests/subagents/dispatch.test.ts › runDispatch › "capable executor launches" | pass |
+| Missing capability | tests/tools/subagent-dispatch.test.ts › "missing capability runs inline"; tests/subagents/executor.test.ts › "reports missing capabilities" | pass |
+| New service key | tests/tools/subagent-dispatch.test.ts › "capable executor launches through the new key"; executor.test.ts › "reads the new key" | pass |
+| Legacy service key | tests/tools/subagent-dispatch.test.ts › "legacy service key launches"; executor.test.ts › "falls back to the legacy key" | pass |
+| Both keys published | tests/subagents/executor.test.ts › "prefers the new key when both are published" | pass |
+| Renamed package | tests/tools/subagent-dispatch.test.ts › "renamed package launches"; executor.test.ts › "ignores implementation name" | pass |
+| Unit role without a unit | tests/tools/subagent-dispatch.test.ts › "unit role without a unit refuses" | pass |
+| Called in a child | tests/tools/subagent-dispatch.test.ts › "called in a child refuses: %s" | pass |
+| User override used | tests/tools/subagent-dispatch.test.ts › "user override used with one warning"; dispatch.test.ts › same name | pass |
+| Disabled role agent | tests/subagents/dispatch.test.ts › "disabled role agent runs inline" | pass |
+| Implementer launch | tests/subagents/dispatch.test.ts › "implementer launch options"; tests/tools/subagent-dispatch.test.ts › "implementer launch options through the tool" | pass |
+| Superpowers installed | tests/tools/subagent-dispatch.test.ts › "superpowers excluded" | pass |
+| Extra user exclusion | tests/tools/subagent-dispatch.test.ts › "extra user exclusion"; isolation.test.ts › "extra user exclusion only" | pass |
+| Raised after a failure | tests/tools/subagent-dispatch.test.ts › "raised after a failure keeps the Difficulty line"; dispatch.test.ts › "raised after a failure" | pass |
+| Routed by another layer | tests/subagents/dispatch.test.ts › "routed by another layer recorded" | pass |
+| Skills ignored by the executor | tests/subagents/dispatch.test.ts › "skills ignored aborts" | pass |
+| Exclusion ignored | tests/subagents/dispatch.test.ts › "exclusion ignored aborts" | pass |
+| Context forced to fork | tests/subagents/dispatch.test.ts › "context forced to fork returns refusal" | pass |
+| Blocked without evidence | tests/subagents/dispatch.test.ts › "blocked without evidence treated as missing" | pass |
+| Missing required source | tests/subagents/dispatch.test.ts › "missing required source resumed once naming it, then BLOCKED" | pass |
+| Needs context capped | tests/subagents/dispatch.test.ts › "needs context capped at 2"; tests/tools/subagent-dispatch.test.ts › "a reviewer returning NEEDS_CONTEXT three times leads to spec_stuck without using rounds" | pass |
+| Crash retried once | tests/subagents/dispatch.test.ts › "crash retried once with identical hash" | pass |
+| Ask and answer | tests/tools/subagent-answer.test.ts › "ask and answer" | pass |
+| Question for the user | tests/tools/subagent-answer.test.ts › "question for the user goes to spec_question" (asserts the guidance text; ordering of the parent's answer is agent behaviour, not tool-enforced) | pass |
+| Pending question on the card | tests/tools/subagent-answer.test.ts › "pending question on the card" | pass |
+| No executor | tests/tools/subagent-record.test.ts › "no executor" | pass |
+| Inline review recorded | tests/tools/subagent-record.test.ts › "inline review recorded" | pass |
+| Discoveries reach the dependent unit | tests/tools/subagent-dispatch.test.ts › "discoveries reach the dependent unit" | pass |
+| Marker kind registered | tests/subagents/records.test.ts › "dispatch marker kind registered" | pass |
 
-**Tổng Check 4:** pass 29 · fail 0 · not verified 0.
-
-### Focused verification
-
-Chạy tại authoritative worktree trong invocation này:
-
-```sh
-bun run test tests/subagents/abort-settle.test.ts tests/subagents/dispatch.test.ts tests/subagents/executor.test.ts tests/tools/subagent-dispatch.test.ts tests/tools/subagent-answer.test.ts tests/tools/subagent-record.test.ts tests/subagents/records.test.ts tests/subagents/isolation.test.ts tests/subagents/roles.test.ts
-```
-
-Kết quả: exit 0, **9 files / 170 tests passed**, 14.75 s. Không chạy lại full suite; con số full-suite từ parent không dùng làm evidence độc lập ở đây. Không kiểm chứng executor thật/E2E.
+Totals: Check 3 — 12 pass, 0 fail, 0 not verified. Check 4 — 29 pass, 0 fail, 0 not verified.
 
 ## Part 2
 
-### Verification iteration 2 — part 2
+### Verification iteration 3 — part 2
 
-Chỉ kiểm tra implementation (Check 3) và scenario-to-test mapping (Check 4) của `subagent-packets` và `review-findings`; không code review, không sửa repository.
+Phạm vi: Check 3–4 của `subagent-packets` và `review-findings`; verification read-only, không phải code review. Mọi path tương đối bên dưới thuộc `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`, HEAD xác nhận trong invocation này: `9631beb`. Spec paths tương đối từ `openspec/changes/subagent-dispatch/specs/`.
 
-- Authoritative root: `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`.
-- HEAD đọc trong invocation: `dfbbca2aa6c1bf6cac77018c87f80e81f37f0435`; `git status --short` rỗng trước và sau focused tests.
-- Mọi đường dẫn tương đối bên dưới tính từ authoritative root; spec refs tính từ `openspec/changes/subagent-dispatch/specs/`.
-- Đã đọc `apply.md`: iteration 2. `verifier` reserved LS-08 → không coi việc chưa launch role đó là failure. Small-fix lane không thuộc hai spec này.
-- Fresh command (cwd = authoritative root): `bun run test tests/subagents/packet.test.ts tests/subagents/protocol.test.ts tests/subagents/sources.test.ts tests/subagents/freshness.test.ts tests/subagents/roles.test.ts tests/subagents/records.test.ts tests/subagents/dispatch.test.ts tests/tools/subagent-record.test.ts tests/tools/finding-rebut.test.ts tests/tools/unit-finish-findings.test.ts tests/engine/next-step.test.ts tests/engine/gates.test.ts`.
-- Exit 0; **12 files, 314 tests passed**, 0 failed. Full-suite result do parent cung cấp không được dùng làm fresh evidence của báo cáo này. Test mapping được grep xác nhận trong invocation; đã đọc bodies liên quan.
+**Kết quả:** Check 3: **14 pass, 0 fail, 0 not verified**. Check 4: **29 pass, 0 fail, 0 not verified**.
 
-### Check 3 — implementation requirements
+### Check 3 — Requirement → implementation
 
-Mỗi hàng tương ứng một ADDED requirement; cả hai file không có MODIFIED requirement.
+Đã đọc implementation của từng hàng; các source đã được CodeGraph trả verbatim cũng tính là đọc. Các requirement trong hai delta spec đều là ADDED, không có MODIFIED.
 
-| Spec / requirement | Status | Implementation evidence và kết luận |
-|---|---|---|
-| subagent-packets:3 — Packet layers | pass | `src/subagents/render.ts:16-20,31-46`; `src/subagents/packet.ts:27-36`; `src/subagents/sources-change.ts:12`: protocol + pack/version/tree/skills precede task; unit verbatim, manifest-order sources, spill list, Verify, Files, prohibitions, footer. Prefix không chứa unit-specific input. |
-| subagent-packets:20 — Protocol content | pass | `src/subagents/protocol.ts:3-36`: fixed version, context, untrusted=data, spill-reading, prohibitions, ask_parent/NEEDS_CONTEXT, submit_result/sources_used, discoveries; không tên flow skill/procedure. `tests/subagents/protocol.test.ts:7,15` kiểm tra default-pack skill names và required terms. |
-| subagent-packets:27 — Flow skills per role | pass | `src/subagents/flow.ts:14-27`: role+subject entry override, implementer fallback required skills, other roles empty, active-tree SKILL.md existence; `src/subagents/packet.ts:62-67` refuses naming missing skills; launch receives packet skill paths (`src/subagents/launch.ts:45-50`, observed via focused packet tests). |
-| subagent-packets:42 — Context manifest | fail | Manifest wiring tồn tại ở `src/subagents/sources.ts:22-35,58-62`; requirements/answers ở `sources-change.ts:29-76`; dependencies/records ở `sources-records.ts:27-142`; diff/spec/product ở `sources-git.ts:15-62`; forge sources ở `sources-forge.ts:18-112`. **Closing summaries không được chọn theo semantics của closing summary:** `src/subagents/sources-forge.ts:120` luôn lấy comment cuối của closed issue; comment không phải summary được đăng sau closure sẽ thay thế required closing summary. Chính comment module (`sources-forge.ts:111-114`) và test `tests/subagents/sources.test.ts:138` ghi đây là last-comment stand-in. Không có exception cho việc này trong scope được giao. |
-| subagent-packets:65 — Source ids and versions | fail | Ids và phần lớn versions được tạo ở `sources-change.ts:46,73,89`; `sources-records.ts:12-22,63`; `sources-forge.ts:28,44,60`; SHA-256 và normalized hash ở `source-kit.ts:23`, `packet.ts:54-57,92-100`. **Check source dùng state enum làm version**, `src/subagents/sources-forge.ts:62` (`version: c.state`), không phải updatedAt/ETag, git SHA hay content hash mà requirement giới hạn. |
-| subagent-packets:76 — Budget and spill files | pass | `src/config.ts:52,250` default/user budget; `src/tools/subagent-request.ts:36` forwards it; `src/subagents/render.ts:49` ceil(chars/4); `packet.ts:40-50,87,91-103` reverse-order spill with pinned sources retained, refusal reports size+budget; `spill.ts:20-36` absolute git-common-dir storage and wrapped spill contents. Focused tests cover spill, all sources retained, refusal. |
-| subagent-packets:87 — Untrusted wrapping | pass | `src/subagents/render.ts:24-25`, `spill.ts:20-21` use same phase-card wrapper; human bodies/answers/reviews set untrusted in `sources-change.ts:73,89,101`, `sources-forge.ts:28,44,60,62,121`; own records' free text also wrapped (`sources-records.ts:15-22`). |
-| subagent-packets:94 — Packet source registration | pass | `src/subagents/sources.ts:14-16,41-53,58-62` role registry, named provider error wrapper and included sources; `src/subagents/packet.ts:74-78` refuses provider failure. `tests/subagents/sources.test.ts:218,225` exercise role source and named error. |
-| subagent-packets:101 — Freshness before finish | pass | `src/subagents/finish-freshness.ts:21-32` reads stored last implementer packet and re-collects manifest; `freshness.ts:23-45` detects changed/deleted/new answer/review/comment versions; `source-kit.ts:54-57,91-96` enumerates issue+PR threads and excludes own marked comments; `src/tools/unit-finish.ts:182-204` refuses before tick and calls spec_stuck with named sources. Own receipts excluded; answered questions come from refreshed body. |
-| review-findings:3 — Finding schema | pass | `src/subagents/roles.ts:58-70,82-90,101-127`: exactly six required fields, enums, no extra keys; reviewer/verifier findings arrays. `src/subagents/result.ts:40-43` revalidates child result; `src/tools/subagent-record.ts:21-25,39-40` validates inline results. Missing-location regression tests pass. `location` represented as string in schema. |
-| review-findings:14 — Blocking findings | pass | `src/subagents/records.ts:176-225` severity/kind blocking, advisory exclusion, answer/gate routing and out-of-scope tick exclusion; `build-loop.ts:133-166` scope routing avoids fix round; `finish-gate.ts:13-23` asks spec_question for needs-decision; `payload.ts:40-45,51-62` lists unshown out-of-scope findings. |
-| review-findings:25 — Finding summary comment | pass | `src/subagents/run-record.ts:79-92,111-119` assembles all required launch/result/source/head facts, computes completed and posts one summary; `records.ts:127-129,181-185,228-245` reads recorded completed. `src/subagents/dispatch.ts:174-189`, `src/tools/subagent-record.ts:53`, `src/tools/subagent-answer.ts:83-85` route dispatched/inline/resumed results through shared recorder/settle. Verifier launch reserved as instructed. |
-| review-findings:32 — Rebuttal | pass | `src/tools/finding-rebut.ts:30-33,40-62`: refuses missed-context, blank reason/evidence, posts reference+index+reason+evidence; `records.ts:162-173,207-212` resolves rebutted non-missed-context finding; `payload.ts:34-36,53-60` lists rebuttals in gate payload. Focused rebuttal and gate tests pass. |
-| review-findings:47 — Resolution by review | fail | Later completed same-unit/subject reviews resolve absent same-location/kind blockers (`src/subagents/records.ts:181-185`); BLOCKED and advisory rounds do not resolve them. **Explicit scenario “Advisory unit review” is not fully implemented:** `src/subagents/payload.ts:20-25` lists advisory findings only if the *gate target phase itself* declares a matching advisory reviewer subject. A build unit advisory review is lost at the next human `ship` gate when ship has no advisory unit entry (default ship gate: `src/packs/agent-skills.yaml:69-72`). Tick non-blocking part is implemented; mandatory next-human-gate listing is not. |
+| Spec / requirement | Status | Implementation evidence và hành vi xác nhận |
+| --- | --- | --- |
+| `subagent-packets/spec.md:3` — Packet layers | pass | `src/subagents/render.ts:16` render protocol rồi flow chứa pack/version/tree/skill names; `src/subagents/packet.ts:27` ghép prefix → task → footer. `src/subagents/render.ts:31` đặt role/subject/unit nguyên văn, sources theo thứ tự manifest, spilled list, Verify, Files, prohibitions; `src/subagents/render.ts:45` footer chứa hash và id/version. Prefix không lấy unit hoặc dispatch facts. |
+| `subagent-packets/spec.md:20` — Protocol content | pass | `src/subagents/protocol.ts:3-33`: protocol version cố định, context, untrusted-as-data, đọc spill, prohibitions, specific `ask_parent`, `NEEDS_CONTEXT`, một lần `submit_result`, `sources_used`, discoveries. Không nêu flow skill/procedure; `tests/subagents/protocol.test.ts:7` đối chiếu default pack skills. |
+| `subagent-packets/spec.md:27` — Flow skills per role | pass | `src/subagents/flow.ts:14-28` chọn role/subject entry trong phase, fallback required skills cho implementer và [] cho role khác, tạo SKILL.md paths trong active tree và kiểm tra tồn tại. `src/subagents/packet.ts:62-67` từ chối với missing names; `src/subagents/launch.ts:42-48` truyền packet.skillPaths vào launch, không inherit skills. |
+| `subagent-packets/spec.md:42` — Context manifest | pass | `src/subagents/sources.ts:22-36,58-63` định nghĩa manifest riêng cho implementer, reviewer spec/plan/unit/change/persona, scout và verifier; luôn thêm product và reviewer rubric. `src/subagents/sources-change.ts:12,29-46,54-74,79-101` unit nguyên văn, covered requirements, matching answers, header/Units/issue/initiative. `src/subagents/sources-records.ts:26-106,117-149` plan gate notes, unit findings, dependency receipt/dispatch, all receipts, decisions, child answers. `src/subagents/sources-git.ts:15-66` constraints, product excerpt, related specs, specs/code diff đặt file từ Base/unit-start đến HEAD. `src/subagents/sources-forge.ts:18-67,103-125` #N one hop, filtered/all reviews, PR/checks, closed work và closing summaries. Reserved verifier implementation cũng có tại `src/subagents/sources-git.ts:70-96`; không đòi verifier dispatch ngoài LS-07. Closing summary dùng last comment theo R3 đã đọc tại `openspec/changes/subagent-dispatch/apply.md:124`. |
+| `subagent-packets/spec.md:65` — Source ids and versions | pass | `src/subagents/source-kit.ts:23,41-42` SHA-256 và source defaults; providers dùng đúng dạng ids và updatedAt/content hash/PR version tại `sources-change.ts:44,70,86`, `sources-forge.ts:28,46,61-64`, `sources-records.ts:11-21,61`, `sources-git.ts:45-50`. `src/subagents/packet.ts:54-58,91-103` hash body không footer + role/subject/unit + mọi id/version, tính với `<spill>` trước khi thay absolute directory. |
+| `subagent-packets/spec.md:76` — Budget and spill files | pass | `src/config.ts:52,250` default 24000 và user override; `src/tools/subagent-request.ts:36` đưa budget vào packet. `src/subagents/render.ts:49` ceil(chars/4); `src/subagents/packet.ts:40-50` reverse manifest spilling, chỉ spill inline (không pinned requirements), unit/prohibitions được render riêng; `packet.ts:86-103` từ chối budget/size hoặc giữ đủ source list và spill paths. `src/subagents/spill.ts:15-35` safe filenames, source metadata/wrapping, absolute git common dir shared bởi lanes. `src/tools/subagent-dispatch.ts:30-37` chỉ chạy dispatch sau build thành công. |
+| `subagent-packets/spec.md:87` — Untrusted wrapping | pass | `src/subagents/render.ts:24-25` bọc source untrusted khi inline; `src/subagents/spill.ts:20-21` cùng wrapper khi spill. Forge sources/answers đều đánh untrusted tại `sources-change.ts:70,86,99`, `sources-forge.ts:28,46,61-64,122`, `sources-records.ts:21,147`. `src/subagents/source-kit.ts:90-95` chỉ coi comment là own khi đúng plugin author và valid marker; plain plugin comments vẫn là human. |
+| `subagent-packets/spec.md:94` — Packet source registration | pass | `src/subagents/sources.ts:14-16,41-63` đăng ký provider theo role, thêm vào manifest, giữ id/version/required của nguồn, lỗi được bọc với provider.name hoặc fallback registered-role-index. `src/subagents/packet.ts:74-78` provider failure làm build bị từ chối. |
+| `subagent-packets/spec.md:101` — Freshness before finish | pass | `src/subagents/finish-freshness.ts:21-31` đọc packet của implementer dispatch gần nhất, re-read current manifest; thiếu packet/read error cũng stale. `src/subagents/freshness.ts:23-46` kiểm tra mọi old id/version, new answer/review và new/edited human comments; `src/subagents/source-kit.ts:54-57,90-95` enumerate issue + PR và loại own marked comments; answered questions vẫn qua manifest. `src/tools/unit-finish.ts:184-196` stale → không tick, gọi `runSpecStuck`; `src/subagents/finish-freshness.ts:36-48` report nêu nguồn stale. |
+| `review-findings/spec.md:3` — Finding schema | pass | `src/subagents/roles.ts:57-69,82-89,99-125` schema đúng sáu fields/enums, all required, reject extras và recursive validation; reviewer/verifier đều yêu cầu findings list. `src/subagents/launch.ts:48` đưa schema cho executor; `src/subagents/result.ts:39-51,76-79` invalid structured result không được accept, có retry. `src/tools/subagent-record.ts:20-26,39-40` cùng validation cho inline. Verifier runtime reserved LS-08 được miễn như task chỉ định. |
+| `review-findings/spec.md:14` — Blocking findings | pass | `src/subagents/records.ts:176,188-212,219-220` CRITICAL/WARNING/missed-context blocking, advisory không block, answered finding question resolve needs-decision; out-of-scope không chặn tick. `src/subagents/build-loop.ts:128-159` không fix round cho needs-decision/out-of-scope và hướng dẫn `spec_question`. `src/subagents/payload.ts:17-45,51-62` advisory/out-of-scope unshown vào gate payload; `src/subagents/records.ts:271-278` lấy keys gate đã show; `src/engine/gate-payload.ts:97-98` tích hợp section. |
+| `review-findings/spec.md:25` — Finding summary comment | pass | `src/subagents/run-record.ts:79-93,111-119` tạo một finding-summary cho reviewer/verifier với toàn bộ fields, required ids, parent-computed completed và reviewed HEAD. `src/subagents/records.ts:98-103,127-128,157-162,181-185,224-249` serialize và flow chỉ đọc durable summaries/completed, incomplete rounds không satisfy hoặc resolve. `src/subagents/dispatch.ts:176-191` settled dispatch results qua recordResult; `src/tools/subagent-record.ts:49-53` inline dùng cùng recordResult. |
+| `review-findings/spec.md:32` — Rebuttal | pass | `src/tools/finding-rebut.ts:29-43,58-61` refuse missed-context, nonblocking/advisory hoặc blank reason/evidence; post finding-summary chứa rebuts và indexed reason/evidence, giữ previous items. `src/subagents/records.ts:165-173,205-208` rebut resolve trừ missed-context; `src/subagents/payload.ts:35-37,53-60` rebuttals vào human gate. |
+| `review-findings/spec.md:47` — Resolution by review | pass | `src/subagents/records.ts:181-192,199-212` chỉ later completed non-advisory summary cùng unit/subject, không có blocking cùng location/kind, mới resolve; có rebut/routed checks riêng. Incomplete/BLOCKED không resolve; advisory không block. `src/subagents/records.ts:127-128` completed đòi DONE/DONE_WITH_CONCERNS và đủ required sources. |
 
-**Check 3 totals:** pass 11 · fail 3 · not verified 0.
+### Check 4 — Scenario → existing tests
 
-### Check 4 — scenario → existing tests
+Đã grep xác nhận tên test tồn tại trong invocation này, sau đó đọc assertions của các test được map. `pass` nghĩa là mapping hành vi có bằng chứng test hiện hữu và focused suite bên dưới chạy thành công; không suy diễn thành E2E với executor/forge thật.
 
-`pass` xác nhận mapping có test tồn tại và kiểm tra hành vi được nêu, không phủ nhận Check 3 failures. `not verified` giữ mapping gần nhất nhưng nêu phần scenario chưa được test chứng minh.
+| Spec / scenario | Status | Existing test (file:line — exact test name) |
+| --- | --- | --- |
+| `subagent-packets/spec.md:12` — Stable prefix | pass | `tests/subagents/packet.test.ts:22` — `stable prefix` (hai unit khác nhau, cùng prefix bytes). |
+| `subagent-packets/spec.md:16` — Prohibitions present | pass | `tests/subagents/packet.test.ts:32` — `prohibitions present`. |
+| `subagent-packets/spec.md:23` — Flow-neutral protocol | pass | `tests/subagents/protocol.test.ts:7` — `protocol names no default-pack skill`. |
+| `subagent-packets/spec.md:30` — Implementer default skills | pass | `tests/subagents/packet.test.ts:55` — `implementer default skills`. |
+| `subagent-packets/spec.md:34` — Reviewer skills from the pack | pass | `tests/subagents/packet.test.ts:61` — `reviewer skills from the pack`. |
+| `subagent-packets/spec.md:38` — Flow switch | pass | `tests/subagents/packet.test.ts:66` — `flow switch changes skill paths and hash`. |
+| `subagent-packets/spec.md:53` — Answered question included | pass | `tests/subagents/sources.test.ts:25` — `answered question included`. |
+| `subagent-packets/spec.md:57` — Spec review sees the diff | pass | `tests/subagents/sources.test.ts:71` — `spec review sees the diff`. |
+| `subagent-packets/spec.md:61` — Diff as a file | pass | `tests/subagents/sources.test.ts:82` — `diff as a file` (source placement=file và unit-start..HEAD id); `tests/subagents/packet.test.ts:112` — `over budget spills` xác nhận spill writer tạo file. |
+| `subagent-packets/spec.md:68` — Same inputs, same hash | pass | `tests/subagents/packet.test.ts:86` — `same inputs same hash`. |
+| `subagent-packets/spec.md:72` — Comment edited | pass | `tests/subagents/packet.test.ts:91` — `comment edited changes hash` (kiểm cả source version và hash). |
+| `subagent-packets/spec.md:79` — Over budget | pass | `tests/subagents/packet.test.ts:112` — `over budget spills` (review ids, absolute paths, tồn tại file, token limit). |
+| `subagent-packets/spec.md:83` — Budget too small | pass | `tests/subagents/packet.test.ts:139` — `budget too small refuses` (budget 100, refusal nêu size/budget; dispatch preflight tại Check 3 bảo đảm không launch). |
+| `subagent-packets/spec.md:90` — Instruction in a comment | pass | `tests/subagents/packet.test.ts:151` — `instruction in a comment wrapped untrusted`. |
+| `subagent-packets/spec.md:97` — Registered provider | pass | `tests/subagents/sources.test.ts:218` — `registered provider adds source`. |
+| `subagent-packets/spec.md:104` — New human comment | pass | `tests/subagents/freshness.test.ts:28` — `new human comment stops`; `tests/tools/unit-finish-findings.test.ts:177` — `new human comment stops unit_finish`. |
+| `subagent-packets/spec.md:108` — New answer recorded by the plugin | pass | `tests/subagents/freshness.test.ts:42` — `new answer recorded by the plugin stops` (assert stale `answer:Q4`). |
+| `subagent-packets/spec.md:112` — Own receipt posted | pass | `tests/subagents/freshness.test.ts:49` — `own receipt passes`. |
+| `review-findings/spec.md:6` — Valid finding | pass | `tests/subagents/dispatch.test.ts:355` — `reviewer run posts a finding-summary` (finding đủ sáu fields, completed true). |
+| `review-findings/spec.md:10` — Missing location | pass | `tests/subagents/roles.test.ts:24` — `a reviewer finding without location is rejected and the path is named`; `tests/tools/subagent-record.test.ts:66` — `a reviewer finding without location is refused and nothing is posted`. |
+| `review-findings/spec.md:17` — Needs a decision | pass | `tests/engine/next-step.test.ts:670` — `needs-decision finding → spec_question, not a fix round; answered → finish`. |
+| `review-findings/spec.md:21` — Out of scope does not block the tick | pass | `tests/tools/unit-finish-findings.test.ts:54` — `Out of scope does not block the tick` (tick true, gate summary và finding key). |
+| `review-findings/spec.md:28` — Unit review recorded | pass | `tests/subagents/dispatch.test.ts:364` — `a unit review posts one finding-summary holding both findings`. |
+| `review-findings/spec.md:35` — Rebutted warning | pass | `tests/tools/finding-rebut.test.ts:28` — `rebutted warning`; `tests/tools/unit-finish-findings.test.ts:67` — `a rebutted finding no longer refuses`; `tests/engine/gates.test.ts:271` — `rebuttals in gate payload`. |
+| `review-findings/spec.md:39` — Missed context | pass | `tests/tools/finding-rebut.test.ts:54` — `rebut missed-context refused`. |
+| `review-findings/spec.md:43` — Rebut without evidence | pass | `tests/tools/finding-rebut.test.ts:64-73` — parameterized `rebut without %s refused`, evidence case → `rebut without evidence refused`. |
+| `review-findings/spec.md:50` — Fixed and re-reviewed | pass | `tests/subagents/records.test.ts:58` — `later completed round resolves findings it no longer reports`. |
+| `review-findings/spec.md:54` — Blocked round resolves nothing | pass | `tests/subagents/records.test.ts:52` — `blocked round resolves nothing`. |
+| `review-findings/spec.md:58` — Advisory unit review | pass | `tests/subagents/records.test.ts:64` — `advisory unit review not blocking`; `tests/tools/unit-finish-findings.test.ts:75` — `advisory findings do not refuse`; `tests/engine/gates.test.ts:323` — `an advisory build-unit finding is listed at a later ship gate`. |
 
-| Spec scenario (line) | Status | Existing test(s), tên grep-confirmed / giới hạn |
-|---|---|---|
-| subagent-packets:12 — Stable prefix | pass | `tests/subagents/packet.test.ts:22` — `stable prefix` (U1/U3 cùng role). |
-| subagent-packets:16 — Prohibitions present | pass | `tests/subagents/packet.test.ts:32` — `prohibitions present`. |
-| subagent-packets:23 — Flow-neutral protocol | pass | `tests/subagents/protocol.test.ts:7` — `protocol names no default-pack skill`. |
-| subagent-packets:30 — Implementer default skills | pass | `tests/subagents/packet.test.ts:55` — `implementer default skills`. |
-| subagent-packets:34 — Reviewer skills from the pack | pass | `tests/subagents/packet.test.ts:61` — `reviewer skills from the pack`. |
-| subagent-packets:38 — Flow switch | pass | `tests/subagents/packet.test.ts:66` — `flow switch changes skill paths and hash`. |
-| subagent-packets:53 — Answered question included | pass | `tests/subagents/sources.test.ts:25` — `answered question included`. |
-| subagent-packets:57 — Spec review sees the diff | pass | `tests/subagents/sources.test.ts:71` — `spec review sees the diff` (file placement, Capabilities, initiative). |
-| subagent-packets:61 — Diff as a file | pass | `tests/subagents/sources.test.ts:82` — `diff as a file` verifies diff id + forced file placement; `packet.test.ts:112` — `over budget spills` checks actual spill writing. |
-| subagent-packets:68 — Same inputs, same hash | pass | `tests/subagents/packet.test.ts:86` — `same inputs same hash`. |
-| subagent-packets:72 — Comment edited | pass | `tests/subagents/packet.test.ts:91` — `comment edited changes hash` checks both source version and hash. |
-| subagent-packets:79 — Over budget | pass | `tests/subagents/packet.test.ts:112` — `over budget spills` checks paths, files, wrappers, token budget. |
-| subagent-packets:83 — Budget too small | pass | `tests/subagents/packet.test.ts:139` — `budget too small refuses` asserts failure plus size/budget text (packet builder boundary, not executor launch). |
-| subagent-packets:90 — Instruction in a comment | pass | `tests/subagents/packet.test.ts:151` — `instruction in a comment wrapped untrusted`. |
-| subagent-packets:97 — Registered provider | pass | `tests/subagents/sources.test.ts:218` — `registered provider adds source`. |
-| subagent-packets:104 — New human comment | pass | `tests/subagents/freshness.test.ts:28` — `new human comment stops`; `tests/tools/unit-finish-findings.test.ts:177` — `new human comment stops unit_finish`. |
-| subagent-packets:108 — New answer recorded by the plugin | pass | `tests/subagents/freshness.test.ts:42` — `new answer recorded by the plugin stops` explicitly expects `answer:Q4`. |
-| subagent-packets:112 — Own receipt posted | pass | `tests/subagents/freshness.test.ts:49` — `own receipt passes`. |
-| review-findings:6 — Valid finding | pass | `tests/tools/subagent-record.test.ts:44` — `inline review recorded`; `tests/subagents/dispatch.test.ts:346` — `reviewer run posts a finding-summary`: six-field finding accepted and recorded. |
-| review-findings:10 — Missing location | pass | `tests/subagents/roles.test.ts:24` — `a reviewer finding without location is rejected and the path is named`; `tests/tools/subagent-record.test.ts:66` — `a reviewer finding without location is refused and nothing is posted`. Scope is schema+inline boundary; actual external executor submit_result transport is not exercised. |
-| review-findings:17 — Needs a decision | pass | `tests/engine/next-step.test.ts:670` — `needs-decision finding → spec_question, not a fix round; answered → finish`. |
-| review-findings:21 — Out of scope does not block the tick | pass | `tests/tools/unit-finish-findings.test.ts:54` — `Out of scope does not block the tick` verifies tick and ship gate payload. |
-| review-findings:28 — Unit review recorded | not verified | Nearest: `tests/subagents/dispatch.test.ts:346` — `reviewer run posts a finding-summary`; `tests/tools/subagent-record.test.ts:44` — `inline review recorded`. Both use **one** finding; dispatched test checks only first posted record and metadata, not exactly one summary carrying **two** findings. Grep over all test files found two-finding fixtures only in resolution/rebuttal tests, not a reviewer-run recording test. Implementation does preserve the full list (`run-record.ts:85`), but exact scenario coverage is unverified. |
-| review-findings:35 — Rebutted warning | pass | `tests/tools/finding-rebut.test.ts:28` — `rebutted warning`; `tests/tools/unit-finish-findings.test.ts:67` — `a rebutted finding no longer refuses`; `tests/engine/gates.test.ts:271` — `rebuttals in gate payload`. |
-| review-findings:39 — Missed context | pass | `tests/tools/finding-rebut.test.ts:54` — `rebut missed-context refused` verifies refusal and no post. |
-| review-findings:43 — Rebut without evidence | pass | `tests/tools/finding-rebut.test.ts:64-73` — parameterized `rebut without %s refused`, evidence row (`evidence: ""`), verifies refusal and no post. |
-| review-findings:50 — Fixed and re-reviewed | pass | `tests/subagents/records.test.ts:58` — `later completed round resolves findings it no longer reports`. |
-| review-findings:54 — Blocked round resolves nothing | pass | `tests/subagents/records.test.ts:52` — `blocked round resolves nothing`. |
-| review-findings:58 — Advisory unit review | not verified | `tests/subagents/records.test.ts:64` — `advisory unit review not blocking`; `tests/tools/unit-finish-findings.test.ts:75` — `advisory findings do not refuse` cover only non-blocking. `tests/engine/gates.test.ts:253` — `advisory spec review in gate payload` covers spec reviewer in same gate phase, not build unit reviewer reaching a later human gate. No matching full scenario test found; implementation gap is Check 3 failure at `src/subagents/payload.ts:20-25`. |
+### Fresh focused verification
 
-**Check 4 totals:** pass 27 · fail 0 · not verified 2.
+Command chạy trong authoritative worktree, exit **0**, **12 files / 319 tests passed**, 0 failed:
+
+```bash
+bun run test tests/subagents/packet.test.ts tests/subagents/protocol.test.ts tests/subagents/sources.test.ts tests/subagents/freshness.test.ts tests/subagents/roles.test.ts tests/subagents/records.test.ts tests/subagents/dispatch.test.ts tests/tools/finding-rebut.test.ts tests/tools/unit-finish-findings.test.ts tests/tools/subagent-record.test.ts tests/engine/next-step.test.ts tests/engine/gates.test.ts
+```
+
+Không dùng full-suite result do parent cung cấp để chứng minh các hàng này. Không chạy real forge/executor E2E. Không init/sync CodeGraph vì read-only; dùng index đã hiện hữu và source verbatim từ CodeGraph. `git status --short` sau test sạch. Chỉ ghi report này; không sửa repository, commit hoặc dispatch.
 
 ## Part 3
 
-### Verification iteration 2 — part 3
+### Verify iteration 3 — part 3 (subagent-policy, parallel-lanes, unit-evidence)
 
-Đối chiếu read-only Check 3–4 cho `subagent-dispatch`, không phải code review. Worktree: `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`; `git rev-parse --short HEAD` trả `dfbbca2`; `git status --porcelain` không có output. Mọi đường dẫn bên dưới tương đối với worktree này. Spec refs viết tắt thành `<capability>/spec.md`, nằm dưới `openspec/changes/subagent-dispatch/specs/`.
-
-### Check 3 — implementation theo requirement
-
-Mỗi dòng tương ứng đúng một ADDED/MODIFIED requirement. `Small-fix lane` được miễn theo chỉ dẫn của parent (LS-09); không kiểm tra dispatch thực thi role `verifier` vì dành cho LS-08. Đã đọc `apply.md` iteration 2; phần apply đọc được không ghi rõ ruling small-fix, nên nguồn miễn trừ ở đây là yêu cầu trực tiếp của parent, không phải suy diễn từ receipt.
-
-| Spec / requirement | Status | Implementation evidence đã đọc và kết luận |
-|---|---|---|
-| `subagent-policy/spec.md:3` — Subagents sub-schema | pass | `src/subagents/policy.ts:20` khai báo role/mode/keys; `:107–209` kiểm map, unknown key/value, reviewer subject, auto/when, condition, advisory/skills và đăng ký schema. `src/engine/pack-schema.ts:33–36`, `:91–95`, `:150` gắn lỗi với line/column. `src/subagents/policy.ts:34–41` thu persona; `src/engine/registry.ts:35–42` đưa vào content check. Advisory chỉ có hiệu lực khi `=== true`, nên absent là false. |
-| `subagent-policy/spec.md:18` — When conditions | fail | `src/subagents/policy.ts:45–66` thực hiện OR, units, difficulty, tags, margin 2 và first-turn guard; `:94–105` kiểm unfamiliar; `src/hooks/context.ts:89–91` lấy usage từ `getContextUsage`. **Nhưng `src/subagents/phase-entries.ts:22` hard-code `tags: []` cho change-level roles**, nên `tags:<tag>` không thể hold theo change tags như requirement yêu cầu. `src/core/change.ts:37–51` cũng không có nơi lưu change tags. Cần cung cấp change tags vào change-level policy facts; không thay bằng unit tags hoặc luôn rỗng. |
-| `subagent-policy/spec.md:38` — Policy decides suggestions, not the flow | pass | `src/subagents/build-loop.ts:50–54`, `:98–119` chọn off/always/auto và dispatch/packet+inline; `src/subagents/phase-entries.ts:32`, `:57–70` làm tương tự cho phase. Đây là hàm thuần trả next-step, không write/tick/post gate. Ngoại lệ small-fix LS-09 được loại khỏi kết luận này. |
-| `subagent-policy/spec.md:53` — Advisory roles | pass | `src/subagents/payload.ts:19–31`, `:51–62` đưa finding vào payload; `src/engine/gates.ts:142–151` không dùng advisory làm refusal; `src/subagents/finish-gate.ts:36–38` bỏ advisory review requirement. Test đã đọc còn xác nhận advisory CRITICAL không chặn tick (`tests/tools/unit-finish-findings.test.ts:75`). |
-| `subagent-policy/spec.md:60` — Build loop steps | pass | `src/engine/next-step.ts:255–270` và test start-lane; `src/subagents/build-loop.ts:113–124`, `:140–148`, `:173–178` sắp implement → review → fix/finish, yêu cầu new commit never amend và cap qua completed rounds → `spec_stuck`, `re-plan required`. |
-| `subagent-policy/spec.md:71` — Default pack entries | pass | Đọc `src/packs/agent-skills.yaml:24–62`: đúng scout shape/define/plan, advisory spec/plan reviewer, build implementer thresholds và unit-reviewer skill. `tests/subagents/policy.test.ts:179–190` load pack và assert build entries. |
-| `parallel-lanes/spec.md:3` — Parallel eligibility | pass | `src/subagents/lanes.ts:18–56` chỉ chọn ready units, executor capable, disjoint Files (bao gồm shared spec), giới hạn room trừ open lanes. Ready dependency closure ngăn hai unit có Depends path cùng chạy. `src/config.ts:51`, `:249` default 3/user override; `src/engine/pack-schema.ts:17`, `:45–51` và policy validator cấm pack lane count. |
-| `parallel-lanes/spec.md:14` — Lane worktree | pass | `src/subagents/lanes.ts:12–14`, `src/subagents/lane-ops.ts:48–67` tạo đúng path/branch từ HEAD; `:80–84` post closed/remove. `src/subagents/state.ts:7`, `:27–39`, `:51–53` đăng ký kind, latest lane và unit root; không lấy root từ unit-start. `src/tools/unit-tool.ts:49–55` đọc lane HEAD/dirty. `src/tools/subagent-request.ts:31–32`, `:60–65` tạo lane packet/metadata; `src/subagents/launch.ts:39`, `:49` truyền lane id và cwd. Search `registerWorkspace|workspaceProvider|workspace_provider` trong `src/**/*.ts` chỉ thấy doctor diagnostic, không có workspace-provider registration. |
-| `parallel-lanes/spec.md:21` — Merge one at a time | pass | `src/tools/lane-merge.ts:37–54` chặn lane kế tiếp khi unit trước còn started trên change tree. `:67–89`, `:95–96` merge/Verify tại change root và yêu cầu unit_finish; `src/subagents/lane-ops.ts:103–131` merge, close/remove; `src/engine/git.ts:157–160` dùng `--no-ff`. Review lane head vẫn reachable làm parent 2 (test tool xác nhận). |
-| `parallel-lanes/spec.md:28` — Lane tools | pass | `src/tools/lane-open.ts:18–34` child refusal + prechecks trước open; `src/subagents/lanes.ts:28–39` ready/started/executor/limit/overlap; `src/subagents/lane-ops.ts:39–54` reuse clean same-HEAD leftover, refuse path nếu lệch. `src/tools/lane-merge.ts:43–54`, `:108–111` child/dirty/open/review checks. `src/engine/next-step.ts:255–259` eligible pair → lane_open; `src/subagents/build-loop.ts:163–178` reviewed lane → lane_merge. |
-| `parallel-lanes/spec.md:47` — Sequential re-run | pass | `src/subagents/lane-ops.ts:88–131` Files violation finding, merge abort, reset on red, close/remove. `src/tools/lane-merge.ts:97–102` dùng failed() đếm red merge attempt; `src/tools/subagent-dispatch.ts:38`, `:43–48` closeMovedLane sau sequential outcome. `src/subagents/build-loop.ts:59–61`, `:82` bỏ kết quả lane cũ để implement lại sequentially. Tool tests đã đọc xác nhận abort khi cwd mismatch. |
-| `unit-evidence/spec.md:3` — Unit start tool | pass | `src/tools/unit-tool.ts:49–88` chọn lane/change root rồi chạy precheck, runner; `src/evidence/refusals.ts:22–76`, `:88–94` ordered refusals và one-start/worktree. `src/tools/unit-start.ts:30–41`, `:44–67` guard, HEAD, pending, red/refactor green, wrong-class options và post một start. Output đi qua bounded/redacted runner (`src/evidence/output.ts:15–45`, `:88–98`), test token-redaction tồn tại trong file start đã đọc. |
-| `unit-evidence/spec.md:54` — Unit finish tool | pass | `src/evidence/unit-state.ts:45–98` latest start/receipt và digest-matching unticked receipt; `src/tools/unit-finish.ts:219–225` chạy finding/review gate trước generic refusals. `src/subagents/finish-gate.ts:20–53` blocking finding, completed HEAD/second-parent review, bỏ context/advisory. `src/evidence/refusals.ts:99–139` reconcile/run và open-lane refusal. `src/tools/unit-finish.ts:54–63`, `:115–176`, `:200–215` versioned tick, receipt-before-tick, failed attempts/signature/retry/block và reconcile không Verify/receipt mới. |
-
-**Check 3:** 12 pass · 1 fail · 0 not verified.
-
-### Check 4 — scenario → existing test
-
-Đã grep test declarations trong invocation này, đọc các test/assertion cần cho mapping và chạy fresh toàn bộ 10 test files dùng dưới đây. Chữ pass nghĩa là có test hành vi tương ứng, không phủ nhận lỗi requirement tổng thể ở Check 3. Fixture dùng unit id khác được ghi rõ khi cần; mapping không đòi tên unit cứng.
-
-| Spec / Scenario | Status | Existing test (file:line — exact name) |
-|---|---|---|
-| `subagent-policy/spec.md:6` — Valid entry | pass | `tests/subagents/policy.test.ts:82` — `valid entry` |
-| `subagent-policy/spec.md:10` — Reviewer without subject | pass | `tests/subagents/policy.test.ts:86` — `reviewer without subject` |
-| `subagent-policy/spec.md:14` — Model key | pass | `tests/subagents/policy.test.ts:93` — `model key rejected` |
-| `subagent-policy/spec.md:26` — Unfamiliar code in build | pass | `tests/subagents/policy.test.ts:144` — `unfamiliar code in build` |
-| `subagent-policy/spec.md:30` — Context threshold with margin | pass | `tests/subagents/policy.test.ts:169` — `context threshold with margin` (58.5%) |
-| `subagent-policy/spec.md:34` — First turn | pass | `tests/subagents/policy.test.ts:173` — `first turn never holds` |
-| `subagent-policy/spec.md:41` — Auto implementer | pass | `tests/engine/next-step.test.ts:566` — `auto implementer suggested` (fixture U3 thay U1; kiểm card dispatch khi auto holds); `tests/subagents/policy.test.ts:179` — `default pack build entries validate` kiểm threshold `units>=3`. |
-| `subagent-policy/spec.md:45` — Below the threshold | pass | `tests/engine/next-step.test.ts:572` — `below the threshold inline` (packet+record, không dispatch) |
-| `subagent-policy/spec.md:49` — Small-fix lane | not verified | Deferred LS-09 theo ngoại lệ parent; không coi là failure, không nhận đã có test. |
-| `subagent-policy/spec.md:56` — Advisory spec review | pass | `tests/engine/gates.test.ts:253` — `advisory spec review in gate payload`; `:261` — `an advisory finding does not block the gate request` |
-| `subagent-policy/spec.md:63` — Review before finish | pass | `tests/engine/next-step.test.ts:633` — `review before finish` (fixture U3) |
-| `subagent-policy/spec.md:67` — Rebuild cap | pass | `tests/engine/next-step.test.ts:662` — `rebuild cap → spec_stuck` (3 rounds; default cap 2) |
-| `subagent-policy/spec.md:78` — Build entries | pass | `tests/subagents/policy.test.ts:179` — `default pack build entries validate` |
-| `parallel-lanes/spec.md:6` — Overlapping files | pass | `tests/subagents/lanes.test.ts:32` — `overlapping files not parallel` |
-| `parallel-lanes/spec.md:10` — Lane limit | pass | `tests/subagents/lanes.test.ts:43` — `lane limit` (5 ready, max 3) |
-| `parallel-lanes/spec.md:17` — Lane created | pass | `tests/tools/lane-tools.test.ts:92` — `Lane created` (path, branch, marker, pre SHA, launch cwd+metadata) |
-| `parallel-lanes/spec.md:24` — Two lanes finish | pass | `tests/tools/lane-tools.test.ts:164` — `Two lanes finish: merged and ticked one at a time` |
-| `parallel-lanes/spec.md:31` — Next step opens lanes | pass | `tests/engine/next-step.test.ts:717` — `Next step opens lanes` (U1/U3 thay U2/U3) |
-| `parallel-lanes/spec.md:35` — Open refused over the limit | pass | `tests/tools/lane-tools.test.ts:109` — `Open refused over the limit` |
-| `parallel-lanes/spec.md:39` — Leftover worktree | pass | `tests/tools/lane-tools.test.ts:120` — `Leftover worktree` |
-| `parallel-lanes/spec.md:43` — Merge before review refused | pass | `tests/tools/lane-tools.test.ts:153` — `Merge before review refused` |
-| `parallel-lanes/spec.md:54` — Files violation | pass | `tests/tools/lane-tools.test.ts:183` — `Files violation` |
-| `parallel-lanes/spec.md:58` — Red after merge | pass | `tests/tools/lane-tools.test.ts:370` — `Red after merge` |
-| `parallel-lanes/spec.md:62` — Moved by a workspace provider | pass | `tests/tools/lane-tools.test.ts:399` — `Moved by a workspace provider` |
-| `unit-evidence/spec.md:18` — Red at pre starts the unit | pass | `tests/tools/unit-start.test.ts:33` — `Red at pre starts the unit` |
-| `unit-evidence/spec.md:22` — Green at pre is refused | pass | `tests/tools/unit-start.test.ts:44` — `Green at pre is refused` |
-| `unit-evidence/spec.md:26` — Refactor unit must pass at pre | pass | `tests/tools/unit-start.test.ts:49` — `Refactor unit must pass at pre` |
-| `unit-evidence/spec.md:30` — Dirty tree | pass | `tests/tools/unit-start.test.ts:59` — `Dirty tree` |
-| `unit-evidence/spec.md:34` — Frozen unit | pass | `tests/tools/unit-start.test.ts:66` — `Frozen unit` |
-| `unit-evidence/spec.md:38` — Unmet dependency | pass | `tests/tools/unit-start.test.ts:74` — `Unmet dependency` |
-| `unit-evidence/spec.md:42` — One started unit at a time | pass | `tests/tools/unit-start.test.ts:79` — `One started unit at a time` |
-| `unit-evidence/spec.md:46` — Started in a lane | pass | `tests/tools/unit-start.test.ts:86` — `Started in a lane` |
-| `unit-evidence/spec.md:50` — Restart after an amendment | pass | `tests/tools/unit-start.test.ts:122` — `Restart after an amendment` |
-| `unit-evidence/spec.md:71` — Green at post | pass | `tests/tools/unit-finish.test.ts:41` — `Green at post` |
-| `unit-evidence/spec.md:75` — Not green at post | pass | `tests/tools/unit-finish.test.ts:61` — `Not green at post` |
-| `unit-evidence/spec.md:79` — Not started | pass | `tests/tools/unit-finish.test.ts:77` — `Not started` |
-| `unit-evidence/spec.md:83` — Open lane refuses finish | pass | `tests/tools/lane-tools.test.ts:319` — `unit_finish refuses while the unit has an open lane` |
-| `unit-evidence/spec.md:87` — Crash between receipt and tick | pass | `tests/tools/unit-finish.test.ts:83` — `Crash between receipt and tick` |
-| `unit-evidence/spec.md:91` — Digest changed since start | pass | `tests/tools/unit-finish.test.ts:106` — `Digest changed since start` |
-| `unit-evidence/spec.md:95` — Unresolved blocking finding | pass | `tests/tools/unit-finish-findings.test.ts:48` — `unresolved blocking finding refuses finish` |
-| `unit-evidence/spec.md:99` — Review required but not run | pass | `tests/tools/unit-finish-findings.test.ts:81` — `review required but not run` |
-| `unit-evidence/spec.md:103` — Lane review accepted after merge | pass | `tests/tools/unit-finish-findings.test.ts:109` — `lane review accepted after merge` |
-| `unit-evidence/spec.md:107` — Incomplete review does not count | pass | `tests/tools/unit-finish-findings.test.ts:92` — `incomplete review does not count` |
-| `unit-evidence/spec.md:111` — Receipted unit with a new blocking finding | pass | `tests/tools/unit-finish-findings.test.ts:127` — `receipted unit with a new blocking finding` |
-
-**Check 4:** 43 pass · 0 fail · 1 not verified (known exception).
-
-### Fresh focused tests
-
-Cwd đúng worktree authoritative. Lệnh:
-
-```bash
-bun run test tests/subagents/policy.test.ts tests/subagents/lanes.test.ts tests/engine/next-step.test.ts tests/engine/gates.test.ts tests/tools/lane-tools.test.ts tests/tools/unit-start.test.ts tests/tools/unit-finish.test.ts tests/tools/unit-finish-findings.test.ts tests/subagents/finish-gate.test.ts tests/evidence/refusals.test.ts
-```
-
-Exit 0; **10 files / 305 tests passed**, 0 failed; duration 28.54 s, start 20:35:15. Không chạy lại full suite; 164 files / 2429 tests là thông tin parent cung cấp, không dùng làm bằng chứng độc lập trong báo cáo này. Không sửa repository hoặc tạo artifact ngoài report này.
-
-## Part 4
-
-### Verify iteration 2 — part 4 of 4 (child-sessions, context-injection, forge-read, init-and-doctor; Check 5)
-
-Worktree `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch` @ `dfbbca2`. Paths are relative to it.
-Focused run (this invocation): `bun run test tests/subagents/child.test.ts tests/hooks/{context,guard,session,routing-note}.test.ts tests/tools/forge-read.test.ts tests/config.test.ts tests/commands/doctor.test.ts tests/subagents/doctor.test.ts` → 9 files, 137 tests passed.
+Worktree: /Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch @ 9631beb. Paths are relative to it.
+Focused run: `bun run test` on policy, next-step, gates, pack-load, lanes, lane-tools, unit-start, unit-finish and unit-finish-findings → 9 files, 296 tests passed.
 
 ### Check 3 — requirement → implementation
 
 | Spec | Requirement | Evidence | Status |
 |---|---|---|---|
-| child-sessions | Child session detection | `src/subagents/child.ts:26-34` (executor `childSession` → else header `parentSession` → `catch` → true); used by every child-sensitive hook: `src/hooks/context.ts:54,69,85,100,113`, `src/hooks/session.ts:556,560` | pass |
-| child-sessions | Child note | `src/subagents/child.ts:13-20` fixed constant: parent owns state; no tick/push/forge write/`.pi/livespec/`; `<untrusted>` is data; `ask_parent`; no skill named. Set at `src/hooks/context.ts:54-56` only when initialized; `context` adds no card `:69` | pass |
-| child-sessions | Child resources | `resources_discover` → `NO_SKILLS` `src/hooks/context.ts:113`; refusals: `forge_read` `src/tools/forge-read.ts:106`, `subagent_dispatch` `src/tools/subagent-dispatch.ts:20`, `subagent_answer` `src/tools/subagent-answer.ts:61`, `subagent_packet` `src/tools/subagent-packet.ts:14`, `subagent_record` `src/tools/subagent-record.ts:30`, `finding_rebut` `src/tools/finding-rebut.ts:42` (also lane tools). Guard `src/hooks/guard.ts:68-76` has no child branch → identical in child | pass |
-| context-injection | Routing note (MODIFIED) | `src/hooks/context.ts:54-62`: child → `CHILD_NOTE`, main → static `ROUTING_NOTE` | pass |
-| context-injection | Phase card (MODIFIED) | `src/hooks/context.ts:68-80`: child returns `undefined` (messages unchanged); main appends one card to `event.messages` | pass |
-| context-injection | Resume at session start (MODIFIED) | `src/hooks/session.ts:556-562`: child → `startChild` (`:511-517`, loads basics + forge target, no card/reconnect); main → `startSession` unchanged | pass |
-| forge-read | Forge read tool | `src/tools/forge-read.ts:14` 8 targets; readers `:49-81` only call `getIssue/listComments/whoami/getPullRequest/getPullRequestFiles/listReviews/listReviewComments/getChecks/searchIssues`; ids + `version`/`updatedAt` per item `:33,41,60,64,67,69,74`; unknown target refusal lists allowed `:91` | pass |
-| forge-read | Untrusted text in reads | `commentBlock` `src/tools/forge-read.ts:40-45`: only own (author = login) marked comments shown as state, data still wrapped; all other bodies/authors/titles wrapped with `untrusted()` | pass |
-| forge-read | Forge read in children | `src/tools/forge-read.ts:19,106`: refuses before session/forge access; message names packet and spill files | pass |
-| init-and-doctor | Config files (MODIFIED) | `src/config.ts:51-53` defaults + `USER_KEYS`; `positiveInt` `:211-217` (warn + default); `readIsolation` `:227-243` (list of strings, else warn + ignore; blanks dropped with warning `:220-224`); `buildUser` `:245-255`; existing verify/adapter handling `:141-190` | pass |
-| init-and-doctor | Doctor checks (MODIFIED) | `src/subagents/doctor.ts:18-23` executor missing / missing capabilities → "runs every role inline"; `:26-34` role overrides (non-`builtin` source) as `ok` info with file; `:13,36-45` workspace provider warn ("runs its unit sequentially"); `:47-50` effective exclusion list; registered `:63`, loaded via `src/extension.ts:11`. Existing checks unchanged (tests below pass) | pass |
+| subagent-policy | Subagents sub-schema | src/subagents/policy.ts:20-23 (roles, modes, keys, model/lane keys), :119-141 validateEntry, :124 model/lane-count message, :155-166 reviewer needs subject + subject values, :173-183 when/auto/unparsable, :33-42 + :186-188 persona reporting | pass |
+| subagent-policy | When conditions | src/subagents/policy.ts:45-88 (units, difficulty, tags, unfamiliar, context with margin 2 at :24 and turn check at :64); src/subagents/policy.ts:95-106 unfamiliarCode; src/hooks/context.ts:84-92 reads `ctx.getContextUsage()` at turn_end; unit facts at src/subagents/build-loop.ts:38-48; change facts (max Difficulty, tag union per D11b) at src/subagents/phase-entries.ts:16-27 | pass |
+| subagent-policy | Policy decides suggestions, not the flow | src/subagents/build-loop.ts:51-54 (off/always/auto), :98-105 (subagent_dispatch or subagent_packet inline), :116-119; src/subagents/phase-entries.ts:57-71; the builders return text only (src/engine/next-step.ts:247-272). Small-fix part deferred to LS-09 | pass (small-fix clause deferred) |
+| subagent-policy | Advisory roles | src/subagents/payload.ts:17-32 lists advisory findings; src/engine/gate-payload.ts:97-104 adds them to the gate payload; advisory findings are excluded from blocking at src/subagents/records.ts:204 and src/subagents/finish-gate.ts:37 | pass |
+| subagent-policy | Build loop steps | src/subagents/build-loop.ts:169-175 (implementer → review → fix order); :141-149 fix round "new commit, never an amend" and `spec_stuck` "re-plan required" after `unit_rebuilds`; unit_start/unit_finish around it at src/engine/next-step.ts:262-272 | pass |
+| subagent-policy | Default pack entries | src/packs/agent-skills.yaml:27-28, 40-42, 50-52, 60-62 | pass |
+| parallel-lanes | Parallel eligibility | src/subagents/lanes.ts:22-23 (Files overlap, spec files included), :20 + :43-57 (ready, Depends, executor, limit); lane limit from user config src/config.ts:249; pack rejects lane keys at src/subagents/policy.ts:23,124 | pass |
+| parallel-lanes | Lane worktree | src/subagents/lanes.ts:12-14 (path/branch); src/subagents/lane-ops.ts:59-68 (from HEAD, open `lane` comment); src/subagents/state.ts:7 registerKind("lane"), :27-40 latest-record open state, :51-54 unitRoot; src/tools/unit-tool.ts:48-56 (unit tools resolve the lane); src/tools/subagent-request.ts:30-35,62-65 (cwd + `lane` metadata); no workspace provider registration found by grep | pass |
+| parallel-lanes | Merge one at a time | src/tools/lane-merge.ts:36-38,47-48 (another unfinished unit refuses); src/engine/git.ts:158 `--no-ff`; src/subagents/lane-ops.ts:103-126 (merge, verify, close with head); src/tools/lane-merge.ts:79 Verify on change root | pass |
+| parallel-lanes | Lane tools | src/tools/lane-open.ts:18-35 + src/subagents/lanes.ts:28-40 (refusals) + src/subagents/lane-ops.ts:38-56 (leftover reuse/refuse); src/tools/lane-merge.ts:41-55 (no lane, dirty, review not done), :110-111 child refusal; next-step src/engine/next-step.ts:255-263 (lane_open) and src/subagents/build-loop.ts:163,173-174 (lane_merge) | pass |
+| parallel-lanes | Sequential re-run | src/subagents/lane-ops.ts:105-110 (files-violation finding, nothing merged), :112-116 (conflict abort), :117-123 (red undone); src/tools/lane-merge.ts:102-104 (failed attempt via `failed`); src/subagents/launch.ts:115-121 + src/subagents/dispatch.ts:165 + src/tools/subagent-dispatch.ts:38-47 (cwd mismatch → abort, close lane) | pass |
+| unit-evidence | Unit start tool | src/evidence/refusals.ts:76 START_RULES order; :69-74 per-worktree "other started"; src/tools/unit-tool.ts:48-56 (lane worktree for HEAD/dirty); src/tools/unit-start.ts:44-63 (guard, pending, pre SHA, comment), :30-39 wrong-class refusal with options (:20) | pass |
+| unit-evidence | Unit finish tool | src/tools/unit-finish.ts:218-224 (finish gate first, then D10 rules); src/subagents/finish-gate.ts:20-53 (blocking findings, non-advisory reviewer without context, lane-head second parent); src/evidence/refusals.ts:115-121 (open lane, reconcile rules); src/tools/unit-finish.ts:172-177 reconcile, :115-136 receipt then tick, :149-170 failed attempt + debugging skill | pass |
+
+Note (not a fail): the spec orders the `when` conditions per unit/change role; the gate's `context>=N%` exclusion is done by passing `turnsCompleted: 0` (src/subagents/finish-gate.ts:38), which makes the context condition false — equivalent to "evaluated without".
 
 ### Check 4 — scenario → test
 
 | Spec | Scenario | Test | Status |
 |---|---|---|---|
-| child-sessions | Child of the executor | `tests/subagents/child.test.ts:36` "childSession returns a record: child" | pass |
-| child-sessions | Main session | `tests/subagents/child.test.ts:41` "childSession undefined and no parentSession: main session" | pass |
-| child-sessions | Check fails | `tests/subagents/child.test.ts:46` "childSession throws: child" | pass |
-| child-sessions | Child launched by the main agent | `tests/hooks/context.test.ts:247` "before_agent_start sets CHILD_NOTE in a child" + `:240` "context hook adds no card in a child"; note content `tests/subagents/child.test.ts:59,65` | pass |
-| child-sessions | Guard in a child | `tests/hooks/guard.test.ts:162` "guard blocks git push in a child" (asserts block + `livespec guard:` reason; same path as main) | pass |
-| child-sessions | No skills from livespec | `tests/hooks/context.test.ts:254` "resources_discover returns no skills in a child" | pass |
-| context-injection | Identical every turn | `tests/hooks/context.test.ts:48` "Identical every turn"; `tests/hooks/routing-note.test.ts:18` | pass |
-| context-injection | Child session gets the child note | `tests/hooks/context.test.ts:247` | pass |
-| context-injection | Appended at the end | `tests/hooks/context.test.ts:79` | pass |
-| context-injection | Cache prefix stable over five turns | `tests/hooks/context.test.ts:88` | pass |
-| context-injection | No card in a child session | `tests/hooks/context.test.ts:240` (returns `undefined` = messages unchanged) | pass |
-| context-injection | Resume mid-change | `tests/hooks/session.test.ts:22` | pass |
-| context-injection | Other branch | `tests/hooks/session.test.ts:34` | pass |
-| context-injection | Product pointer | `tests/hooks/context.test.ts:68` "the first card the model sees points at specs/product.md, later ones do not" | pass |
-| context-injection | Forge unavailable | `tests/hooks/session.test.ts:44` | pass |
-| context-injection | Child session start | `tests/hooks/session.test.ts:258` "no resume card at child session_start" | pass |
-| forge-read | Read comments | `tests/tools/forge-read.test.ts:45` | pass |
-| forge-read | Unknown target | `tests/tools/forge-read.test.ts:54` | pass |
-| forge-read | Human comment | `tests/tools/forge-read.test.ts:61` | pass |
-| forge-read | Called by a child | `tests/tools/forge-read.test.ts:98` (asserts error, "packet", no issue text) | pass |
-| init-and-doctor | Unknown key | `tests/config.test.ts:28` | pass |
-| init-and-doctor | Interaction adapter list | `tests/config.test.ts:118` | pass |
-| init-and-doctor | Unknown adapter name | `tests/config.test.ts:126` | pass |
-| init-and-doctor | Verify settings | `tests/config.test.ts:195` | pass |
-| init-and-doctor | Invalid verify timeout | `tests/config.test.ts:202` | pass |
-| init-and-doctor | Subagent settings | `tests/config.test.ts:242` "subagent settings" | pass |
-| init-and-doctor | Subagent defaults | `tests/config.test.ts:251` | pass |
-| init-and-doctor | Invalid lanes | `tests/config.test.ts:258` "invalid lanes warns and uses the default" | pass |
-| init-and-doctor | Duplicate skill | `tests/commands/doctor.test.ts:173` | pass |
-| init-and-doctor | Missing pack skill | `tests/commands/doctor.test.ts:188` | pass |
-| init-and-doctor | Superpowers in an untrusted project | `tests/commands/doctor.test.ts:196` | pass |
-| init-and-doctor | Forge read-only | `tests/commands/doctor.test.ts:221` | pass |
-| init-and-doctor | OpenSpec folder | `tests/commands/doctor.test.ts:237` | pass |
-| init-and-doctor | Clone state | `tests/commands/doctor.test.ts:246` | pass |
-| init-and-doctor | No clone | `tests/commands/doctor.test.ts:258` | pass |
-| init-and-doctor | Forge detection fails | `tests/commands/doctor.test.ts:265` | pass |
-| init-and-doctor | Forge auth fails | `tests/commands/doctor.test.ts:280` | pass |
-| init-and-doctor | Channel in project config | `tests/commands/doctor.test.ts:291` | pass |
-| init-and-doctor | Superpowers in a trusted project | `tests/commands/doctor.test.ts:210` | pass |
-| init-and-doctor | Executor missing | `tests/subagents/doctor.test.ts:41` "executor missing" | pass |
-| init-and-doctor | Executor lacks a capability | `tests/subagents/doctor.test.ts:51` "executor lacks wait" | pass |
-| init-and-doctor | Role override | `tests/subagents/doctor.test.ts:67` "role override reported as information" | pass |
-| init-and-doctor | Workspace provider package | `tests/subagents/doctor.test.ts:75` "workspace provider package warns" | pass |
-| init-and-doctor | Excluded packages listed | `tests/subagents/doctor.test.ts:89` "excluded packages listed" | pass |
-
-### Check 5 — design decisions, contracts, deviations vs code
-
-### Design D1–D12
-
-| Item | Result | Compared |
-|---|---|---|
-| D1 module layout | matched (extra modules are the recorded internal deviation) | `src/subagents/` listing has every D1 file (`executor, protocol, roles, packet, sources, result, launch, dispatch, records, state, freshness, policy, lanes, isolation, child, doctor`); tools in `src/tools/` (`subagent-dispatch/answer/packet/record`, `finding-rebut`, `forge-read`); `dispatch` kind registered `src/subagents/records.ts:8` |
-| D2 dispatch is a tool | matched | spawn options `src/subagents/launch.ts:25-52` (`context:"fresh"`, `contextFiles:false`, `skills:{inherit:false,paths}`, `excludeExtensionPackages`, `cwd`, `metadata`, `resultSchema`, `thinkingLevel`, no `model`); `subagent_packet` returns packet `src/tools/subagent-packet.ts:14-32`; answer source `answer:<agentId>:<n>` `src/subagents/sources-records.ts:140`; `needs-decision` → `spec_question` `src/subagents/build-loop.ts:137,156` |
-| D3 packet layout | matched | `src/subagents/packet.ts:27-36` (protocol+flow prefix, task, footer last); flow block pack name/version/tree sha (`basename` of tree, `src/content/tree.ts:64`) `src/subagents/render.ts:16-20`; hash over body with `<spill>` placeholder `src/subagents/packet.ts:54-58,92` and `src/subagents/spill.ts:9` |
-| D4 post-launch check | matched | keys `src/subagents/executor.ts:3` (new first, legacy fallback `:67-76`); capability set `:8`; compare fields + exclusion coverage `src/subagents/launch.ts:97-120`; abort, bounded settle, record, inline/sequential `src/subagents/dispatch.ts:156-166`; lane cwd-only → sequential `launch.ts:119` |
-| D5 roles data | matched | `src/subagents/roles.ts:45-50` (AGENT_OF), `:52` subjects, `:57-94` schemas (implementer `commits`, reviewer/verifier `findings`; scout base only — design says "writers add commits": implementer is the only writer); override warn-once `src/tools/subagent-request.ts:92-93`, `agentSource` recorded `src/subagents/dispatch.ts:63` |
-| D6 thinking, never model | matched | `raisedThinking` `src/subagents/launch.ts:19-22`; requested/effective recorded `src/subagents/dispatch.ts:63-65` |
-| D7 child sessions | matched | `src/subagents/child.ts:26-34`; hooks `src/hooks/context.ts:54-56,69,113`; guard unchanged `src/hooks/guard.ts:68-76` |
-| D7b results on forge | matched | `dispatch` kind `src/subagents/records.ts:8`; `finding-summary` core kind `src/forge/markers.ts:32`; record selection `src/subagents/run-record.ts:92`; dependency `discoveries` via latest dispatch `src/subagents/sources-records.ts:66-91` |
-| D8 findings and rebuttals | matched | rebuttal record `src/subagents/records.ts:106-108`; `finding_rebut` refusals `src/tools/finding-rebut.ts:31,43-44`; `unit_finish` gate (blocking, out-of-scope excluded, review at HEAD or 2nd parent, context conditions dropped) `src/subagents/finish-gate.ts:20-50`, `src/subagents/records.ts:219-221`; gate payload rebuttals `src/subagents/payload.ts:35-37` |
-| D9 lanes | drift (minor) | path/branch `src/subagents/lanes.ts:7,12,14`; `worktreeAddBranch` `src/engine/git.ts:170-172`; `--no-ff` `:158`; one started unit per worktree `src/evidence/refusals.ts:69-73`; lane HEAD as pre `src/tools/unit-tool.ts:47-55`. **Drift:** "guard root through the launch metadata `lane`": `metadata.lane` is set (`src/subagents/launch.ts:39`) but the guard never reads it; it uses the child's `ctx.cwd` (`src/hooks/guard.ts:72`), which is the lane only because `cwd` is the lane path. Verify root comes from `unitRoot` (`src/tools/unit-tool.ts:50`). Effect is equivalent; the mechanism differs from the design text |
-| D10 isolation | matched | patterns `src/subagents/isolation.ts:8`; configured packages user+project `:41-45`; merge with extra `:48-51`; doctor list `src/subagents/doctor.ts:47-50` |
-| D11 policy pure | matched | `src/subagents/policy.ts:24` margin 2, `:64-65` needs a completed turn; percent from `ctx.getContextUsage()` `src/hooks/context.ts:89-92`; inline wording `src/subagents/build-loop.ts:97-104` |
-| D12 forge_read | matched | `src/tools/forge-read.ts:14,49-81,106` |
-
-### plan.md "## Contracts" rows
-
-| Row | Result | Compared |
-|---|---|---|
-| `SubagentsServiceLike` | matched | `src/subagents/executor.ts:34-41` |
-| `SpawnOptionsLike` | matched | `src/subagents/executor.ts:12-22` |
-| `RecordLike` | matched | `src/subagents/executor.ts:24-32` |
-| `LaunchFacts` | matched | `src/subagents/executor.ts:44-53` |
-| `SERVICE_KEYS` | matched | `src/subagents/executor.ts:3` |
-| `findExecutor()` | matched | `src/subagents/executor.ts:55,67-76` |
-| `isChildSession(ctx)` | matched (header type also allows `null`, a widening) | `src/subagents/child.ts:5-10,26` |
-| `CHILD_NOTE` | matched | `src/subagents/child.ts:13` |
-| `Role` / `ReviewSubject` | matched | `src/subagents/roles.ts:3-4` |
-| `SubagentEntry` | matched | `src/subagents/roles.ts:6-13` |
-| `Finding` | matched | `src/subagents/roles.ts:15-22` |
-| `SubagentResult` | matched | `src/subagents/roles.ts:24-33` |
-| `dispatch` marker data | matched + recorded deviation (`reason`, `evidence`, `launchMismatch`, `contextRequest`) | `src/subagents/records.ts:13-35` |
-| `finding-summary` marker data / rebuttal | matched + recorded deviation (`contextRequest`, `system`) | `src/subagents/records.ts:48-71` |
-| `Packet` | matched + recorded deviation (`seen`) | `src/subagents/source-types.ts:35-43` |
-| `registerPacketSource` | matched | `src/subagents/sources.ts:14`, `SourceProvider` `src/subagents/source-types.ts:47` |
-| `PacketSource` | matched | `src/subagents/source-types.ts:11` |
-| Tool `subagent_dispatch` | matched | `src/tools/subagent-dispatch.ts:58`, `TARGET_PROPERTIES` `src/tools/subagent-target.ts:44-48` |
-| Tool `subagent_answer` | matched | `src/tools/subagent-answer.ts:95` |
-| Tool `subagent_packet` | matched | `src/tools/subagent-packet.ts:40`; returns packet text `:32` |
-| Tool `subagent_record` | matched | `src/tools/subagent-record.ts:66` |
-| Tool `finding_rebut` | matched | `src/tools/finding-rebut.ts:74-75` |
-| Tool `lane_open` | matched | `src/tools/lane-open.ts:44` (`UNIT_PARAMETERS` `src/tools/unit-tool.ts:22`); open+record `src/subagents/lane-ops.ts:60-67` |
-| Tool `lane_merge` | matched | `src/tools/lane-merge.ts:121`; violation/merge/verify/reset/close `src/subagents/lane-ops.ts:79-105` |
-| Tool `forge_read` | matched | `src/tools/forge-read.ts:17,126-136` |
-| `lane` marker data | matched + recorded deviation (`outcome`, `head`) | `src/subagents/state.ts:9-17` (id `lane.<unit>`) |
-| `dispatch` `QUESTION`/`ANSWERED` | matched (adds optional `subject`/`attempt`/`launch`, covered by "QuestionLaunch" need) | `src/subagents/records.ts:41-46`; id suffix `:94` |
-| Marker ids | matched + recorded suffixes | `src/subagents/records.ts:92-108` |
-| `ChangeState.subagents` | matched + recorded deviation (`laneHeads`, `mergedLaneHeads`, `laneLimit`, `unfamiliar`) | `src/engine/state-types.ts:49-63` |
-| `NextStep.dispatch` / `pendingChild` | matched | `src/engine/state-types.ts:92,94` |
-| `Git.worktreeAddBranch` / `resetHard` | matched | `src/engine/git.ts:35,39,170-178` |
-| `unitRoot` | matched | `src/subagents/state.ts:52-54` |
-| `UserConfig` | matched | `src/config.ts:37-39` |
-| `unit_start` / `unit_finish` | matched | refusals `src/evidence/refusals.ts:69-73,119`; finish gate `src/tools/unit-finish.ts:219-226` |
-
-### apply.md "Contract deviations"
-
-| Deviation | Result | Compared |
-|---|---|---|
-| Tools `lane_open`, `lane_merge` | matched | `src/tools/lane-open.ts`, `src/tools/lane-merge.ts` |
-| `unit_finish` refuses with open lane (R10) | matched | `openLane` in `RUN_RULES` `src/evidence/refusals.ts:119` |
-| out-of-scope findings never refuse | matched | `tickBlocking` `src/subagents/records.ts:219-221` |
-| `unfamiliarCode(phase, unit, specs, capabilities)` | matched | `src/subagents/policy.ts:94` |
-| `unitRoot(state, unit, root)` | matched | `src/subagents/state.ts:52` |
-| `findingKey(commentId, index)` | matched | `src/subagents/records.ts:84` |
-| `DispatchData` extra fields | matched | `src/subagents/records.ts:28-34` |
-| `FindingSummaryData` extra fields | matched | `src/subagents/records.ts:65-68` |
-| Marker suffixes `.mismatch`, `.needs-context-<n>`, `.system.files-violation.<n>` | matched | `src/subagents/records.ts:87-103` |
-| Lane `outcome`/`head`; `ChangeState.subagents` extras | matched | `src/subagents/state.ts:13`; `src/engine/state-types.ts:55-61` |
-| `DispatchDeps.abortSettleMs`, `ABORT_SETTLE_MS` 30 s | matched | `src/subagents/dispatch.ts:31,35,158` |
-| `GateSnapshot.findings` optional | matched | `src/interaction/approver.ts:34-39` |
-| New modules not in plan | matched (all 16 exist) | `src/tools/{subagent-target,subagent-request,subagent-outcome}.ts`, `src/subagents/{run-record,lane-ops,packet-store,finish-gate,finish-freshness,build-loop,payload,card,unfamiliar,phase-entries,validate,flow,spill}.ts` (file-existence check) |
-| `roleSkillPaths(..., subject?)` → `{ ok, paths, names }` | matched | `src/subagents/flow.ts:9,23-28` |
-| `PacketContext.session`, optional `finding` | matched | `src/subagents/source-types.ts:14-24` |
-| `Packet.seen` | matched | `src/subagents/source-types.ts:42` |
-| `checkFreshness(packet, current, ownAgent?)` + `readCurrent` | matched | `src/subagents/freshness.ts:23,40`; used `src/subagents/finish-freshness.ts:28` |
-| Dispatch outcome `cancelled`; `DispatchDeps.signal` | matched | `src/subagents/dispatch.ts:18,29,90-97` |
-| `mergeLane` takes checks, `aborted` outcome | matched | `src/subagents/lane-ops.ts:16-19` |
-| `lockedEvidenceCall` takes `where` | matched | `src/tools/unit-tool.ts:63-70` |
-| Helpers `unitInvariantRefusal`, `laneOpenRefusal`, `tickBlocking`, `answeredFindingKeys`, `gatesShownKeys`, `unshownSystemFindings` | matched | `src/evidence/refusals.ts:126,131`; `src/subagents/records.ts:219,255,262,272` |
-| `roles.checkSchema` | matched | `src/subagents/roles.ts:99` |
-| `.worktrees/` in `<git-common-dir>/info/exclude`, idempotent | matched | `src/subagents/lane-ops.ts:23-36` |
-| Iteration-2 F2: `packet unavailable: <hash>` | matched | `src/subagents/finish-freshness.ts:26` |
+| subagent-policy | Valid entry | tests/subagents/policy.test.ts:82 "valid entry" | pass |
+| subagent-policy | Reviewer without subject | tests/subagents/policy.test.ts:86 "reviewer without subject" (asserts line/col) | pass |
+| subagent-policy | Model key | tests/subagents/policy.test.ts:93 "model key rejected" | pass |
+| subagent-policy | Unfamiliar code in build | tests/subagents/policy.test.ts:144 "unfamiliar code in build" | pass |
+| subagent-policy | Context threshold with margin | tests/subagents/policy.test.ts:169 "context threshold with margin" | pass |
+| subagent-policy | First turn | tests/subagents/policy.test.ts:173 "first turn never holds" | pass |
+| subagent-policy | Auto implementer | tests/engine/next-step.test.ts:566 "auto implementer suggested" | pass |
+| subagent-policy | Below the threshold | tests/engine/next-step.test.ts:572 "below the threshold inline" | pass |
+| subagent-policy | Small-fix lane | — (deferred to LS-09 per apply.md ruling) | not verified (known exception) |
+| subagent-policy | Advisory spec review | tests/engine/gates.test.ts:253 "advisory spec review in gate payload" + :261 "an advisory finding does not block the gate request" | pass |
+| subagent-policy | Review before finish | tests/engine/next-step.test.ts:633 "review before finish" | pass |
+| subagent-policy | Rebuild cap | tests/engine/next-step.test.ts:662 "rebuild cap → spec_stuck" | pass |
+| subagent-policy | Build entries | tests/subagents/policy.test.ts:179 and tests/engine/pack-load.test.ts:55 "default pack build entries validate" | pass |
+| parallel-lanes | Overlapping files | tests/subagents/lanes.test.ts:32 "overlapping files not parallel" | pass |
+| parallel-lanes | Lane limit | tests/subagents/lanes.test.ts:43 "lane limit" | pass |
+| parallel-lanes | Lane created | tests/tools/lane-tools.test.ts:92 "Lane created" (path, branch, lane record, cwd, metadata.lane) | pass |
+| parallel-lanes | Two lanes finish | tests/tools/lane-tools.test.ts:164 "Two lanes finish: merged and ticked one at a time" | pass |
+| parallel-lanes | Next step opens lanes | tests/engine/next-step.test.ts:717 "Next step opens lanes" | pass |
+| parallel-lanes | Open refused over the limit | tests/tools/lane-tools.test.ts:109 "Open refused over the limit" | pass |
+| parallel-lanes | Leftover worktree | tests/tools/lane-tools.test.ts:120 "Leftover worktree" | pass |
+| parallel-lanes | Merge before review refused | tests/tools/lane-tools.test.ts:153 "Merge before review refused" | pass |
+| parallel-lanes | Files violation | tests/tools/lane-tools.test.ts:183 "Files violation" | pass |
+| parallel-lanes | Red after merge | tests/tools/lane-tools.test.ts:370 "Red after merge" | pass |
+| parallel-lanes | Moved by a workspace provider | tests/tools/lane-tools.test.ts:399 "Moved by a workspace provider" | pass |
+| unit-evidence | Red at pre starts the unit | tests/tools/unit-start.test.ts:33 | pass |
+| unit-evidence | Green at pre is refused | tests/tools/unit-start.test.ts:44 | pass |
+| unit-evidence | Refactor unit must pass at pre | tests/tools/unit-start.test.ts:49 | pass |
+| unit-evidence | Dirty tree | tests/tools/unit-start.test.ts:59 | pass |
+| unit-evidence | Frozen unit | tests/tools/unit-start.test.ts:66 | pass |
+| unit-evidence | Unmet dependency | tests/tools/unit-start.test.ts:74 | pass |
+| unit-evidence | One started unit at a time | tests/tools/unit-start.test.ts:79 | pass |
+| unit-evidence | Started in a lane | tests/tools/unit-start.test.ts:86 (pre SHA = lane HEAD) | pass |
+| unit-evidence | Restart after an amendment | tests/tools/unit-start.test.ts:122 | pass |
+| unit-evidence | Green at post | tests/tools/unit-finish.test.ts:41 | pass |
+| unit-evidence | Not green at post | tests/tools/unit-finish.test.ts:61 | pass |
+| unit-evidence | Not started | tests/tools/unit-finish.test.ts:77 | pass |
+| unit-evidence | Open lane refuses finish | tests/tools/lane-tools.test.ts:319 "unit_finish refuses while the unit has an open lane" | pass |
+| unit-evidence | Crash between receipt and tick | tests/tools/unit-finish.test.ts:83 | pass |
+| unit-evidence | Digest changed since start | tests/tools/unit-finish.test.ts:106 | pass |
+| unit-evidence | Unresolved blocking finding | tests/tools/unit-finish-findings.test.ts:48 "unresolved blocking finding refuses finish" | pass |
+| unit-evidence | Review required but not run | tests/tools/unit-finish-findings.test.ts:81 | pass |
+| unit-evidence | Lane review accepted after merge | tests/tools/unit-finish-findings.test.ts:109 | pass |
+| unit-evidence | Incomplete review does not count | tests/tools/unit-finish-findings.test.ts:92 | pass |
+| unit-evidence | Receipted unit with a new blocking finding | tests/tools/unit-finish-findings.test.ts:127 | pass |
 
 ### Counts
-- Check 3: 11 pass, 0 fail, 0 not verified.
-- Check 4: 44 pass, 0 fail, 0 not verified.
-- Check 5: D1–D12 13 rows: 12 matched, 1 drift (D9 guard root mechanism, minor, behaviour equivalent); Contracts 34 matched; deviations 24 matched.
+
+- Check 3: 13 requirements — 13 pass (the small-fix clause of "Policy decides suggestions" is deferred to LS-09), 0 fail.
+- Check 4: 44 scenarios — 43 pass, 1 not verified (Small-fix lane, known exception), 0 fail.
+
+## Part 4
+
+### Verify iteration 3 — part 4
+
+Independent read-only verification of `subagent-dispatch`, Checks 3–5. Paths below are relative to `/Users/naicoi/Projects/oss/pi-livespec.subagent-dispatch`; `delta/` means `openspec/changes/subagent-dispatch/specs/`. This is requirements/design/contract verification, not a code-quality review.
+
+### Evidence and result
+
+- HEAD read in this invocation: `9631beb6af9895905431f5df06355b8efeae08a6`. `git status --short` was empty before and after the focused runs.
+- All four assigned delta specs, design D1–D12/D7b/D11b, the complete plan Contracts table, and apply iteration 3 Contract deviations were read in this invocation. CodeGraph returned current, line-numbered source; omitted sections needed for the tables were read separately.
+- Check 3: **10 pass, 1 fail, 0 not verified** (11 requirements).
+- Check 4: **44 pass, 0 fail, 0 not verified** (44 scenario mappings; test declarations confirmed with grep, relevant assertion bodies inspected).
+- Check 5: **70 pass/matched, 2 fail/drift, 2 not verified** (14 design decisions + 34 Contracts rows + 26 deviation entries). Contract-only drift is a warning, not an independent overall FAIL.
+- Overall scoped result: **FAIL**, because the child-detection requirement is not applied to the settle hooks. Existing green tests do not cover that child path.
+- No repository files were edited, no commits or subagents were created. Only this report was written. The parent's reported full-suite result is context, not evidence claimed by this verifier.
+
+### Fresh commands
+
+All commands below used the authoritative worktree, exit **0**:
+
+| Command | Fresh result |
+|---|---|
+| `bun run test tests/subagents/child.test.ts tests/hooks/context.test.ts tests/hooks/session.test.ts tests/hooks/guard.test.ts tests/tools/forge-read.test.ts tests/config.test.ts tests/commands/doctor.test.ts tests/subagents/doctor.test.ts` | 8 files, 134 tests passed |
+| `bun run test tests/subagents/dispatch.test.ts tests/subagents/payload.test.ts tests/subagents/phase-entries.test.ts tests/hooks/guard-child.test.ts tests/hooks/settle.test.ts` | 3 files, 61 tests passed; the payload/phase-entries paths matched no files and are not claimed as executed |
+| `bun run test tests/engine/gates.test.ts tests/engine/next-step.test.ts tests/subagents/launch.test.ts` | 2 files, 129 tests passed; the launch path matched no file and is not claimed as executed |
+
+Total actually executed: **13 files, 324 tests, 0 failures**. These are focused tests, not a fresh full-suite or real pi/executor E2E run.
+
+### Read-only child-settle reproduction
+
+The following in-memory hook probe was executed from the authoritative worktree (no file written):
+
+```bash
+bun -e 'import { registerSettleHooks } from "./src/hooks/settle.ts"; import { setSession } from "./src/hooks/session-store.ts"; import { isChildSession } from "./src/subagents/child.ts"; const hooks = new Map(); let refreshCalls = 0; const state = { phase: {kind:"ok",id:"build"}, evidence:{started:{U1:{}}}, git:{dirty:false}, incomplete:[] }; const session = { initialized:true, refresh: async () => { refreshCalls++; }, card:{kind:"change",state}, pack:{ok:true,pack:{phases:[{id:"build",per:"unit"}]}}, record:() => "" }; const ctx = { sessionManager:{getSessionId:()=>"child-probe",getHeader:()=>({parentSession:"parent.jsonl"})} }; setSession(session as never); registerSettleHooks({on:(name,fn)=>hooks.set(name,fn)} as never); const out = await hooks.get("agent_before_settle")({outcome:"completed",entries:[]},ctx); console.log(JSON.stringify({child:isChildSession(ctx),parentRefreshCalls:refreshCalls,childContinuation:out?.continue,customType:out?.entries?.[0]?.customType})); setSession(undefined);'
+```
+
+Output: `{"child":true,"parentRefreshCalls":1,"childContinuation":true,"customType":"livespec-settle"}`; exit 0. This reproduces the extension hook path with a fake host/shared session, not the complete real pi/executor stack. The subsequent forge-write path was established by source inspection, not actually invoked against a forge.
+
+### Check 3 — implementation per ADDED/MODIFIED requirement
+
+| Delta requirement | Status | Implementation evidence and judgment |
+|---|---|---|
+| child-sessions — Child session detection (`delta/child-sessions/spec.md:3`) | **fail** | Detection itself is correct at `src/subagents/child.ts:26–33`: capable executor first, header fallback, errors => child. Context hooks check first (`src/hooks/context.ts:52–55,68–69,84–85,99–100,112–113`); session lifecycle checks first (`src/hooks/session.ts:555–560`). **But `src/hooks/settle.ts:129–142` never checks the child at all.** It takes the shared parent Session, calls `refresh` (`:104–105`, which can advance at `src/hooks/session.ts:210–213,236–243`), asks a continuation or writes an own `incomplete` comment (`src/hooks/settle.ts:115–124,61–83`), and clears the parent's asked flag on child settlement (`:140–142`). `src/extension.ts:120` registers these hooks without excluding children; `src/hooks/session.ts:511–512` deliberately preserves the parent Session. The probe above confirms a detected child refreshes the parent and receives the continuation. Add child-first guards to both settle handlers and a shared-parent-session regression test. |
+| child-sessions — Child note (`:18`) | pass | Fixed `CHILD_NOTE` at `src/subagents/child.ts:13–20` contains every specified ownership/prohibition/trust/ask_parent statement and no flow skill. Child `before_agent_start` installs it without refreshing the parent (`src/hooks/context.ts:52–56`). |
+| child-sessions — Child resources (`:25`) | pass | Empty skills: `src/hooks/context.ts:112–113`. Six tool refusals: `src/tools/forge-read.ts:105–106`, `src/tools/subagent-dispatch.ts:19–21`, `src/tools/subagent-answer.ts:60–62`, `src/tools/subagent-packet.ts:13–15`, `src/tools/subagent-record.ts:29–31`, `src/tools/finding-rebut.ts:41–42,75–77`. Shared child-first helper: `src/tools/subagent-target.ts:16–17`. The separate guard has no child bypass and uses `ctx.cwd` (`src/hooks/guard.ts:67–75`), so push/write decisions are the same. |
+| context-injection — Routing note (`:3`) | pass | Main prompt installs the imported constant at `src/hooks/context.ts:58–62`; child branch precedes it and installs CHILD_NOTE (`:52–56`). No state/time/tree interpolation is performed on the routing section. Five-turn constant equality is asserted at `tests/hooks/context.test.ts:48–65`. |
+| context-injection — Phase card (`:14`) | pass | `src/hooks/context.ts:68–80` returns one `[...event.messages, card]`, preserving the prefix, and no child output. It does not append/persist a session entry. Fixed timestamp is `:17–18`. Five-turn no-accumulation assertions are at `tests/hooks/context.test.ts:88–101`; the UI-only resume entry is separate (`src/hooks/session.ts:452–457`). |
+| context-injection — Resume at session start (`:29`) | pass | Branch-line match and title fallback/warning: `src/engine/resolve-change.ts:41–65`. Card resolution and phase state: `src/hooks/card-input.ts:82–95,98–121`. Main start refresh/connect then shows the card (`src/hooks/session.ts:519–530`); errors are caught at `:558–565` and degraded refresh at `:222–228`. First product pointer is rendered at `src/hooks/phase-card.ts:125–132`; first model card consumed at `src/hooks/session.ts:167–170`. Child start takes `startChild`, no resume card (`:511–516,560`). |
+| forge-read — Forge read tool (`:3`) | pass | Readers only invoke Forge reads for the eight targets (`src/tools/forge-read.ts:49–80,98–118`); number/ref/search and unknown-target validation is at `:90–95`. Item ids + native versions/updatedAt or canonical SHA-256 fallback: `:22–25,31–44,49–75`. Registered params at `:121–138`. |
+| forge-read — Untrusted text in reads (`:14`) | pass | Issue/PR/search title/body/author/labels/path/review/check text is wrapped at `src/tools/forge-read.ts:31–44,49–80`. Only current-login marked comments are labelled own state, with free-text data still wrapped (`:40–44`). |
+| forge-read — Forge read in children (`:21`) | pass | Child refusal is the first statement in `runForgeRead` (`src/tools/forge-read.ts:105–106`) before `requireSession`/any read; the message expressly names packet and spill files (`:19`). |
+| init-and-doctor — Config files (`:3`) | pass | Both file locations: `src/config.ts:259–271`. Accepted keys/types/defaults: `:14–55,97–101,119–187,191–255`; positive integers at `:211–217`, exclusions string-list/default at `:227–253`, adapter chain fallback at `:280–286`. Project channel warning: `src/commands/doctor-checks.ts:30–42`. |
+| init-and-doctor — Doctor checks (`:46`) | pass | Duplicate/missing skills, Superpowers/trust, clone state, forge/auth/read-only and OpenSpec migration: `src/commands/doctor-checks.ts:30–120`. Executor capabilities/inline fallback, role overrides with file, workspace-provider warning and effective exclusions: `src/subagents/doctor.ts:18–60`. Check registration is loaded by `src/extension.ts:11`. |
+
+### Check 4 — every scenario mapped to existing tests
+
+Every declaration listed below was located by grep in this invocation. The eight-file focused run executed the primary mapping tests; the additional guard-child run executed parity tests. A pass here means existing behavioral test coverage, not a real external-executor E2E claim. In particular, “Child launched by the main agent” is covered compositionally by detection + both hook tests, with a simulated child context rather than a live `subagent general` launch.
+
+| Spec | Scenario | Status | Existing test file:line — exact test name |
+|---|---|---|---|
+| child-sessions | Child of the executor | pass | `tests/subagents/child.test.ts:36` — `childSession returns a record: child` (fixture agentType `general`, :37) |
+| child-sessions | Main session | pass | `tests/subagents/child.test.ts:41` — `childSession undefined and no parentSession: main session` |
+| child-sessions | Check fails | pass | `tests/subagents/child.test.ts:46` — `childSession throws: child` |
+| child-sessions | Child launched by the main agent | pass | `tests/subagents/child.test.ts:36` — `childSession returns a record: child`; `tests/hooks/context.test.ts:247` — `before_agent_start sets CHILD_NOTE in a child`; `:240` — `context hook adds no card in a child` |
+| child-sessions | Guard in a child | pass | `tests/hooks/guard.test.ts:162` — `guard blocks git push in a child`; parity supplement `tests/hooks/guard-child.test.ts:52` — `a child and the main session give the same guard decision` |
+| child-sessions | No skills from livespec | pass | `tests/hooks/context.test.ts:254` — `resources_discover returns no skills in a child` |
+| context-injection | Identical every turn | pass | `tests/hooks/context.test.ts:48` — `Identical every turn` |
+| context-injection | Child session gets the child note | pass | `tests/hooks/context.test.ts:247` — `before_agent_start sets CHILD_NOTE in a child` |
+| context-injection | Appended at the end | pass | `tests/hooks/context.test.ts:79` — `Appended at the end` |
+| context-injection | Cache prefix stable over five turns | pass | `tests/hooks/context.test.ts:88` — `Cache prefix stable over five turns` |
+| context-injection | No card in a child session | pass | `tests/hooks/context.test.ts:240` — `context hook adds no card in a child` |
+| context-injection | Resume mid-change | pass | `tests/hooks/session.test.ts:22` — `Resume mid-change` |
+| context-injection | Other branch | pass | `tests/hooks/session.test.ts:34` — `Other branch` |
+| context-injection | Product pointer | pass | `tests/hooks/context.test.ts:68` — `the first card the model sees points at specs/product.md, later ones do not`; `tests/hooks/session.test.ts:22` — `Resume mid-change` also checks the start card |
+| context-injection | Forge unavailable | pass | `tests/hooks/session.test.ts:44` — `Forge unavailable` |
+| context-injection | Child session start | pass | `tests/hooks/session.test.ts:258` — `no resume card at child session_start`; `tests/hooks/context.test.ts:240` — `context hook adds no card in a child` |
+| forge-read | Read comments | pass | `tests/tools/forge-read.test.ts:45` — `read comments` |
+| forge-read | Unknown target | pass | `tests/tools/forge-read.test.ts:54` — `unknown target refused` |
+| forge-read | Human comment | pass | `tests/tools/forge-read.test.ts:61` — `human comment untrusted` |
+| forge-read | Called by a child | pass | `tests/tools/forge-read.test.ts:98` — `forge_read refuses in a child` |
+| init-and-doctor | Unknown key | pass | `tests/config.test.ts:28` — `Unknown key` |
+| init-and-doctor | Interaction adapter list | pass | `tests/config.test.ts:118` — `Interaction adapter list` |
+| init-and-doctor | Unknown adapter name | pass | `tests/config.test.ts:126` — `Unknown adapter name` |
+| init-and-doctor | Verify settings | pass | `tests/config.test.ts:195` — `Verify settings` |
+| init-and-doctor | Invalid verify timeout | pass | `tests/config.test.ts:202` — `Invalid verify timeout` |
+| init-and-doctor | Subagent settings | pass | `tests/config.test.ts:242` — `subagent settings` |
+| init-and-doctor | Subagent defaults | pass | `tests/config.test.ts:251` — `subagent defaults` |
+| init-and-doctor | Invalid lanes | pass | `tests/config.test.ts:258` — `invalid lanes warns and uses the default` |
+| init-and-doctor | Duplicate skill | pass | `tests/commands/doctor.test.ts:173` — `Duplicate skill` |
+| init-and-doctor | Missing pack skill | pass | `tests/commands/doctor.test.ts:188` — `Missing pack skill` |
+| init-and-doctor | Superpowers in an untrusted project | pass | `tests/commands/doctor.test.ts:196` — `Superpowers in an untrusted project` |
+| init-and-doctor | Forge read-only | pass | `tests/commands/doctor.test.ts:221` — `Forge read-only` |
+| init-and-doctor | OpenSpec folder | pass | `tests/commands/doctor.test.ts:237` — `OpenSpec folder` |
+| init-and-doctor | Clone state | pass | `tests/commands/doctor.test.ts:246` — `Clone state` |
+| init-and-doctor | No clone | pass | `tests/commands/doctor.test.ts:258` — `No clone` |
+| init-and-doctor | Forge detection fails | pass | `tests/commands/doctor.test.ts:265` — `Forge detection fails` |
+| init-and-doctor | Forge auth fails | pass | `tests/commands/doctor.test.ts:280` — `Forge auth fails` |
+| init-and-doctor | Channel in project config | pass | `tests/commands/doctor.test.ts:291` — `Channel in project config` |
+| init-and-doctor | Superpowers in a trusted project | pass | `tests/commands/doctor.test.ts:210` — `Superpowers in a trusted project` |
+| init-and-doctor | Executor missing | pass | `tests/subagents/doctor.test.ts:41` — `executor missing` |
+| init-and-doctor | Executor lacks a capability | pass | `tests/subagents/doctor.test.ts:51` — `executor lacks wait` |
+| init-and-doctor | Role override | pass | `tests/subagents/doctor.test.ts:67` — `role override reported as information` |
+| init-and-doctor | Workspace provider package | pass | `tests/subagents/doctor.test.ts:75` — `workspace provider package warns` |
+| init-and-doctor | Excluded packages listed | pass | `tests/subagents/doctor.test.ts:89` — `excluded packages listed` |
+
+### Check 5 — design decisions
+
+These rows compare `openspec/changes/subagent-dispatch/design.md` against the cited implementation, applying the recorded deviations as the expected state. `fail (drift)` identifies a mismatch; design/contract drift alone is a warning. The child-settle drift also violates a normative requirement (Check 3), which is why the scoped outcome fails.
+
+| Decision | Status | Files compared and result |
+|---|---|---|
+| D1 — module layout | pass (matched) | `design.md D1` + `apply.md` new-modules deviation vs `src/subagents/{executor,protocol,roles,packet,sources,result,launch,dispatch,records,state,freshness,policy,lanes,isolation,child,doctor}.ts` and the split modules enumerated below. Pure rules/data/adapters, launch/result/record/tool orchestration are present; the documented extra modules supply the finer seams. |
+| D2 — livespec tool dispatch and inline tools | pass (matched) | `src/tools/subagent-dispatch.ts:19–39`, `subagent-packet.ts:13–31`, `subagent-record.ts:29–55`, `subagent-answer.ts:69–84`; actual spawn options at `src/subagents/launch.ts:25–51`. Same packet/result recording path; question/user-decision routing hint at `src/tools/subagent-outcome.ts:48–49`. |
+| D3 — stable packet/cache layout | not verified | Repository portion matches: `src/subagents/render.ts:16–46`, `packet.ts:27–36,53–57,91–103`, `spill.ts:9–29` implement protocol/flow/task/footer and placeholder-before-final-directory hashing. **The role-agent body's final position in the system prompt and actual provider cache hits are executor/provider behavior outside the inspected repository.** No real executor/cache run was performed. |
+| D4 — capability keys and post-launch check | pass (matched) | `src/subagents/executor.ts:3–8,57–75`, `launch.ts:60–80,97–120`, `dispatch.ts:111–137,155–171`. Watch precedes spawn; all requested effective fields/exclusions checked; abort + bounded settle before posting, no post on timeout/cancel; any lane cwd mismatch gives sequential outcome. |
+| D5 — roles/subjects/results and override | pass (matched) | `src/subagents/roles.ts:3–33,45–93`, `sources.ts:22–35`; overrides used as-is (`dispatch.ts:71–76`), warned once per session (`src/tools/subagent-request.ts:89–100`) and recorded (`run-record.ts:62–86`). Schema validator placement is the recorded `roles.checkSchema` deviation. Reserved verifier accepted, not treated as an LS-07 end-to-end capability. |
+| D6 — requested/effective model and effort | not verified | Requested thinking escalation/no `model` matches `src/subagents/launch.ts:19–21,33–51`; requested/effective record matches `dispatch.ts:60–66`, `run-record.ts:62–86`, `executor.ts:88–101`. **Real Jev launch-policy replacement, and standalone executor inheritance of agent/user settings, were not exercised or inspected externally.** |
+| D7 — child hooks and unchanged guard | **fail (drift)** | The three named context handlers and session lifecycle match (`src/subagents/child.ts:26–33`, `src/hooks/context.ts:52–56,68–69,112–113`, `session.ts:555–560`, `guard.ts:67–75`). However the decision/risk's child-first invariant is not applied to `src/hooks/settle.ts:129–142`; child settlement uses/mutates parent state. Same root cause and probe as Check 3, not a second independent defect. |
+| D7b — forge results | pass (matched) | `src/subagents/run-record.ts:62–93,111–119`, `records.ts:92–128,217–240`, `sources-records.ts:65–90`: dispatch for writers/scout, finding-summary for review roles, status/completed/required/head, dependency discoveries from latest dispatch. |
+| D8 — findings/rebuttals/tick/gate | pass (matched) | `src/subagents/records.ts:126–128,157–223,252–278`, `finish-gate.ts:20–52`, `src/tools/unit-finish.ts:202–226`, `finding-rebut.ts:30–64`, `payload.ts:16–54`, `src/engine/gate-payload.ts:93–104`. Findings + required-review check precede reconcile; out-of-scope excluded from tick blocking; rebuttals shown at gate; context usage disabled for required review by turnsCompleted=0. |
+| D9 — lanes | pass (matched) | `src/subagents/lanes.ts:12–56`, `lane-ops.ts:48–67,74–83,103–129`, `src/tools/lane-open.ts:18–34`, `lane-merge.ts:36–54,67–105,109–122`, `src/engine/git.ts:157–177`, `src/evidence/refusals.ts:69–76,115–121`, `src/tools/unit-tool.ts:49–55`, `src/hooks/guard.ts:72`. Naming/limits/disjoint readiness, integration Verify/reset/failure, one merge at a time, lane-root start and guard, cleanup/sequential fallback all match. Ready unfinished units cannot have a Depends path between them because all dependencies must already be done. |
+| D10 — flow isolation | pass (matched) | `src/subagents/isolation.ts:8,14–50`, `src/tools/subagent-request.ts:54–56`, `src/subagents/launch.ts:47–49`, `doctor.ts:47–59`: exact configured sources matched + extra exclusions, deduplicated and passed/reported. |
+| D11 — pure policy | pass (matched) | `src/subagents/policy.ts:45–66,94–104`, `src/subagents/build-loop.ts:38–54`, `phase-entries.ts:16–26,57–70`, `src/hooks/context.ts:83–95`, `src/hooks/card-input.ts:107–109`. Threshold is N−2 and needs completed turn; snapshot feeds suggestions; no forced launch. |
+| D11b — change tags union | pass (matched) | `src/subagents/phase-entries.ts:15–26` computes `new Set(units.flatMap(tags))`; `policy.ts:59–60` tests membership. Change-level policy is not looking for a separate change tag field. |
+| D12 — parent forge_read | pass (matched) | `src/tools/forge-read.ts:31–80,90–118`: all eight Forge read paths, untrusted human text, child refusal before any read. |
+
+### Check 5 — every plan Contracts row
+
+All 34 rows of `openspec/changes/subagent-dispatch/plan.md`, in original order. Documented deviations (extra internal fields/modules, lane tools and refusals) are expected, not undeclared drift.
+
+| # | Contract | Status | Implementation compared |
+|---|---|---|---|
+| 1 | SubagentsServiceLike | pass (matched) | `src/subagents/executor.ts:34–41`: all six methods, argument/return shapes including wait signal. |
+| 2 | SpawnOptionsLike | pass (matched) | `src/subagents/executor.ts:12–22`; actual construction `launch.ts:33–51`. No model/fork option. |
+| 3 | RecordLike | pass (matched) | `src/subagents/executor.ts:24–32`: pending question, structured result/error variants. |
+| 4 | LaunchFacts | pass (matched) | `src/subagents/executor.ts:44–53,88–102`: effective fields and pure parser. |
+| 5 | SERVICE_KEYS | pass (matched) | `src/subagents/executor.ts:3,57–75`: ordered new/legacy `Symbol.for` lookup. Literal search confirmed the keys are declared only in that module within `src/`. |
+| 6 | findExecutor() | pass (matched) | `src/subagents/executor.ts:55–75`: success service/key or missing capability list, by functions only. |
+| 7 | isChildSession(ctx) | pass (matched) | `src/subagents/child.ts:5–9,26–33`: boolean; header accepts null in addition to undefined (safe input widening), fail-closed. This shape match does not excuse the missing caller guards reported in Check 3. |
+| 8 | CHILD_NOTE | pass (matched) | `src/subagents/child.ts:13–20`: module string constant. |
+| 9 | Role / ReviewSubject | pass (matched) | `src/subagents/roles.ts:3–4`. |
+| 10 | SubagentEntry | pass (matched) | `src/subagents/roles.ts:6–13`, `policy.ts:108–165`: fields and pack-node validation. |
+| 11 | Finding | pass (matched) | `src/subagents/roles.ts:15–22,57–69`: exact enums/required fields. |
+| 12 | SubagentResult | pass (matched) | `src/subagents/roles.ts:24–33,71–93`; runtime schema enforcement in `result.ts:39–46`. |
+| 13 | dispatch marker data | pass (matched) | `src/subagents/records.ts:13–34`, `run-record.ts:62–70`: base shape + recorded reason/evidence/launchMismatch/contextRequest extensions. |
+| 14 | finding-summary marker data | pass (matched) | `src/subagents/records.ts:48–71`, `run-record.ts:79–93`; review or rebuttal variants + declared contextRequest/system extensions. |
+| 15 | Packet | pass (matched) | `src/subagents/source-types.ts:33–43`; construction `packet.ts:99–103`. `seen` is the recorded deviation. |
+| 16 | registerPacketSource(role, provider) | pass (matched) | `src/subagents/sources.ts:12–16,49–63`, `source-types.ts:47`: registry signature and consumption. |
+| 17 | PacketSource | pass (matched) | `src/subagents/source-types.ts:10–11`. |
+| 18 | Tool subagent_dispatch | pass (matched) | `src/tools/subagent-target.ts:8–9,29–38,43–48`, `subagent-dispatch.ts:19–39`, registration `src/tools/change-tools.ts:40`. |
+| 19 | Tool subagent_answer | pass (matched) | `src/tools/subagent-answer.ts:20,60–84,87–98`: id/answer, pending lookup, record/resume/wait. |
+| 20 | Tool subagent_packet | pass (matched) | `src/tools/subagent-packet.ts:13–41`, `subagent-request.ts:107–111`: role/unit/subject and packet text + skill paths. |
+| 21 | Tool subagent_record | pass (matched) | `src/tools/subagent-record.ts:18–55`, `subagent-target.ts:43–48`: broad raw result is validated against role schema before use/write. |
+| 22 | Tool finding_rebut | pass (matched) | `src/tools/finding-rebut.ts:14,41–64,73–78`: comment/index/reason/evidence and append-only summary. |
+| 23 | Tool lane_open | pass (matched) | `src/tools/lane-open.ts:18–45`, `src/tools/unit-tool.ts:22`, `src/subagents/lane-ops.ts:58–67`, `lanes.ts:12–14`. |
+| 24 | Tool lane_merge | pass (matched) | `src/tools/lane-merge.ts:67–105,109–122`, `src/subagents/lane-ops.ts:103–129`, `src/engine/git.ts:157–177`: files check, no-ff, root Verify/red failure/reset, close/remove (cancelled Verify is recorded aborted deviation). |
+| 25 | Tool forge_read | pass (matched) | `src/tools/forge-read.ts:17,90–118,121–138`: raw target string is narrowed/validated to the eight allowed values at runtime, preserving useful unknown-target refusal. |
+| 26 | lane marker data | pass (matched) | `src/subagents/state.ts:9–17,27–39`: base/open/closed, id `lane.<unit>`; outcome/head are declared extensions. |
+| 27 | dispatch QUESTION / ANSWERED | pass (matched) | `src/subagents/records.ts:41–46,92–95`, `dispatch.ts:178–180`, `src/tools/subagent-answer.ts:78–84`; launched result agentId carried through `run-record.ts:65,82`. |
+| 28 | Marker ids | pass (matched) | `src/subagents/records.ts:84–107`: exact base ids and documented mismatch/context/system suffixes. |
+| 29 | ChangeState.subagents | pass (matched) | `src/engine/state-types.ts:49–63`, `snapshot.ts:109–119`, `src/hooks/card-input.ts:107–109`: refresh fills live executor, comments lanes/pending, main turns/context and declared extra facts. |
+| 30 | NextStep.dispatch / pendingChild | pass (matched) | `src/engine/state-types.ts:91–94`, `next-step.ts:399–403`, `src/subagents/phase-entries.ts:57–62`. |
+| 31 | Git.worktreeAddBranch / resetHard | pass (matched) | `src/engine/git.ts:170–177`: expected commands plus harmless quiet/end-of-options flags. |
+| 32 | unitRoot(state, unit, root) | pass (matched) | `src/subagents/state.ts:51–54`: open lane else explicit root, accepts a structural Pick of state. |
+| 33 | UserConfig | pass (matched) | `src/config.ts:34–40,245–255`: all three additions, validated defaults. |
+| 34 | unit_start / unit_finish | pass (matched) | Same `UNIT_PARAMETERS` at `src/tools/unit-tool.ts:22`, `unit-start.ts:77`, `unit-finish.ts:242`. Per-worktree/start/finish refusals `src/evidence/refusals.ts:69–89,115–137`; lane state root `src/tools/unit-tool.ts:49–55`; findings/review/freshness before reconcile `unit-finish.ts:202–226`, `src/subagents/finish-freshness.ts:21–32`. |
+
+### Check 5 — apply Contract deviations
+
+All entries and subentries from `openspec/changes/subagent-dispatch/apply.md` “Contract deviations”, with grouped module-list lines retained as separate rows. Recorded changes define the expected implementation.
+
+| # | Recorded deviation | Status | Implementation compared / reason |
+|---|---|---|---|
+| 1 | New public lane_open/lane_merge tools | pass (matched) | `src/tools/lane-open.ts:18–45`, `lane-merge.ts:109–122`, `change-tools.ts:46–47`; suggestions `src/engine/next-step.ts:339–341`, `src/subagents/build-loop.ts:71–85`. |
+| 2 | unit_finish refuses open lane | pass (matched) | `src/evidence/refusals.ts:115–121`, both run and reconcile rules; used by `src/tools/unit-finish.ts:218–225`. |
+| 3 | Out-of-scope findings do not block finish; shown next gate | pass (matched) | `src/subagents/records.ts:210–216`, `payload.ts:40–45`, `src/engine/gate-payload.ts:97–104`. |
+| 4 | unfamiliarCode has capabilities argument | pass (matched) | `src/subagents/policy.ts:94–104`, `unfamiliar.ts:38–44`: capabilities derived from change header before units exist. |
+| 5 | unitRoot has root argument | pass (matched) | `src/subagents/state.ts:52–54`, callers `src/tools/subagent-request.ts:31–35`, `unit-tool.ts:49–55`. |
+| 6 | findingKey(commentId,index) for answered/shown sets | pass (matched) | `src/subagents/records.ts:84,186–190,252–278`, `payload.ts:25–28,42–45`. |
+| 7 | DispatchData reason/evidence/parent-only launchMismatch/contextRequest | pass (matched) | `src/subagents/records.ts:28–34`, `run-record.ts:58–76`, `validate.ts:39–45`: mismatch flag written only by parent mismatch helper, no child result schema field. |
+| 8 | FindingSummaryData contextRequest and parent-only system | pass (matched) | `src/subagents/records.ts:65–68`, `run-record.ts:79–86`, `lane-ops.ts:88–96`, `validate.ts:59–69`; system records excluded from review completion/resolution at `records.ts:178–181,219–223`. |
+| 9 | Marker suffixes mismatch / needs-context-N / system.files-violation.N | pass (matched) | `src/subagents/records.ts:86–103`, `lane-ops.ts:88–96`. |
+| 10 | Lane outcome/head; ChangeState laneHeads/mergedLaneHeads/laneLimit/unfamiliar | pass (matched) | `src/subagents/state.ts:9–13`, `src/engine/state-types.ts:54–61`; read/fill `src/hooks/card-input.ts:53–73,107–109`. |
+| 11 | subagentFindingsSection(state) lost pack/target parameters | **fail (drift, warning)** | Removal of pack/target and cross-phase advisory listing match `src/subagents/payload.ts:16–31,51–54`. **But the documented argument is `state`, while the actual function accepts `marked: MarkedComment[]` and the caller passes `state.marked`** (`src/engine/gate-payload.ts:97`). Internal documentation-only shape drift; update the receipt to `subagentFindingsSection(marked)`. No runtime failure claimed. |
+| 12 | DispatchDeps.abortSettleMs; default 30 s | pass (matched) | `src/subagents/dispatch.ts:23–35,155–171`: optional injection, 30000 default, bounded abort settle, no forge post on timeout. |
+| 13 | Optional GateSnapshot.findings and shown keys persisted | pass (matched) | `src/interaction/approver.ts:34–39`, `src/tools/spec-gate.ts:91–94`, `src/interaction/complete-gate.ts:29,45,83–84`. |
+| 14 | Extra modules: run-record/subagent-target/subagent-request/subagent-outcome | pass (matched) | Purpose comments/exports and inspected bodies in `src/subagents/run-record.ts:1–119`, `src/tools/subagent-target.ts:1–48`, `subagent-request.ts:1–111`, `subagent-outcome.ts:1–61`. |
+| 15 | Extra modules: lane-ops/packet-store/finish-gate/finish-freshness | pass (matched) | `src/subagents/lane-ops.ts:1–129`, `packet-store.ts:1–43`, `finish-gate.ts:1–53`, `finish-freshness.ts:1–47`. |
+| 16 | Extra modules: build-loop/payload/card/unfamiliar/phase-entries/validate/flow/spill | pass (matched) | These files exist under `src/subagents/`; inspected responsibilities at `build-loop.ts:1–85`, `payload.ts:1–54`, `card.ts:1–19`, `unfamiliar.ts:1–46`, `phase-entries.ts:1–71`, `validate.ts:1–77`, `flow.ts:1–28`, `spill.ts:1–36`. |
+| 17 | roleSkillPaths(...,subject?) => ok/paths/names | pass (matched) | `src/subagents/flow.ts:9,14–27`, packet consumer `packet.ts:62–65`. |
+| 18 | PacketContext.session narrow activeTree; optional finding | pass (matched) | `src/subagents/source-types.ts:13–24`, `src/tools/subagent-request.ts:31–36`. |
+| 19 | Packet.seen exists | pass (matched) | `src/subagents/source-types.ts:35–43`, `packet.ts:102`, `freshness.ts:34–35`. |
+| 20 | checkFreshness(...,ownAgent?) with readCurrent | pass (matched) | `src/subagents/freshness.ts:23–45`, `finish-freshness.ts:21–31`: same-child answers excluded from new-input checks; missing packet fails closed. |
+| 21 | Dispatch outcome cancelled; DispatchDeps.signal | pass (matched) | `src/subagents/dispatch.ts:11–18,28–29,79–107,126–129,210–245`: abort wiring/wait signal and cancellation before recording. |
+| 22 | mergeLane takes checks and supports aborted | pass (matched) | `src/subagents/lane-ops.ts:15–16,103–129`, `src/tools/lane-merge.ts:77–86`: Verify cancellation undoes merge and retains lane. |
+| 23 | lockedEvidenceCall takes where | pass (matched) | `src/tools/unit-tool.ts:63–89`, `src/tools/lane-merge.ts:109–112`: change vs unit-worktree resolution. |
+| 24 | New helpers unitInvariantRefusal/laneOpenRefusal/tickBlocking/answeredFindingKeys/gatesShownKeys/unshownSystemFindings | pass (matched) | `src/evidence/refusals.ts:123–137`, `src/subagents/records.ts:214–216,252–278`; consumers `src/tools/lane-open.ts:27`, `lane-merge.ts:50`, `src/subagents/finish-gate.ts:20–22`, `payload.ts:18,42–45`. |
+| 25 | roles.checkSchema | pass (matched) | `src/subagents/roles.ts:96–124`, consumers `result.ts:39–46`, `src/tools/subagent-record.ts:21–25`. |
+| 26 | Idempotent .worktrees/ entry in common info/exclude | pass (matched) | `src/subagents/lane-ops.ts:23–35,63`: common-dir discovery, exact-line check, append only when missing. |
+
+### Exceptions and limits
+
+- No Small-fix lane failure is raised: deferred LS-09 is the supplied ruling. The assigned four specs contain no such scenario.
+- `verifier` is reserved LS-08: data/schema/manifest seams were inspected, not claimed as LS-07 live orchestration.
+- Closing-summary-last-comment until LS-09 is accepted as the supplied R3 ruling; no contrary requirement is inferred.
+- D11b is evaluated as the unit-tag union, not an independent change tag.
+- No user approval, push, merge, archive, fixes or real-forge writes were attempted. Glossary translations: none. Open business rules: none introduced.
