@@ -55,6 +55,7 @@ export async function writeTree(dir: string, files: Record<string, string | null
 
 export function validTreeFiles(pack: Pack): Record<string, string> {
 	const files: Record<string, string> = { [`agents/${PERSONA}.md`]: "# Code reviewer\n" };
+	for (const name of ["security-auditor", "web-performance-auditor", "test-engineer"]) files[`agents/${name}.md`] = `# ${name}\n`;
 	for (const name of skillNamesOf(pack)) files[`skills/${name}/SKILL.md`] = skillFile(name);
 	return files;
 }
