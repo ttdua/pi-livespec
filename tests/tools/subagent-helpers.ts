@@ -19,9 +19,12 @@ const SCRIPTS = { "check.sh": "test -f src/u1.ts\n", "specs/rate-limit/spec.md":
 
 export type SubagentHarness = Awaited<ReturnType<typeof subagentHarness>>;
 
-/** `executor` publishes a fake service; without it no executor is present. `home` holds pi settings for the isolation list. */
-export async function subagentHarness(o: { units?: UnitSpec[]; executor?: Parameters<typeof fakeExecutor>[0]; config?: string } = {}) {
-	const h = await unitHarness({ units: o.units ?? [U1, U2], scripts: SCRIPTS, ...(o.config === undefined ? {} : { config: o.config }) });
+/**
+ * `executor` publishes a fake service; without it no executor is present. `home` holds pi settings for the isolation list.
+ * `scripts` adds committed files next to the default `check.sh` and spec.
+ */
+export async function subagentHarness(o: { units?: UnitSpec[]; executor?: Parameters<typeof fakeExecutor>[0]; config?: string; scripts?: Record<string, string> } = {}) {
+	const h = await unitHarness({ units: o.units ?? [U1, U2], scripts: { ...SCRIPTS, ...o.scripts }, ...(o.config === undefined ? {} : { config: o.config }) });
 	h.session.activeTree = makeTree([...DEFAULT_SKILLS]);
 	const fake = fakeExecutor(o.executor);
 	if (o.executor !== undefined) publish(fake.service);
