@@ -1,7 +1,7 @@
 // The dispatch tool never writes to the forge before an aborted child has settled (or the bounded wait expires).
 import { afterEach, expect, test } from "vitest";
 import { parseMarked } from "../../src/forge/markers.ts";
-import { type DispatchDeps, runDispatch } from "../../src/subagents/dispatch.ts";
+import { type DispatchDeps, type DispatchRequest, runDispatch } from "../../src/subagents/dispatch.ts";
 import type { RecordLike } from "../../src/subagents/executor.ts";
 import type { Packet } from "../../src/subagents/source-types.ts";
 import { fakeExecutor, unpublish } from "./fake-executor.ts";
@@ -9,7 +9,7 @@ import { fakeExecutor, unpublish } from "./fake-executor.ts";
 afterEach(unpublish);
 
 const packet: Packet = { text: "PACKET", hash: "a".repeat(64), sources: [], skillPaths: [], cwd: "/w/c", seen: [] };
-const request = { role: "implementer", unit: "U1", packet, change: "c", difficulty: "low", failedAttempts: 0, exclusions: [], attempt: 1, round: 1, needsContext: 0 } as const;
+const request: DispatchRequest = { role: "implementer", unit: "U1", packet, change: "c", difficulty: "low", failedAttempts: 0, exclusions: [], attempt: 1, round: 1, needsContext: 0 };
 
 /** A child whose `wait` settles `settleMs` after `abort` (never, when `settleMs` is undefined). */
 function abortableChild(settleMs: number | undefined, abortSettleMs?: number) {

@@ -8,6 +8,8 @@ import { createGit } from "../../src/engine/git.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { commitAll, gitStatus, writeIn } from "../helpers/repo.ts";
+import { buildPacket, changeName } from "../../src/subagents/packet.ts";
+import { writePacket } from "../../src/subagents/packet-store.ts";
 import { DEFAULT_SKILLS, makeTree } from "../subagents/packet-world.ts";
 import { fakeExecutor, publish, unpublish } from "../subagents/fake-executor.ts";
 import { seedSummary } from "./finding-helpers.ts";
@@ -64,11 +66,16 @@ async function laneCommit(h: LaneHarness, u: string, files: Record<string, strin
 }
 
 /** A settled implementer run of `u`, as the parent records it. */
-const implemented = (h: LaneHarness, u: string, attempt = 1) =>
-	h.seed("dispatch", `dispatch.${u}.implementer.${attempt}`, {
-		role: "implementer", unit: u, attempt, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+async function implemented(h: LaneHarness, u: string, attempt = 1) {
+	const ctx = { session: h.session, state: cardState(h).state, pack: h.session.pack.ok ? h.session.pack.pack : (undefined as never), forge: h.forge, git: h.session.git, root: h.root, cwd: h.root, budgetTokens: 24000 };
+	const built = await buildPacket(ctx, "implementer", u);
+	if (!built.ok) throw new Error(built.message);
+	await writePacket(h.root, changeName(ctx), built.packet);
+	return h.seed("dispatch", `dispatch.${u}.implementer.${attempt}`, {
+		role: "implementer", unit: u, attempt, packet: built.packet.hash, agentSource: "s", requested: { thinking: "low" }, effective: {},
 		status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
 	});
+}
 
 /** Opens, starts and implements `u` in its lane with `files` committed there. */
 async function laneDone(h: LaneHarness, u: string, files: Record<string, string>): Promise<string> {
