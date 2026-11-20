@@ -102,8 +102,8 @@ describe("records", () => {
 		expect(completedUnitRounds([v], "U1")).toBe(0);
 		expect(nextRound([v], "reviewer", "U1", "unit")).toBe(1);
 		const later = summary({ round: 2, findings: [] });
-		expect(unresolvedBlocking([v, later], "U1", new Set(), new Set())).toHaveLength(1);
-		expect(unresolvedBlocking([v], "U1", new Set(), new Set([findingKey(v.commentId, 0)]))).toEqual([]);
+		expect(unresolvedBlocking([v, later], "U1", new Set(), new Set())).toEqual([]);
+		expect(unresolvedBlocking([v], "U1", new Set(), new Set())).toEqual([]);
 	});
 
 	it("computeCompleted needs status and every required source", () => {

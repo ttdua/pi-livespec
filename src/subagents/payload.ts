@@ -4,7 +4,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { entriesFor } from "./policy.ts";
-import { current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking } from "./records.ts";
+import { current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
 import type { Finding } from "./roles.ts";
 
 const HEADING = "Subagent findings:";
@@ -37,11 +37,12 @@ function rebuttalLines(marked: MarkedComment[]): string[] {
 	return found.flatMap((m) => (m.data as RebuttalData).items.map((i) => `- ${(m.data as RebuttalData).rebuts}:${i.index} ${untrusted(i.reason)} — ${untrusted(i.evidence)}`));
 }
 
-/** Blocking `out-of-scope` findings no completed gate has recorded yet: this gate's payload carries them. */
+/** Blocking `out-of-scope` findings and informational system findings no completed gate has recorded yet: this gate's payload carries them. */
 function outOfScopeListed(marked: MarkedComment[]): Listed {
 	const shown = gatesShownKeys(marked);
 	const open = reviewedUnits(marked).flatMap((unit) => unresolvedBlocking(marked, unit, new Set(), shown)).filter((o) => o.finding.scope === "out-of-scope");
-	return { lines: open.map((o) => findingLine(o.finding)), keys: open.map((o) => findingKey(o.comment, o.index)) };
+	const system = unshownSystemFindings(marked, shown);
+	return { lines: [...open.map((o) => findingLine(o.finding)), ...system.map((o) => findingLine(o.finding))], keys: [...open.map((o) => findingKey(o.comment, o.index)), ...system.map((o) => o.key)] };
 }
 
 export type FindingsSection = { lines: string[]; keys: string[] };

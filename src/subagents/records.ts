@@ -199,7 +199,7 @@ export function unresolvedBlocking(marked: MarkedComment[], unit: string, answer
 	const rebutted = rebuttedKeys(marked);
 	const open: UnresolvedFinding[] = [];
 	for (const s of all) {
-		if (s.data.unit !== unit || s.data.advisory) continue;
+		if (s.data.unit !== unit || s.data.advisory || isSystem(s.data)) continue;
 		s.data.findings.forEach((finding, index) => {
 			if (!isBlocking(finding)) return;
 			if (finding.kind !== "missed-context" && rebutted.has(findingKey(s.commentId, index))) return;
@@ -236,6 +236,11 @@ export function answeredFindingKeys(questions: Question[]): Set<string> {
 	const keys = new Set<string>();
 	for (const q of questions) if (q.checked) for (const m of q.text.matchAll(FINDING_REF)) keys.add(m[1] as string);
 	return keys;
+}
+
+/** Findings of parent-made system summaries (never blocking) that no completed gate has shown yet, as `commentId:index` keys. */
+export function unshownSystemFindings(marked: MarkedComment[], gatesShown: Set<string>): { key: string; finding: Finding }[] {
+	return summariesOf(marked).filter((s) => isSystem(s.data)).flatMap((s) => s.data.findings.map((finding, i) => ({ key: findingKey(s.commentId, i), finding }))).filter((o) => !gatesShown.has(o.key));
 }
 
 /** Units with a valid, current non-advisory review summary. */

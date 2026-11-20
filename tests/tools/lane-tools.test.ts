@@ -205,6 +205,19 @@ describe("parallel-lanes tools", () => {
 		expect(cardState(h).step.dispatch?.role).toBe("implementer");
 	});
 
+	test("a files violation never blocks unit_finish of the re-run unit", async () => {
+		const h = await laneHarness({ difficulty: "medium" });
+		const laneHead = await laneDone(h, "U2", { "src/u2.ts": "x\n", "src/other.ts": "y\n" });
+		await seedSummary(h, { unit: "U2", head: laneHead });
+		await h.merge("U2");
+		expect(await h.ofKind("finding-summary")).toHaveLength(2);
+		await h.commit({ "src/u2.ts": "x\n" });
+		await seedSummary(h, { unit: "U2" });
+		const out = await h.finish("U2");
+		expect(out.isError).toBeFalsy();
+		expect((await h.units()).find((u) => u.id === "U2")?.done).toBe(true);
+	});
+
 	test.each([
 		["tracked changes", { "src/u2.ts": "changed\n" }],
 		["untracked changes", { "src/new.ts": "n\n" }],
@@ -274,9 +287,7 @@ describe("parallel-lanes tools", () => {
 		await h.merge("U2");
 		const step = cardState(h).step;
 		expect(step.dispatch?.role).toBe("implementer");
-		// The files-violation finding is out-of-scope: it blocks finishing until a human gate has shown it.
-		const violation = (await h.ofKind("finding-summary")).at(-1)?.commentId as string;
-		await h.seed("gate", "build.x", { findings: [`${violation}:0`] });
+		// The files-violation finding is informational: no gate comment is needed to finish.
 		ok(await h.call("subagent_dispatch", { role: "implementer", unit: "U2" }));
 		expect(h.fake.spawned.at(-1)?.options.cwd).toBe(h.root);
 		await h.commit({ "src/u2.ts": "x\n" });
