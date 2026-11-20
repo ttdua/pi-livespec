@@ -91,3 +91,61 @@ describe("inline fallback", () => {
 		expect(textOf(third)).toContain("spec_stuck");
 	});
 });
+
+describe("verifier", () => {
+	const AGGREGATE = {
+		role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
+		agentSource: "s", requested: { thinking: "low" }, effective: {}, aggregate: true, reviews: ["c0"],
+		findings: [{ ...FINDING, location: "src/free.ts:4", scope: "in-change", from: ["c0"], needsDecision: false, route: "in-change", verify: "required" }],
+	};
+	const seeded = async () => {
+		const h = await subagentHarness({ units: [U1] });
+		await h.seed("finding-summary", "finding-summary.change.review.1", AGGREGATE);
+		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		return { h, key };
+	};
+	const verdict = (over: Record<string, unknown> = {}) => ({ status: "DONE", notes: "n", discoveries: [], sources_used: [], findings: [], verdict: "refuted", reason: "guarded by caller", ...over });
+
+	test("Verifier recorded", async () => {
+		const { h, key } = await seeded();
+		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "verifier", finding: key })));
+		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ sources_used: cited }) });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const record = (await h.ofKind("finding-summary")).find((m) => m.id.startsWith("finding-summary.verify."));
+		expect(record?.id).toBe(`finding-summary.verify.${key.replace(/[^A-Za-z0-9._-]/g, "-")}.1`);
+		expect(record?.data).toMatchObject({ role: "verifier", verifies: key, verdict: "refuted", reason: "guarded by caller" });
+	});
+
+	test("Verifier of an in-change finding: packet builds with the finding and code", async () => {
+		const { h, key } = await seeded();
+		const packet = textOf(await h.call("subagent_packet", { role: "verifier", finding: key }));
+		expect(packet).toContain("off by one");
+		expect(packet).not.toContain("refused");
+	});
+
+	test("Verifier without a finding, a finding for another role, an unknown key", async () => {
+		const { h, key } = await seeded();
+		const before = (await h.marked()).length;
+		for (const tool of ["subagent_dispatch", "subagent_packet"]) {
+			const none = await h.call(tool, { role: "verifier" });
+			expect(none.isError).toBe(true);
+			expect(textOf(none)).toContain("finding reference");
+		}
+		const other = await h.call("subagent_dispatch", { role: "implementer", unit: "U1", finding: key });
+		expect(other.isError).toBe(true);
+		expect(textOf(other)).toContain("only a verifier takes a finding reference");
+		const unknown = await h.call("subagent_dispatch", { role: "verifier", finding: "c999:0" });
+		expect(unknown.isError).toBe(true);
+		expect(textOf(unknown)).toContain("names no aggregate finding");
+		const rec = await h.call("subagent_record", { role: "verifier", finding: "c999:0", result: verdict() });
+		expect(textOf(rec)).toContain("names no aggregate finding");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("Verifier without a verdict is refused on record", async () => {
+		const { h, key } = await seeded();
+		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ verdict: undefined }) });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("verdict is required");
+	});
+});

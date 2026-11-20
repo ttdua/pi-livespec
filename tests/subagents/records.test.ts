@@ -1,7 +1,9 @@
 // Tests of the dispatch and finding-summary records and the queries over them.
 import { describe, expect, it } from "vitest";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import {
+	aggregateFinding,
+	changeReviewDoneAt,
 	completedReviewAt,
 	completedUnitRounds,
 	reviewStepDoneAt,
@@ -128,6 +130,53 @@ describe("records", () => {
 		expect(computeCompleted({ status: "DONE", sources_used: ["a", "b"] }, ["a"])).toBe(true);
 		expect(computeCompleted({ status: "DONE", sources_used: [] }, ["a"])).toBe(false);
 		expect(computeCompleted({ status: "BLOCKED", sources_used: ["a"] }, ["a"])).toBe(false);
+	});
+});
+
+describe("verifier and aggregate records", () => {
+	const aggregateFindings = [{ ...finding({ location: "src/u1.ts:1", severity: "CRITICAL" }), from: ["c9"], needsDecision: false, route: "unit" as const, routeUnit: "U1", verify: "required" as const }];
+	const aggregate = (over: Partial<FindingSummaryData> = {}) =>
+		mark(writeMarked("finding-summary", "finding-summary.change.review.1", {
+			role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
+			agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: aggregateFindings, aggregate: true, reviews: ["c9"], ...over,
+		}));
+	const verifier = (over: Partial<FindingSummaryData> = {}) =>
+		mark(findingSummaryComment({
+			role: "verifier", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
+			agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [finding({ location: "src/u1.ts:1", severity: "CRITICAL" })],
+			verifies: "c1:0", verdict: "refuted", reason: "guarded by caller", ...over,
+		}));
+
+	it("a verifier record has the verify id and valid data", () => {
+		const v = verifier();
+		expect(v.id).toBe("finding-summary.verify.c1-0.1");
+		expect(invalidRecords([v])).toEqual([]);
+		expect(invalidRecords([verifier({ verdict: "maybe" as never })])).toHaveLength(1);
+	});
+
+	it("unitFindings readers ignore verifier and aggregate records", () => {
+		const v = verifier({ unit: "U1" });
+		const a = aggregate({ unit: "U1" });
+		expect(unresolvedBlocking([v, a], "U1", new Set(), new Set())).toEqual([]);
+		expect(completedUnitRounds([v, a], "U1")).toBe(0);
+	});
+
+	it("an aggregate alone is no completed change review and uses no round", () => {
+		const a = aggregate();
+		expect(changeReviewDoneAt([a], "change", "h1")).toBe(false);
+		expect(nextRound([a], "reviewer", undefined, "change")).toBe(1);
+		const review = summary({ subject: "change", unit: undefined as never });
+		expect(changeReviewDoneAt([a, review], "change", "h1")).toBe(true);
+	});
+
+	it("aggregateFinding finds the aggregate by comment id and index", () => {
+		const a = aggregate();
+		expect(aggregateFinding([a], `${a.commentId}:0`)).toMatchObject({ commentId: a.commentId, index: 0, finding: { location: "src/u1.ts:1", route: "unit" } });
+		expect(aggregateFinding([a], `${a.commentId}:1`)).toBeUndefined();
+		expect(aggregateFinding([a], "nope:0")).toBeUndefined();
+		expect(aggregateFinding([a], "garbage")).toBeUndefined();
+		const plain = summary({ findings: [finding()] });
+		expect(aggregateFinding([plain], `${plain.commentId}:0`)).toBeUndefined();
 	});
 });
 

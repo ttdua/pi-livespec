@@ -65,7 +65,8 @@ export function isSummaryData(d: unknown): boolean {
 		isStrList(d.sources_used) && isStrList(d.required) && optional(d.unit, isStr) && optional(d.agentId, isStr) &&
 		isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
 		Array.isArray(d.findings) && d.findings.every(isFindingData) && optional(d.contextRequest, isNum) &&
-		optional(d.system, (v) => v === "files-violation")
+		optional(d.system, (v) => v === "files-violation") && optional(d.verifies, isStr) && optional(d.verdict, oneOf(["confirmed", "refuted"])) &&
+		optional(d.reason, isStr) && optional(d.aggregate, (v) => v === true) && optional(d.reviews, isStrList)
 	);
 }
 

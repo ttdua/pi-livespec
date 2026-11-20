@@ -10,7 +10,7 @@ import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { interpret } from "../subagents/result.ts";
 import { resultText } from "./subagent-outcome.ts";
-import { defaultSubagentDeps, dispatchRequest, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
+import { defaultSubagentDeps, dispatchRequest, findingOf, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
 import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_record";
@@ -38,7 +38,9 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	if (typeof target === "string") return refusal(TOOL, target);
 	const result = checkResult(target.role, p.result);
 	if (typeof result === "string") return refusal(TOOL, result);
-	const pctx = packetContext(w, state, target.unit);
+	const found = findingOf(state, target);
+	if (typeof found === "string") return refusal(TOOL, found);
+	const pctx = packetContext(w, state, target.unit, found);
 	const built = await buildPacket(pctx, target.role, target.unit, target.subject);
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
@@ -49,6 +51,7 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
 		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true, needsContext: request.needsContext,
+		...(target.finding === undefined ? {} : { finding: target.finding }),
 	};
 	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;

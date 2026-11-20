@@ -230,3 +230,15 @@ describe("manifest", () => {
 		await expect(sourcesOf(world, "reviewer", "U3", "unit")).rejects.toThrow(/brokenProvider.*boom/);
 	});
 });
+
+describe("verifier of an in-change finding", () => {
+	test("the packet holds the finding and the code, with no owning-unit error", async () => {
+		const world = await makeWorld();
+		const finding = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "e", fix: "f", scope: "in-change" as const };
+		const target = resolveTarget(world.ctx.state, "verifier");
+		if (!target.ok) throw new Error(target.message);
+		const placed = await collectSources({ ...world.refreshed(), finding: { ...finding, location: "src/free/clock.ts:4" } }, target.target);
+		expect(placed.some((p) => p.source.id.startsWith("comment:finding-"))).toBe(true);
+		expect(placed.some((p) => p.source.id.startsWith("receipt:"))).toBe(false);
+	});
+});

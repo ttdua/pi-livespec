@@ -66,6 +66,22 @@ export type FindingSummaryData = {
 	contextRequest?: number;
 	/** Set only by lane code for a record the parent makes itself: never a review, a round or a resolution of other findings. */
 	system?: "files-violation";
+	/** A verifier record: the finding key it verifies, its verdict and reason. */
+	verifies?: string;
+	verdict?: "confirmed" | "refuted";
+	reason?: string;
+	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
+	aggregate?: true;
+	reviews?: string[];
+};
+
+/** An aggregate finding: a reviewer finding plus the routing facts of the review stage. */
+export type AggregateFinding = Finding & {
+	from: string[];
+	needsDecision: boolean;
+	route: "unit" | "in-change" | "out-of-scope" | "question" | "record";
+	routeUnit?: string;
+	verify: "required" | "skipped-missed-context" | "skipped-parent" | "skipped-suggestion" | "skipped-off";
 };
 
 export type RebuttalData = { rebuts: string; items: { index: number; reason: string; evidence: string }[] };
@@ -99,6 +115,7 @@ export function findingSummaryComment(data: FindingSummaryData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
 	const suffix = data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
 	// System summaries have their own namespace: a later review of the same round never supersedes them.
+	if (data.role === "verifier" && data.verifies !== undefined) return writeMarked("finding-summary", `finding-summary.verify.${token(data.verifies)}.${data.round}${suffix}`, data);
 	const subject = data.system === undefined ? token(data.subject) : `system.${token(data.system)}`;
 	return writeMarked("finding-summary", `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data);
 }
@@ -149,10 +166,26 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 	return marked.filter((m) => kept.has(m));
 }
 
+const isAggregate = (d: FindingSummaryData): boolean => d.aggregate === true;
+
+/** The aggregate `finding-summary` named by the key's comment id, and the finding at the key's index. */
+export function aggregateFinding(marked: MarkedComment[], key: string): { commentId: string; index: number; finding: AggregateFinding } | undefined {
+	const cut = key.lastIndexOf(":");
+	const commentId = key.slice(0, cut);
+	const index = Number(key.slice(cut + 1));
+	if (cut <= 0 || !Number.isInteger(index) || index < 0) return undefined;
+	const found = summariesOf(marked).find((s) => s.commentId === commentId && isAggregate(s.data));
+	const finding = found?.data.findings[index];
+	return finding === undefined ? undefined : { commentId, index, finding: finding as AggregateFinding };
+}
+
 type Summary = { commentId: string; at: number; data: FindingSummaryData };
 
 /** A parent-made record (a `Files` violation): it carries findings, but is no review of any commit. */
 const isSystem = (d: FindingSummaryData): boolean => d.system === "files-violation";
+
+/** Verifier and aggregate records are neither reviews nor resolutions: the unit and change readers skip them. */
+const isDerived = (d: FindingSummaryData): boolean => isSystem(d) || d.role === "verifier" || d.aggregate === true;
 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
@@ -179,8 +212,8 @@ const sameSpot = (a: Finding, b: Finding): boolean => a.location === b.location 
 
 /** True when the latest completed round after `s` for the same unit and subject no longer reports `f`. */
 function fixedByLaterReview(s: Summary, f: Finding, all: Summary[]): boolean {
-	if (isSystem(s.data)) return false;
-	const later = all.filter((o) => o.at > s.at && o.data.completed && !o.data.advisory && !isSystem(o.data) && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
+	if (isDerived(s.data)) return false;
+	const later = all.filter((o) => o.at > s.at && o.data.completed && !o.data.advisory && !isDerived(o.data) && o.data.unit === s.data.unit && o.data.subject === s.data.subject);
 	const latest = later.at(-1);
 	return latest !== undefined && !latest.data.findings.some((g) => isBlocking(g) && sameSpot(f, g));
 }
@@ -201,7 +234,7 @@ export function unresolvedBlocking(marked: MarkedComment[], unit: string, answer
 	const rebutted = rebuttedKeys(marked);
 	const open: UnresolvedFinding[] = [];
 	for (const s of all) {
-		if (s.data.unit !== unit || s.data.advisory || isSystem(s.data)) continue;
+		if (s.data.unit !== unit || s.data.advisory || isDerived(s.data)) continue;
 		s.data.findings.forEach((finding, index) => {
 			if (!isBlocking(finding)) return;
 			if (finding.kind !== "missed-context" && rebutted.has(findingKey(s.commentId, index))) return;
@@ -223,20 +256,20 @@ export function tickBlocking(marked: MarkedComment[], unit: string, answered: Se
 /** True when a completed unit review of `unit` records one of `commits` (HEAD, plus a lane merge's second parent). */
 export function completedReviewAt(marked: MarkedComment[], unit: string, commits: string[]): boolean {
 	return summariesOf(marked).some(
-		(s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
+		(s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory && commits.includes(s.data.head),
 	);
 }
 
 /** True when a completed unit review of `unit` at one of `commits` has the given advisory flag: the review step is done. Blocking and required semantics stay in `completedReviewAt`. */
 export function reviewStepDoneAt(marked: MarkedComment[], unit: string, commits: string[], advisory: boolean): boolean {
 	return summariesOf(marked).some(
-		(s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && s.data.advisory === advisory && commits.includes(s.data.head),
+		(s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && s.data.advisory === advisory && commits.includes(s.data.head),
 	);
 }
 
 /** True when a completed review of the whole-change `subject` (`spec`, `plan`, `change`, a persona) records `head`. */
 export function changeReviewDoneAt(marked: MarkedComment[], subject: ReviewSubject, head: string): boolean {
-	return summariesOf(marked).some((s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === subject && s.data.unit === undefined && s.data.completed && s.data.head === head);
+	return summariesOf(marked).some((s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === subject && s.data.unit === undefined && s.data.completed && s.data.head === head);
 }
 
 /** True when `marked` holds a settled `dispatch` record of `role` (questions, answers and launch mismatches excluded). */
@@ -246,7 +279,7 @@ export function settledRunSince(marked: MarkedComment[], role: Role): boolean {
 
 /** Valid, current, completed, non-advisory unit reviews of `unit`; rebuttals and superseded comments never count. */
 export function completedUnitRounds(marked: MarkedComment[], unit: string): number {
-	return summariesOf(marked).filter((s) => !isSystem(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
+	return summariesOf(marked).filter((s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === "unit" && s.data.unit === unit && s.data.completed && !s.data.advisory).length;
 }
 
 const FINDING_REF = /finding:([^\s:]+:\d+)/g;
