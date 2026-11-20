@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `subagent-dispatch`
-**Iteration**: `1`
-**Applied at**: `2026-11-20 18:34`
+**Iteration**: `2`
+**Applied at**: `2026-11-20 19:58`
 **Executor**: `subagent-driven-development`.
 - **Implementer seat:** the `general-purpose` agent. Dispatches early in apply (Tasks 1–5 and 9) asked for `implementer`, but the executor in this session resolved that name to `general-purpose`; the transcripts show it. Later dispatches name `general-purpose` directly.
 - **Review seats:** the `code-reviewer` agent did every task review, every re-review and the final whole-branch review.
@@ -25,8 +25,15 @@
 
 ## Commits
 
-- **Range**: `4ad108f..bc16f9e`. It covers the lane merges, the `tasks.md` ticks, two user-decision artifact amendments (`0382005` lane tools, `34f5156` out-of-scope findings) and the final-review fix wave (`f2fce50..bc16f9e`, 15 commits). The `apply.md` commit itself comes after `bc16f9e`.
-- **Count**: `65`
+- **Range**: `4ad108f..dcc36fd`.
+- **Iteration 2 range**: `faa9c14..dcc36fd`, 5 commits. They fix verify iteration 1 (FAIL):
+  - `859153f` and `dcc36fd` fix F1 (CRITICAL). `mismatchOutcome` now waits, with a bound (`ABORT_SETTLE_MS` = 30 s), for the aborted child to settle before it posts the `launch-mismatch` record. A timeout is recorded in the evidence. A cancel during that wait records nothing.
+  - `ea6a785` fixes F2. `unit_finish` refuses a dispatched unit whose stored packet cannot be read (`packet unavailable: <hash>`).
+  - `9ba4c5a` and `5eaa536` add tests for the scenario "Missing location" (schema level and `subagent_record`, with a mutation check), type the test request, and make the lane-tool fixtures store real packets.
+  - Review: the fix-iteration review found one new Important issue (a cancel during the settle wait still posted the record). `dcc36fd` fixed it, and the re-review is clean. The report holds exact RED/GREEN commands and output.
+- **Iteration 1 range**: `4ad108f..bc16f9e`. It covers the lane merges, the `tasks.md` ticks, two user-decision artifact amendments (`0382005` lane tools, `34f5156` out-of-scope findings) and the final-review fix wave (`f2fce50..bc16f9e`, 15 commits). The `apply.md` commit itself comes after `bc16f9e`.
+- **Count**: `72` (`4ad108f..dcc36fd`, including the iteration-1 apply and verify receipts)
+- **Validation at `dcc36fd`** (iteration 2, implementer run): `bun run typecheck` clean; `bun run test`: 164 files, 2429 tests pass; `openspec validate subagent-dispatch`: valid.
 - **Validation at `bc16f9e`** (reported by the fix-wave implementer, and checked by both re-review seats):
   - `bun run typecheck`: clean.
   - `bun run test`: 163 files, 2423 tests, 0 failures.
@@ -58,6 +65,7 @@
   - `FindingSummaryData` gains `contextRequest` and `system: "files-violation"` (parent-only).
   - Marker id suffixes: `.mismatch`, `.needs-context-<n>` and `.system.files-violation.<n>`.
 - **Lane record.** It gains optional `outcome` and `head`. `ChangeState.subagents` gains `laneHeads`, `mergedLaneHeads`, `laneLimit` and `unfamiliar`.
+- **`DispatchDeps.abortSettleMs`** (iteration 2). It is optional, so tests can inject a short abort-settle timeout. The default is `ABORT_SETTLE_MS` = 30 s.
 - **`GateSnapshot.findings`.** It is optional. Gate comments record the finding keys their payload showed (ruling R5).
 - **New modules not in plan.md:**
   - `run-record.ts`, `subagent-target.ts`, `subagent-request.ts`, `subagent-outcome.ts`;
@@ -92,13 +100,14 @@
 | 8 | `sequential` | `0382005..a133cfd` | clean after fix round 3. Amended after NEEDS_CONTEXT, by user decision. | — |
 | 9 | `subagent-dispatch--task-9` | `ebba5fc..c4bb574` | clean after fix round 2; 1 minor deferred | `3107024` |
 | 10 | `sequential` | `4c54029..9e797e1` | clean after fix round 1. The first attempt was lost to a network error. | — |
+| Fix iteration 2 | `sequential` | `faa9c14..dcc36fd` | 1 new Important found and fixed; re-review clean | — |
 | Final review | `sequential` | `34f5156..bc16f9e` | 3 seats (A, B, C): 1 Critical and 8 Important. One fix wave fixed them; both re-review seats found it clean. | — |
 
 ---
 
 ## Next step
 
-Run `/opsx-verify`. Parked items, each with its ruling, for verify and finalize to consider:
+Run `/opsx-verify` (iteration 2). Verify iteration 1 also left 14 items not verified, because the verifier ran out of budget; re-check them. Parked items, each with its ruling, for verify and finalize to consider:
 - `lane_merge` on a missing worktree deletes the lane branch.
 - After a gate result, re-gated phases no longer suggest the advisory reviewer.
 - If `subagent_answer` is cancelled after `ANSWERED`, no result is recorded.
