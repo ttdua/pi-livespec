@@ -58,8 +58,9 @@ export const pullRequestAndChecks: Provider = {
 		const head = await cx.ctx.git.head();
 		const [request, checks] = await Promise.all([cx.ctx.forge.getPullRequest(pr), cx.ctx.forge.getChecks(head)]);
 		const out = [placed({ id: `pr#${pr}`, version: request.version, title: `Pull request #${pr}: ${request.title}`, text: request.body, untrusted: true })];
+		// Content-hash version over the keys in sorted order, as `forge_read` does.
 		for (const c of checks.checks) {
-			out.push(placed({ id: `check:${head}:${c.name}`, version: c.state, title: `Check ${c.name}`, text: `${c.name}: ${c.state}${c.url ? ` ${c.url}` : ""}`, untrusted: true }));
+			out.push(placed({ id: `check:${head}:${c.name}`, version: sha256(JSON.stringify({ name: c.name, state: c.state, url: c.url ?? null })), title: `Check ${c.name}`, text: `${c.name}: ${c.state}${c.url ? ` ${c.url}` : ""}`, untrusted: true }));
 		}
 		return out;
 	},
