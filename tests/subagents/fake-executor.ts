@@ -20,6 +20,8 @@ export type FakeExecutorOptions = {
 	resumeRefused?: boolean;
 	/** Ids `getRecord` knows; by default every spawned id. */
 	unknownIds?: string[];
+	/** Every wait settles only when its signal aborts (rejecting), as a long run the user cancels. */
+	holdUntilAborted?: boolean;
 };
 
 export function applied(o: SpawnOptionsLike): LaunchFacts {
@@ -31,6 +33,8 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 	const spawned: Spawned[] = [];
 	const resumed: { id: string; prompt: string }[] = [];
 	const aborted: string[] = [];
+	/** `spawn:<id>` and `settled:<id>` in the order they happened. */
+	const log: string[] = [];
 	const records = [...(o.records ?? [])];
 	let n = 0;
 	const emit = (id: string, opts: SpawnOptionsLike): void => {
@@ -45,12 +49,17 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 			if (o.spawnError) throw new Error(o.spawnError);
 			const id = `agent-${++n}`;
 			spawned.push({ type, prompt, options, id });
+			log.push(`spawn:${id}`);
 			if (o.emitDuringSpawn) emit(id, options);
 			else queueMicrotask(() => emit(id, options));
 			return id;
 		},
-		async wait(id: string): Promise<RecordLike> {
+		async wait(id: string, w?: { signal?: AbortSignal }): Promise<RecordLike> {
+			if (o.holdUntilAborted) {
+				await new Promise((_resolve, reject) => w?.signal?.addEventListener("abort", () => reject(new Error(`wait for ${id} aborted`)), { once: true }));
+			}
 			await new Promise((r) => setTimeout(r, 5));
+			log.push(`settled:${id}`);
 			return nextRecord(id);
 		},
 		async resume(id: string, prompt: string): Promise<unknown> {
@@ -65,7 +74,7 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 		getAgentType: (name: string) => (o.agent === null ? undefined : (o.agent ?? { name, source: "builtin" })),
 		getRecord: (id: string) => ((o.unknownIds ?? []).includes(id) ? undefined : { id }),
 	};
-	return { service, events, spawned, resumed, aborted, records };
+	return { service, events, spawned, resumed, aborted, records, log };
 }
 
 export function publish(service: unknown, key: symbol = SERVICE_KEY): void {
