@@ -1,6 +1,7 @@
 import { LineCounter, parseDocument } from "yaml";
 import { beforeEach, describe, expect, test } from "vitest";
 import { mergeDecisions, registerBuiltinRules, registerRule, resetRulesForTests, ruleFor } from "../../src/decide/registry.ts";
+import { decide } from "../../src/decide/seam.ts";
 import { validatePackDocument } from "../../src/engine/pack-schema.ts";
 import { getPackSchema, resetRegistryForTests } from "../../src/engine/registry.ts";
 
@@ -80,5 +81,22 @@ describe("mergeDecisions", () => {
 			tags: { mode: "rule", paths: { security: ["**/auth/**", "**/crypto/**"] }, keywords: {} },
 			custom: { mode: "rule", a: 1, b: 2 },
 		});
+	});
+});
+
+describe("finding-scope rule", () => {
+	test("the pack accepts decisions.finding-scope: { mode: rule }", () => {
+		resetRulesForTests();
+		registerBuiltinRules();
+		expect(validate("  finding-scope: { mode: rule }\n")).toEqual([]);
+	});
+
+	test("decide answers by rule", async () => {
+		resetRulesForTests();
+		registerBuiltinRules();
+		const finding = { severity: "WARNING", kind: "defect", location: "src/a.ts:1", evidence: "e", fix: "f", scope: "unit" };
+		const facts = { finding, path: "src/a.ts", units: [{ id: "U1", files: ["src/a.ts"] }], diffFiles: [], needsDecision: false };
+		const decided = await decide("finding-scope", facts, { config: { mode: "rule" }, subject: "review-1" });
+		expect(decided).toMatchObject({ status: "decided", source: "rule", outcome: { route: "unit", unit: "U1" } });
 	});
 });

@@ -13,6 +13,8 @@ export interface Git {
 	diffStat(from: string, to: string, path: string): Promise<string>;
 	/** `git diff --name-only <from>..<to> -- <path>`, one path per entry. */
 	diffNames(from: string, to: string, path: string): Promise<string[]>;
+	/** `git diff --name-status -z -M <from>..<to>`; a rename carries `oldPath`. */
+	diffNameStatus(from: string, to: string): Promise<DiffEntry[]>;
 	/** Default branch of `origin` (e.g. `main`, without the remote prefix), or undefined when `origin/HEAD` is not set. */
 	originHead(): Promise<string | undefined>;
 	fetch(remote: string, ref: string): Promise<void>;
@@ -51,6 +53,31 @@ export interface Git {
 	isIgnored(path: string): Promise<boolean>;
 	/** `git config --get-regexp ^alias\.`: alias name to its expansion; `{}` when none is set. */
 	aliases(): Promise<Record<string, string>>;
+}
+
+export type DiffEntry = { status: string; path: string; oldPath?: string };
+
+/** Every `path` and `oldPath` of the entries, deduplicated. */
+export function diffFilesOf(entries: DiffEntry[]): string[] {
+	return [...new Set(entries.flatMap((e) => (e.oldPath === undefined ? [e.path] : [e.path, e.oldPath])))];
+}
+
+/** `--name-status -z` output: `<status>\0<path>\0`, and `R<score>\0<old>\0<new>\0` (or `C`) for a rename or copy. */
+function parseNameStatus(out: string): DiffEntry[] {
+	const fields = out.split("\0");
+	const entries: DiffEntry[] = [];
+	for (let i = 0; i < fields.length; ) {
+		const code = fields[i++] as string;
+		if (code === "") continue;
+		const status = code.slice(0, 1);
+		if (status === "R" || status === "C") {
+			const oldPath = fields[i++] as string;
+			entries.push({ status, path: fields[i++] as string, oldPath });
+		} else {
+			entries.push({ status, path: fields[i++] as string });
+		}
+	}
+	return entries;
 }
 
 export class GitError extends Error {
@@ -129,6 +156,8 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		diffStat: async (from, to, path) => (await run(["diff", "--stat", END_OF_OPTIONS, `${from}..${to}`, "--", path]))?.trimEnd() ?? "",
 		diffNames: async (from, to, path) =>
 			((await run(["diff", "--name-only", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "").split("\n").filter((l) => l !== ""),
+		diffNameStatus: async (from, to) =>
+			parseNameStatus((await run(["diff", "--name-status", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
 		originHead: async () => {
 			const ref = await run(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], EXIT_NOT_SYMBOLIC);
 			if (ref === undefined) return undefined;
