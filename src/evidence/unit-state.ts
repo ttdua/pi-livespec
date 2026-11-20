@@ -99,8 +99,9 @@ export function deriveUnitEvidence(change: Change, marked: MarkedComment[], cap:
 		if (receipts.length > 0) evidence.receipts[u.id] = receipts;
 		if (trail.attempts.has(u.id)) evidence.attempts[u.id] = budgetAttempts(trail, u.id).length;
 		if (u.done) continue;
-		if (start !== undefined && start.index > (latest?.index ?? NONE)) evidence.started[u.id] = start;
 		const rebuild = trail.rebuilds.get(u.id);
+		// A rebuild newer than the start makes that start stale: the unit restarts with unit_start.
+		if (start !== undefined && start.index > Math.max(latest?.index ?? NONE, rebuild?.index ?? NONE)) evidence.started[u.id] = start;
 		if (rebuild !== undefined && rebuild.index > Math.max(latest?.index ?? NONE, start?.index ?? NONE)) {
 			(evidence.rebuilds ??= {})[u.id] = { round: rebuild.round, finding: rebuild.finding };
 		}

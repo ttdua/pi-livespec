@@ -149,6 +149,14 @@ describe("deriveUnitEvidence", () => {
 			expect(ev.rebuilds).toEqual({ U2: { round: 2, finding: "c1:0" } });
 		});
 
+		test("a rebuild newer than the start makes that start stale", () => {
+			const c = change();
+			const d2 = digestOf(c, "U2");
+			const ev = deriveUnitEvidence(c, [start("U2", d2), rebuild("U2")], 3);
+			expect(ev.started).toEqual({});
+			expect(ev.rebuilds).toEqual({ U2: { round: 1, finding: "c1:0" } });
+		});
+
 		test("a later unit-start or receipt ends the rebuild", () => {
 			const c = change();
 			const d2 = digestOf(c, "U2");

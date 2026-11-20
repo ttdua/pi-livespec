@@ -12,12 +12,15 @@ import { classifyRun, preExpectation } from "../evidence/red-green.ts";
 import { refactorPendingRefusal, unitStartRefusal } from "../evidence/refusals.ts";
 import { runVerify } from "../evidence/runner.ts";
 import { RECEIPT_OUTPUT_BYTES, type VerifyEnv } from "../evidence/verify-env.ts";
+import type { ChangeState } from "../engine/state-types.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 
 const TOOL = "unit_start";
 const WRONG_CLASS_OPTIONS =
 	"Options: keep the test as a regression pin or drop the unit through unit_amend, or fix Verify so it fails before the work (unit_amend).";
+
+const isRebuild = (state: ChangeState, unit: string): boolean => unit in (state.evidence.rebuilds ?? {});
 
 /** Whether some test file in `Files` is missing at HEAD. */
 async function isPending(env: VerifyEnv, u: Unit, head: string): Promise<boolean> {
@@ -55,7 +58,7 @@ async function startUnit(c: UnitCall): Promise<ToolResult<undefined>> {
 	if (afterPending !== undefined) return afterPending;
 	const refactor = refactorPendingRefusal(u, pending);
 	if (refactor !== undefined) return c.refuse(refactor);
-	const data = pending ? ({ unit: u.id, digest: unitDigest(u), verify, pre: { sha: head }, pending: true } as StartData) : await preRun(env, u, verify, head, u.id in (state.evidence.rebuilds ?? {}));
+	const data = pending ? ({ unit: u.id, digest: unitDigest(u), verify, pre: { sha: head }, pending: true } as StartData) : await preRun(env, u, verify, head, isRebuild(state, u.id));
 	if ("refused" in data) return c.refuse(data.refused);
 	const beforeWrite = c.cancelled();
 	if (beforeWrite !== undefined) return beforeWrite;
