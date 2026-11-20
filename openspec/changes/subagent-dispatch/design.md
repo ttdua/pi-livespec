@@ -86,7 +86,7 @@ Nothing time-varying appears before the task. The hash is computed with spill pa
   - `skillPaths` equals the requested paths;
   - `contextFiles` is `false`.
 - The check also requires the effective `excludedExtensionPackages` to contain every requested package, so an executor that ignores the exclusion cannot load another flow's bootstrap.
-- On a mismatch, livespec aborts the child (`service.abort`), records why, and falls back to inline for that dispatch. A mismatch on `cwd` alone, in a lane, means another workspace provider moved the child: the unit re-runs sequentially (D9).
+- On a mismatch, livespec aborts the child (`service.abort`), records why, and falls back to inline for that dispatch. A mismatch that includes `cwd`, in a lane, means another workspace provider moved the child: the unit re-runs sequentially (D9), whatever else mismatched. The mismatch record is posted only after the aborted child has settled; if it does not settle within the bound, nothing is posted and the tool result says so (spec "Dispatch tool": no forge write before the child's run has settled).
 
 ### D5. Roles, subjects and result schemas are data
 
@@ -147,7 +147,7 @@ Nothing time-varying appears before the task. The hash is computed with spill pa
   - it was red after the merge (this counts as a failed attempt);
   - its child's effective cwd differed from the lane.
 - **Started units.** `unit_start` allows one started unit per worktree instead of one per change (`unit-evidence` is modified accordingly). In a lane it checks the lane's tree and records the lane's HEAD as the pre SHA.
-- **Guard root.** The guard and `Verify` use the lane as root through the launch metadata `lane`.
+- **Guard root.** A lane child runs with the lane path as its cwd, so the guard and `Verify` use the lane as root through `ctx.cwd` and `unitRoot`; the launch metadata `lane` is informational.
 
 ### D10. Isolation from other flows
 
@@ -163,6 +163,10 @@ Nothing time-varying appears before the task. The hash is computed with spill pa
 - `context>=N%` uses `ctx.getContextUsage().percent`, needs at least one completed turn, and applies a 2-point margin (probe (f)).
 - The result feeds the phase card's next step: "dispatch `<role>` for U3", or "run U3 inline; no executor".
 - The policy never forces a dispatch. The parent may run the step inline, and the evidence is the same.
+
+### D11b. Change tags
+
+- A change has no tag field of its own: the decision seam tags units. For change-level roles, `tags:<tag>` holds when any unit of the change carries `<tag>` (the union of unit tags).
 
 ### D12. `forge_read` is a parent tool
 
