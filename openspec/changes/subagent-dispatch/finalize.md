@@ -6,7 +6,7 @@
 > from "keep as-is" to PR later).
 
 **Change**: `subagent-dispatch`
-**Finalized at**: `2026-11-20 23:59`
+**Finalized at**: `2026-11-21 00:30` (updated after the real-executor smoke test)
 **Outcome**: `pr-updated`
 
 ---
@@ -52,11 +52,25 @@
 ## Deviations and notes
 
 - **`git pull` skipped.** `ls-07` had no upstream before this push. The fast-forward merge was checked locally first (`git merge-base --is-ancestor ls-07 subagent-dispatch`).
-- **Verify outcome: `PASS_WITH_WARNINGS` (iteration 4).** Two design decisions can only be checked against a real executor, so they are still open:
-  - **D3:** the role-agent body sits last in the child's system prompt.
-  - **D6:** Jev routing replaces the model and thinking.
+- **Verify outcome: `PASS_WITH_WARNINGS` (iteration 4).** D3 and D6 could only be checked against a real executor. The smoke test below closes them.
+- **Real-executor smoke test (2026-11-21), closes D3 and D6.**
+  - **Setup.**
+    - Software: pi 1.6.0, the executor `@ttdua/pi-subagents` 0.1.1 (now its own package), pi-jev-pilot 0.6.0 with worker routing on, and the user's normal packages including Superpowers.
+    - Probe: a throwaway `-e` extension that called `service.spawn("scout", …)` with livespec's launch options, in a scratch git repository. The probe code was deleted afterwards.
+  - **Session facts.** `session-created` reported `context: fresh`, the requested `cwd`, `inheritSkills: false`, `skillPaths: []`, `contextFiles: false` and the launch `metadata`. Every field that the post-launch check compares took effect.
+  - **D3.** The child's system prompt sections are, in order:
+    1. `preamble`, `tools`, `rules`, `docs`, `cwd`;
+    2. `rtk`, added by another installed extension;
+    3. `agent`, which holds `<active_agent name="scout"/>`, the environment block and the role body, and comes last.
 
-  Before merging the PR, smoke-test one real dispatch through pi-jev-pilot 0.5.0 and record the result here or in the PR.
+    The prompt contained no AGENTS.md text, no skills catalog and no Superpowers text. The packet arrived as the first user message.
+  - **D6.** livespec requested `thinkingLevel: medium`. Jev routed the child to `claude-code/claude-haiku-5-5` at `low`, and the record's `effectiveModel` and `effectiveThinking` match.
+  - **Result.** The child called `submit_result`, and `wait` returned `completed` with `structuredResult: { status: "DONE" }`.
+  - **Note.** Any installed extension can still add a system prompt section to a fresh child, as `rtk` did here. Only `excludeExtensionPackages` keeps a known flow out.
+  - **Where this is recorded.** The result lives here and not in `docs/evidence/host-seams.md`: spec `host-seam-evidence` limits that file to the LS-01 probes (a) to (j).
+- **pi-jev-pilot 0.6.0 moved the executor out.** The executor is now the separate package `@ttdua/pi-subagents`, and pi-jev-pilot no longer bundles it.
+  - The service contract livespec uses is unchanged: the same capabilities and the service key `@gotgenes/pi-subagents:service`, which livespec reads as its fallback key.
+  - The `README.md` executor setup and the doctor install suggestion were updated to point at the new package.
 - **Parked items** (listed in `apply.md` with rulings):
   - `lane_merge` on a worktree that was deleted also deletes the lane branch.
   - A phase that is gated again does not re-suggest the advisory reviewer.
