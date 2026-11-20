@@ -218,7 +218,7 @@ A launch whose facts differ from the request is aborted and runs inline, so an e
 
 A child question either reaches the parent, which answers with `subagent_answer`, or goes to the user through `spec_question`.
 
-**Child mode.** livespec also loads inside children. A session is a child when the executor's `childSession` knows its id, when its header names a parent session, or when that check throws. In a child, livespec:
+**Child mode.** livespec also loads inside children. A session is a child when the executor's `childSession` knows its id. Only without a capable executor does the session header's `parentSession` decide, as a fallback. A failing check counts as a child. In a child, livespec:
 
 - sets `CHILD_NOTE` instead of the routing note;
 - adds no phase card or resume card;
