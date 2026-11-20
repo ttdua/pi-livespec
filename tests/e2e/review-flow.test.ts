@@ -32,15 +32,15 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 		writeFileSync(join(tree, "skills", skill, "SKILL.md"), `# ${skill}\n`);
 	}
 	await h.commit({ "src/limit.ts": "export const limit = 1;\n", "src/u1.ts": "export {};\n" });
+	const phaseOf = async () => (await h.world.forge.getIssue(h.n)).labels.find((l) => l.startsWith("livespec:phase/"))?.slice("livespec:phase/".length);
 	const tick = async () => {
 		const issue = await h.world.forge.getIssue(h.n);
 		await h.world.forge.updateIssueBody(h.n, issue.body.replaceAll("- [ ] pending", "- [x] done"), issue.version);
-		await h.world.forge.removeLabels(h.n, ["livespec:phase/build"]);
-		await h.world.forge.addLabels(h.n, ["livespec:phase/review"]);
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
 	};
 	await tick();
+	expect(await phaseOf()).toBe("review");
 	registerSpecReview(h.pi.api as never, { home: () => h.home });
 
 	// Round 1: the change reviewer reports a real defect and one the verifier refutes.
@@ -65,10 +65,9 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 	expect((await h.units()).map((u) => [u.id, u.done])).toEqual([["U1", true], ["U2", false]]);
 
 	// Back in build: U2 restarts green with verdict rebuild, is fixed and ticked again.
-	await h.world.forge.removeLabels(h.n, ["livespec:phase/review"]);
-	await h.world.forge.addLabels(h.n, ["livespec:phase/build"]);
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
+	expect(await phaseOf()).toBe("build");
 	const started = await h.start("U2");
 	expect(started.isError, textOf(started)).toBeFalsy();
 	expect((await h.ofKind("unit-start")).at(-1)?.data).toMatchObject({ unit: "U2", pre: { verdict: "rebuild" } });
@@ -80,10 +79,9 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 
 	// Round 2 is clean at the new HEAD.
 	round = 2;
-	await h.world.forge.removeLabels(h.n, ["livespec:phase/build"]);
-	await h.world.forge.addLabels(h.n, ["livespec:phase/review"]);
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
+	expect(await phaseOf()).toBe("review");
 	const second = await h.call("spec_review", {});
 	expect(second.isError, textOf(second)).toBeFalsy();
 	const head = h.git("rev-parse", "HEAD");
