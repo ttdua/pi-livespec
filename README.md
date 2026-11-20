@@ -23,10 +23,13 @@ It takes ideas from [OpenSpec](https://github.com/Fission-AI/OpenSpec) (spec for
 
 livespec can hand role work (`scout`, `implementer`, `reviewer`) to subagent children, and it can run independent units in parallel lanes. The `verifier` role is reserved for LS-08 (no tool can give it a finding yet). Without an executor, every role runs inline in the main session and leaves the same evidence. See [Architecture: Subagents](docs/architecture.md#subagents).
 
-**Executor setup.** Install one of:
+**Executor setup.** Install the executor [`@ttdua/pi-subagents`](https://github.com/ttdua/pi-subagents) 0.1.1 or later:
 
-- [pi-jev-pilot](https://github.com/ttdua/pi-jev-pilot) 0.5.0 or later, which bundles the subagent executor;
-- the standalone `pi-subagents` executor.
+```sh
+pi install git:github.com/ttdua/pi-subagents@v0.1.1
+```
+
+To add Jev model routing, install [pi-jev-pilot](https://github.com/ttdua/pi-jev-pilot) 0.6.0 or later after the executor. pi-jev-pilot 0.5.x bundled the executor itself; from 0.6.0 it no longer does.
 
 livespec detects the executor by capability: the published service must provide `spawn`, `wait`, `resume`, `abort`, `childSession` and `getAgentType`. It never checks the package name or version. `/livespec doctor` reports the executor, any missing capability and any role agent that a user or project file overrides.
 

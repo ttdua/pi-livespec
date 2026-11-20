@@ -44,7 +44,8 @@ describe("subagent doctor checks", () => {
 		expect(executor?.status).toBe("warn");
 		expect(executor?.message).toContain("no subagent executor");
 		expect(executor?.message).toContain("livespec runs every role inline");
-		expect(executor?.suggestion).toContain("pi-jev-pilot");
+		expect(executor?.suggestion).toContain("git:github.com/ttdua/pi-subagents");
+		expect(executor?.suggestion).not.toContain("0.5.0");
 		expect(byId(results, "subagent-role")).toEqual([]);
 	});
 

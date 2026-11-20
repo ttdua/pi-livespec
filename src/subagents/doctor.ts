@@ -7,7 +7,7 @@ import { AGENT_OF } from "./roles.ts";
 
 const ID = "subagents";
 const INLINE = "livespec runs every role inline";
-const INSTALL = "install pi-jev-pilot >= 0.5.0 or the standalone pi-subagents to dispatch roles to subagents";
+const INSTALL = "install the executor (pi install git:github.com/ttdua/pi-subagents@v0.1.1) to dispatch roles to subagents; add pi-jev-pilot >= 0.6.0 for Jev model routing";
 
 /** Packages known to register a workspace provider that moves subagent children out of livespec's lanes. */
 export const WORKSPACE_PROVIDER_PACKAGES: readonly string[] = ["npm:@gotgenes/pi-subagents-worktrees"];
