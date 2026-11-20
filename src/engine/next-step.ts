@@ -7,7 +7,9 @@ import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interactio
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
-import { buildLoopStep } from "../subagents/build-loop.ts";
+import { DEFAULT_LANES } from "../config.ts";
+import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
+import { eligibleLanes } from "../subagents/lanes.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
@@ -240,10 +242,28 @@ const childQuestion: Rule = ({ state }) => {
 	return { next: `Child ${pending.agentId} asks: ${pending.question} Answer it with subagent_answer ${pending.agentId} "<answer>", or raise it with spec_question when only the user can decide.` };
 };
 
-/** Rule 11b: in a `per: unit` phase, a started unit runs the build loop, then is finished before anything else is built. */
+/**
+ * Rule 11b, lanes: open a lane for each eligible ready unit when two or more units would run in lanes
+ * together and the implementer entry holds for each, before any unit is started; then start every open
+ * lane's unit in its lane.
+ */
+const laneUnits: Rule = ({ pack, state, phase }) => {
+	if (phase.per !== "unit") return undefined;
+	const lanes = Object.keys(state.subagents.lanes);
+	if (Object.keys(state.evidence.started).length === 0) {
+		const eligible = eligibleLanes(state, state.subagents.laneLimit ?? DEFAULT_LANES).filter((id) => implementerHolds(pack, state, phase, id));
+		if (eligible.length > 0 && lanes.length + eligible.length >= 2) return { next: `Run these units in parallel lanes: ${eligible.map((id) => `lane_open ${id}`).join(", ")}.` };
+	}
+	const unstarted = lanes.find((id) => !(id in state.evidence.started));
+	return unstarted === undefined ? undefined : { next: `Start ${unstarted} in its lane with unit_start ${unstarted}.` };
+};
+
+/** Rule 11c: in a `per: unit` phase, a started unit runs the build loop, then is finished before anything else is built. */
 const startedUnit: Rule = ({ pack, state, phase }) => {
 	if (phase.per !== "unit") return undefined;
-	const started = unitsWhere(state, (id) => id in state.evidence.started)[0];
+	// A unit in the change worktree (e.g. a merged lane) finishes before lane units: lanes merge one at a time.
+	const all = unitsWhere(state, (id) => id in state.evidence.started);
+	const started = all.find((id) => !(id in state.subagents.lanes)) ?? all[0];
 	if (!started) return undefined;
 	return buildLoopStep(pack, state, phase, started) ?? { next: `Finish ${started} with unit_finish once Verify passes.` };
 };
@@ -312,6 +332,7 @@ const RULES: Rule[] = [
 	failingCheck,
 	blockedUnit,
 	childQuestion,
+	laneUnits,
 	startedUnit,
 	receiptedUnit,
 	nextUnit,

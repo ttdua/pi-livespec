@@ -50,7 +50,7 @@ export function outcomeText(t: Target, outcome: DispatchOutcome): string {
 		case "inline":
 			return inlineText(t, outcome.reason, outcome.packet);
 		case "sequential":
-			return `${outcome.reason}. Close the lane and run ${t.unit} in the change worktree.`;
+			return `${outcome.reason}. The lane is closed and removed; run ${t.unit} in the change worktree.`;
 		case "blocked":
 			return `${argsOf(t)} is BLOCKED: ${outcome.reason}. Send a stuck report with spec_stuck.`;
 		case "stuck":

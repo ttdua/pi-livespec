@@ -8,8 +8,10 @@ import type { MarkedComment } from "../forge/markers.ts";
 import { entriesFor, holds, type PolicyFacts } from "./policy.ts";
 import { answeredFindingKeys, completedUnitRounds, gatesShownKeys, latestDispatch, reviewStepDoneAt, unresolvedBlocking, type UnresolvedFinding } from "./records.ts";
 import type { ReviewSubject, Role, SubagentEntry } from "./roles.ts";
+import { latestLaneClose } from "./state.ts";
 
-export type LoopStep = { next: string; dispatch?: NonNullable<NextStep["dispatch"]> };
+/** `ready`: nothing blocks the unit's next transition (merge or finish); the text is a note only. */
+export type LoopStep = { next: string; dispatch?: NonNullable<NextStep["dispatch"]>; ready?: true };
 
 const DEFAULT_REBUILDS = 2;
 const SETTLED_OK = ["DONE", "DONE_WITH_CONCERNS"];
@@ -22,6 +24,9 @@ type Loop = {
 	facts: PolicyFacts;
 	since: MarkedComment[];
 	head: string;
+	/** Commits whose unit review counts: the loop's head, plus the lane head of a merged lane. */
+	reviewed: string[];
+	laneOpen: boolean;
 	preSha: string;
 	inline: boolean;
 	rebuilds: number;
@@ -50,16 +55,33 @@ function suggested(entry: SubagentEntry | undefined, facts: PolicyFacts): boolea
 
 const entryOf = (l: Loop, role: Role, subject?: ReviewSubject): SubagentEntry | undefined => l.entries.find((e) => e.role === role && e.subject === subject);
 
+/** The comment index the loop reads after: the unit's start, or a later close of its lane that merged nothing (a sequential re-run). */
+function loopStart(state: ChangeState, unitId: string, startIndex: number): number {
+	const close = latestLaneClose(state.marked, unitId);
+	return close !== undefined && close.index > startIndex && close.data.outcome !== "merged" ? close.index : startIndex;
+}
+
+/** The head of a lane merged after the unit's start, whose review the merge commit carries. */
+function mergedLaneHead(state: ChangeState, unitId: string, startIndex: number): string | undefined {
+	const close = latestLaneClose(state.marked, unitId);
+	return close !== undefined && close.index > startIndex && close.data.outcome === "merged" ? close.data.head : undefined;
+}
+
 function loopOf(pack: Pack, state: ChangeState, phase: Phase, unitId: string): Loop | undefined {
 	const unit = state.change.units.find((u) => u.id === unitId);
 	const start = state.evidence.started[unitId];
 	if (!unit || !start) return undefined;
+	const laneOpen = unitId in state.subagents.lanes;
+	const head = (laneOpen ? state.subagents.laneHeads?.[unitId] : undefined) ?? state.git.head;
+	const merged = mergedLaneHead(state, unitId, start.index);
 	return {
 		unit: unitId,
 		entries: entriesFor(pack, phase.id),
 		facts: policyFacts(state, phase, unit),
-		since: state.marked.slice(start.index + 1),
-		head: state.git.head,
+		since: state.marked.slice(loopStart(state, unitId, start.index) + 1),
+		head,
+		reviewed: merged === undefined ? [head] : [head, merged],
+		laneOpen,
 		preSha: start.pre.sha,
 		inline: !state.subagents.executor.ok,
 		rebuilds: pack.loops.unit_rebuilds ?? DEFAULT_REBUILDS,
@@ -98,7 +120,7 @@ function implementerStep(l: Loop): LoopStep | undefined {
 /** Step 3: the unit review, when its entry holds and no completed review of its kind covers HEAD. */
 function reviewStep(l: Loop): LoopStep | undefined {
 	const entry = entryOf(l, "reviewer", "unit");
-	if (!reviewSuggested(l) || reviewStepDoneAt(l.since, l.unit, [l.head], entry?.advisory === true)) return undefined;
+	if (!reviewSuggested(l) || reviewStepDoneAt(l.since, l.unit, l.reviewed, entry?.advisory === true)) return undefined;
 	return dispatchStep(l, `Review ${l.unit} before finishing`, "reviewer", "unit");
 }
 
@@ -133,12 +155,27 @@ function fixStep(l: Loop): LoopStep | undefined {
 	const decision = open.find((f) => f.finding.scope === "needs-decision");
 	if (decision) return questionStep(l, decision);
 	if (open.length === 0) return undefined;
-	return { next: `Finish ${l.unit} with unit_finish once Verify passes; ${open.length} out-of-scope finding(s) wait for the next human gate, no fix round.` };
+	return { next: `Finish ${l.unit} with unit_finish once Verify passes; ${open.length} out-of-scope finding(s) wait for the next human gate, no fix round.`, ready: true };
 }
 
-/** The next step of a started unit before `unit_finish`; undefined when the unit is ready to finish. */
-export function buildLoopStep(pack: Pack, state: ChangeState, phase: Phase, unitId: string): LoopStep | undefined {
+/** A unit in an open lane whose work and review are done merges before it finishes. */
+const mergeStep = (l: Loop): LoopStep => ({ next: `Merge the lane of ${l.unit} with lane_merge ${l.unit}, then finish it with unit_finish ${l.unit}.` });
+
+/**
+ * The next step of a started unit before `unit_finish`; undefined when the unit is ready to finish.
+ * `merging` (from `lane_merge`) asks only whether the lane's work and review are done: undefined when they are.
+ */
+export function buildLoopStep(pack: Pack, state: ChangeState, phase: Phase, unitId: string, o: { merging?: boolean } = {}): LoopStep | undefined {
 	const loop = loopOf(pack, state, phase, unitId);
 	if (!loop) return undefined;
-	return implementerStep(loop) ?? reviewStep(loop) ?? fixStep(loop);
+	const work = implementerStep(loop) ?? reviewStep(loop) ?? fixStep(loop);
+	if (!loop.laneOpen || (work !== undefined && work.ready !== true)) return work;
+	return o.merging === true ? undefined : mergeStep(loop);
+}
+
+/** Whether the pack's implementer entry holds for a not-yet-started `unitId` (the lane suggestion's condition). */
+export function implementerHolds(pack: Pack, state: ChangeState, phase: Phase, unitId: string): boolean {
+	const unit = state.change.units.find((u) => u.id === unitId);
+	if (!unit) return false;
+	return suggested(entriesFor(pack, phase.id).find((e) => e.role === "implementer" && e.subject === undefined), policyFacts(state, phase, unit));
 }

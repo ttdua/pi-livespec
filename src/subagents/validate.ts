@@ -16,6 +16,8 @@ const FINDING_KEYS = ["severity", "kind", "location", "evidence", "fix", "scope"
 
 const oneOf = (list: readonly string[]) => (v: unknown): boolean => isStr(v) && list.includes(v);
 const isRole = oneOf(ROLES);
+/** The `outcome` values of a closed `lane` record. */
+export const LANE_OUTCOME_NAMES = ["merged", "violation", "conflict", "red", "moved"] as const;
 const isStatus = oneOf(RESULT_STATUSES);
 const isThinking = oneOf(["low", "medium", "high"]);
 
@@ -67,5 +69,8 @@ export function isSummaryData(d: unknown): boolean {
 }
 
 export function isLaneData(d: unknown): boolean {
-	return isObj(d) && ["unit", "path", "branch", "base"].every((k) => isStr(d[k])) && optional(d.closed, (c) => c === true);
+	return (
+		isObj(d) && ["unit", "path", "branch", "base"].every((k) => isStr(d[k])) && optional(d.closed, (c) => c === true) &&
+		optional(d.outcome, oneOf(LANE_OUTCOME_NAMES)) && optional(d.head, isStr)
+	);
 }

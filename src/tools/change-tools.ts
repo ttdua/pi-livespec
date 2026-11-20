@@ -5,6 +5,8 @@ import { registerChangeNew } from "./change-new.ts";
 import { registerChangeStart } from "./change-start.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
 import { registerForgeRead } from "./forge-read.ts";
+import { registerLaneMerge } from "./lane-merge.ts";
+import { registerLaneOpen } from "./lane-open.ts";
 import { registerPlanUnits } from "./plan-units.ts";
 import { registerSkillNote } from "./skill-note.ts";
 import { registerSpecGate } from "./spec-gate.ts";
@@ -41,4 +43,6 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerSubagentRecord(pi);
 	registerFindingRebut(pi);
 	registerForgeRead(pi);
+	registerLaneOpen(pi);
+	registerLaneMerge(pi);
 }

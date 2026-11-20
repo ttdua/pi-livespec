@@ -2,10 +2,12 @@
 // state. Forge and git errors propagate; `Session.refresh` turns them into a
 // degraded card.
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
 import { runChecks } from "../engine/checks.ts";
+import { createGit } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
@@ -47,6 +49,17 @@ function unnotedSkills(session: Session, step: NextStep, state: ChangeState): st
 }
 
 
+/** HEAD of each open lane whose worktree exists; a lane git cannot read is left out. */
+async function readLaneHeads(lanes: ChangeState["subagents"]["lanes"]): Promise<Record<string, string>> {
+	const heads: Record<string, string> = {};
+	for (const [unit, lane] of Object.entries(lanes)) {
+		if (!existsSync(lane.path)) continue;
+		const head = await createGit(lane.path).head().catch(() => undefined);
+		if (head !== undefined) heads[unit] = head;
+	}
+	return heads;
+}
+
 type Resolved = { kind: "change"; number: number; warning?: string } | Exclude<CardInput, { kind: "change" }>;
 
 /**
@@ -79,7 +92,7 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
 	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
-	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar };
+	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), laneLimit: session.config.user.lanes };
 	return { ...snapshot, subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 

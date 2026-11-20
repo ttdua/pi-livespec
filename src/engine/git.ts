@@ -31,8 +31,12 @@ export interface Git {
 	isAncestor(a: string, b: string): Promise<boolean>;
 	/** `git worktree add --detach <dir> <sha>`. */
 	worktreeAdd(dir: string, sha: string): Promise<void>;
+	/** `git worktree add -b <branch> <dir> <at>`. */
+	worktreeAddBranch(dir: string, branch: string, at: string): Promise<void>;
 	/** `git worktree remove --force <dir>`. */
 	worktreeRemove(dir: string): Promise<void>;
+	/** `git reset --hard <sha>`. */
+	resetHard(sha: string): Promise<void>;
 	/** `git worktree prune`: drops entries whose directory is gone. */
 	worktreePrune(): Promise<void>;
 	/** `git rev-list --reverse <range>`, oldest first. */
@@ -163,8 +167,14 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		worktreeAdd: async (dir, sha) => {
 			await run(["worktree", "add", "--quiet", "--detach", END_OF_OPTIONS, dir, sha]);
 		},
+		worktreeAddBranch: async (dir, branch, at) => {
+			await run(["worktree", "add", "--quiet", "-b", branch, END_OF_OPTIONS, dir, at]);
+		},
 		worktreeRemove: async (dir) => {
 			await run(["worktree", "remove", "--force", END_OF_OPTIONS, dir]);
+		},
+		resetHard: async (sha) => {
+			await run(["reset", "--quiet", "--hard", END_OF_OPTIONS, sha]);
 		},
 		worktreePrune: async () => {
 			await run(["worktree", "prune"]);

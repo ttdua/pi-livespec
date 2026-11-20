@@ -58,6 +58,7 @@ async function unitWorktree(session: Session, state: ChangeState, unit: string):
 /**
  * Runs `body` for `unit` under the evidence lock, after `prepareWrite` (which refreshes), `requireChange`,
  * the `precheck` rules and a run environment whose signal is not aborted yet. Every refusal writes nothing.
+ * `where: "change"` keeps the change worktree even when the unit has an open lane (`lane_merge`).
  */
 export function lockedEvidenceCall(
 	tool: string,
@@ -65,6 +66,7 @@ export function lockedEvidenceCall(
 	signal: AbortSignal | undefined,
 	precheck: PrecheckFn,
 	body: (c: UnitCall) => Promise<ToolResult<undefined>>,
+	where: "unit" | "change" = "unit",
 ): Promise<ToolResult<undefined>> {
 	const refuse = (message: string): ToolResult<undefined> => toolResult(message.startsWith(`${tool} refused`) ? message : `${tool} refused: ${message}`, undefined, true);
 	return withEvidenceLock(async () => {
@@ -72,7 +74,7 @@ export function lockedEvidenceCall(
 		if (!w.ok) return refuse(w.message);
 		const change = requireChange(w.session);
 		if (!change.ok) return refuse(change.message);
-		const lane = await unitWorktree(w.session, change.state, unit);
+		const lane = where === "change" ? { state: change.state, at: undefined } : await unitWorktree(w.session, change.state, unit);
 		if ("refused" in lane) return refuse(lane.refused);
 		const { state } = lane;
 		const check = await precheck(state, w.pack, lane.at?.git ?? w.session.git);

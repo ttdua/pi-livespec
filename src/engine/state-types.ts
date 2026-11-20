@@ -51,6 +51,10 @@ export type ChangeState = {
 		contextPercent?: number;
 		turnsCompleted: number;
 		lanes: Record<string, LaneRecord>;
+		/** HEAD of each open lane worktree that exists, read at refresh. */
+		laneHeads?: Record<string, string>;
+		/** The user's `lanes` limit, copied at refresh; the default when absent. */
+		laneLimit?: number;
 		/** The `unfamiliar-code` fact, read from the living specs at refresh. */
 		unfamiliar: UnfamiliarFacts;
 		pending?: { unit?: string; agentId: string; question: string };

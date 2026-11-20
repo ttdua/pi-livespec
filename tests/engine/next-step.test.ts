@@ -12,7 +12,8 @@ import type { MarkedComment } from "../../src/forge/markers.ts";
 import type { Answered, RequestKind, RequestRecord, Subject } from "../../src/interaction/approver.ts";
 import type { AppliedAnswer, PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
-import { finding, implemented, pad, reviewed } from "../subagents/helpers.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
+import { finding, implemented, mark, pad, reviewed } from "../subagents/helpers.ts";
 
 /** Fixture with Q1 answered: no open blocking question. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
@@ -690,5 +691,61 @@ describe("build loop with subagents", () => {
 		expect(step.pendingChild).toEqual({ agentId: "a1", question: "Which config file?" });
 		expect(step.next).toContain("a1");
 		expect(step.next).toContain("Which config file?");
+	});
+});
+
+describe("parallel lanes in the build loop", () => {
+	/** U1 and U3 pending, both ready, disjoint Files; both `Difficulty: medium` so the implementer entry holds. */
+	const BOTH_READY = NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —").replace("Difficulty: low", "Difficulty: medium");
+	const LANE = (unit: string) => ({ unit, path: `/r/.worktrees/per-ip-cap--${unit}`, branch: `livespec/per-ip-cap--lane-${unit}`, base: "b".repeat(40) });
+	const subagents = (over: Partial<ChangeState["subagents"]> = {}): ChangeState["subagents"] => ({ executor: { ok: true, missing: [] }, turnsCompleted: 1, contextPercent: 30, lanes: {}, unfamiliar: { change: false, units: {} }, ...over });
+	const startRec = (unit: string): StartRecord => ({ unit, digest: "d", verify: "v", pre: { sha: "b".repeat(40) }, id: `${unit}.s`, commentId: "c0", index: 0 });
+	const at = (over: Partial<ChangeState> = {}): ChangeState => state("build", BOTH_READY, { subagents: subagents(), ...over });
+
+	test("Next step opens lanes", () => {
+		expect(nextStep(pack, at()).next).toBe("Run these units in parallel lanes: lane_open U1, lane_open U3.");
+	});
+
+	test("no lanes without an executor, with one ready unit, or when the implementer entry does not hold", () => {
+		expect(nextStep(pack, at({ subagents: subagents({ executor: { ok: false, missing: ["spawn"] } }) })).next).toContain("Build U1");
+		expect(nextStep(pack, state("build", NO_QUESTION.replace("Difficulty: low", "Difficulty: medium"), { subagents: subagents() })).next).not.toContain("lane_open");
+		const low = state("build", NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —").replace("Difficulty: medium", "Difficulty: low"), { subagents: subagents() });
+		expect(nextStep(pack, low).next).not.toContain("lane_open");
+	});
+
+	test("an open lane's unit starts in its lane", () => {
+		const step = nextStep(pack, at({ subagents: subagents({ lanes: { U1: LANE("U1"), U3: LANE("U3") } }) }));
+		expect(step.next).toBe("Start U1 in its lane with unit_start U1.");
+	});
+
+	test("a reviewed lane unit is merged with lane_merge", () => {
+		const laneHead = "e".repeat(40);
+		const s = at({
+			subagents: subagents({ lanes: { U3: LANE("U3") }, laneHeads: { U3: laneHead } }),
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: laneHead })],
+		});
+		expect(nextStep(pack, s).next).toContain("lane_merge U3");
+		const unreviewed = { ...s, marked: [pad(), implemented("U3")] };
+		expect(nextStep(pack, unreviewed).dispatch).toEqual({ role: "reviewer", unit: "U3", subject: "unit", inline: false });
+	});
+
+	const closed = (unit: string, extra: Record<string, unknown>): MarkedComment => mark(writeMarked("lane", `lane.${unit}`, { ...LANE(unit), closed: true, ...extra }));
+
+	test("after an unmerged close the implementer runs again", () => {
+		const s = at({
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: "e".repeat(40) }), closed("U3", { outcome: "violation" })],
+		});
+		expect(nextStep(pack, s).dispatch).toEqual({ role: "implementer", unit: "U3", inline: false });
+	});
+
+	test("after a merged close the lane-head review counts", () => {
+		const laneHead = "e".repeat(40);
+		const s = at({
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: laneHead }), closed("U3", { outcome: "merged", head: laneHead })],
+		});
+		expect(nextStep(pack, s).next).toBe("Finish U3 with unit_finish once Verify passes.");
 	});
 });

@@ -5,7 +5,9 @@ import { runDispatch } from "../subagents/dispatch.ts";
 import { findExecutor } from "../subagents/executor.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
 import { writePacket } from "../subagents/packet-store.ts";
-import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import type { ChangeState } from "../engine/state-types.ts";
+import { closeLane } from "../subagents/lane-ops.ts";
+import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { inlineText, outcomeText } from "./subagent-outcome.ts";
@@ -32,7 +34,17 @@ export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
 	const outcome = await runDispatch(dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), request);
+	if (outcome.kind === "sequential") await closeMovedLane(w, state, target.unit);
 	return toolResult(withStep(w.session, outcomeText(target, outcome)), undefined);
+}
+
+/** A child moved out of its lane: the lane is closed and removed, so the unit re-runs in the change worktree. */
+async function closeMovedLane(w: WriteContext, state: ChangeState, unit: string | undefined): Promise<void> {
+	const lane = unit === undefined ? undefined : state.subagents.lanes[unit];
+	if (lane === undefined) return;
+	const issue = state.issue.number;
+	await closeLane({ git: w.session.git, root: w.session.cwd, post: (body) => w.forge.createComment(issue, body).then(() => undefined) }, lane, { outcome: "moved" });
+	await afterForgeWrite(w.session, issue);
 }
 
 export function registerSubagentDispatch(pi: ExtensionAPI, deps: SubagentToolDeps = defaultSubagentDeps): void {

@@ -145,7 +145,8 @@ function evidenceLinks(state: ChangeState, unit: string, posted?: string): strin
 	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ${commentLink(url, posted)}`])];
 }
 
-async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<ToolResult<undefined>> {
+/** Posts the `progress` record of a red or invalid run at `postSha` (HEAD by default) as a failed attempt; `lane_merge` reuses it. */
+export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, postSha: string = c.state.git.head): Promise<ToolResult<undefined>> {
 	const { w, state, unit: u } = c;
 	const cap = w.pack.loops.unit_attempts ?? Number.POSITIVE_INFINITY;
 	const attempt = (state.evidence.attempts[u.id] ?? 0) + 1;
@@ -156,7 +157,7 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
-	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha: state.git.head, signature, outputTail: run.output, decided });
+	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
 	const comment = await w.forge.createComment(state.issue.number, decisionComment(record));
 	await afterForgeWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
