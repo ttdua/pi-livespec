@@ -39,7 +39,9 @@ After init, while `specs/constraints.md` still carries the template marker line,
 ### Requirement: Config files
 Project config SHALL live at `.pi/livespec/config.yaml` and user config at `~/.pi/agent/livespec/config.yaml`.
 - Project config SHALL accept the forge keys already defined by forge detection, `integrationBranch`, `interaction.adapter`, `verify.setup` and `verify.timeout`.
-- User config SHALL accept `agentSkills.channel` and `interaction.adapter`.
+- User config SHALL accept `agentSkills.channel`, `interaction.adapter`, `lanes`, `packetBudgetTokens` and `isolation.excludePackages`.
+- `lanes` MUST be a positive integer with default 3, and `packetBudgetTokens` a positive integer with default 24000. Any other value MUST be reported as a warning, and the default SHALL be used.
+- `isolation.excludePackages` MUST be a list of strings, each a package source as written in pi settings. Any other value MUST be reported as a warning and ignored.
 - `interaction.adapter` MUST be a list of adapter names. Any other value, and any unknown adapter name, MUST be reported as a warning.
 - `verify.setup` MUST be a string, and `verify.timeout` a positive integer number of seconds with default 600. Any other value MUST be reported as a warning, and the default SHALL be used.
 
@@ -65,6 +67,18 @@ Unknown keys MUST be reported as warnings. A project config that sets `agentSkil
 - **WHEN** the project config sets `verify: { timeout: -5 }`
 - **THEN** a warning names `verify.timeout` and the timeout is 600 seconds
 
+#### Scenario: Subagent settings
+- **WHEN** the user config sets `lanes: 2`, `packetBudgetTokens: 16000` and `isolation: { excludePackages: ["git:github.com/acme/flow"] }`
+- **THEN** the loaded user config has those values and no warning
+
+#### Scenario: Subagent defaults
+- **WHEN** the user config sets none of `lanes`, `packetBudgetTokens` or `isolation`
+- **THEN** `lanes` is 3, `packetBudgetTokens` is 24000 and the extra exclusion list is empty
+
+#### Scenario: Invalid lanes
+- **WHEN** the user config sets `lanes: 0`
+- **THEN** a warning names `lanes` and `lanes` is 3
+
 ### Requirement: Doctor command
 `/livespec doctor` SHALL only report and suggest, and MUST NOT edit settings, config or files. Each check reports `ok`, `warn` or `error` with a message and an optional suggestion. Other specs SHALL be able to register more doctor checks; LS-05 adds the approver check that way.
 
@@ -77,7 +91,7 @@ Unknown keys MUST be reported as warnings. A project config that sets `agentSkil
 - **THEN** its result appears in the doctor output
 
 ### Requirement: Doctor checks
-Doctor SHALL check: loaded skills that share a pack skill's name but live outside the clone, reported with their path; pack skills missing from the clone; Superpowers active in the project, with the probe (a) settings override as suggestion and a report when the project is untrusted; the clone state (commit, pin, last check, leftover staging); forge detection, authentication and read-only mode; and an uninitialized project with `openspec/`, suggesting `/livespec migrate-openspec`.
+Doctor SHALL check: loaded skills that share a pack skill's name but live outside the clone, reported with their path; pack skills missing from the clone; Superpowers active in the project, with the probe (a) settings override as suggestion and a report when the project is untrusted; the clone state (commit, pin, last check, leftover staging); forge detection, authentication and read-only mode; an uninitialized project with `openspec/`, suggesting `/livespec migrate-openspec`; the subagent executor and which of its required capabilities are missing; role agents (`scout`, `implementer`, `reviewer`, `verifier`) whose effective source is not the executor's built-in, reported with the overriding file as information; a configured package known to register a workspace provider (today `@gotgenes/pi-subagents-worktrees`), reported as a warning that a lane child it moves runs its unit sequentially; and the effective list of packages excluded from livespec children.
 
 #### Scenario: Duplicate skill
 - **WHEN** a loaded skill `spec-driven-development` has a path under `~/.agents/skills` and the pack names that skill
@@ -122,6 +136,26 @@ Doctor SHALL check: loaded skills that share a pack skill's name but live outsid
 #### Scenario: Superpowers in a trusted project
 - **WHEN** `using-superpowers` is loaded and the project is trusted
 - **THEN** doctor suggests the settings override without a trust warning
+
+#### Scenario: Executor missing
+- **WHEN** no subagent executor service is published
+- **THEN** doctor reports that livespec runs every role inline
+
+#### Scenario: Executor lacks a capability
+- **WHEN** the published service has `spawn` but no `wait`
+- **THEN** doctor reports `wait` as missing and that livespec runs every role inline
+
+#### Scenario: Role override
+- **WHEN** the executor resolves `implementer` to `~/.pi/agent/agents/implementer.md`
+- **THEN** doctor reports, as information, that `implementer` is overridden by that file
+
+#### Scenario: Workspace provider package
+- **WHEN** the configured packages include `npm:@gotgenes/pi-subagents-worktrees`
+- **THEN** doctor warns that lane children it moves run their units sequentially
+
+#### Scenario: Excluded packages listed
+- **WHEN** the configured packages include `git:github.com/obra/superpowers`
+- **THEN** doctor lists it among the packages excluded from livespec children
 
 ### Requirement: Subcommand routing
 `/livespec` SHALL route the subcommands `init`, `doctor`, `next` and `skills` in addition to the existing `validate` and `migrate-openspec`. The bare command and unknown subcommands MUST keep the behavior of the version command requirement, and the usage text SHALL list every subcommand.

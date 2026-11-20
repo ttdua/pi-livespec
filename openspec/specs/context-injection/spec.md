@@ -7,11 +7,15 @@ Defines what livespec injects into the session: the routing note, the phase card
 ## Requirements
 
 ### Requirement: Routing note
-In an initialized project, the system SHALL place a static routing note at the start of the context, as a system prompt section. Its text MUST be identical on every turn and MUST NOT depend on the change, the phase, the time or the installed agent-skills commit.
+In an initialized project, the system SHALL place a static routing note at the start of the context of the main session, as a system prompt section. A child session (see `child-sessions`) MUST get the child note instead of the routing note. The routing note's text MUST be identical on every turn and MUST NOT depend on the change, the phase, the time or the installed agent-skills commit.
 
 #### Scenario: Identical every turn
 - **WHEN** five turns run with different change states
 - **THEN** the routing note text is byte-identical in all five
+
+#### Scenario: Child session gets the child note
+- **WHEN** a child session of an initialized project starts an agent run
+- **THEN** the `livespec` system prompt section is the child note, not the routing note
 
 ### Requirement: Routing note content
 The routing note MUST state what livespec is, that all forge writes and pushes go through livespec tools, and that updates from the integration branch are merges and never rebases. It MUST include a short summary of agent-skills' Core Operating Behaviors with MIT attribution to agent-skills.
@@ -25,7 +29,7 @@ The routing note MUST state what livespec is, that all forge writes and pushes g
 - **THEN** it contains the Core Operating Behaviors summary and names agent-skills and the MIT license
 
 ### Requirement: Phase card
-In an initialized project, on every LLM call the `context` hook SHALL append exactly one phase card message at the end of the messages and MUST leave every earlier message unchanged. The card MUST NOT be persisted in the session, so each call's input holds no earlier card and cards never accumulate.
+In an initialized project, on every LLM call of the main session the `context` hook SHALL append exactly one phase card message at the end of the messages and MUST leave every earlier message unchanged. The card MUST NOT be persisted in the session, so each call's input holds no earlier card and cards never accumulate.
 
 #### Scenario: Appended at the end
 - **WHEN** the `context` hook runs on a list of N session messages
@@ -34,6 +38,10 @@ In an initialized project, on every LLM call the `context` hook SHALL append exa
 #### Scenario: Cache prefix stable over five turns
 - **WHEN** five consecutive turns run through the hooks, each adding messages to the session
 - **THEN** on every turn the routing note is byte-identical, the hook output minus its last message equals that turn's input, and no earlier card appears in the input
+
+#### Scenario: No card in a child session
+- **WHEN** the `context` hook runs in a child session on a list of N messages
+- **THEN** it returns the N messages unchanged
 
 ### Requirement: State refresh
 The snapshot behind the phase card SHALL be rebuilt at `session_start`, at `before_agent_start` for every user prompt, after every livespec tool that writes, and when `spec_status`, `spec_next` or `/livespec next` runs. Within one agent run between those points, the card MAY show the last snapshot.
@@ -96,7 +104,7 @@ The change SHALL record a manual smoke run of at least five turns against a real
 - **THEN** the change folder contains the smoke record with at least five turns per run, the models used, and the pass or fail verdict under the rule above
 
 ### Requirement: Resume at session start
-At `session_start` in an initialized project, the system SHALL map the branch `livespec/<name>` to the open `livespec` change issue whose `Branch:` line equals that branch, falling back to the open change titled `<name>` with a warning, and SHALL show the phase card for it without being asked. On any other branch, the card SHALL list the open changes with their phases. The first card of a session MUST point at `specs/product.md` to be read.
+At `session_start` of the main session in an initialized project, the system SHALL map the branch `livespec/<name>` to the open `livespec` change issue whose `Branch:` line equals that branch, falling back to the open change titled `<name>` with a warning, and SHALL show the phase card for it without being asked. On any other branch, the card SHALL list the open changes with their phases. The first card of a session MUST point at `specs/product.md` to be read.
 
 #### Scenario: Resume mid-change
 - **WHEN** a new session starts on `livespec/per-ip-cap` and the matching issue is in `build` with U3 pending
@@ -113,6 +121,10 @@ At `session_start` in an initialized project, the system SHALL map the branch `l
 #### Scenario: Forge unavailable
 - **WHEN** forge detection fails at session start
 - **THEN** the card says the forge is unavailable, the session continues, and no error is thrown into pi
+
+#### Scenario: Child session start
+- **WHEN** a child session starts in an initialized project on `livespec/per-ip-cap`
+- **THEN** no phase card is shown or added
 
 ### Requirement: Uninitialized project
 In a project without `.pi/livespec/config.yaml`, the system SHALL NOT inject the routing note or the phase card. At `session_start` it SHALL show one message suggesting `/livespec init`, and when an `openspec/` folder exists it SHALL also suggest `/livespec migrate-openspec`. It MUST NOT run init or migration automatically.
