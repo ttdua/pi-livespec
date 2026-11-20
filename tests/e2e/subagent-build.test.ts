@@ -107,6 +107,37 @@ async function drive(h: SubagentHarness, o: { work?: Work; allow?: string[]; unt
 	throw new Error(`build did not finish; last step: ${cardState(h).step.next}\n${log.join("\n")}`);
 }
 
+/**
+ * Holds each caller until `n` have arrived. The `ms` window starts at the first arrival, so slow setup does not count;
+ * if the rest do not arrive in time, `broken()` reports how many did and the callers are released so the run ends.
+ */
+function barrier(n: number, ms: number): { arrive(): Promise<void>; broken(): string | undefined } {
+	let arrived = 0;
+	let failure: string | undefined;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let release!: () => void;
+	const all = new Promise<void>((res) => {
+		release = res;
+	});
+	return {
+		async arrive() {
+			arrived++;
+			if (arrived === 1) {
+				timer = setTimeout(() => {
+					if (arrived < n) failure = `only ${arrived} of ${n} children ran at once within ${ms} ms`;
+					release();
+				}, ms);
+			}
+			if (arrived === n) {
+				clearTimeout(timer);
+				release();
+			}
+			await all;
+		},
+		broken: () => failure,
+	};
+}
+
 const ticked = async (h: SubagentHarness) => (await h.units()).filter((u) => u.done).map((u) => u.id);
 const dataOf = async (h: SubagentHarness, kind: string) => (await h.ofKind(kind)).map((m) => m.data as Record<string, unknown>);
 
@@ -219,5 +250,32 @@ describe("issue #7: build with subagents", () => {
 			["NEEDS_CONTEXT", 1],
 			["NEEDS_CONTEXT", 1],
 		]);
+	});
+
+	test("independent units dispatched in one turn run as parallel children", async () => {
+		const h = await subagentHarness({ units: [unit("U1", "medium"), unit("U2", "medium")], scripts: SCRIPTS, executor: {} });
+		playChildren(h, honest);
+		const gate = barrier(2, 2000);
+		const wait = h.fake.service.wait;
+		h.fake.service.wait = async (id: string) => {
+			await gate.arrive();
+			return wait(id);
+		};
+		ok(await h.call("lane_open", { unit: "U1" }), "lane_open U1");
+		ok(await h.call("lane_open", { unit: "U2" }), "lane_open U2");
+		ok(await h.start("U1"), "unit_start U1");
+		ok(await h.start("U2"), "unit_start U2");
+		const dispatch = (unitId: string) => h.call("subagent_dispatch", { role: "implementer", unit: unitId });
+		const [first, second] = await Promise.all([dispatch("U1"), dispatch("U2")]);
+		expect(gate.broken()).toBeUndefined();
+		ok(first, "subagent_dispatch implementer U1");
+		ok(second, "subagent_dispatch implementer U2");
+		const log: string[] = [];
+		await drive(h, { log });
+		expect(await ticked(h)).toEqual(["U1", "U2"]);
+		expect(log.indexOf("lane_merge U1")).toBeGreaterThan(log.indexOf("subagent_dispatch reviewer U1 unit"));
+		expect(log.indexOf("unit_finish U1")).toBeGreaterThan(log.indexOf("lane_merge U1"));
+		expect(log.indexOf("unit_finish U2")).toBeGreaterThan(log.indexOf("lane_merge U2"));
+		expect(log.filter((a) => a.endsWith("refused"))).toEqual([]);
 	});
 });
