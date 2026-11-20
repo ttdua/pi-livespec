@@ -15,14 +15,15 @@ export type FinishFacts = { session: { activeTree?: string }; state: ChangeState
 
 /**
  * The sources that changed since the unit's last dispatch, or undefined when there is nothing to check: no dispatch
- * record (an inline unit has no packet) or a packet that was never stored. A re-read that throws counts as stale.
+ * record (an inline unit has no packet). A dispatch whose stored packet cannot be read, or a re-read that throws,
+ * counts as stale.
  */
 export async function staleSince(f: FinishFacts, unit: string): Promise<string[] | undefined> {
 	const dispatch = latestDispatch(f.state.marked, unit, "implementer");
 	if (dispatch === undefined) return undefined;
 	const ctx: PacketContext = { ...f };
 	const packet = await readPacket(f.root, changeName(ctx), dispatch.packet);
-	if (packet === undefined) return undefined;
+	if (packet === undefined) return [`packet unavailable: ${dispatch.packet}`];
 	try {
 		const stale = checkFreshness(packet, await readCurrent(ctx, dispatch.role, unit, dispatch.subject), dispatch.agentId).stale;
 		return stale.length === 0 ? undefined : stale;

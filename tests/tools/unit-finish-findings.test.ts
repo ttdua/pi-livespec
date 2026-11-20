@@ -1,5 +1,5 @@
 // Tests of the finding, review and freshness checks of `unit_finish`, and of lanes for both unit tools.
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { gatePayload } from "../../src/engine/gate-payload.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -8,6 +8,8 @@ import { seedSummary, warning } from "./finding-helpers.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { buildPacket, changeName } from "../../src/subagents/packet.ts";
 import { writePacket } from "../../src/subagents/packet-store.ts";
+import { spillDirectory } from "../../src/subagents/spill.ts";
+import { latestDispatch } from "../../src/subagents/records.ts";
 import { DEFAULT_SKILLS, makeTree } from "../subagents/packet-world.ts";
 import type { FakeUI } from "../hooks/fake-pi.ts";
 import { cardState, type UnitHarness, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
@@ -156,6 +158,20 @@ describe("freshness at unit_finish", () => {
 		const h = await dispatched();
 		const out = await h.finish("U1");
 		expect(out.isError, textOf(out)).toBeFalsy();
+	});
+
+	test("a dispatched unit whose stored packet is corrupt does not finish", async () => {
+		const h = await dispatched();
+		const state = cardState(h).state;
+		const dispatch = latestDispatch(state.marked, "U1", "implementer");
+		if (dispatch === undefined) throw new Error("no dispatch record seeded");
+		const ctx = { session: h.session, state, pack: h.session.pack.ok ? h.session.pack.pack : (undefined as never), forge: h.forge, git: h.session.git, root: h.root, cwd: h.root, budgetTokens: 24000 };
+		writeFileSync(`${await spillDirectory(h.root, changeName(ctx), dispatch.packet)}.packet.json`, "{not json");
+		const out = await h.finish("U1");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`packet unavailable: ${dispatch.packet}`);
+		expect(await h.ofKind("receipt")).toHaveLength(0);
+		expect((await h.units())[0]?.done).toBe(false);
 	});
 
 	test("new human comment stops unit_finish", async () => {
