@@ -216,6 +216,13 @@ function positiveInt(file: string, doc: Doc, key: string, fallback: number, warn
 	return fallback;
 }
 
+/** A blank package source names nothing to exclude: it warns once and is dropped. */
+function withoutBlanks(file: string, list: string[], warnings: string[]): string[] {
+	const kept = list.filter((v) => v.trim() !== "");
+	if (kept.length < list.length) warnings.push(`${file}: "isolation.excludePackages" has ${list.length - kept.length} blank entr${list.length - kept.length === 1 ? "y" : "ies"}; ignored`);
+	return kept;
+}
+
 /** The `isolation` section: `excludePackages` is a list of package sources; any other value is ignored. */
 function readIsolation(file: string, doc: Doc, warnings: string[]): string[] {
 	const section = doc.isolation;
@@ -230,7 +237,7 @@ function readIsolation(file: string, doc: Doc, warnings: string[]): string[] {
 	}
 	const list = entry.excludePackages;
 	if (list === undefined) return [];
-	if (Array.isArray(list) && list.every((v) => typeof v === "string")) return list as string[];
+	if (Array.isArray(list) && list.every((v) => typeof v === "string")) return withoutBlanks(file, list as string[], warnings);
 	warnings.push(`${file}: "isolation.excludePackages" must be a list of strings; ignored`);
 	return [];
 }

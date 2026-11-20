@@ -275,4 +275,11 @@ describe("subagent config", () => {
 		expect(user.isolation).toEqual({ excludePackages: [] });
 		expect(warnings.some((w) => w.includes("isolation.excludePackages"))).toBe(true);
 	});
+
+	test("blank excludePackages entries warn and are ignored", async () => {
+		userFile('isolation: { excludePackages: ["", "git:github.com/acme/flow", "  "] }\n');
+		const { user, warnings } = await loadConfig(root, home);
+		expect(user.isolation).toEqual({ excludePackages: ["git:github.com/acme/flow"] });
+		expect(warnings.filter((w) => w.includes("isolation.excludePackages") && w.includes("blank"))).toHaveLength(1);
+	});
 });
