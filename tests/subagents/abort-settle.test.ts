@@ -47,13 +47,17 @@ test("launch-mismatch is posted only after the aborted child settled", async () 
 	expect(posted[0]?.settledAtForgeWrite).toBe(true);
 });
 
-test("when the child never settles, the record is posted after the timeout and says so", async () => {
+test("when the child never settles, nothing is posted and the outcome says so", async () => {
 	const { d, posted } = abortableChild(undefined, 30);
 	const started = Date.now();
-	await runDispatch(d, request);
+	const out = await runDispatch(d, request);
 	expect(Date.now() - started).toBeGreaterThanOrEqual(25);
-	expect(posted).toHaveLength(1);
-	expect(posted[0]?.evidence).toContain("the child did not confirm the abort within");
+	expect(posted).toHaveLength(0);
+	expect(out.kind).toBe("inline");
+	const reason = (out as { reason: string }).reason;
+	expect(reason).toContain("not recorded");
+	expect(reason).toContain("agent-1");
+	expect(reason).toContain("did not settle within");
 });
 
 test("a cancel during the settle wait records nothing and returns cancelled", async () => {

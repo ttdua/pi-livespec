@@ -152,17 +152,19 @@ async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean
 	}
 }
 
-/** Aborts the child, waits (bounded) for it to settle, records the mismatch as `BLOCKED` `launch-mismatch` (not a failed attempt), then runs inline or sequentially. */
+/** Aborts the child, waits (bounded) for it to settle, records the mismatch as `BLOCKED` `launch-mismatch` (not a failed attempt) only once it settled, then runs inline or sequentially. */
 async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run: Run, check: { field: string; laneCwd: boolean; mismatches: Mismatch[] }, waited: Promise<RecordLike>): Promise<DispatchOutcome> {
 	deps.service.abort(run.agentId);
 	const limit = deps.abortSettleMs ?? ABORT_SETTLE_MS;
 	const confirmed = await settledWithin(waited, limit);
 	if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 	const found = mismatchEvidence(check.mismatches);
-	const evidence = confirmed ? found : `${found}; the child did not confirm the abort within ${limit / 1000} s`;
-	await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence));
-	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${evidence}); re-run ${request.unit} sequentially` };
-	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${LAUNCH_MISMATCH} recorded (mismatch: ${evidence}); ${request.role} runs inline`, packet: request.packet };
+	// The tool never writes to the forge before the child's run has settled.
+	const note = confirmed ? "" : `; the mismatch was not recorded: child ${run.agentId} did not settle within ${limit / 1000} s of the abort`;
+	if (confirmed) await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, found));
+	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${found})${note}; re-run ${request.unit} sequentially` };
+	const recorded = confirmed ? `${LAUNCH_MISMATCH} recorded` : "no record written";
+	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${recorded} (mismatch: ${found})${note}; ${request.role} runs inline`, packet: request.packet };
 }
 
 /** The data a later `subagent_answer` needs to record the resumed run as this dispatch would have. */
