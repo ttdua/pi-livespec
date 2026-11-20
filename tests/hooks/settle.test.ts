@@ -6,7 +6,7 @@ import { registerSettleCondition, resetSettleConditionsForTests } from "../../sr
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
 import { type UnitHarness, type UnitSpec, changeBody, unitHarness } from "../tools/unit-helpers.ts";
-import { FakePi, fakeCtx } from "./fake-pi.ts";
+import { type FakeCtx, FakePi, asChild, fakeCtx } from "./fake-pi.ts";
 
 afterEach(async () => {
 	vi.restoreAllMocks();
@@ -21,17 +21,20 @@ const U2: UnitSpec = { id: "U2", verify: "sh check2.sh" };
 
 type Continuation = { entries: { type: string; customType: string; content: string; display: boolean }[]; continue: boolean } | undefined;
 
-type Settler = { settle(outcome?: string): Promise<Continuation>; settled(aborted?: boolean): Promise<unknown> };
+type Settler = {
+	settle(outcome?: string, ctx?: FakeCtx): Promise<Continuation>;
+	settled(aborted?: boolean, ctx?: FakeCtx): Promise<unknown>;
+};
 
-/** The whole extension on a fake pi, firing the settle events of one run. */
+/** The whole extension on a fake pi, firing the settle events of one run; `ctx` defaults to the main session. */
 function settler(h: ToolHarness): Settler {
 	const pi = new FakePi();
 	extension(pi.api as never);
-	const ctx = fakeCtx(h.root);
+	const main = fakeCtx(h.root);
 	const event = (outcome: string) => ({ type: "agent_before_settle", entries: [], continue: false, context: {}, outcome });
 	return {
-		settle: async (outcome = "completed") => (await pi.fire("agent_before_settle", event(outcome), ctx)) as Continuation,
-		settled: (aborted = false) => pi.fire("agent_settled", { type: "agent_settled", aborted }, ctx),
+		settle: async (outcome = "completed", ctx: FakeCtx = main) => (await pi.fire("agent_before_settle", event(outcome), ctx)) as Continuation,
+		settled: (aborted = false, ctx: FakeCtx = main) => pi.fire("agent_settled", { type: "agent_settled", aborted }, ctx),
 	};
 }
 
@@ -192,6 +195,29 @@ describe("settle-continuation", () => {
 		expect(await s.settle("error")).toBeUndefined();
 		expect((await s.settle())?.continue).toBe(true);
 		expect(await incompletes(h)).toEqual([]);
+	});
+
+	test("a child settle neither refreshes the parent nor writes its incomplete comment", async () => {
+		const h = await u2Started();
+		const s = settler(h);
+		expect((await s.settle())?.continue).toBe(true);
+		const refresh = vi.spyOn(h.session, "refresh");
+		const before = (await h.world.forge.listComments(h.n)).length;
+		const child = asChild(fakeCtx(h.root));
+		expect(await s.settle("completed", child)).toBeUndefined();
+		expect(await s.settle("completed", child)).toBeUndefined();
+		expect(refresh).not.toHaveBeenCalled();
+		expect(await h.world.forge.listComments(h.n)).toHaveLength(before);
+		expect(await incompletes(h)).toEqual([]);
+	});
+
+	test("a child settled leaves the parent's asked flag set", async () => {
+		const h = await u2Started();
+		const s = settler(h);
+		expect((await s.settle())?.continue).toBe(true);
+		await s.settled(false, asChild(fakeCtx(h.root)));
+		expect(await s.settle()).toBeUndefined();
+		expect(await incompletes(h)).toHaveLength(1);
 	});
 
 	test("a failing condition is recorded and the agent settles", async () => {
