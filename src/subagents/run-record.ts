@@ -42,7 +42,7 @@ export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | 
 export function nextRound(marked: MarkedComment[], role: Role, unit: string | undefined, subject: ReviewSubject | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<FindingSummaryData> & { rebuts?: unknown };
-		return m.kind === "finding-summary" && d.rebuts === undefined && d.contextRequest === undefined && d.system === undefined && d.role === role && d.unit === unit && d.subject === subject;
+		return m.kind === "finding-summary" && d.rebuts === undefined && d.contextRequest === undefined && d.system !== "files-violation" && d.role === role && d.unit === unit && d.subject === subject;
 	}).length + 1;
 }
 

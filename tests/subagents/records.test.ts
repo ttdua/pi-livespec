@@ -15,6 +15,7 @@ import {
 	pendingQuestion,
 	rebuttalComment,
 	unresolvedBlocking,
+	unshownSystemFindings,
 } from "../../src/subagents/records.ts";
 import { nextRound } from "../../src/subagents/run-record.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
@@ -104,6 +105,23 @@ describe("records", () => {
 		const later = summary({ round: 2, findings: [] });
 		expect(unresolvedBlocking([v, later], "U1", new Set(), new Set())).toEqual([]);
 		expect(unresolvedBlocking([v], "U1", new Set(), new Set())).toEqual([]);
+	});
+
+	it("a malformed system field is invalid and never treated as a system summary", () => {
+		for (const bad of [false, true, "other", 1, null]) {
+			const m = summary({ system: bad as never, findings: [finding({ severity: "CRITICAL" })] });
+			expect(invalidRecords([m])).toHaveLength(1);
+			expect(unresolvedBlocking([m], "U1", new Set(), new Set())).toEqual([]);
+		}
+		const ok = summary({ findings: [finding({ severity: "CRITICAL" })] });
+		expect(unresolvedBlocking([ok], "U1", new Set(), new Set())).toHaveLength(1);
+	});
+
+	it("a system summary has its own marker identity, so a later review does not supersede it", () => {
+		const v = summary({ system: "files-violation", round: 1, findings: [finding({ scope: "out-of-scope", kind: "files-violation" })] });
+		const review = summary({ round: 1 });
+		expect(v.id).not.toBe(review.id);
+		expect(unshownSystemFindings([v, review], new Set())).toHaveLength(1);
 	});
 
 	it("computeCompleted needs status and every required source", () => {

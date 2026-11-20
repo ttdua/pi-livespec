@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { unitDigest } from "../../src/core/digest.ts";
 import { gatePayload } from "../../src/engine/gate-payload.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -259,6 +260,34 @@ describe("parallel-lanes tools", () => {
 		expect(textOf(out)).toContain("unit_amend");
 		expect(existsSync(h.lanePath("U2"))).toBe(true);
 		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("unit_finish refuses a receipted, not-ticked unit with an open lane", async () => {
+		const h = await laneHarness();
+		await laneDone(h, "U2", { "src/u2.ts": "x\n" });
+		const target = (await h.units()).find((u) => u.id === "U2") as Parameters<typeof unitDigest>[0];
+		const start = (await h.ofKind("unit-start")).at(-1);
+		await h.seed("receipt", "U2.r1", { unit: "U2", digest: unitDigest(target), verify: "sh check2.sh", pre: { sha: h.head, exit: 1 }, post: { sha: h.head, exit: 0 }, output: "", start: start?.id });
+		expect(cardState(h).state.evidence.untickedReceipts).toContain("U2");
+		const before = (await h.marked()).length;
+		const out = await h.finish("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("lane_merge");
+		expect(await h.marked()).toHaveLength(before);
+		expect(h.writes.written).toBe(0);
+	});
+
+	test("the system summary survives a later review and still reaches the gate payload", async () => {
+		const h = await laneHarness({ difficulty: "medium" });
+		const laneHead = await laneDone(h, "U2", { "src/u2.ts": "x\n", "src/other.ts": "y\n" });
+		await seedSummary(h, { unit: "U2", head: laneHead });
+		await h.merge("U2");
+		await h.commit({ "src/u2.ts": "x\n" });
+		await seedSummary(h, { unit: "U2", round: 2 });
+		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const payload = gatePayload(cardState(h).state, h.session.pack.ok ? h.session.pack.pack : (undefined as never), "build", facts);
+		expect(payload.summary).toContain("src/other.ts");
+		expect(payload.findings).toHaveLength(1);
 	});
 
 	test("unit_finish refuses while the unit has an open lane", async () => {

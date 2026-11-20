@@ -118,14 +118,14 @@ const openLane: Rule = ({ state, unit }) =>
 
 const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
 const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
-const RECONCILE_RULES: Rule[] = [dirtyTree, changedSinceLock];
+const RECONCILE_RULES: Rule[] = [openLane, dirtyTree, changedSinceLock];
 
 /** The unit invariants `lane_merge` shares with `unit_finish`: known, not frozen or stale, digest as at the start, not blocked. */
 export function unitInvariantRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
 	return firstRefusal(INVARIANT_RULES, state, pack, unit);
 }
 
-/** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the clean-tree, frozen and stale rules. */
+/** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the open-lane, clean-tree, frozen and stale rules. */
 export function unitFinishRefusal(state: ChangeState, pack: Pack, unit: string, mode: FinishMode): string | undefined {
 	return firstRefusal(mode === "reconcile" ? RECONCILE_RULES : RUN_RULES, state, pack, unit);
 }

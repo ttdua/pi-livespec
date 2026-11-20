@@ -41,8 +41,7 @@ function isResultDispatch(d: Obj): boolean {
 	return (
 		isStatus(d.status) && isNum(d.attempt) && isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
 		isStrList(d.commits) && isStr(d.notes) && isStrList(d.discoveries) && isStrList(d.sources_used) && optional(d.reason, isStr) && optional(d.evidence, isStr) &&
-		optional(d.launchMismatch, (v) => v === true) && optional(d.contextRequest, isNum) &&
-		optional(d.system, oneOf(["files-violation"]))
+		optional(d.launchMismatch, (v) => v === true) && optional(d.contextRequest, isNum)
 	);
 }
 
@@ -65,7 +64,8 @@ export function isSummaryData(d: unknown): boolean {
 		typeof d.advisory === "boolean" && typeof d.completed === "boolean" &&
 		isStrList(d.sources_used) && isStrList(d.required) && optional(d.unit, isStr) && optional(d.agentId, isStr) &&
 		isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
-		Array.isArray(d.findings) && d.findings.every(isFindingData) && optional(d.contextRequest, isNum)
+		Array.isArray(d.findings) && d.findings.every(isFindingData) && optional(d.contextRequest, isNum) &&
+		optional(d.system, (v) => v === "files-violation")
 	);
 }
 

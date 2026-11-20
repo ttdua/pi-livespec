@@ -98,7 +98,9 @@ export function dispatchComment(data: DispatchData | DispatchQuestionData): stri
 export function findingSummaryComment(data: FindingSummaryData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
 	const suffix = data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
-	return writeMarked("finding-summary", `finding-summary.${scope}.${token(data.subject)}.${data.round}${suffix}`, data);
+	// System summaries have their own namespace: a later review of the same round never supersedes them.
+	const subject = data.system === undefined ? token(data.subject) : `system.${token(data.system)}`;
+	return writeMarked("finding-summary", `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data);
 }
 
 export function rebuttalComment(data: RebuttalData): string {
@@ -150,7 +152,7 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 type Summary = { commentId: string; at: number; data: FindingSummaryData };
 
 /** A parent-made record (a `Files` violation): it carries findings, but is no review of any commit. */
-const isSystem = (d: FindingSummaryData): boolean => d.system !== undefined;
+const isSystem = (d: FindingSummaryData): boolean => d.system === "files-violation";
 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
