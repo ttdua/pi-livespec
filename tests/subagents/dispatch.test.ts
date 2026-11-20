@@ -89,6 +89,13 @@ describe("result interpretation", () => {
 		expect(interpret(crash, packet(), "implementer", { ...h0, retries: 1 })).toMatchObject({ kind: "blocked", reason: expect.stringContaining("<untrusted>boom &lt;now></untrusted>") });
 	});
 
+	test("schema error key names are wrapped as untrusted", () => {
+		const extra = { ...done({ sources_used: ["answer:Q2"] }), "push<now>": 1 };
+		expect(interpret(rec(extra), packet(), "implementer", { ...h0, retries: 1 })).toMatchObject({ kind: "blocked", reason: expect.stringContaining("<untrusted>") });
+		const reason = (interpret(rec(extra), packet(), "implementer", { ...h0, retries: 1 }) as { reason: string }).reason;
+		expect(reason).not.toContain("push<now>");
+	});
+
 	test("blocked without evidence treated as missing", () => {
 		expect(interpret(rec(done({ status: "BLOCKED", reason: "r" })), packet(), "implementer", h0)).toEqual({ kind: "retry" });
 	});

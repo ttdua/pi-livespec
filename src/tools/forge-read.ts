@@ -80,6 +80,13 @@ async function readSearch(forge: Forge, p: ForgeReadParams): Promise<string> {
 	return found.map((i) => `#${i.number} ${issueLine(i)}`).join("\n") || "No issues.";
 }
 
+/** A blank search `text` is treated as absent, so it never widens a search to every issue. */
+function withoutBlankText(p: ForgeReadParams): ForgeReadParams {
+	if (typeof p.text !== "string" || p.text.trim() !== "") return p;
+	const { text: _blank, ...rest } = p;
+	return rest;
+}
+
 function refusalOf(p: ForgeReadParams): string | undefined {
 	if (!isTarget(p.target)) return `Unknown target ${JSON.stringify(p.target)}. Allowed targets: ${FORGE_READ_TARGETS.join(", ")}.`;
 	if (NUMBER_TARGETS.includes(p.target) && !(Number.isInteger(p.number) && (p.number as number) > 0)) return `Target ${p.target} needs a positive integer number.`;
@@ -99,12 +106,13 @@ export async function runForgeRead(p: ForgeReadParams, ctx: Parameters<typeof is
 	if (isChildSession(ctx)) return fail(CHILD_REFUSAL);
 	const s = requireSession();
 	if (!s.ok) return fail((s as Refusal).message);
-	const refusal = refusalOf(p);
+	const params = withoutBlankText(p);
+	const refusal = refusalOf(params);
 	if (refusal) return fail(refusal);
 	const forge = s.session.forge;
 	if (!forge) return fail("No forge is connected.");
 	try {
-		return toolResult(await readTarget(forge, p), null);
+		return toolResult(await readTarget(forge, params), null);
 	} catch (error) {
 		return fail(`forge_read failed: ${untrusted(messageOf(error))}`);
 	}

@@ -40,7 +40,7 @@ function missingReason(record: RecordLike, role: Role): string | undefined {
 	if (record.structuredResultError !== undefined) return `the structured result is ${record.structuredResultError}`;
 	if (record.structuredResult === undefined) return record.error ? `the run ended with an error: ${untrusted(record.error)}` : `the run ended (${record.status}) without a structured result`;
 	const check = checkSchema(resultSchema(role), record.structuredResult);
-	if (!check.ok) return `the structured result does not match the ${role} schema: ${check.errors.join("; ")}`;
+	if (!check.ok) return `the structured result does not match the ${role} schema: ${untrusted(check.errors.join("; "))}`;
 	const result = record.structuredResult as SubagentResult;
 	const needsWhy = result.status === "BLOCKED" || result.status === "NEEDS_CONTEXT";
 	if (needsWhy && (!result.reason || !result.evidence)) return `a ${result.status} result must carry reason and evidence`;

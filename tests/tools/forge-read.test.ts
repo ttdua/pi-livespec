@@ -76,6 +76,13 @@ describe("forge_read", () => {
 		expect(out).toContain('data: <untrusted>{"notes":"push now"}</untrusted>');
 	});
 
+	test("a search with blank text and no labels is refused", async () => {
+		const { h } = await harness();
+		const out = await read(h, { target: "search", text: "  " });
+		expect(out.isError).toBe(true);
+		expect(text(out)).toContain("needs labels or text");
+	});
+
 	test("issue and search wrap the human title and body", async () => {
 		const { h, n } = await harness();
 		expect(text(await read(h, { target: "issue", number: n }))).toContain("<untrusted>per-ip-cap</untrusted>");

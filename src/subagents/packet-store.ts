@@ -1,6 +1,7 @@
 // The last packet of a dispatched unit, kept beside the spill files so a finish after a reload can still check freshness.
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { spillDirectory } from "./spill.ts";
 import type { Packet } from "./source-types.ts";
@@ -18,9 +19,15 @@ export async function writePacket(root: string, change: string, packet: Packet):
 	const file = await packetFile(root, change, packet.hash);
 	if (file === undefined) throw new Error(`packet hash ${packet.hash} is not a hex digest`);
 	await mkdir(dirname(file), { recursive: true });
-	const temp = `${file}.${process.pid}.tmp`;
-	await writeFile(temp, JSON.stringify(packet));
-	await rename(temp, file);
+	// A unique temp name per write: two same-hash writes in one process must not share (and tear) one temp file.
+	const temp = `${file}.${randomUUID()}.tmp`;
+	try {
+		await writeFile(temp, JSON.stringify(packet));
+		await rename(temp, file);
+	} catch (error) {
+		await rm(temp, { force: true });
+		throw error;
+	}
 }
 
 /** The stored packet of `hash`, or undefined when it was never stored or is unreadable. */
