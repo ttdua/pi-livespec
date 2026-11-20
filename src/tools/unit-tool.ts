@@ -49,7 +49,7 @@ export const startable = (refusal: string | undefined): Precheck => (refusal ===
 async function unitWorktree(session: Session, state: ChangeState, unit: string): Promise<{ state: ChangeState; at: RunWorktree | undefined } | { refused: string }> {
 	const root = unitRoot(state, unit, session.cwd);
 	if (root === session.cwd) return { state, at: undefined };
-	if (!existsSync(root)) return { refused: `the lane worktree of ${displayUnitId(unit)} is gone (${root}); recreate the lane or close its record.` };
+	if (!existsSync(root)) return { refused: `the lane worktree of ${displayUnitId(unit)} is gone (${root}); run lane_merge ${displayUnitId(unit)} to close the lane, then ${displayUnitId(unit)} re-runs in the change worktree.` };
 	const git = createGit(root);
 	const [head, dirty] = await Promise.all([git.head(), git.isDirty()]);
 	return { state: { ...state, git: { ...state.git, head, dirty } }, at: { root, git } };

@@ -11,7 +11,7 @@ import { runVerify, type VerifyRun } from "../evidence/runner.ts";
 import { RECEIPT_OUTPUT_BYTES } from "../evidence/verify-env.ts";
 import { unitInvariantRefusal } from "../evidence/refusals.ts";
 import { buildLoopStep } from "../subagents/build-loop.ts";
-import { type LaneOps, laneDirty, mergeLane, type MergeOutcome } from "../subagents/lane-ops.ts";
+import { closeLane, type LaneOps, laneDirty, mergeLane, type MergeOutcome } from "../subagents/lane-ops.ts";
 import { nextRound } from "../subagents/run-record.ts";
 import type { LaneRecord } from "../subagents/state.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
@@ -27,7 +27,6 @@ const SEQUENTIAL = (unit: string): string => `The lane of ${unit} is closed and 
 async function laneStep(state: ChangeState, pack: Pack, unit: string, lane: LaneRecord): Promise<string | undefined> {
 	const phase = pack.phases.find((p) => state.phase.kind === "ok" && p.id === state.phase.id);
 	if (phase === undefined) return "the change has no single phase.";
-	if (!existsSync(lane.path)) return `the lane worktree of ${unit} is gone (${lane.path}); close its record or run ${unit} in the change worktree.`;
 	const head = await createGit(lane.path).head();
 	const atLane = { ...state, git: { ...state.git, head }, subagents: { ...state.subagents, laneHeads: { ...state.subagents.laneHeads, [unit]: head } } };
 	const step = buildLoopStep(pack, atLane, phase, unit, { merging: true });
@@ -38,11 +37,12 @@ async function laneStep(state: ChangeState, pack: Pack, unit: string, lane: Lane
 const unfinished = (state: ChangeState, unit: string): string | undefined =>
 	Object.keys(state.evidence.started).find((id) => id !== unit && !(id in state.subagents.lanes));
 
-/** No open lane, a dirty change worktree or lane worktree, a unit that is frozen, stale, amended or blocked, another unfinished unit there, an unstarted unit, or a lane whose work or unit review is not done. */
+/** No open lane (a lane whose worktree is gone always passes: `merge` closes it), a dirty change worktree or lane worktree, a unit that is frozen, stale, amended or blocked, another unfinished unit there, an unstarted unit, or a lane whose work or unit review is not done. */
 function precheck(unit: string) {
 	return async (state: ChangeState, pack: Pack): Promise<Precheck> => {
 		const lane = state.subagents.lanes[unit];
 		if (lane === undefined) return { refused: `${unit} has no open lane.` };
+		if (!existsSync(lane.path)) return { ok: true };
 		if (state.git.dirty) return { refused: "the change worktree has uncommitted changes; commit them first." };
 		const other = unfinished(state, unit);
 		if (other !== undefined) return { refused: `${other} is started in the change worktree: finish it with unit_finish ${other} first; lanes merge one at a time.` };
@@ -57,14 +57,22 @@ function precheck(unit: string) {
 
 type Verified = { run?: VerifyRun; mergeSha?: string };
 
+/** The recovery for a lane whose worktree was deleted: its record closes as `moved` and the unit re-runs in the change worktree. */
+async function closeGone(c: UnitCall, ops: LaneOps, lane: LaneRecord): Promise<ToolResult<undefined>> {
+	await closeLane(ops, lane, { outcome: "moved" });
+	await afterForgeWrite(c.w.session, c.state.issue.number);
+	return c.done(`The lane worktree of ${c.unit.id} was gone (${lane.path}), so nothing was merged. ${SEQUENTIAL(c.unit.id)}`);
+}
+
 async function merge(c: UnitCall): Promise<ToolResult<undefined>> {
 	const { w, state, env, unit: u } = c;
 	const lane = state.subagents.lanes[u.id] as LaneRecord;
+	const issue = state.issue.number;
+	const ops: LaneOps = { git: env.git, root: env.root, post: (body) => w.forge.createComment(issue, body).then(() => undefined) };
+	if (!existsSync(lane.path)) return closeGone(c, ops, lane);
 	const start = state.evidence.started[u.id] as StartRecord;
 	const blocked = env.run.guard(start.verify);
 	if (blocked !== undefined) return c.refuse(verifyBlocked(u.id, blocked));
-	const issue = state.issue.number;
-	const ops: LaneOps = { git: env.git, root: env.root, post: (body) => w.forge.createComment(issue, body).then(() => undefined) };
 	const seen: Verified = {};
 	const verify = async (): Promise<"green" | "red" | "aborted"> => {
 		seen.mergeSha = await env.git.head();

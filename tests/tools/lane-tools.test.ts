@@ -1,5 +1,5 @@
 // Tests of `lane_open` and `lane_merge` through the registered tools, in temporary git repositories with a fake executor.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -389,6 +389,23 @@ describe("parallel-lanes tools", () => {
 		const laneHead = await laneCommit(h, "U2", { "src/u2.ts": "export const laneWork = 1;\n" });
 		const out = ok(await h.call("subagent_packet", { role: "reviewer", unit: "U2", subject: "unit" }));
 		expect(textOf(out)).toContain(`diff:${h.head}..${laneHead}`);
+	});
+
+	test("lane_merge closes a lane whose worktree is gone, and the unit re-runs sequentially", async () => {
+		const h = await laneHarness();
+		ok(await h.open("U2"));
+		ok(await h.start("U2"));
+		rmSync(h.lanePath("U2"), { recursive: true, force: true });
+		const refused = await h.finish("U2");
+		expect(refused.isError).toBe(true);
+		expect(textOf(refused)).toContain("lane_merge U2");
+		const out = await h.merge("U2");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(textOf(out)).toContain("sequentially");
+		expect((await kinds(h, "lane")).filter((d) => d.closed === true).map((d) => [d.unit, d.outcome])).toEqual([["U2", "moved"]]);
+		expect(cardState(h).state.subagents.lanes).toEqual({});
+		expect(h.git("branch", "--list", "livespec/per-ip-cap--lane-U2")).toBe("");
+		expect(cardState(h).step.dispatch?.role).toBe("implementer");
 	});
 
 	test("both tools refuse in a child", async () => {

@@ -100,7 +100,7 @@ describe("unit-evidence", () => {
 		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
 		const lane = await openLane(h, "U2");
 		rmSync(lane.path, { recursive: true, force: true });
-		await expectRefusal(h, "U2", [lane.path]);
+		await expectRefusal(h, "U2", [lane.path, "lane_merge U2"]);
 	});
 
 	test("a dirty lane refuses, whatever the change worktree looks like", async () => {
