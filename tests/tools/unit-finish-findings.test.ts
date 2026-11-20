@@ -1,6 +1,7 @@
 // Tests of the finding, review and freshness checks of `unit_finish`, and of lanes for both unit tools.
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
+import { gatePayload } from "../../src/engine/gate-payload.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { seedSummary, warning } from "./finding-helpers.ts";
@@ -46,6 +47,19 @@ describe("review-findings at unit_finish", () => {
 		const h = await greenUnit();
 		const id = await seedSummary(h, { findings: [warning()] });
 		await expectRefused(h, ["a.ts:1", id, "finding_rebut"]);
+	});
+
+	test("Out of scope does not block the tick", async () => {
+		const h = await greenUnit();
+		const id = await seedSummary(h, { findings: [warning({ severity: "CRITICAL", scope: "out-of-scope", evidence: "unrelated module leaks" })] });
+		const out = await h.finish("U1");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await h.units())[0]?.done).toBe(true);
+		const pack = h.session.pack.ok ? h.session.pack.pack : (undefined as never);
+		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const payload = gatePayload(cardState(h).state, pack, "ship", facts);
+		expect(payload.summary).toContain("unrelated module leaks");
+		expect(payload.findings).toEqual([`${id}:0`]);
 	});
 
 	test("a rebutted finding no longer refuses", async () => {

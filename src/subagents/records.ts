@@ -212,6 +212,14 @@ export function unresolvedBlocking(marked: MarkedComment[], unit: string, answer
 	return open;
 }
 
+/**
+ * The findings that refuse `unit_finish`: unresolved blocking findings except `out-of-scope` ones, which never refuse
+ * the tick and are listed at the next human gate instead (spec `review-findings` "Blocking findings").
+ */
+export function tickBlocking(marked: MarkedComment[], unit: string, answered: Set<string>): UnresolvedFinding[] {
+	return unresolvedBlocking(marked, unit, answered, new Set()).filter((o) => o.finding.scope !== "out-of-scope");
+}
+
 /** True when a completed unit review of `unit` records one of `commits` (HEAD, plus a lane merge's second parent). */
 export function completedReviewAt(marked: MarkedComment[], unit: string, commits: string[]): boolean {
 	return summariesOf(marked).some(

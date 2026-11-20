@@ -5,7 +5,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { policyFacts } from "./build-loop.ts";
 import { entriesFor, holds } from "./policy.ts";
-import { answeredFindingKeys, completedReviewAt, findingKey, gatesShownKeys, unresolvedBlocking, type UnresolvedFinding } from "./records.ts";
+import { answeredFindingKeys, completedReviewAt, findingKey, tickBlocking, type UnresolvedFinding } from "./records.ts";
 
 const short = (sha: string): string => sha.slice(0, 7);
 
@@ -13,13 +13,12 @@ const short = (sha: string): string => sha.slice(0, 7);
 function describe({ comment, index, finding }: UnresolvedFinding): string {
 	const head = `${finding.severity} ${finding.kind} at ${finding.location} (${comment}:${index}): ${finding.evidence}`;
 	if (finding.scope === "needs-decision") return `${head}\n  raise it with spec_question, starting the text with finding:${findingKey(comment, index)}, and wait for the answer.`;
-	if (finding.scope === "out-of-scope") return `${head}\n  it is attached to the next human gate; it counts as resolved once a gate shows it.`;
 	const rebut = finding.kind === "missed-context" ? "" : ` or rebut it with finding_rebut ${comment} ${index} <reason> <evidence>`;
 	return `${head}\n  fix it (${finding.fix}) and run the unit review again${rebut}.`;
 }
 
 function findingsRefusal(state: ChangeState, unit: string): string | undefined {
-	const open = unresolvedBlocking(state.marked, unit, answeredFindingKeys(state.change.questions), gatesShownKeys(state.marked));
+	const open = tickBlocking(state.marked, unit, answeredFindingKeys(state.change.questions));
 	return open.length === 0 ? undefined : `${unit} has ${open.length} unresolved blocking finding(s):\n${open.map(describe).join("\n")}`;
 }
 
