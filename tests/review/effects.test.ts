@@ -2,7 +2,7 @@
 import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
-import { applyRoutes, type EffectDeps, prMarker } from "../../src/review/effects.ts";
+import { applyRoutes, type EffectDeps, prMarker, QuestionNotSent } from "../../src/review/effects.ts";
 import type { AggregateFinding, FindingSummaryData } from "../../src/subagents/records.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -68,6 +68,26 @@ describe("applyRoutes", () => {
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		expect(t.asked).toHaveLength(1);
 		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:0`);
+	});
+
+	test("a question for finding 10 does not suppress finding 1 (c9:1 is a prefix of c9:10)", async () => {
+		const findings = Array.from({ length: 11 }, (_, i) =>
+			[1, 10].includes(i) ? agg({ route: "question", needsDecision: true, verify: "skipped-parent", location: `q${i}.ts:1` }) : agg({ severity: "SUGGESTION", route: "record", location: `r${i}.ts:1`, verify: "skipped-suggestion" }));
+		const t = await world(findings);
+		const issue = await t.w.forge.getIssue(t.n);
+		await t.w.forge.updateIssueBody(t.n, issue.body.replace("## Questions\n", `## Questions\n- [ ] Q1 (non-blocking): Review finding:${t.a.commentId}:10 needs a decision\n`), issue.version);
+		const out = await applyRoutes(t.deps(), await t.state(), t.agg);
+		expect(t.asked).toHaveLength(1);
+		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:1 `);
+		expect(out.posted).toEqual([`question ${t.a.commentId}:1`]);
+	});
+
+	test("a question that was not sent is not reported as posted", async () => {
+		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
+		const failed = await applyRoutes(t.deps({ ask: async () => "no adapter" }), await t.state(), t.agg).then(() => undefined, (e: unknown) => e);
+		expect(failed).toBeInstanceOf(QuestionNotSent);
+		expect((failed as QuestionNotSent).effects.posted).toEqual([]);
+		expect((failed as QuestionNotSent).message).toContain("no adapter");
 	});
 
 	test("No pull request", async () => {

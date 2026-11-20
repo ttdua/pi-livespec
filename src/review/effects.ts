@@ -66,13 +66,25 @@ async function routeToUnit(deps: EffectDeps, state: ChangeState, round: number, 
 
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
 
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** `finding:<key>` as a whole token, so `c9:1` never matches `finding:c9:10`. */
+const namesFinding = (text: string, key: string): boolean => new RegExp(`finding:${escapeRegExp(key)}(?!\\d)`).test(text);
+
 async function raiseQuestion(deps: EffectDeps, key: string, f: AggregateFinding, out: RouteEffects): Promise<string | undefined> {
-	const ref = `finding:${key}`;
 	const body = (await deps.forge.getIssue(deps.issue)).body;
-	if (parseChange(body).questions.some((q) => q.text.includes(ref))) return undefined;
-	const error = await deps.ask(oneLine(`Review ${ref} needs a decision: ${f.severity} ${f.kind} at ${f.location}. Proposed fix: ${f.fix}`));
-	out.posted.push(`question ${key}`);
+	if (parseChange(body).questions.some((q) => namesFinding(q.text, key))) return undefined;
+	const error = await deps.ask(oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${f.location}. Proposed fix: ${f.fix}`));
+	if (error === undefined) out.posted.push(`question ${key}`);
 	return error;
+}
+
+/** A route question was added to the body but not sent; `effects` holds what the stage did apply. */
+export class QuestionNotSent extends Error {
+	constructor(readonly errors: string[], readonly effects: RouteEffects) {
+		super(`a review question was added but not sent: ${errors.join("; ")}`);
+		this.name = "QuestionNotSent";
+	}
 }
 
 function prBody(key: string, f: AggregateFinding): string {
@@ -113,6 +125,6 @@ export async function applyRoutes(deps: EffectDeps, state: ChangeState, aggregat
 		}
 	}
 	await postPrComments(deps, live.filter((x) => x.finding.route !== "record"), out);
-	if (errors.length > 0) throw new Error(`a review question was added but not sent: ${errors.join("; ")}`);
+	if (errors.length > 0) throw new QuestionNotSent(errors, out);
 	return out;
 }

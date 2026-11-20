@@ -7,7 +7,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { aggregates, latestRun, type ReviewRunData } from "../../src/review/records.ts";
 import type { AggregateFinding } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
-import { registerSpecReview } from "../../src/tools/spec-review.ts";
+import { registerSpecReview, runSpecReview } from "../../src/tools/spec-review.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
@@ -189,6 +189,18 @@ describe("spec_review end to end", () => {
 		await h.review();
 		const persona = h.fake.spawned.find((s) => s.options.metadata.subject === "persona:security-auditor");
 		expect(persona?.prompt).not.toContain("CHANGE-REVIEWER-SECRET");
+	});
+});
+
+describe("spec_review stage limit", () => {
+	test("a call that hits the stage limit says so instead of ending silently", async () => {
+		const h = await reviewHarness();
+		const out = await runSpecReview(h.pi.api as never, h.ctx as never, { home: () => h.home }, undefined, 2);
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(textOf(out)).toContain("[start]");
+		expect(textOf(out)).toContain("[review]");
+		expect(textOf(out)).toContain("Stopped after 2 stages; run spec_review again to continue the round.");
+		expect((await h.run())?.routed).toBe(false);
 	});
 });
 
