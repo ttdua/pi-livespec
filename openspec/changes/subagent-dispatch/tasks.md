@@ -84,7 +84,7 @@ Blocked by: 3, 4
 
 Blocked by: 1, 2, 6, 8, 9
 
-- [ ] 10.1 `src/subagents/doctor.ts`: executor and missing capabilities, role overrides (information), known workspace-provider packages (warning), the effective exclusion list (spec `init-and-doctor` Doctor checks)
-- [ ] 10.2 `docs/architecture.md` (subagents section) and `README.md` (executor setup, role guidance, model and effort with or without Jev)
-- [ ] 10.3 End-to-end test with a fake executor: a change with 5 units completes build with dispatches and parallel lanes; past the context threshold the next unit is dispatched; the same change completes inline with no executor
-- [ ] 10.4 Full `bun run typecheck`, `bun run test` and `openspec validate subagent-dispatch`
+- [x] 10.1 `src/subagents/doctor.ts`: executor and missing capabilities, role overrides (information), known workspace-provider packages (warning), the effective exclusion list (spec `init-and-doctor` Doctor checks)
+- [x] 10.2 `docs/architecture.md` (subagents section) and `README.md` (executor setup, role guidance, model and effort with or without Jev)
+- [x] 10.3 End-to-end test with a fake executor: a change with 5 units completes build with dispatches and parallel lanes; past the context threshold the next unit is dispatched; the same change completes inline with no executor
+- [x] 10.4 Full `bun run typecheck`, `bun run test` and `openspec validate subagent-dispatch`
