@@ -507,3 +507,14 @@
 
 **unit-planning**
 - Simplify as a feature, Simplify as a refactor → `tests/tools/unit-amend.test.ts`
+
+---
+
+## Contract deviations (recorded during apply)
+
+- `retag` (internal): calls the registered `tags` rule through `ruleFor("tags")` synchronously instead of the async `decide()`, keeping the planned sync signature; the rule never asks. The start stage posts `tags.review` itself.
+- `startInputs` (internal): takes `{ state, pack, env }` instead of the tool context; refuses a guard-blocked `Verify` before running any unit.
+- `nextStage` (internal): also refuses while a child question is open (`subagent_answer`); a pending unit refuses only `start`/`review`, a round already aggregated always finishes `verify`/`route`.
+- `EffectDeps` (internal): `{ forge, issue, branch, ask, afterWrite }`; `ask` wraps `runSpecQuestion({ text, class: "non-blocking" }, ctx)`.
+- `StageReport` (internal): adds optional `error` so the tool can return `isError`; `runStage` takes the `NextStage` object (it needs `missing`).
+- `summariesOf` (internal, Task 3): keeps verifier and aggregate records; unit readers exclude them through `isDerived`, because `aggregateFinding` reads through it.
