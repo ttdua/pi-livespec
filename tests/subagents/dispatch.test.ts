@@ -360,4 +360,15 @@ describe("runDispatch", () => {
 		expect(posted[0]?.kind).toBe("finding-summary");
 		expect(posted[0]?.data).toMatchObject({ agentId: "agent-1", round: 1, completed: true, required: ["answer:Q2"], head: "h".repeat(40) });
 	});
+
+	test("a unit review posts one finding-summary holding both findings", async () => {
+		const found = (location: string) => ({ severity: "WARNING", kind: "defect", location, evidence: "e", fix: "f", scope: "unit" });
+		const result = { ...withSources(["answer:Q2"]), commits: undefined, findings: [found("a.ts:1"), found("b.ts:2")] };
+		const fake = fakeExecutor({ records: [{ structuredResult: JSON.parse(JSON.stringify(result)) }] });
+		const { d, posted } = deps(fake);
+		await runDispatch(d, request({ role: "reviewer", subject: "unit" }));
+		expect(posted.filter((p) => p.kind === "finding-summary")).toHaveLength(1);
+		expect(posted[0]?.data).toMatchObject({ unit: "U1", round: 1 });
+		expect((posted[0]?.data.findings as { location: string }[]).map((f) => f.location)).toEqual(["a.ts:1", "b.ts:2"]);
+	});
 });
