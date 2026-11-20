@@ -7,6 +7,7 @@ import type { PacketContext, Placed, SourceProvider, Target } from "./source-typ
 import { answeredQuestions, changeIssue, coveredRequirements, initiativeIssue } from "./sources-change.ts";
 import { closedWork, closingSummaries, pullRequestAndChecks, referencedIssues, reviewComments } from "./sources-forge.ts";
 import { codeDiff, constraints, declaredSpecs, findingAndCode, owningUnit, productExcerpt, specsDiff } from "./sources-git.ts";
+import { personaFile } from "./sources-persona.ts";
 import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, planGateNotes, receiptsOf, unitFindings } from "./sources-records.ts";
 
 const extra = new Map<Role, SourceProvider[]>();
@@ -32,7 +33,7 @@ function manifest(role: Role, subject: ReviewSubject | undefined): Provider[] {
 	if (role === "scout") return [initiativeIssue, closedWork];
 	if (subject === "spec") return [specsDiff, ...REVIEW_BASE];
 	if (subject === "plan") return [changeIssue("units"), specsDiff, ...REVIEW_BASE.slice(1)];
-	return REVIEWER_ALL;
+	return subject === "change" || subject?.startsWith("persona:") === true ? [...REVIEWER_ALL, personaFile] : REVIEWER_ALL;
 }
 
 const rubric = (subject: ReviewSubject | undefined): Provider[] =>

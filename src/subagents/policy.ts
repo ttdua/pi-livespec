@@ -5,6 +5,7 @@ import { matchGlob } from "../core/glob.ts";
 import type { Spec } from "../core/spec.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { registerPackSchema } from "../engine/registry.ts";
+import { personaOf } from "./sources-persona.ts";
 import { ROLE_SUBJECTS, type ReviewSubject, type Role, type SubagentEntry } from "./roles.ts";
 
 export type PolicyFacts = {
@@ -30,13 +31,14 @@ export function entriesFor(pack: Pack, phaseId: string): SubagentEntry[] {
 	return (phase?.subagents ?? []) as SubagentEntry[];
 }
 
-/** Persona names from `persona:<name>` subjects, without the prefix. */
+/** Persona names from `persona:<name>` subjects without the prefix, plus `code-reviewer` for a `change` subject. */
 export function personas(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	const found: string[] = [];
 	for (const item of value) {
 		const subject = typeof item === "object" && item !== null ? (item as { subject?: unknown }).subject : undefined;
-		if (typeof subject === "string" && subject.startsWith("persona:")) found.push(subject.slice("persona:".length));
+		const name = typeof subject === "string" ? personaOf(subject) : undefined;
+		if (name !== undefined) found.push(name);
 	}
 	return found;
 }

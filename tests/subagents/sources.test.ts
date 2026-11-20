@@ -245,3 +245,33 @@ describe("verifier of an in-change finding", () => {
 		expect(placed.some((p) => p.source.id.startsWith("receipt:"))).toBe(false);
 	});
 });
+
+describe("Persona file", () => {
+	const withPersona = async (name: string) => {
+		const world = await makeWorld();
+		await writeIn(world.tree, `agents/${name}.md`, `# ${name}\n`);
+		return world;
+	};
+
+	test("a persona subject lists its file", async () => {
+		const world = await withPersona("security-auditor");
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "persona:security-auditor"))).toContain("file:agents/security-auditor.md");
+	});
+
+	test("a change packet lists the code-reviewer file", async () => {
+		const world = await withPersona("code-reviewer");
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "change"))).toContain("file:agents/code-reviewer.md");
+	});
+
+	test("a missing persona file refuses and names the file", async () => {
+		const world = await makeWorld();
+		await expect(sourcesOf(world, "reviewer", undefined, "persona:security-auditor")).rejects.toThrow("persona file agents/security-auditor.md is missing from the content tree");
+	});
+
+	test("a round-1 reviewer packet holds no reviewer finding-summary", async () => {
+		const world = await withPersona("code-reviewer");
+		const summary = world.post(BOT, writeMarked("finding-summary", "finding-summary.change.review.1", { subject: "change", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "e", fix: "f", scope: "unit" }] }));
+		const got = ids(await sourcesOf(world, "reviewer", undefined, "change"));
+		expect(got).not.toContain(`comment:${summary.id}`);
+	});
+});

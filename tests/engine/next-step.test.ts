@@ -3,6 +3,7 @@ import { parseChange } from "../../src/core/change.ts";
 import type { IterationState } from "../../src/engine/iterations.ts";
 import type { GateResult, LockState } from "../../src/engine/locks.ts";
 import { nextStep, successorOf } from "../../src/engine/next-step.ts";
+import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../../src/subagents/phase-entries.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, Phase } from "../../src/engine/pack-types.ts";
 import type { ChangeState, CheckResult } from "../../src/engine/state-types.ts";
@@ -818,5 +819,15 @@ describe("phase-level subagent suggestions before the gate", () => {
 		expect(nextStep(pack, requested).dispatch).toBeUndefined();
 		const decided = state("define", NO_QUESTION, { lock: lockWith({ gates: { define: gateResult("changes_requested") } }) });
 		expect(nextStep(pack, decided).dispatch).toBeUndefined();
+	});
+});
+
+describe("No one-by-one suggestion in review", () => {
+	test("phaseEntryStep is undefined for the review phase", () => {
+		const reviewPhase = pack.phases.find((p) => p.id === "review") as Phase;
+		const s = state("review", ALL_DONE, { git: { branch: "livespec/x", head: "f".repeat(40), dirty: false, specsChanged: true } });
+		expect(phaseEntryStep(pack, s, reviewPhase)).toBeUndefined();
+		expect(reviewEntriesRunBySpecReview("review")).toBe(true);
+		expect(reviewEntriesRunBySpecReview("plan")).toBe(false);
 	});
 });
