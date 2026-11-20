@@ -1,4 +1,5 @@
 // Tests for the subagents pack policy: sub-schema validation, `when` conditions and the default pack entries.
+import { readFileSync } from "node:fs";
 import { LineCounter, type Node, type Pair, isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { Unit } from "../../src/core/change.ts";
@@ -187,5 +188,16 @@ describe("default pack", () => {
 			{ role: "implementer", mode: "auto", when: ["units>=3", "difficulty>=medium", "context>=60%"] },
 			{ role: "reviewer", subject: "unit", mode: "auto", when: ["difficulty>=medium"], skills: ["code-review-and-quality"] },
 		]);
+	});
+});
+
+describe("Review entries", () => {
+	test("personas reports the four reviewer names of the review phase", () => {
+		const pack = JSON.parse(readFileSync(new URL("../fixtures/agent-skills.pack.json", import.meta.url), "utf8")) as { phases: { id: string; subagents: unknown[] }[] };
+		expect(personas(pack.phases.find((p) => p.id === "review")?.subagents)).toEqual(["code-reviewer", "security-auditor", "web-performance-auditor", "test-engineer"]);
+	});
+
+	test("a change subject needs code-reviewer", () => {
+		expect(personas([{ role: "reviewer", subject: "change", mode: "always" }])).toEqual(["code-reviewer"]);
 	});
 });

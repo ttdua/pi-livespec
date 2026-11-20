@@ -30,13 +30,14 @@ export function entriesFor(pack: Pack, phaseId: string): SubagentEntry[] {
 	return (phase?.subagents ?? []) as SubagentEntry[];
 }
 
-/** Persona names from `persona:<name>` subjects, without the prefix. */
+/** Persona names from `persona:<name>` subjects without the prefix, plus `code-reviewer` for a `change` subject. */
 export function personas(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
 	const found: string[] = [];
 	for (const item of value) {
 		const subject = typeof item === "object" && item !== null ? (item as { subject?: unknown }).subject : undefined;
-		if (typeof subject === "string" && subject.startsWith("persona:")) found.push(subject.slice("persona:".length));
+		if (subject === "change") found.push("code-reviewer");
+		else if (typeof subject === "string" && subject.startsWith("persona:")) found.push(subject.slice("persona:".length));
 	}
 	return found;
 }

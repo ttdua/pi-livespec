@@ -60,6 +60,8 @@ export function makeTree(skills: string[]): string {
 		mkdirSync(join(tree, "skills", name), { recursive: true });
 		writeFileSync(join(tree, "skills", name, "SKILL.md"), `# ${name}\n`);
 	}
+	mkdirSync(join(tree, "agents"), { recursive: true });
+	writeFileSync(join(tree, "agents", "code-reviewer.md"), "# code-reviewer\n");
 	return tree;
 }
 

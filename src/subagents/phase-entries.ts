@@ -62,9 +62,12 @@ function stepFor(state: ChangeState, phase: Phase, e: SubagentEntry): PhaseEntry
 	return { next: `Before the ${phase.id} gate, ${run}.${note}`, dispatch: { role: e.role, ...(e.subject === undefined ? {} : { subject: e.subject }), inline } };
 }
 
+/** The `review` phase's entries run only through `spec_review`, so no one-by-one suggestion precedes its gate. */
+export const reviewEntriesRunBySpecReview = (phaseId: string): boolean => phaseId === "review";
+
 /** The first phase-level entry that holds and has not run for the current state, before the phase's gate is requested. */
 export function phaseEntryStep(pack: Pack, state: ChangeState, phase: Phase): PhaseEntryStep | undefined {
-	if (phase.per === "unit" || !beforeGate(state, phase)) return undefined;
+	if (phase.per === "unit" || reviewEntriesRunBySpecReview(phase.id) || !beforeGate(state, phase)) return undefined;
 	const facts = changeFacts(state);
 	const due = entriesFor(pack, phase.id).find((e) => isPhaseLevel(e) && entryHolds(e, facts) && !entryRan(state, phase, e));
 	return due === undefined ? undefined : stepFor(state, phase, due);
