@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
+import { setTestIdentity } from "../helpers/repo.ts";
 import type { UnitHarness } from "./unit-helpers.ts";
 
 const dirs: string[] = [];
@@ -23,6 +24,7 @@ export async function openLane(h: UnitHarness, unit: string): Promise<Lane> {
 	const path = join(mkdtempSync(join(tmpdir(), "ls-lane-")), "lane");
 	dirs.push(join(path, ".."));
 	execFileSync("git", ["clone", "-q", h.root, path]);
+	setTestIdentity(path);
 	await h.seed("lane", `lane.${unit}`, { unit, path, branch: `livespec/per-ip-cap--lane-${unit}`, base: h.head });
 	return { path, git: (...args) => gitIn(path, ...args) };
 }
