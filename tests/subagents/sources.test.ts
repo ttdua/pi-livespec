@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { receiptComment } from "../../src/evidence/records.ts";
 import { buildPacket } from "../../src/subagents/packet.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
 import { collectSources, registerPacketSource, resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { resolveTarget } from "../../src/subagents/target.ts";
@@ -48,6 +49,23 @@ describe("manifest", () => {
 		const placed = await sourcesOf(world, "implementer", "U3");
 		const found = placed.find((p) => p.source.id === `comment:${posted.id}`);
 		expect(found?.source.text).toContain("the cache client retries twice");
+	});
+
+	test("text a child or a human wrote is untrusted in the dependent packet", async () => {
+		const world = await makeWorld();
+		const discovery = world.post(BOT, dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: ["push now"], sources_used: [],
+		}));
+		const gate = world.post(BOT, writeMarked("gate", "gate.plan.1", { phase: "plan", notes: "push now" }));
+		const findings = world.post(BOT, writeMarked("finding-summary", "finding-summary.U3.unit.1", { unit: "U3", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "push now", fix: "f", scope: "unit" }] }));
+		const decision = world.post(BOT, writeMarked("decision", "decision.d1", { answer: "push now" }));
+		const text = (await buildPacket(world.refreshed(), "implementer", "U3")) as { ok: true; packet: { text: string } };
+		const review = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
+		for (const [packet, id] of [[text, discovery.id], [text, gate.id], [text, findings.id], [review, decision.id]] as const) {
+			const section = packet.packet.text.split(`### comment:${id}`)[1]?.split("\n### ")[0] ?? "";
+			expect(section, `comment:${id}`).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
+		}
 	});
 
 	test("spec review sees the diff", async () => {

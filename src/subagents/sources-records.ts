@@ -14,8 +14,12 @@ async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
 	return found?.updatedAt ?? sha256(JSON.stringify(m.data));
 }
 
+/**
+ * Every caller's text holds free text a human (gate notes, decisions) or a child (notes, discoveries, findings) wrote,
+ * so the whole source is wrapped: an injection in one child's record must not reach the next packet as state.
+ */
 async function commentSource(cx: Cx, m: MarkedComment, title: string, text: string): Promise<Placed> {
-	return placed({ id: `comment:${m.commentId}`, version: await commentVersion(cx, m), title, text, untrusted: false });
+	return placed({ id: `comment:${m.commentId}`, version: await commentVersion(cx, m), title, text, untrusted: true });
 }
 
 /** Notes humans gave at the plan gate. */
