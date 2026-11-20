@@ -1,8 +1,12 @@
 // End-to-end build with subagents (issue #7 "Done when"): a driver follows the phase card through the real tools, a fake executor plays the children.
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { setSession } from "../../src/hooks/session-store.ts";
+import { registerSessionHooks } from "../../src/hooks/session.ts";
+import { getSession, setSession } from "../../src/hooks/session-store.ts";
+import { fakeContent } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { done, type Spawned, unpublish } from "../subagents/fake-executor.ts";
 import { cleanupDirs, textOf, type ToolOut } from "../tools/helpers.ts";
@@ -33,11 +37,28 @@ const honest: Work = async (role, unitId, cwd, prompt) => {
 	return done({ sources_used });
 };
 
-/** Makes the fake executor's children run `work` in the spawn's cwd. */
+/** The ctx of child `id`: the executor names its session, as an in-process executor does. */
+const childCtx = (h: SubagentHarness, id: string, cwd: string) => ({
+	...h.ctx,
+	cwd,
+	sessionManager: { getSessionId: () => `s-${id}`, getHeader: () => ({ type: "session" as const, id: `s-${id}` }) },
+});
+
+/**
+ * Makes the fake executor's children run `work` in the spawn's cwd. Each child loads livespec in the parent's
+ * process (pi caches the extension per cwd), so its `session_start` and `session_shutdown` fire on the same hooks.
+ */
 function playChildren(h: SubagentHarness, work: Work): void {
+	const home = mkdtempSync(join(tmpdir(), "ls-e2e-child-"));
+	registerSessionHooks(h.pi.api as never, { home, content: () => fakeContent(undefined).manager, detect: async () => h.world.forge });
+	h.fake.service.childSession = ((sessionId: string) =>
+		sessionId.startsWith("s-agent-") ? { agentId: sessionId.slice(2), agentType: "child", metadata: {} } : undefined) as never;
 	h.fake.service.wait = async (id: string) => {
 		const spawn = h.fake.spawned.find((s) => s.id === id) as Spawned;
+		const ctx = childCtx(h, id, spawn.options.cwd);
+		await h.pi.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 		const result = await work(spawn.options.metadata.role ?? spawn.type, spawn.options.metadata.unit ?? "", spawn.options.cwd, spawn.prompt);
+		await h.pi.fire("session_shutdown", { type: "session_shutdown" }, ctx);
 		return { id, status: "completed", structuredResult: JSON.parse(JSON.stringify(result)) };
 	};
 }
@@ -155,6 +176,7 @@ describe("issue #7: build with subagents", () => {
 			},
 		});
 		expect(await ticked(h)).toEqual(IDS);
+		expect(getSession()).toBe(h.session);
 		expect(parallel).toBe(3);
 		for (const id of IDS) {
 			for (const action of [`lane_open ${id}`, `unit_start ${id}`, `subagent_dispatch implementer ${id}`, `subagent_dispatch reviewer ${id} unit`, `lane_merge ${id}`, `unit_finish ${id}`]) expect(log).toContain(action);

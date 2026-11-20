@@ -502,18 +502,26 @@ async function suggestInit(session: Session, ctx: ExtensionContext): Promise<voi
 	safeNotify(ctx, hasOpenSpec ? MIGRATE_HINT : INIT_HINT, "info");
 }
 
+/**
+ * pi caches the extension factory per cwd, so an in-process child can share this module with its parent.
+ * A child therefore never replaces an existing session. Only when none exists (a fresh module) does it store
+ * one with the forge target alone, which the guard's endpoint list needs. It never connects the forge
+ * (`reconnect` can advance the change), selects an account, polls approvals or shows the resume card.
+ */
+async function startChild(d: SessionDeps, ctx: ExtensionContext): Promise<void> {
+	if (getSession() !== undefined) return;
+	const session = new Session(ctx.cwd, createGit(ctx.cwd));
+	await loadSessionBasics(session, d, d.content(d.home));
+	if (session.initialized) await targetFor(session, d);
+	if (getSession() === undefined) setSession(session);
+}
+
 async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionContext): Promise<void> {
 	const session = new Session(ctx.cwd, createGit(ctx.cwd));
 	setSession(session);
 	const content = d.content(d.home);
 	await loadSessionBasics(session, d, content);
 	if (!session.initialized) return suggestInit(session, ctx);
-	// A child resolves only the forge target, which the guard's endpoint list needs. It never connects the forge
-	// (`reconnect` can advance the change), selects an account, polls approvals or shows the resume card.
-	if (isChildSession(ctx)) {
-		await targetFor(session, d);
-		return;
-	}
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);
@@ -543,9 +551,13 @@ async function shutdownEvidence(): Promise<void> {
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
 	const deps: SessionDeps = { ...defaultSessionDeps(), ...d };
 	registerResumeRenderer(pi);
-	pi.on("session_shutdown", shutdownEvidence);
+	// The gate memo, the evidence locks and the session are the parent's; a child's start and shutdown leave them alone.
+	pi.on("session_shutdown", async (_event, ctx) => {
+		if (!isChildSession(ctx)) await shutdownEvidence();
+	});
 	pi.on("session_start", async (_event, ctx) => {
 		try {
+			if (isChildSession(ctx)) return await startChild(deps, ctx);
 			clearGateMemo();
 			await startSession(pi, deps, ctx);
 		} catch (error) {
