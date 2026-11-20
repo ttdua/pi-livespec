@@ -1,6 +1,6 @@
 // Tests for the role catalogue: the result schemas each role must submit.
 import { describe, expect, test } from "vitest";
-import { type JsonSchema, type Role, resultSchema } from "../../src/subagents/roles.ts";
+import { checkSchema, type JsonSchema, type Role, resultSchema } from "../../src/subagents/roles.ts";
 
 const ROLES: Role[] = ["scout", "implementer", "reviewer", "verifier"];
 
@@ -19,6 +19,14 @@ describe("resultSchema", () => {
 	test("resultSchema(reviewer) requires findings", () => {
 		const schema = resultSchema("reviewer");
 		expect(schema.required).toEqual(expect.arrayContaining(["status", "notes", "discoveries", "sources_used", "findings"]));
+	});
+
+	test("a reviewer finding without location is rejected and the path is named", () => {
+		const finding = { severity: "WARNING", kind: "defect", evidence: "e", fix: "f", scope: "unit" };
+		const result = { status: "DONE", notes: "n", discoveries: [], sources_used: [], findings: [finding] };
+		const checked = checkSchema(resultSchema("reviewer"), result);
+		expect(checked.ok).toBe(false);
+		expect(!checked.ok && checked.errors.join("\n")).toContain("$.findings[0].location");
 	});
 
 	test("scout requires neither commits nor findings; verifier requires findings", () => {

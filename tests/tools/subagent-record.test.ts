@@ -63,6 +63,16 @@ describe("inline fallback", () => {
 		expect(await h.marked()).toHaveLength(before);
 	});
 
+	test("a reviewer finding without location is refused and nothing is posted", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		const before = (await h.marked()).length;
+		const { location: _location, ...noLocation } = FINDING;
+		const out = await h.call("subagent_record", { role: "reviewer", unit: "U1", subject: "unit", result: reviewResult({ findings: [noLocation] }) });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("location");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
 	test("inline result omitting a required source is refused", async () => {
 		const h = await subagentHarness({ units: [U1] });
 		const before = (await h.marked()).length;
