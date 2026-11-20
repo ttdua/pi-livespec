@@ -27,16 +27,18 @@ async function isPending(env: VerifyEnv, u: Unit, head: string): Promise<boolean
 }
 
 /** Runs `Verify` at HEAD and builds the start data, or the refusal of a wrong class. */
-async function preRun(env: VerifyEnv, u: Unit, verify: string, head: string): Promise<StartData | { refused: string }> {
+async function preRun(env: VerifyEnv, u: Unit, verify: string, head: string, rebuild: boolean): Promise<StartData | { refused: string }> {
 	const run = await runVerify(verify, { ...env.run, cwd: env.root, tailBytes: RECEIPT_OUTPUT_BYTES });
 	if ("blocked" in run) return { refused: verifyBlocked(u.id, run.blocked) };
 	const cls = classifyRun(run);
 	if (typeof cls === "object") return { refused: refusedRun(TOOL, cls, run) };
 	const expected = preExpectation(u);
-	if (cls !== expected) {
+	// A review-routed rebuild starts from the unit's green state; a red Verify keeps the usual red verdict.
+	const verdict = rebuild && cls === "green" ? "rebuild" : cls;
+	if (verdict !== "rebuild" && cls !== expected) {
 		return { refused: `${TOOL} refused: Verify was ${cls} (exit ${run.exit}) at HEAD, but ${u.id} must be ${expected} before the work. ${WRONG_CLASS_OPTIONS}\n${unitResult(run.output)}` };
 	}
-	const data: StartData = { unit: u.id, digest: unitDigest(u), verify, pre: { sha: head, exit: run.exit as number, verdict: cls, output: run.output } };
+	const data: StartData = { unit: u.id, digest: unitDigest(u), verify, pre: { sha: head, exit: run.exit as number, verdict, output: run.output } };
 	if (u.kind === "refactor") data.refactor = true;
 	return data;
 }
@@ -53,13 +55,13 @@ async function startUnit(c: UnitCall): Promise<ToolResult<undefined>> {
 	if (afterPending !== undefined) return afterPending;
 	const refactor = refactorPendingRefusal(u, pending);
 	if (refactor !== undefined) return c.refuse(refactor);
-	const data = pending ? ({ unit: u.id, digest: unitDigest(u), verify, pre: { sha: head }, pending: true } as StartData) : await preRun(env, u, verify, head);
+	const data = pending ? ({ unit: u.id, digest: unitDigest(u), verify, pre: { sha: head }, pending: true } as StartData) : await preRun(env, u, verify, head, u.id in (state.evidence.rebuilds ?? {}));
 	if ("refused" in data) return c.refuse(data.refused);
 	const beforeWrite = c.cancelled();
 	if (beforeWrite !== undefined) return beforeWrite;
 	await w.forge.createComment(state.issue.number, startComment(newEvidenceId(u.id, new Date()), data));
 	await afterForgeWrite(w.session, state.issue.number);
-	const how = pending ? "verifier pending: commit the failing test alone first; unit_finish checks it" : `Verify was ${data.pre.verdict} (exit ${data.pre.exit})`;
+	const how = pending ? "verifier pending: commit the failing test alone first; unit_finish checks it" : `Verify was ${data.pre.verdict === "rebuild" ? "green, rebuild" : data.pre.verdict} (exit ${data.pre.exit})`;
 	return c.done(`Started ${u.id} at ${head.slice(0, 7)}; ${how}.${pending ? "" : `\n${unitResult(data.pre.output ?? "")}`}`);
 }
 

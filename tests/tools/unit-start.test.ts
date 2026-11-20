@@ -6,7 +6,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { openLane } from "./lane-helpers.ts";
-import { cardState, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
+import { cardState, seedRebuild, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -232,5 +232,26 @@ describe("fix round 1", () => {
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("aborted");
 		expect(await h.ofKind("unit-start")).toHaveLength(0);
+	});
+});
+
+describe("rebuild marker", () => {
+	test("Rebuild starts green", async () => {
+		const h = await unitHarness({ units: [U1, { id: "U2", verify: "sh pass.sh" }], scripts: SCRIPTS });
+		await seedRebuild(h, "U2");
+		expect(cardState(h).state.evidence.untickedReceipts).toEqual([]);
+		const out = await h.start("U2");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const [start] = await h.ofKind("unit-start");
+		expect(start?.data).toMatchObject({ unit: "U2", pre: { exit: 0, verdict: "rebuild" } });
+		expect(cardState(h).state.evidence.rebuilds ?? {}).toEqual({});
+	});
+
+	test("A rebuild with a red Verify starts red", async () => {
+		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
+		await seedRebuild(h, "U1");
+		const out = await h.start("U1");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await h.ofKind("unit-start"))[0]?.data).toMatchObject({ pre: { exit: 1, verdict: "red" } });
 	});
 });

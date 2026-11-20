@@ -280,7 +280,10 @@ const receiptedUnit: Rule = ({ state, phase }) => {
 };
 
 /** Rule 13: in a `per: unit` phase, the next ready unit, or the waiting units; no decision once every unit is done. */
-const nextUnit: Rule = ({ units }) => {
+const nextUnit: Rule = ({ units, state }) => {
+	const rebuilds = state.evidence.rebuilds ?? {};
+	const rebuild = units.ready.find((u) => u.id in rebuilds);
+	if (rebuild) return { next: `Rebuild ${rebuild.id} — ${rebuild.title}: run unit_start ${rebuild.id}.` };
 	const ready = units.ready[0];
 	if (ready) return { next: `Build ${ready.id} — ${ready.title}.` };
 	if (units.waiting.length === 0) return undefined;

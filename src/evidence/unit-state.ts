@@ -5,7 +5,7 @@ import type { Change, Unit } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { liftsCap } from "../engine/iterations.ts";
 import type { MarkedComment } from "../forge/markers.ts";
-import { type ReceiptRecord, type StartRecord, asReceiptRecord, asStartRecord } from "./records.ts";
+import { type ReceiptRecord, type RebuildRecord, type StartRecord, asReceiptRecord, asRebuildRecord, asStartRecord } from "./records.ts";
 
 export type UnitEvidence = {
 	started: Record<string, StartRecord>;
@@ -13,6 +13,8 @@ export type UnitEvidence = {
 	attempts: Record<string, number>;
 	blocked: Record<string, "attempts" | "progress">;
 	untickedReceipts: string[];
+	/** Units a review routed back: the latest `rebuild` is newer than the latest receipt and start. */
+	rebuilds?: Record<string, { round: number; finding: string }>;
 };
 
 type Attempt = { index: number; outcome: unknown };
@@ -21,6 +23,7 @@ type Attempt = { index: number; outcome: unknown };
 type Trail = {
 	starts: Map<string, StartRecord>;
 	receipts: Map<string, ReceiptRecord[]>;
+	rebuilds: Map<string, RebuildRecord>;
 	attempts: Map<string, Attempt[]>;
 	lastLift: number;
 };
@@ -43,12 +46,14 @@ function asAttempt(m: MarkedComment, index: number): { unit: string; attempt: At
 
 /** One pass over `marked` in comment order. */
 function collect(marked: MarkedComment[]): Trail {
-	const trail: Trail = { starts: new Map(), receipts: new Map(), attempts: new Map(), lastLift: NONE };
+	const trail: Trail = { starts: new Map(), receipts: new Map(), rebuilds: new Map(), attempts: new Map(), lastLift: NONE };
 	marked.forEach((m, index) => {
 		const start = asStartRecord(m, index);
 		if (start) trail.starts.set(start.unit, start);
 		const receipt = asReceiptRecord(m, index);
 		if (receipt) push(trail.receipts, receipt.unit, receipt);
+		const rebuild = asRebuildRecord(m, index);
+		if (rebuild) trail.rebuilds.set(rebuild.unit, rebuild);
 		const progress = asAttempt(m, index);
 		if (progress) push(trail.attempts, progress.unit, progress.attempt);
 		if (liftsCap(m)) trail.lastLift = index;
@@ -79,7 +84,8 @@ function blockReason(budget: Attempt[], cap: number | undefined): "attempts" | "
 }
 
 /** A pending unit whose latest receipt is newer than its latest start and matches its current digest. */
-function hasUntickedReceipt(u: Unit, start: StartRecord | undefined, latest: ReceiptRecord | undefined): boolean {
+function hasUntickedReceipt(u: Unit, start: StartRecord | undefined, latest: ReceiptRecord | undefined, rebuild: RebuildRecord | undefined): boolean {
+	if (rebuild !== undefined && rebuild.index > (latest?.index ?? NONE)) return false;
 	return latest !== undefined && latest.index > (start?.index ?? NONE) && latest.digest === unitDigest(u);
 }
 
@@ -94,7 +100,11 @@ export function deriveUnitEvidence(change: Change, marked: MarkedComment[], cap:
 		if (trail.attempts.has(u.id)) evidence.attempts[u.id] = budgetAttempts(trail, u.id).length;
 		if (u.done) continue;
 		if (start !== undefined && start.index > (latest?.index ?? NONE)) evidence.started[u.id] = start;
-		if (hasUntickedReceipt(u, start, latest)) evidence.untickedReceipts.push(u.id);
+		const rebuild = trail.rebuilds.get(u.id);
+		if (rebuild !== undefined && rebuild.index > Math.max(latest?.index ?? NONE, start?.index ?? NONE)) {
+			(evidence.rebuilds ??= {})[u.id] = { round: rebuild.round, finding: rebuild.finding };
+		}
+		if (hasUntickedReceipt(u, start, latest, rebuild)) evidence.untickedReceipts.push(u.id);
 		const reason = blockReason(budgetAttempts(trail, u.id), cap);
 		if (reason !== undefined) evidence.blocked[u.id] = reason;
 	}

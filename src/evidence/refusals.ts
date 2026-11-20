@@ -103,8 +103,11 @@ export function finishMode(state: ChangeState, unit: string): FinishMode {
 
 const doneForFinish: Rule = (i) => (i.target?.done ? `${unitText(i)} is already done: nothing to finish.` : undefined);
 
-const notStarted: Rule = ({ state, unit }) =>
-	state.evidence.started[unit] === undefined ? `${displayUnitId(unit)} is not started: run unit_start ${displayUnitId(unit)} first.` : undefined;
+const notStarted: Rule = ({ state, unit }) => {
+	if (state.evidence.started[unit] !== undefined) return undefined;
+	const why = unit in (state.evidence.rebuilds ?? {}) ? "is marked for rebuild by a review" : "is not started";
+	return `${displayUnitId(unit)} ${why}: run unit_start ${displayUnitId(unit)} first.`;
+};
 
 const digestChanged: Rule = ({ state, unit, target }) => {
 	const start = state.evidence.started[unit];

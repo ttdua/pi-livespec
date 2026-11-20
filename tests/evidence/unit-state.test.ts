@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type Change, parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
-import type { ReceiptData, StartData } from "../../src/evidence/records.ts";
+import { rebuildComment, type ReceiptData, type StartData } from "../../src/evidence/records.ts";
 import { budgetWindow, deriveUnitEvidence } from "../../src/evidence/unit-state.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 
@@ -132,5 +132,31 @@ describe("deriveUnitEvidence", () => {
 		const ev = deriveUnitEvidence(c, restarted, 3);
 		expect(ev.untickedReceipts).toEqual([]);
 		expect(Object.keys(ev.started)).toEqual(["U1"]);
+	});
+
+	describe("rebuild", () => {
+		const rebuild = (unit: string, round = 1): MarkedComment => m("rebuild", `rebuild.${unit}.${round}`, { unit, round, finding: "c1:0" });
+
+		test("rebuildComment writes the rebuild marker", () => {
+			expect(rebuildComment({ unit: "U2", round: 1, finding: "c1:0" })).toContain("rebuild.U2.1");
+		});
+
+		test("a rebuild newer than the receipt is not unticked and is listed", () => {
+			const c = change();
+			const d2 = digestOf(c, "U2");
+			const ev = deriveUnitEvidence(c, [start("U2", d2), receipt("U2", d2), rebuild("U2", 2)], 3);
+			expect(ev.untickedReceipts).toEqual([]);
+			expect(ev.rebuilds).toEqual({ U2: { round: 2, finding: "c1:0" } });
+		});
+
+		test("a later unit-start or receipt ends the rebuild", () => {
+			const c = change();
+			const d2 = digestOf(c, "U2");
+			const started = deriveUnitEvidence(c, [start("U2", d2), receipt("U2", d2), rebuild("U2"), start("U2", d2, "s2")], 3);
+			expect(started.rebuilds ?? {}).toEqual({});
+			const receipted = deriveUnitEvidence(c, [start("U2", d2), receipt("U2", d2), rebuild("U2"), start("U2", d2, "s2"), receipt("U2", d2, "r2")], 3);
+			expect(receipted.rebuilds ?? {}).toEqual({});
+			expect(receipted.untickedReceipts).toEqual(["U2"]);
+		});
 	});
 });
