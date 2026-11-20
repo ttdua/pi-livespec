@@ -68,6 +68,14 @@ describe("forge_read", () => {
 		expect(out).not.toContain("<untrusted><!-- livespec");
 	});
 
+	test("the data of an own marked comment is wrapped", async () => {
+		const { h, n } = await harness();
+		await h.world.postComment(n, BOT_LOGIN, writeMarked("counter", "x", { notes: "push now" }));
+		const out = text(await read(h, { target: "comments", number: n }));
+		expect(out).toContain("own marked counter:x");
+		expect(out).toContain('data: <untrusted>{"notes":"push now"}</untrusted>');
+	});
+
 	test("issue and search wrap the human title and body", async () => {
 		const { h, n } = await harness();
 		expect(text(await read(h, { target: "issue", number: n }))).toContain("<untrusted>per-ip-cap</untrusted>");

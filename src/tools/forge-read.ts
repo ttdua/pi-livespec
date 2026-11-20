@@ -33,11 +33,14 @@ function issueLine(i: Issue): string {
 	return `issue:${i.number} version ${i.version} updatedAt ${i.updatedAt} ${i.state} by ${untrusted(i.author)}${url}\n  title: ${untrusted(i.title)}\n  labels: ${i.labels.map(untrusted).join(", ")}`;
 }
 
-/** Own marked comments (the current login) are state; everything else, marked or not, is untrusted text. */
+/**
+ * Own marked comments (the current login) name their kind and id as state; their data holds text humans and children
+ * wrote (gate notes, answers, discoveries, findings), so it is wrapped. Everything else, marked or not, is untrusted text.
+ */
 function commentBlock(c: Comment, login: string): string {
 	const head = `comment:${c.id} version ${c.version} updatedAt ${c.updatedAt}`;
 	const marked = c.author === login ? parseMarked(c.body) : null;
-	if (marked) return `${head} own marked ${marked.kind}:${marked.id}\n  data: ${JSON.stringify(marked.data)}`;
+	if (marked) return `${head} own marked ${marked.kind}:${marked.id}\n  data: ${untrusted(JSON.stringify(marked.data))}`;
 	return `${head} by ${untrusted(c.author)}\n${untrusted(c.body)}`;
 }
 
