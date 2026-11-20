@@ -236,6 +236,25 @@ describe("parallel-lanes tools", () => {
 		expect(h.git("rev-parse", "HEAD")).toBe(head);
 	});
 
+	test.each([
+		["a blocked unit", "BLOCKED", (h: LaneHarness) => h.seed("decision", "progress.U2", { point: "progress", subject: "U2", outcome: "stop", reason: "same failure" })],
+		["a frozen unit", "unit_amend", async (h: LaneHarness) => h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Verify: `sh check2.sh`", "Verify: `sh check2.sh --strict`"))],
+		["a phase that is not per: unit", "per: unit", async (h: LaneHarness) => {
+			await h.world.forge.removeLabels(h.n, ["livespec:phase/build"]);
+			await h.world.forge.addLabels(h.n, ["livespec:phase/plan"]);
+		}],
+	])("lane_open refuses %s", async (_name, part, arrange) => {
+		const h = await laneHarness();
+		await arrange(h);
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.open("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(part);
+		expect(existsSync(h.lanePath("U2"))).toBe(false);
+		expect(await h.ofKind("lane")).toHaveLength(0);
+	});
+
 	test("lane_merge refuses a blocked unit", async () => {
 		const h = await laneHarness();
 		await laneDone(h, "U2", { "src/u2.ts": "x\n" });

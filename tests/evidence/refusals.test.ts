@@ -4,7 +4,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
-import { finishMode, refactorPendingRefusal, unitFinishRefusal, unitStartRefusal } from "../../src/evidence/refusals.ts";
+import { finishMode, laneOpenRefusal, refactorPendingRefusal, unitFinishRefusal, unitStartRefusal } from "../../src/evidence/refusals.ts";
 import type { ReceiptRecord, StartRecord } from "../../src/evidence/records.ts";
 import { stateFor } from "../helpers/change-state.ts";
 
@@ -75,6 +75,25 @@ function state(p: Patch = {}): ChangeState {
 		evidence: { started: p.started ?? {}, receipts: p.unticked ? Object.fromEntries(p.unticked.map((u) => [u, [receipt(u)]])) : {}, attempts: {}, blocked: p.blocked ?? {}, untickedReceipts: p.unticked ?? [] },
 	};
 }
+
+describe("laneOpenRefusal", () => {
+	type Row = [name: string, unit: string, patch: Patch, expected: string | undefined];
+	const rows: Row[] = [
+		["not a per: unit phase", "U1", { phase: "plan" }, "per: unit"],
+		["no lock", "U1", { locked: false }, "not locked"],
+		["unknown unit", "U9", {}, "U9 is not"],
+		["frozen unit", "U1", { frozen: ["U1"] }, "unit_amend"],
+		["stale unit", "U1", { stale: ["U1"] }, "unit_amend"],
+		["blocked unit", "U1", { blocked: { U1: "attempts" } }, "spec_stuck"],
+		["a ready unit may open a lane", "U1", {}, undefined],
+	];
+
+	test.each(rows)("%s", (_name, unit, patch, expected) => {
+		const refusal = laneOpenRefusal(state(patch), pack, unit);
+		if (expected === undefined) expect(refusal).toBeUndefined();
+		else expect(refusal).toContain(expected);
+	});
+});
 
 describe("unitStartRefusal", () => {
 	type Row = [name: string, unit: string, patch: Patch, expected: string | undefined];

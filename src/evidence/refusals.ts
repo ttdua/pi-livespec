@@ -120,6 +120,13 @@ const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, openLane, cha
 const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
 const RECONCILE_RULES: Rule[] = [openLane, dirtyTree, changedSinceLock];
 
+const LANE_OPEN_RULES: Rule[] = [notPerUnit, notLocked, ...INVARIANT_RULES];
+
+/** Why `lane_open <unit>` refuses before the lane rules: the phase, the lock, then the unit invariants. */
+export function laneOpenRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
+	return firstRefusal(LANE_OPEN_RULES, state, pack, unit);
+}
+
 /** The unit invariants `lane_merge` shares with `unit_finish`: known, not frozen or stale, digest as at the start, not blocked. */
 export function unitInvariantRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
 	return firstRefusal(INVARIANT_RULES, state, pack, unit);
