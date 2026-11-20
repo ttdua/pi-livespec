@@ -150,3 +150,22 @@ describe("nextStage refusals", () => {
 		expect(nextStage(at([mark(writeMarked("decision", "tags.review", { point: "tags", subject: "review", source: "rule", outcome: [], reason: "r" }))]), pack)).toEqual({ stage: "start" });
 	});
 });
+
+describe("dispatch outcomes of a stage", () => {
+	const t = { role: "reviewer" as const, subject: "change" as const };
+	const packet = { text: "", hash: "a".repeat(64), sources: [], skillPaths: [], cwd: "/", seen: [] };
+	test.each([
+		[{ kind: "question", id: "agent-1", text: "which?" }, "subagent_answer agent-1", undefined],
+		[{ kind: "inline", reason: "disabled", packet }, "subagent_packet reviewer change, then subagent_record reviewer change", "subagent_packet reviewer change, then subagent_record reviewer change"],
+		[{ kind: "sequential", reason: "moved" }, "subagent_record reviewer change", "subagent_packet reviewer change, then subagent_record reviewer change"],
+		[{ kind: "stuck", reason: "NEEDS_CONTEXT 3 times" }, "spec_stuck", undefined],
+		[{ kind: "blocked", reason: "no result" }, "BLOCKED", undefined],
+		[{ kind: "cancelled", reason: "cancelled" }, "cancelled", undefined],
+	] as const)("%o stops the call", async (outcome, text, inline) => {
+		const { outcomeLine } = await import("../../src/review/stages.ts");
+		const line = outcomeLine(t, outcome as never);
+		expect(line.stop).toBe(true);
+		expect(line.line).toContain(text);
+		expect(line.inline).toBe(inline);
+	});
+});

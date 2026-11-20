@@ -12,6 +12,7 @@ import { registerSkillNote } from "./skill-note.ts";
 import { registerSpecGate } from "./spec-gate.ts";
 import { registerSpecNext } from "./spec-next.ts";
 import { registerSpecQuestion } from "./spec-question.ts";
+import { registerSpecReview } from "./spec-review.ts";
 import { registerSpecStatus } from "./spec-status.ts";
 import { registerSpecStuck } from "./spec-stuck.ts";
 import { registerSpecWrite } from "./spec-write.ts";
@@ -41,6 +42,7 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerSubagentAnswer(pi);
 	registerSubagentPacket(pi);
 	registerSubagentRecord(pi);
+	registerSpecReview(pi);
 	registerFindingRebut(pi);
 	registerForgeRead(pi);
 	registerLaneOpen(pi);
