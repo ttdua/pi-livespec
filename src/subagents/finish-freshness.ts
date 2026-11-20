@@ -24,7 +24,7 @@ export async function staleSince(f: FinishFacts, unit: string): Promise<string[]
 	const packet = await readPacket(f.root, changeName(ctx), dispatch.packet);
 	if (packet === undefined) return undefined;
 	try {
-		const stale = checkFreshness(packet, await readCurrent(ctx, dispatch.role, unit, dispatch.subject)).stale;
+		const stale = checkFreshness(packet, await readCurrent(ctx, dispatch.role, unit, dispatch.subject), dispatch.agentId).stale;
 		return stale.length === 0 ? undefined : stale;
 	} catch (error) {
 		return [`unreadable: ${error instanceof Error ? error.message : String(error)}`];

@@ -18,15 +18,19 @@ const HUMAN_VOICE = /^(answer:|review:)/;
 /**
  * Stale sources: every old source is revalidated (a changed version, or a source that is gone or unreadable, is stale), a human comment (new or edited) since the build, and a new answered
  * question, child answer (`answer:Q<n>` or `answer:<agentId>:<n>`) or review comment the manifest would now include. Own marked comments never count here.
+ * `ownAgent` is the dispatched run's agent id: the answers the parent gave that child are its own input, not news to it.
  */
-export function checkFreshness(packet: Packet, current: Current): { stale: string[] } {
+export function checkFreshness(packet: Packet, current: Current, ownAgent?: string): { stale: string[] } {
 	const stale = new Set<string>();
 	const now = new Map(current.sources.map((s) => [s.id, s.version]));
 	for (const s of packet.sources) {
 		if (now.get(s.id) !== s.version) stale.add(s.id);
 	}
 	const known = new Set(packet.sources.map((s) => s.id));
-	for (const s of current.sources) if (HUMAN_VOICE.test(s.id) && !known.has(s.id)) stale.add(s.id);
+	const own = ownAgent === undefined ? undefined : `answer:${ownAgent}:`;
+	for (const s of current.sources) {
+		if (HUMAN_VOICE.test(s.id) && !known.has(s.id) && !(own !== undefined && s.id.startsWith(own))) stale.add(s.id);
+	}
 	const seen = new Set(packet.seen);
 	for (const c of current.humanComments) if (!seen.has(seenKey(c))) stale.add(c.id);
 	return { stale: [...stale] };

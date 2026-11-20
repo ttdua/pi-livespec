@@ -83,6 +83,15 @@ describe("freshness", () => {
 		expect(await stale(world, packet)).toEqual(["answer:agent-9:1"]);
 	});
 
+	test("an answer to the dispatched child itself is not stale; another child's still is", async () => {
+		const world = await makeWorld();
+		const packet = await dispatched(world);
+		world.post(BOT, dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-9", answer: "use redis" }));
+		const current = await readCurrent(world.refreshed(), "implementer", "U3");
+		expect(checkFreshness(packet, current, "agent-9").stale).toEqual([]);
+		expect(checkFreshness(packet, current, "agent-1").stale).toEqual(["answer:agent-9:1"]);
+	});
+
 	test("a comment inserted while the packet is built is stale afterwards", async () => {
 		const world = await makeWorld();
 		world.post(BOT, dispatchComment({ role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] }));

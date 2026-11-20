@@ -80,6 +80,28 @@ describe("questions from a child", () => {
 		expect(textOf(out)).toContain("dispatch implementer U1 again");
 	});
 
+	test("the child's own answer does not make its packet stale at unit_finish", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: { text: "Which config file?" } }] } });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await h.commit({ "src/u1.ts": "x\n" });
+		h.fake.records.push({ structuredResult: done({ sources_used: [...required(h), "answer:agent-1:1"] }) });
+		const answered = await h.call("subagent_answer", { id: "agent-1", answer: "the project one" });
+		expect(answered.isError, textOf(answered)).toBeFalsy();
+		const spawn = h.fake.service.spawn;
+		Object.assign(h.fake.service, {
+			spawn: (type: string, prompt: string, o: never) => {
+				h.fake.records.push({ structuredResult: { status: "DONE", notes: "clean", discoveries: [], sources_used: footerIds(prompt), findings: [] } });
+				return spawn(type, prompt, o);
+			},
+		});
+		const review = await h.call("subagent_dispatch", { role: "reviewer", unit: "U1", subject: "unit" });
+		expect(review.isError, textOf(review)).toBeFalsy();
+		const finished = await h.finish("U1");
+		expect(finished.isError, textOf(finished)).toBeFalsy();
+		expect((await h.units())[0]?.done).toBe(true);
+	});
+
 	test("refuses an id the executor no longer knows", async () => {
 		const { h } = await asked();
 		Object.assign(h.fake.service, { getRecord: () => undefined });
