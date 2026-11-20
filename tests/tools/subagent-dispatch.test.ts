@@ -275,3 +275,27 @@ describe("subagent-dispatch tools", () => {
 		expect(await readPacket(h.root, "per-ip-cap", hash.packet)).toBeDefined();
 	});
 });
+
+describe("verifier dispatch", () => {
+	const AGG = {
+		role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
+		agentSource: "s", requested: { thinking: "low" }, effective: {}, aggregate: true, reviews: ["c0"],
+		findings: [{ severity: "WARNING", kind: "defect", location: "src/free.ts:4", evidence: "e", fix: "f", scope: "in-change", from: ["c0"], needsDecision: false, route: "in-change", verify: "required" }],
+	};
+
+	test("Verifier without a verdict is retried, with one it is recorded", async () => {
+		const h = await subagentHarness({ executor: {} });
+		await h.seed("finding-summary", "finding-summary.change.review.1", AGG);
+		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const noVerdict = () => citing(h, { findings: [], commits: undefined });
+		next(h, noVerdict());
+		next(h, noVerdict());
+		const first = await h.call("subagent_dispatch", { role: "verifier", finding: key });
+		expect(textOf(first)).toContain("$.verdict is required");
+		const again = () => citing(h, { findings: [], commits: undefined, verdict: "confirmed" });
+		next(h, again());
+		const out = await h.call("subagent_dispatch", { role: "verifier", finding: key });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await h.ofKind("finding-summary")).filter((m) => m.id.startsWith("finding-summary.verify.")).at(-1)?.data).toMatchObject({ role: "verifier", verifies: key, verdict: "confirmed" });
+	});
+});

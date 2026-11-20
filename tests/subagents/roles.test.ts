@@ -29,6 +29,16 @@ describe("resultSchema", () => {
 		expect(!checked.ok && checked.errors.join("\n")).toContain("$.findings[0].location");
 	});
 
+	test("a verifier result without a verdict is invalid, with one it is valid", () => {
+		const result = { status: "DONE", notes: "n", discoveries: [], sources_used: [], findings: [] };
+		const bad = checkSchema(resultSchema("verifier"), result);
+		expect(!bad.ok && bad.errors.join("\n")).toContain("$.verdict is required");
+		expect(resultSchema("verifier").required).toContain("verdict");
+		expect(checkSchema(resultSchema("verifier"), { ...result, verdict: "refuted" }).ok).toBe(true);
+		expect(checkSchema(resultSchema("verifier"), { ...result, verdict: "maybe" }).ok).toBe(false);
+		expect(resultSchema("reviewer").required).not.toContain("verdict");
+	});
+
 	test("scout requires neither commits nor findings; verifier requires findings", () => {
 		expect(resultSchema("scout").required ?? []).not.toContain("commits");
 		expect(resultSchema("scout").required ?? []).not.toContain("findings");

@@ -11,7 +11,7 @@ import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResu
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { inlineText, outcomeText } from "./subagent-outcome.ts";
-import { defaultSubagentDeps, dispatchDeps, dispatchRequest, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
+import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
 import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_dispatch";
@@ -26,7 +26,9 @@ export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx
 	const { state } = change;
 	const target = checkTarget(p, state);
 	if (typeof target === "string") return refusal(TOOL, target);
-	const pctx = packetContext(w, state, target.unit);
+	const found = findingOf(state, target);
+	if (typeof found === "string") return refusal(TOOL, found);
+	const pctx = packetContext(w, state, target.unit, found);
 	const built = await buildPacket(pctx, target.role, target.unit, target.subject);
 	if (!built.ok) return refusal(TOOL, built.message);
 	const executor = findExecutor();

@@ -18,6 +18,8 @@ export type RunFacts = {
 	requested: { thinking: Thinking };
 	effective: { model?: string; thinking?: string };
 	advisory: boolean;
+	/** The aggregate finding key a verifier checks. */
+	finding?: string;
 	/** The unit's earlier `NEEDS_CONTEXT` records of this role; a new one is numbered after them. */
 	needsContext: number;
 };
@@ -42,8 +44,13 @@ export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | 
 export function nextRound(marked: MarkedComment[], role: Role, unit: string | undefined, subject: ReviewSubject | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<FindingSummaryData> & { rebuts?: unknown };
-		return m.kind === "finding-summary" && d.rebuts === undefined && d.contextRequest === undefined && d.system !== "files-violation" && d.role === role && d.unit === unit && d.subject === subject;
+		return m.kind === "finding-summary" && d.rebuts === undefined && d.contextRequest === undefined && d.system !== "files-violation" && d.aggregate !== true && d.role === role && d.unit === unit && d.subject === subject;
 	}).length + 1;
+}
+
+/** Next `round` of a verifier record: one more than the verifier records of the same finding key. */
+export function nextVerifyRound(marked: MarkedComment[], key: string): number {
+	return current(marked).filter((m) => m.kind === "finding-summary" && (m.data as Partial<FindingSummaryData>).verifies === key && (m.data as Partial<FindingSummaryData>).contextRequest === undefined).length + 1;
 }
 
 /** Earlier `NEEDS_CONTEXT` records of the unit and role, `dispatch` or `finding-summary`: the cap counts these only. */
@@ -83,8 +90,14 @@ function summaryData(run: RunFacts, result: SubagentResult, head: string): Findi
 		round: run.round, status: result.status, advisory: run.advisory, head, packet: run.packet.hash,
 		sources_used: result.sources_used, required, completed: computeCompleted(result, required),
 		agentSource: run.agentSource, requested: run.requested, effective: run.effective, findings: result.findings ?? [],
-		...contextRequestOf(run, result),
+		...contextRequestOf(run, result), ...verifierFields(run, result),
 	};
+}
+
+/** `verifies`, `verdict` and `reason` of a verifier record. */
+function verifierFields(run: RunFacts, result: SubagentResult): Partial<FindingSummaryData> {
+	if (run.role !== "verifier") return {};
+	return { ...optional("verifies", run.finding), ...optional("verdict", result.verdict), ...optional("reason", result.reason) };
 }
 
 /** The comment body that records `result`; `head` is the reviewed commit of a review run. */

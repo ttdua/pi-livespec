@@ -48,6 +48,8 @@ export type DispatchRequest = {
 	attempt: number;
 	round: number;
 	needsContext: number;
+	/** The aggregate finding key a verifier checks. */
+	finding?: string;
 };
 
 /** One launch's identity and the facts the record needs. */
@@ -64,6 +66,7 @@ function runFacts(request: DispatchRequest, run: Run): RunFacts {
 		requested: { thinking: run.thinking },
 		effective: { ...(run.facts.effectiveModel === undefined ? {} : { model: run.facts.effectiveModel }), ...(run.facts.effectiveThinking === undefined ? {} : { thinking: run.facts.effectiveThinking }) },
 		advisory: request.entry?.advisory === true, needsContext: request.needsContext,
+		...(request.finding === undefined ? {} : { finding: request.finding }),
 	};
 }
 

@@ -43,8 +43,8 @@ export const unitFindings: Provider = {
 		const unit = cx.target.unit?.id;
 		const out: Placed[] = [];
 		for (const m of cx.ctx.state.marked) {
-			const d = m.data as { unit?: unknown; findings?: unknown } | null;
-			if (m.kind !== "finding-summary" || !d || d.unit !== unit || !Array.isArray(d.findings) || d.findings.length === 0) continue;
+			const d = m.data as { unit?: unknown; findings?: unknown; role?: unknown; aggregate?: unknown } | null;
+			if (m.kind !== "finding-summary" || !d || d.unit !== unit || d.role === "verifier" || d.aggregate === true || !Array.isArray(d.findings) || d.findings.length === 0) continue;
 			out.push(await commentSource(cx, m, `Earlier findings on ${unit}`, stringify(d.findings)));
 		}
 		return out;
