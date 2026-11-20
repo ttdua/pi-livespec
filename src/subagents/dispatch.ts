@@ -27,7 +27,12 @@ export type DispatchDeps = RecordDeps & {
 	onOverride(agent: AgentInfo): void;
 	/** The tool call's signal: passed to every `wait`; when it aborts, the child is aborted and nothing more is recorded. */
 	signal?: AbortSignal;
+	/** How long to wait for an aborted child to settle before the forge write; defaults to `ABORT_SETTLE_MS`. */
+	abortSettleMs?: number;
 };
+
+/** Bound on waiting for an aborted child to settle. */
+export const ABORT_SETTLE_MS = 30_000;
 
 export type DispatchRequest = {
 	role: Role;
@@ -136,11 +141,24 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 /** `field: requested X, effective Y` for each mismatch: the evidence of a `launch-mismatch` record. */
 const mismatchEvidence = (found: Mismatch[]): string => found.map((m) => `${m.field}: requested ${m.requested}, effective ${m.effective}`).join("; ");
 
-/** Aborts the child, records the mismatch as `BLOCKED` `launch-mismatch` (not a failed attempt), then runs inline or sequentially. */
+/** True once `run` settles (a rejection counts as settled), false when `ms` pass first. */
+async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const expired = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), ms); });
+	try {
+		return await Promise.race([run.then(() => true, () => true), expired]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** Aborts the child, waits (bounded) for it to settle, records the mismatch as `BLOCKED` `launch-mismatch` (not a failed attempt), then runs inline or sequentially. */
 async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run: Run, check: { field: string; laneCwd: boolean; mismatches: Mismatch[] }, waited: Promise<RecordLike>): Promise<DispatchOutcome> {
 	deps.service.abort(run.agentId);
-	waited.catch(() => undefined);
-	const evidence = mismatchEvidence(check.mismatches);
+	const limit = deps.abortSettleMs ?? ABORT_SETTLE_MS;
+	const confirmed = await settledWithin(waited, limit);
+	const found = mismatchEvidence(check.mismatches);
+	const evidence = confirmed ? found : `${found}; the child did not confirm the abort within ${limit / 1000} s`;
 	await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, evidence));
 	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${evidence}); re-run ${request.unit} sequentially` };
 	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${LAUNCH_MISMATCH} recorded (mismatch: ${evidence}); ${request.role} runs inline`, packet: request.packet };
