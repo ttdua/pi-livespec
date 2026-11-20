@@ -139,6 +139,7 @@ Nothing time-varying appears before the task. The hash is computed with spill pa
 - **Path and branch.** `.worktrees/<change>--<unit>` on `livespec/<change>--lane-<unit>`, created from the change branch with `git worktree add`, through the engine's git exec. livespec owns both ends: it creates the lane and removes it after the merge.
 - **Lane count.** User config `lanes`, default 3.
 - **Eligibility.** No `Depends` between the units, no overlap in `Files`, and no shared spec file.
+- **Tools.** Two parent tools drive lanes (decided during apply): `lane_open <unit>` creates the worktree and posts the `lane` record; `lane_merge <unit>` checks `Files`, merges, runs `Verify` on the change root (red → `resetHard` and a failed attempt), then closes and removes the lane. The build loop suggests both. `unit_finish` is unchanged.
 - **Merge.** `git merge --no-ff` onto the change branch, then `unit_finish` there, one lane at a time. The unit review happened on the lane head; `unit_finish` accepts it when HEAD is the merge commit whose second parent is that head, and `Verify` at the merge commit is the integration check.
 - **Sequential re-run.** A unit re-runs sequentially when:
   - its lane touched files outside `Files` (a `files-violation` finding is recorded);

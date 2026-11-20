@@ -16,7 +16,7 @@ pi-jev-pilot 0.5.0 now provides the executor service this needs: per-launch skil
 - **Policy.** The pack's per-phase `subagents` key gets its validator: `role`, `subject`, `mode`, `when`, `advisory`. `when` covers `units>=N`, `difficulty>=`, `tags:`, `unfamiliar-code` and `context>=N%`. The phase card names the next dispatch, and the parent may still run it inline.
 - **Findings.** The shared finding schema, blocking rules, the parent's rebuttal with evidence (`finding_rebut`), and the `finding-summary` comment.
 - **Build loop.** For each unit: `unit_start`, then the implementer, then the unit reviewer when the policy says so, then `unit_finish`. A unit is ticked only after review passed, with at most `unit_rebuilds` fix rounds before `spec_stuck`.
-- **Parallel lanes.** Independent units run in livespec-owned git worktrees passed as the child's cwd, and are merged one at a time on the change branch. A lane that leaves its `Files`, conflicts or turns red after merge re-runs sequentially.
+- **Parallel lanes.** Independent units run in livespec-owned git worktrees passed as the child's cwd, opened with `lane_open` and merged one at a time with `lane_merge` on the change branch. A lane that leaves its `Files`, conflicts or turns red after merge re-runs sequentially.
 - **Child sessions.** Every child session gets a short fixed child note instead of the routing note and phase card. Guards stay on.
 - **`forge_read`.** A read-only forge tool for the parent session.
 - **Freshness.** Packet source versions are re-checked before `unit_finish`. A new human comment or answer since dispatch stops the unit.

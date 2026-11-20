@@ -66,6 +66,8 @@ Child sessions are detected in the existing hooks. `unit_start` and `unit_finish
 | Tool `subagent_packet` | new | params `{ role: Role; unit?: string; subject?: ReviewSubject }`, returns the packet text and skill paths | yes |
 | Tool `subagent_record` | new | params `{ role: Role; unit?: string; subject?: ReviewSubject; result: SubagentResult }` | yes |
 | Tool `finding_rebut` | new | params `{ comment: string; index: number; reason: string; evidence: string }` | yes |
+| Tool `lane_open` | new | params `{ unit: string }`; opens `.worktrees/<change>--<unit>` on `livespec/<change>--lane-<unit>` and posts the `lane` record | yes |
+| Tool `lane_merge` | new | params `{ unit: string }`; files-violation check, `merge --no-ff`, `Verify` on the change root (red → `resetHard`, failed attempt), closes and removes the lane | yes |
 | Tool `forge_read` | new | params `{ target: "issue"\|"comments"\|"pr"\|"pr-files"\|"reviews"\|"review-comments"\|"checks"\|"search"; number?: number; ref?: string; labels?: string[]; text?: string }` | yes |
 | `lane` marker data | new | `{ unit: string; path: string; branch: string; base: string; closed?: true }`; marker id `lane.<unit>` | yes (forge record) |
 | `dispatch` status `QUESTION` / `ANSWERED` | new | `dispatch` data with `status: "QUESTION"; role; agentId: string; question: string`, or `status: "ANSWERED"; role; agentId: string; answer: string`. Every `dispatch` and `finding-summary` record of a launched run carries `agentId` | yes (forge record) |
@@ -380,40 +382,44 @@ Child sessions are detected in the existing hooks. `unit_start` and `unit_finish
 
 ## Task 8: Parallel lanes — implements 8
 
-**Covers:** 8.1, 8.2, 8.3
+**Covers:** 8.1, 8.2, 8.3, 8.4
 **Difficulty:** Very Hard
 **Blocked by:** Task 6, Task 7
 
+Plan amendment (user decision during apply): lanes are driven by two parent tools, `lane_open` and `lane_merge`, suggested by the build loop. `lane_merge` runs `Verify` after the merge and owns the undo, so `unit_finish` is unchanged.
+
 **Files:**
-- Create: `src/subagents/lanes.ts`
-- Modify: `src/engine/git.ts` (add `worktreeAddBranch` and `resetHard`, see Contracts)
-- Test: `tests/subagents/lanes.test.ts` (temporary git repos via `tests/helpers/repo.ts`)
+- Create: `src/subagents/lanes.ts` (pure eligibility and lane naming), `src/subagents/lane-ops.ts` (worktree, merge, verify, undo, records), `src/tools/lane-open.ts`, `src/tools/lane-merge.ts`
+- Modify: `src/engine/git.ts` (add `worktreeAddBranch` and `resetHard`, see Contracts), `src/subagents/build-loop.ts` (lane steps), `src/tools/change-tools.ts` (register both tools)
+- Test: `tests/subagents/lanes.test.ts`, `tests/tools/lane-tools.test.ts` (temporary git repos via `tests/helpers/repo.ts`), `tests/engine/next-step.test.ts`
 
 **Interfaces:**
-- Consumes `Git`, `runDispatch`, `laneFor`, `unit_finish` internals, and `dispatchComment`.
+- Consumes `Git`, `openLanes`/`unitRoot`/`laneComment` (Task 4), `findingSummaryComment` (Task 4), the `Verify` runner and progress record used by `unit_finish` (Task 7 / LS-06), `reviewStepDoneAt` (Task 9), `findExecutor` (Task 1).
 - Produces:
-  - `eligibleLanes(state, max): string[][]`;
-  - `openLane(git, change, unit): Promise<{ ok: true; path } | { ok: false; message }>`;
-  - `mergeLane(git, lane): Promise<"ok" | "conflict">`;
+  - `eligibleLanes(state, max): string[]` (ready units that may run together, at most `max` minus open lanes);
+  - `lanePath(root, change, unit)`, `laneBranch(change, unit)`;
+  - `openLane(ops, change, unit): Promise<{ ok: true; path } | { ok: false; message }>`, where `ops = { git, root, post }`;
+  - `mergeLane(ops, lane, files): Promise<"merged" | "violation" | "conflict" | "red">`;
   - `filesViolation(git, lane, files): Promise<string[]>`;
-  - `closeLane(git, lane): Promise<void>`.
+  - `closeLane(ops, lane): Promise<void>`;
+  - `registerLaneOpen(pi)`, `registerLaneMerge(pi)`.
 
 - [ ] **Step 1:** Write the failing tests:
-  - `overlapping files not parallel`;
-  - `lane limit`;
-  - `lane created at path and branch`;
+  - `overlapping files not parallel`; `lane limit`;
+  - `lane created at path and branch` (record posted);
+  - `next step opens lanes`; `open refused over the limit`; `leftover worktree` (reused when clean at HEAD, refused otherwise);
+  - `merge before review refused`;
   - `two lanes merge one at a time`;
-  - `files violation re-runs sequentially and posts files-violation`;
-  - `red after merge undoes and counts an attempt`;
+  - `files violation` (nothing merged, finding posted, lane closed and removed, next step sequential);
+  - `merge conflict aborts and re-runs sequentially`;
+  - `red after merge` (merge undone, failed attempt, lane closed);
   - `moved by a workspace provider re-runs sequentially`;
-  - `lane reuses a clean leftover worktree and refuses a diverged one`.
-- [ ] **Step 2:** Run `bun run test tests/subagents/lanes.test.ts`. Expected: FAIL.
-- [ ] **Step 3:** Implement:
-  - `openLane` posts the `lane` record after the worktree exists.
-  - `mergeLane` closes the record before `unit_finish` runs on the change root.
-  - To undo a red merge, run `Git.resetHard(<pre-merge HEAD>)` on the change branch. It is safe because the tree was clean, and that is checked before the merge.
-- [ ] **Step 4:** Run `bun run test`. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(subagents): parallel lanes`.
+  - both tools refuse in a child.
+- [ ] **Step 2:** Run `bun run test tests/subagents/lanes.test.ts tests/tools/lane-tools.test.ts`. Expected: FAIL.
+- [ ] **Step 3:** Implement `lanes.ts` and `lane-ops.ts`. To undo a red merge, run `Git.resetHard(<pre-merge HEAD>)` on the change branch; it is safe because `lane_merge` refuses a dirty tree.
+- [ ] **Step 4:** Implement the two tools and the build-loop steps, and register the tools in `change-tools.ts`.
+- [ ] **Step 5:** Run `bun run typecheck && bun run test`. Expected: PASS.
+- [ ] **Step 6:** Commit `feat(subagents): parallel lanes`.
 
 ## Task 9: Phase card, build loop and forge_read — implements 9
 
@@ -524,7 +530,8 @@ Child sessions are detected in the existing hooks. `unit_start` and `unit_finish
 - Executor missing, Executor lacks a capability, Role override, Workspace provider package, Excluded packages listed → `tests/subagents/doctor.test.ts`
 
 **parallel-lanes**
-- Overlapping files, Lane limit, Lane created, Two lanes finish, Files violation, Red after merge, Moved by a workspace provider → `tests/subagents/lanes.test.ts` (same names)
+- Overlapping files, Lane limit, Lane created, Two lanes finish, Files violation, Red after merge, Moved by a workspace provider → `tests/subagents/lanes.test.ts` / `tests/tools/lane-tools.test.ts` (same names)
+- Next step opens lanes → `tests/engine/next-step.test.ts`; Open refused over the limit, Leftover worktree, Merge before review refused → `tests/tools/lane-tools.test.ts`
 
 **review-findings**
 - Valid finding, Missing location → `tests/subagents/roles.test.ts` "finding schema accepts six fields" / "rejects missing location"
