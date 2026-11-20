@@ -10,10 +10,11 @@ import { registeredPayload } from "./gates.ts";
 import type { Git } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { isGateOnly } from "./registry.ts";
+import { subagentFindingsSection } from "../subagents/payload.ts";
 import type { ChangeState } from "./state-types.ts";
 
 export type ReviewFacts = { specsStat: string; specsFiles: string[]; issueUrl?: string };
-export type GatePayload = { summary: string; links: string[]; files: string[] };
+export type GatePayload = { summary: string; links: string[]; files: string[]; findings: string[] };
 
 const SPECS_PATH = "specs/";
 const PROPOSAL_LINES = 5;
@@ -93,11 +94,13 @@ export function gatePayload(state: ChangeState, pack: Pack, target: string, fact
 	const isPhase = pack.phases.some((p) => p.id === target);
 	const head = [`Gate ${target} for #${state.issue.number} ${state.issue.title}.`];
 	const registered = isPhase ? registeredPayload(target, state, facts).map((t) => [t]) : [];
-	const sections = [...(isPhase ? phaseSections(state, target, facts) : []), gateCheckSection(state), ...registered];
+	const subagent = subagentFindingsSection(state.marked);
+	const sections = [...(isPhase ? phaseSections(state, target, facts) : []), gateCheckSection(state), subagent.lines, ...registered];
 	const summary = [head, ...sections.filter((s) => s.length > 0)].map((s) => s.join("\n")).join("\n\n");
 	return {
 		summary,
 		links: facts.issueUrl === undefined ? [] : [facts.issueUrl],
 		files: target === "define" ? [...facts.specsFiles] : [],
+		findings: subagent.keys,
 	};
 }

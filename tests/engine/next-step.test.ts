@@ -12,6 +12,9 @@ import type { MarkedComment } from "../../src/forge/markers.ts";
 import type { Answered, RequestKind, RequestRecord, Subject } from "../../src/interaction/approver.ts";
 import type { AppliedAnswer, PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
+import { dispatchComment } from "../../src/subagents/records.ts";
+import { finding, implemented, mark, pad, reviewed } from "../subagents/helpers.ts";
 
 /** Fixture with Q1 answered: no open blocking question. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
@@ -41,6 +44,17 @@ beforeAll(async () => {
 
 function state(phase: string, body: string, overrides: Partial<ChangeState> = {}): ChangeState {
 	return stateFor(phase, { change: parseChange(body), ...overrides });
+}
+
+/** A completed advisory review of a whole-change subject at the fixture HEAD: the phase's reviewer step is done. */
+function changeReview(subject: "spec" | "plan"): MarkedComment {
+	const { unit: _unit, ...data } = JSON.parse(JSON.stringify(reviewed({ subject, advisory: true }).data)) as Record<string, unknown>;
+	return mark(writeMarked("finding-summary", `finding-summary.change.${subject}.1`, data));
+}
+
+/** A define or plan state whose default `always` reviewer already ran, so the gate is next. */
+function reviewedState(phase: "define" | "plan", body: string, overrides: Partial<ChangeState> = {}): ChangeState {
+	return state(phase, body, { ...overrides, marked: [changeReview(phase === "define" ? "spec" : "plan"), ...(overrides.marked ?? [])] });
 }
 
 function phaseOf(id: string, over: Partial<Phase> = {}): Phase {
@@ -160,7 +174,7 @@ describe("nextStep", () => {
 	});
 
 	test("warnings alone do not block the gate", () => {
-		expect(nextStep(pack, state("define", NO_QUESTION, { checks: [WARNING] })).next).toBe("Ready for the define gate.");
+		expect(nextStep(pack, reviewedState("define", NO_QUESTION, { checks: [WARNING] })).next).toBe("Ready for the define gate.");
 	});
 
 	test("last phase with a human gate has no further phase", () => {
@@ -202,7 +216,7 @@ describe("nextStep", () => {
 	});
 
 	test("Human gate ready", () => {
-		const step = nextStep(pack, state("plan", NO_QUESTION));
+		const step = nextStep(pack, reviewedState("plan", NO_QUESTION));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -382,7 +396,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 
 	test("async question request does not block", () => {
 		const body = NO_QUESTION.replace("- [x] Q2 (non-blocking)", "- [ ] Q2 (non-blocking)");
-		const step = nextStep(pack, state("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
+		const step = nextStep(pack, reviewedState("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.pending).toEqual([{ id: "question-Q2.lx3k2a", subject: "question:Q2", mode: "async", adapter: "forge" }]);
 	});
@@ -399,7 +413,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 	});
 
 	test("frozen units do not block define", () => {
-		const step = nextStep(pack, state("define", NO_QUESTION, { lock: lockWith({ frozen: ["U2"], staleUnits: ["U3"] }) }));
+		const step = nextStep(pack, reviewedState("define", NO_QUESTION, { lock: lockWith({ frozen: ["U2"], staleUnits: ["U3"] }) }));
 		expect(step.next).toBe("Ready for the define gate.");
 		expect(step.frozenUnits).toEqual([]);
 		expect(step.staleUnits).toEqual([]);
@@ -492,11 +506,11 @@ describe("unit evidence rules", () => {
 	});
 
 	test("Started unit before the next unit", () => {
-		const s = state("build", TWO_READY, { evidence: evidence({ started: { U3: startRec("U3") } }) });
+		const s = state("build", TWO_READY, { evidence: evidence({ started: { U1: startRec("U1") } }), marked: [pad(), implemented("U1")] });
 		const step = nextStep(pack, s);
-		expect(step.next).toBe("Finish U3 with unit_finish once Verify passes.");
-		expect(step.startedUnits).toEqual(["U3"]);
-		expect(step.activeUnits).toEqual(["U3", "U1"]);
+		expect(step.next).toBe("Finish U1 with unit_finish once Verify passes.");
+		expect(step.startedUnits).toEqual(["U1"]);
+		expect(step.activeUnits).toEqual(["U1", "U3"]);
 	});
 
 	test("Receipted, not ticked", () => {
@@ -509,7 +523,7 @@ describe("unit evidence rules", () => {
 		const both = evidence({ started: { U1: startRec("U1") }, blocked: { U3: "progress" }, untickedReceipts: ["U3"] });
 		expect(nextStep(pack, state("build", TWO_READY, { evidence: both })).next).toContain("BLOCKED (progress)");
 		const noBlock = evidence({ started: { U1: startRec("U1") }, untickedReceipts: ["U3"] });
-		expect(nextStep(pack, state("build", TWO_READY, { evidence: noBlock })).next).toContain("Finish U1");
+		expect(nextStep(pack, state("build", TWO_READY, { evidence: noBlock, marked: [pad(), implemented("U1")] })).next).toContain("Finish U1");
 	});
 
 	test("an open stuck report waits before a blocked unit", () => {
@@ -533,5 +547,271 @@ describe("unit evidence rules", () => {
 		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3 });
 		const s = state("build", NO_QUESTION, { counters: facts.counters, evidence: facts.evidence });
 		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
+	});
+});
+
+describe("build loop with subagents", () => {
+	const HEAD = "f".repeat(40);
+	const startRec = (unit: string): StartRecord => ({ unit, digest: "d", verify: "v", pre: { sha: "abc1234".padEnd(40, "0") }, id: `${unit}.s`, commentId: "c0", index: 0 });
+	const BOTH_READY = NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —");
+	const ok = (over: Partial<ChangeState["subagents"]> = {}): ChangeState["subagents"] => ({ executor: { ok: true, missing: [] }, turnsCompleted: 1, contextPercent: 30, lanes: {}, unfamiliar: { change: false, units: {} }, ...over });
+	const build = (unit: string, marked: MarkedComment[] = [], over: Partial<ChangeState> = {}): ChangeState =>
+		state("build", BOTH_READY, {
+			evidence: { started: { [unit]: startRec(unit) }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), ...marked],
+			subagents: ok(),
+			...over,
+		});
+
+	test("auto implementer suggested", () => {
+		const step = nextStep(pack, build("U3"));
+		expect(step.next).toContain("subagent_dispatch implementer U3");
+		expect(step.dispatch).toEqual({ role: "implementer", unit: "U3", inline: false });
+	});
+
+	test("below the threshold inline", () => {
+		const step = nextStep(pack, build("U1"));
+		expect(step.next).toContain("subagent_packet implementer U1");
+		expect(step.next).toContain("subagent_record implementer U1");
+		expect(step.next).not.toContain("subagent_dispatch");
+		expect(step.next).not.toContain("unit_finish");
+		expect(step.dispatch).toEqual({ role: "implementer", unit: "U1", inline: true });
+	});
+
+	test("below the threshold, implemented inline → ready to finish", () => {
+		const step = nextStep(pack, build("U1", [implemented("U1")]));
+		expect(step.next).toBe("Finish U1 with unit_finish once Verify passes.");
+		expect(step.dispatch).toBeUndefined();
+	});
+
+	test("the unfamiliar-code fact computed at refresh suggests the entry", () => {
+		const custom: Pack = {
+			...pack,
+			phases: pack.phases.map((p) => (p.id === "build" ? { ...p, subagents: [{ role: "implementer", mode: "auto", when: ["unfamiliar-code"] }] } : p)),
+		};
+		const familiar = nextStep(custom, build("U3", [], { subagents: ok({ unfamiliar: { change: false, units: { U3: false } } }) }));
+		expect(familiar.dispatch).toEqual({ role: "implementer", unit: "U3", inline: true });
+		const strange = nextStep(custom, build("U3", [], { subagents: ok({ unfamiliar: { change: false, units: { U3: true } } }) }));
+		expect(strange.next).toContain("subagent_dispatch implementer U3");
+		expect(strange.dispatch).toEqual({ role: "implementer", unit: "U3", inline: false });
+	});
+
+	test("an advisory unit review that completed at HEAD finishes the step", () => {
+		const advisory: Pack = {
+			...pack,
+			phases: pack.phases.map((p) => (p.id === "build" ? { ...p, subagents: [{ role: "reviewer", subject: "unit", mode: "always", advisory: true }] } : p)),
+		};
+		const before = nextStep(advisory, build("U3", [implemented("U3")]));
+		expect(before.dispatch).toEqual({ role: "reviewer", unit: "U3", subject: "unit", inline: false });
+		const done = nextStep(advisory, build("U3", [implemented("U3"), reviewed({ advisory: true })]));
+		expect(done.next).toBe("Finish U3 with unit_finish once Verify passes.");
+	});
+
+	test("no executor → subagent_packet and subagent_record", () => {
+		const step = nextStep(pack, build("U3", [], { subagents: ok({ executor: { ok: false, missing: ["spawn"] } }) }));
+		expect(step.next).toContain("subagent_packet implementer U3");
+		expect(step.next).toContain("subagent_record implementer U3");
+		expect(step.next).not.toContain("subagent_dispatch");
+		expect(step.dispatch).toEqual({ role: "implementer", unit: "U3", inline: true });
+	});
+
+	test("started unit without dispatch record → implementer step", () => {
+		const before = implemented("U3");
+		const s = state("build", BOTH_READY, { evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] }, marked: [before, pad()], subagents: ok() });
+		expect(nextStep(pack, s).dispatch?.role).toBe("implementer");
+	});
+
+	test("a launch mismatch after a settled implementer run does not undo it", () => {
+		const mismatch = implemented("U3", { attempt: 2, status: "BLOCKED", reason: "launch-mismatch", evidence: "cwd", launchMismatch: true });
+		expect(nextStep(pack, build("U3", [implemented("U3"), mismatch])).dispatch?.role).toBe("reviewer");
+	});
+
+	test("a BLOCKED implementer run does not count as a dispatch record", () => {
+		expect(nextStep(pack, build("U3", [implemented("U3", { status: "BLOCKED" })])).dispatch?.role).toBe("implementer");
+	});
+
+	test("review before finish", () => {
+		const step = nextStep(pack, build("U3", [implemented("U3")]));
+		expect(step.next).toContain("subagent_dispatch reviewer U3 unit");
+		expect(step.next).not.toContain("unit_finish");
+		expect(step.dispatch).toEqual({ role: "reviewer", unit: "U3", subject: "unit", inline: false });
+	});
+
+	test("completed clean review → finish", () => {
+		const step = nextStep(pack, build("U3", [implemented("U3"), reviewed()]));
+		expect(step.next).toBe("Finish U3 with unit_finish once Verify passes.");
+	});
+
+	test("started unit with blocking finding → fix round", () => {
+		const step = nextStep(pack, build("U3", [implemented("U3"), reviewed({ findings: [finding()] })]));
+		expect(step.next).toContain("Fix round 1");
+		expect(step.next).toContain("new commit");
+		expect(step.dispatch).toEqual({ role: "implementer", unit: "U3", inline: false });
+	});
+
+	test("fix commit → new review, then finish", () => {
+		const first = [implemented("U3"), reviewed({ findings: [finding()] })];
+		const fixed = "a".repeat(40);
+		const atFix = nextStep(pack, build("U3", [...first, implemented("U3", { attempt: 2 })], { git: { branch: "livespec/per-ip-cap", head: fixed, dirty: false, specsChanged: true } }));
+		expect(atFix.dispatch).toEqual({ role: "reviewer", unit: "U3", subject: "unit", inline: false });
+		const clean = [...first, implemented("U3", { attempt: 2 }), reviewed({ round: 2, head: fixed })];
+		const done = nextStep(pack, build("U3", clean, { git: { branch: "livespec/per-ip-cap", head: fixed, dirty: false, specsChanged: true } }));
+		expect(done.next).toBe("Finish U3 with unit_finish once Verify passes.");
+	});
+
+	test("rebuild cap → spec_stuck", () => {
+		const reviews = [1, 2, 3].map((round) => reviewed({ round, findings: [finding()] }));
+		const step = nextStep(pack, build("U3", [implemented("U3"), ...reviews]));
+		expect(step.next).toContain("spec_stuck");
+		expect(step.next).toContain("re-plan required");
+		expect(step.dispatch).toBeUndefined();
+	});
+
+	test("needs-decision finding → spec_question, not a fix round; answered → finish", () => {
+		const review = reviewed({ findings: [finding({ scope: "needs-decision" })] });
+		const marked = [implemented("U3"), review];
+		const asks = nextStep(pack, build("U3", marked));
+		expect(asks.next).toContain("spec_question");
+		expect(asks.next).toContain(`finding:${review.commentId}:0`);
+		expect(asks.next).not.toContain("Fix round");
+		expect(asks.dispatch).toBeUndefined();
+		const body = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", `- [x] Q1 (blocking): finding:${review.commentId}:0 which? — Answer: yes`);
+		const answered = nextStep(pack, build("U3", marked, { change: parseChange(body) }));
+		expect(answered.next).toContain("Finish U3");
+	});
+
+	test("out-of-scope finding is not a fix round and waits for the next gate", () => {
+		const review = reviewed({ findings: [finding({ scope: "out-of-scope" })] });
+		const step = nextStep(pack, build("U3", [implemented("U3"), review]));
+		expect(step.next).not.toContain("Fix round");
+		expect(step.next).toContain("next human gate");
+		expect(step.dispatch).toBeUndefined();
+	});
+
+	test("a superseded review comment does not count toward the rebuild cap", () => {
+		const first = reviewed({ round: 1, findings: [finding()] });
+		const edited = reviewed({ round: 1, findings: [finding()] });
+		const second = reviewed({ round: 2, findings: [finding()] });
+		const step = nextStep(pack, build("U3", [implemented("U3"), first, edited, second]));
+		expect(step.next).toContain("Fix round 2");
+		expect(step.next).not.toContain("spec_stuck");
+	});
+
+	test("an unanswered child question is the next step", () => {
+		const question = { unit: "U3", agentId: "a1", question: "Which config file?" };
+		const step = nextStep(pack, build("U3", [], { subagents: ok({ pending: question }) }));
+		expect(step.pendingChild).toEqual({ agentId: "a1", question: "Which config file?" });
+		expect(step.next).toContain("a1");
+		expect(step.next).toContain("Which config file?");
+	});
+});
+
+describe("parallel lanes in the build loop", () => {
+	/** U1 and U3 pending, both ready, disjoint Files; both `Difficulty: medium` so the implementer entry holds. */
+	const BOTH_READY = NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —").replace("Difficulty: low", "Difficulty: medium");
+	const LANE = (unit: string) => ({ unit, path: `/r/.worktrees/per-ip-cap--${unit}`, branch: `livespec/per-ip-cap--lane-${unit}`, base: "b".repeat(40) });
+	const subagents = (over: Partial<ChangeState["subagents"]> = {}): ChangeState["subagents"] => ({ executor: { ok: true, missing: [] }, turnsCompleted: 1, contextPercent: 30, lanes: {}, unfamiliar: { change: false, units: {} }, ...over });
+	const startRec = (unit: string): StartRecord => ({ unit, digest: "d", verify: "v", pre: { sha: "b".repeat(40) }, id: `${unit}.s`, commentId: "c0", index: 0 });
+	const at = (over: Partial<ChangeState> = {}): ChangeState => state("build", BOTH_READY, { subagents: subagents(), ...over });
+
+	test("Next step opens lanes", () => {
+		expect(nextStep(pack, at()).next).toBe("Run these units in parallel lanes: lane_open U1, lane_open U3.");
+	});
+
+	test("a receipted unticked unit is ticked before lanes open", () => {
+		const s = at();
+		const step = nextStep(pack, { ...s, evidence: { ...s.evidence, untickedReceipts: ["U1"] } });
+		expect(step.next).toBe("Run unit_finish U1 again to tick it.");
+	});
+
+	test("no lanes without an executor, with one ready unit, or when the implementer entry does not hold", () => {
+		expect(nextStep(pack, at({ subagents: subagents({ executor: { ok: false, missing: ["spawn"] } }) })).next).toContain("Build U1");
+		expect(nextStep(pack, state("build", NO_QUESTION.replace("Difficulty: low", "Difficulty: medium"), { subagents: subagents() })).next).not.toContain("lane_open");
+		const low = state("build", NO_QUESTION.replace("- [x] done", "- [ ] pending").replace("Depends: U1", "Depends: —").replace("Difficulty: medium", "Difficulty: low"), { subagents: subagents() });
+		expect(nextStep(pack, low).next).not.toContain("lane_open");
+	});
+
+	test("an open lane's unit starts in its lane", () => {
+		const step = nextStep(pack, at({ subagents: subagents({ lanes: { U1: LANE("U1"), U3: LANE("U3") } }) }));
+		expect(step.next).toBe("Start U1 in its lane with unit_start U1.");
+	});
+
+	test("a reviewed lane unit is merged with lane_merge", () => {
+		const laneHead = "e".repeat(40);
+		const s = at({
+			subagents: subagents({ lanes: { U3: LANE("U3") }, laneHeads: { U3: laneHead } }),
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: laneHead })],
+		});
+		expect(nextStep(pack, s).next).toContain("lane_merge U3");
+		const unreviewed = { ...s, marked: [pad(), implemented("U3")] };
+		expect(nextStep(pack, unreviewed).dispatch).toEqual({ role: "reviewer", unit: "U3", subject: "unit", inline: false });
+	});
+
+	const closed = (unit: string, extra: Record<string, unknown>): MarkedComment => mark(writeMarked("lane", `lane.${unit}`, { ...LANE(unit), closed: true, ...extra }));
+
+	test("after an unmerged close the implementer runs again", () => {
+		const s = at({
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: "e".repeat(40) }), closed("U3", { outcome: "violation" })],
+		});
+		expect(nextStep(pack, s).dispatch).toEqual({ role: "implementer", unit: "U3", inline: false });
+	});
+
+	test("after a merged close the lane-head review counts", () => {
+		const laneHead = "e".repeat(40);
+		const s = at({
+			subagents: subagents({ mergedLaneHeads: { U3: laneHead } }),
+			evidence: { started: { U3: startRec("U3") }, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] },
+			marked: [pad(), implemented("U3"), reviewed({ head: laneHead }), closed("U3", { outcome: "merged", head: laneHead })],
+		});
+		expect(nextStep(pack, s).next).toBe("Finish U3 with unit_finish once Verify passes.");
+		const moved = { ...s, subagents: subagents() };
+		expect(nextStep(pack, moved).dispatch).toMatchObject({ role: "reviewer", unit: "U3" });
+	});
+});
+
+describe("phase-level subagent suggestions before the gate", () => {
+	const withExecutor = (over: Partial<ChangeState["subagents"]> = {}): ChangeState["subagents"] => ({ executor: { ok: true, missing: [] }, turnsCompleted: 0, lanes: {}, unfamiliar: { change: false, units: {} }, ...over });
+
+	test("define suggests the spec reviewer before the gate", () => {
+		const step = nextStep(pack, state("define", NO_QUESTION, { subagents: withExecutor() }));
+		expect(step.next).toContain("subagent_dispatch reviewer spec");
+		expect(step.dispatch).toEqual({ role: "reviewer", subject: "spec", inline: false });
+	});
+
+	test("plan suggests the plan reviewer inline without an executor", () => {
+		const step = nextStep(pack, state("plan", NO_QUESTION));
+		expect(step.next).toContain("subagent_packet reviewer plan");
+		expect(step.next).toContain("subagent_record reviewer plan");
+		expect(step.dispatch).toEqual({ role: "reviewer", subject: "plan", inline: true });
+	});
+
+	test("a completed review at HEAD clears the suggestion; one at an older HEAD does not", () => {
+		expect(nextStep(pack, reviewedState("plan", NO_QUESTION)).next).toBe("Ready for the plan gate.");
+		expect(nextStep(pack, reviewedState("plan", NO_QUESTION, { git: { branch: "b", head: "e".repeat(40), dirty: false, specsChanged: true } })).dispatch?.subject).toBe("plan");
+	});
+
+	test("unfamiliar code suggests a scout in shape, until a scout record exists", () => {
+		const unfamiliar = withExecutor({ unfamiliar: { change: true, units: {} } });
+		const step = nextStep(pack, state("shape", NO_QUESTION, { subagents: unfamiliar }));
+		expect(step.dispatch).toEqual({ role: "scout", inline: false });
+		const scouted = mark(dispatchComment({ role: "scout", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] }));
+		expect(nextStep(pack, state("shape", NO_QUESTION, { subagents: unfamiliar, marked: [scouted] })).next).toBe("Checks pass; the shape gate can pass.");
+	});
+
+	test("a change-level tags condition holds when a unit carries the tag", () => {
+		const tagged: Pack = { ...pack, phases: pack.phases.map((p) => (p.id === "shape" ? { ...p, subagents: [{ role: "scout", mode: "auto", when: ["tags:security"] }] } : p)) };
+		const untagged = NO_QUESTION.replace("Tags: [security, api]", "Tags: [api]");
+		expect(untagged).not.toBe(NO_QUESTION);
+		expect(nextStep(tagged, state("shape", NO_QUESTION, { subagents: withExecutor() })).dispatch).toEqual({ role: "scout", inline: false });
+		expect(nextStep(tagged, state("shape", untagged, { subagents: withExecutor() })).dispatch).toBeUndefined();
+	});
+
+	test("no suggestion once the gate is requested or decided", () => {
+		const requested = state("define", NO_QUESTION, { requests: requests([request("gate:define", "gate", "blocking")]) });
+		expect(nextStep(pack, requested).dispatch).toBeUndefined();
+		const decided = state("define", NO_QUESTION, { lock: lockWith({ gates: { define: gateResult("changes_requested") } }) });
+		expect(nextStep(pack, decided).dispatch).toBeUndefined();
 	});
 });

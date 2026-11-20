@@ -9,6 +9,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
+import { isChildSession } from "../subagents/child.ts";
 import { requireWritable } from "../tools/guard.ts";
 import type { Session } from "./session.ts";
 import { getSession } from "./session-store.ts";
@@ -126,7 +127,9 @@ async function beforeSettle(session: Session, event: AgentBeforeSettleEvent): Pr
 }
 
 export function registerSettleHooks(pi: ExtensionAPI): void {
-	pi.on("agent_before_settle", async (event) => {
+	pi.on("agent_before_settle", async (event, ctx) => {
+		// A child never owns the change: it must not refresh, write or continue the parent's work.
+		if (isChildSession(ctx)) return undefined;
 		if (event.outcome !== "completed") return undefined;
 		const session = getSession();
 		if (!session?.initialized) return undefined;
@@ -137,7 +140,8 @@ export function registerSettleHooks(pi: ExtensionAPI): void {
 			return undefined;
 		}
 	});
-	pi.on("agent_settled", async () => {
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (isChildSession(ctx)) return;
 		const session = getSession();
 		if (session) asked.delete(session);
 	});

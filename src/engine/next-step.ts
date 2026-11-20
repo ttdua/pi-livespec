@@ -7,10 +7,14 @@ import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interactio
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
+import { DEFAULT_LANES } from "../config.ts";
+import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
+import { eligibleLanes } from "../subagents/lanes.ts";
+import { phaseEntryStep } from "../subagents/phase-entries.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
 
-type Decision = { next: string; advance?: string };
+type Decision = { next: string; advance?: string; dispatch?: NextStep["dispatch"] };
 
 type UnitPlan = { ready: Unit[]; waiting: { id: string; waitingOn: string[] }[] };
 
@@ -232,11 +236,40 @@ const blockedUnit: Rule = ({ state, phase }) => {
 	return { next: `${blocked.id} is BLOCKED (${blocked.reason}): send a stuck report with spec_stuck.` };
 };
 
-/** Rule 11: in a `per: unit` phase, a started unit is finished before anything else is built. */
-const startedUnit: Rule = ({ state, phase }) => {
+/** Rule 11a: a child waiting on an answer, whatever the phase. */
+const childQuestion: Rule = ({ state }) => {
+	const pending = state.subagents.pending;
+	if (!pending) return undefined;
+	return { next: `Child ${pending.agentId} asks: ${pending.question} Answer it with subagent_answer ${pending.agentId} "<answer>", or raise it with spec_question when only the user can decide.` };
+};
+
+/** Rule 11a': outside `per: unit`, a scout or whole-change reviewer the policy holds that has not run, before the gate is requested. */
+const phaseEntry: Rule = ({ pack, state, phase }) => phaseEntryStep(pack, state, phase);
+
+/**
+ * Rule 11b, lanes: open a lane for each eligible ready unit when two or more units would run in lanes
+ * together and the implementer entry holds for each, before any unit is started; then start every open
+ * lane's unit in its lane. A receipted unit missing its tick is ticked first (rule 12), so no lane opens before it.
+ */
+const laneUnits: Rule = ({ pack, state, phase }) => {
 	if (phase.per !== "unit") return undefined;
-	const started = unitsWhere(state, (id) => id in state.evidence.started)[0];
-	return started ? { next: `Finish ${started} with unit_finish once Verify passes.` } : undefined;
+	const lanes = Object.keys(state.subagents.lanes);
+	if (Object.keys(state.evidence.started).length === 0 && state.evidence.untickedReceipts.length === 0) {
+		const eligible = eligibleLanes(state, state.subagents.laneLimit ?? DEFAULT_LANES).filter((id) => implementerHolds(pack, state, phase, id));
+		if (eligible.length > 0 && lanes.length + eligible.length >= 2) return { next: `Run these units in parallel lanes: ${eligible.map((id) => `lane_open ${id}`).join(", ")}.` };
+	}
+	const unstarted = lanes.find((id) => !(id in state.evidence.started));
+	return unstarted === undefined ? undefined : { next: `Start ${unstarted} in its lane with unit_start ${unstarted}.` };
+};
+
+/** Rule 11c: in a `per: unit` phase, a started unit runs the build loop, then is finished before anything else is built. */
+const startedUnit: Rule = ({ pack, state, phase }) => {
+	if (phase.per !== "unit") return undefined;
+	// A unit in the change worktree (e.g. a merged lane) finishes before lane units: lanes merge one at a time.
+	const all = unitsWhere(state, (id) => id in state.evidence.started);
+	const started = all.find((id) => !(id in state.subagents.lanes)) ?? all[0];
+	if (!started) return undefined;
+	return buildLoopStep(pack, state, phase, started) ?? { next: `Finish ${started} with unit_finish once Verify passes.` };
 };
 
 /** Rule 12: in a `per: unit` phase, a receipted unit whose tick is missing. */
@@ -302,6 +335,9 @@ const RULES: Rule[] = [
 	missingOutput,
 	failingCheck,
 	blockedUnit,
+	childQuestion,
+	phaseEntry,
+	laneUnits,
 	startedUnit,
 	receiptedUnit,
 	nextUnit,
@@ -362,5 +398,8 @@ export function nextStep(pack: Pack, state: ChangeState): NextStep {
 	};
 	if (state.iterations.stuckOpen !== undefined) step.stuckOpen = state.iterations.stuckOpen;
 	if (decision.advance !== undefined) step.advance = decision.advance;
+	if (decision.dispatch !== undefined) step.dispatch = decision.dispatch;
+	const { pending } = state.subagents;
+	if (pending !== undefined) step.pendingChild = { agentId: pending.agentId, question: pending.question };
 	return step;
 }

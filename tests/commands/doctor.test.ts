@@ -100,7 +100,7 @@ function deps(over: Partial<DoctorDeps> = {}): DoctorDeps {
 		forge: healthyForge,
 		exists,
 		listDir,
-		config: { project: null, user: { agentSkills: { channel: "auto" } }, warnings: [] },
+		config: { project: null, user: { agentSkills: { channel: "auto" }, lanes: 3, packetBudgetTokens: 24000, isolation: { excludePackages: [] } }, warnings: [] },
 		hasUI: true,
 		...over,
 	};

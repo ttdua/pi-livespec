@@ -89,7 +89,15 @@
 			"redirects": [],
 			"checks": [],
 			"gate": "self",
-			"subagents": []
+			"subagents": [
+				{
+					"role": "scout",
+					"mode": "auto",
+					"when": [
+						"unfamiliar-code"
+					]
+				}
+			]
 		},
 		{
 			"id": "define",
@@ -120,7 +128,21 @@
 				"capabilities-match-diff"
 			],
 			"gate": "human",
-			"subagents": []
+			"subagents": [
+				{
+					"role": "scout",
+					"mode": "auto",
+					"when": [
+						"unfamiliar-code"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "spec",
+					"mode": "always",
+					"advisory": true
+				}
+			]
 		},
 		{
 			"id": "plan",
@@ -146,7 +168,21 @@
 				"verify-red-on-base"
 			],
 			"gate": "human",
-			"subagents": []
+			"subagents": [
+				{
+					"role": "scout",
+					"mode": "auto",
+					"when": [
+						"unfamiliar-code"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "plan",
+					"mode": "always",
+					"advisory": true
+				}
+			]
 		},
 		{
 			"id": "build",
@@ -173,7 +209,28 @@
 			"redirects": [],
 			"checks": [],
 			"gate": "none",
-			"subagents": []
+			"subagents": [
+				{
+					"role": "implementer",
+					"mode": "auto",
+					"when": [
+						"units>=3",
+						"difficulty>=medium",
+						"context>=60%"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "unit",
+					"mode": "auto",
+					"when": [
+						"difficulty>=medium"
+					],
+					"skills": [
+						"code-review-and-quality"
+					]
+				}
+			]
 		},
 		{
 			"id": "review",

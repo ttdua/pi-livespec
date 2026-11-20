@@ -4,7 +4,9 @@ import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { ROUTING_NOTE } from "../../src/hooks/routing-note.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
+import { CHILD_NOTE } from "../../src/subagents/child.ts";
 import { skillNamesOf } from "../content/helpers.ts";
+import { asChild } from "./fake-pi.ts";
 import {
 	BUILD_LABELS,
 	CHANGE_BRANCH,
@@ -231,5 +233,47 @@ describe("context hooks", () => {
 		await h.pi.fire("before_agent_start", event, h.ctx);
 		expect(event.systemPromptOptions.sections).toEqual({});
 		expect(await h.pi.fire("resources_discover", { type: "resources_discover", cwd: h.root, reason: "startup" }, h.ctx)).toEqual({ skillPaths: [] });
+	});
+});
+
+describe("context hooks in a child session", () => {
+	test("context hook adds no card in a child", async () => {
+		const h = await resumed();
+		const child = asChild(h.ctx);
+		const out = await contextCall(h.pi, child, [user("one", 1)]);
+		expect(out).toBeUndefined();
+	});
+
+	test("before_agent_start sets CHILD_NOTE in a child", async () => {
+		const h = await resumed();
+		const event = promptEvent();
+		await h.pi.fire("before_agent_start", event, asChild(h.ctx));
+		expect(event.systemPromptOptions.sections.livespec).toBe(CHILD_NOTE);
+	});
+
+	test("resources_discover returns no skills in a child", async () => {
+		const h = await resumed();
+		const out = await h.pi.fire("resources_discover", { type: "resources_discover", cwd: h.root, reason: "startup" }, asChild(h.ctx));
+		expect(out).toEqual({ skillPaths: [] });
+	});
+});
+
+describe("context facts for subagent policy", () => {
+	test("turn_end records the turn count and context percent for the next card input", async () => {
+		const h = await resumed();
+		const ctx = { ...h.ctx, getContextUsage: () => ({ tokens: 10, contextWindow: 100, percent: 61.5 }) };
+		await h.pi.fire("turn_end", { type: "turn_end" }, ctx);
+		expect(getSession()?.mainTurns).toEqual({ turnsCompleted: 1, contextPercent: 61.5 });
+		await getSession()?.refresh();
+		const card = getSession()?.card;
+		expect(card?.kind === "change" && card.state.subagents).toMatchObject({ turnsCompleted: 1, contextPercent: 61.5 });
+	});
+
+	test("an unknown usage drops the percent; a child's turn_end changes nothing", async () => {
+		const h = await resumed();
+		await h.pi.fire("turn_end", {}, { ...h.ctx, getContextUsage: () => ({ tokens: null, contextWindow: 100, percent: null }) });
+		expect(getSession()?.mainTurns).toEqual({ turnsCompleted: 1 });
+		await h.pi.fire("turn_end", {}, asChild(h.ctx));
+		expect(getSession()?.mainTurns.turnsCompleted).toBe(1);
 	});
 });

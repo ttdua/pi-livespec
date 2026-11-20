@@ -34,6 +34,8 @@ export interface RequestOption {
 export interface GateSnapshot {
 	target: string;
 	failingWaivable: string[];
+	/** Keys (`<commentId>:<index>`) of the subagent findings the gate payload listed. */
+	findings?: string[];
 }
 
 export interface AmendSnapshot {

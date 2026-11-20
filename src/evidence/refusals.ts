@@ -6,6 +6,7 @@ import { unitDigest } from "../core/digest.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { displayUnitId } from "../interaction/display-ids.ts";
+import { unitRoot } from "../subagents/state.ts";
 
 export type FinishMode = "reconcile" | "run";
 
@@ -65,9 +66,11 @@ const alreadyStarted: Rule = ({ state, unit, target }) => {
 	return `${displayUnitId(unit)} is already started: finish it with unit_finish ${displayUnitId(unit)}.`;
 };
 
+/** Another started unit in the same worktree: a lane is its own worktree, so units in different lanes do not collide. */
 const otherStarted: Rule = ({ state, unit }) => {
-	const other = Object.keys(state.evidence.started).find((id) => id !== unit);
-	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time.`;
+	const here = unitRoot(state, unit, "");
+	const other = Object.keys(state.evidence.started).find((id) => id !== unit && unitRoot(state, id, "") === here);
+	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time in a worktree.`;
 };
 
 const START_RULES: Rule[] = [notPerUnit, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, staleState, dirtyTree, otherStarted];
@@ -109,10 +112,27 @@ const digestChanged: Rule = ({ state, unit, target }) => {
 	return `${displayUnitId(unit)} changed since unit_start: ${AMEND}, then run unit_start ${displayUnitId(unit)} again.`;
 };
 
-const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
-const RECONCILE_RULES: Rule[] = [dirtyTree, changedSinceLock];
+/** A unit whose lane is still open merges with `lane_merge` first: finishing would run `Verify` in the wrong worktree. */
+const openLane: Rule = ({ state, unit }) =>
+	unit in state.subagents.lanes ? `${displayUnitId(unit)} has an open lane: merge it with lane_merge ${displayUnitId(unit)} first.` : undefined;
 
-/** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the clean-tree, frozen and stale rules. */
+const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
+const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
+const RECONCILE_RULES: Rule[] = [openLane, dirtyTree, changedSinceLock];
+
+const LANE_OPEN_RULES: Rule[] = [notPerUnit, notLocked, ...INVARIANT_RULES];
+
+/** Why `lane_open <unit>` refuses before the lane rules: the phase, the lock, then the unit invariants. */
+export function laneOpenRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
+	return firstRefusal(LANE_OPEN_RULES, state, pack, unit);
+}
+
+/** The unit invariants `lane_merge` shares with `unit_finish`: known, not frozen or stale, digest as at the start, not blocked. */
+export function unitInvariantRefusal(state: ChangeState, pack: Pack, unit: string): string | undefined {
+	return firstRefusal(INVARIANT_RULES, state, pack, unit);
+}
+
+/** Why `unit_finish <unit>` refuses in `mode`, or undefined. Reconcile applies only the open-lane, clean-tree, frozen and stale rules. */
 export function unitFinishRefusal(state: ChangeState, pack: Pack, unit: string, mode: FinishMode): string | undefined {
 	return firstRefusal(mode === "reconcile" ? RECONCILE_RULES : RUN_RULES, state, pack, unit);
 }

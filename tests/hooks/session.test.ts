@@ -2,8 +2,10 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { TEMPLATE_MARKER } from "../../src/core/templates.ts";
 import { gateMemoGeneration, onGateMemoClear } from "../../src/engine/registry.ts";
+import { withEvidenceLock } from "../../src/evidence/lock.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { gitStatus } from "../helpers/repo.ts";
+import { asChild } from "./fake-pi.ts";
 import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
 import { writeIn } from "../helpers/repo.ts";
 
@@ -249,5 +251,46 @@ describe("gate memo clearing is inside the error boundary", () => {
 		await expect(h.pi.fire("session_shutdown", {}, h.ctx)).resolves.not.toThrow();
 		expect(session?.shutdownSignal.aborted).toBe(true);
 		await expect(h.start()).resolves.not.toThrow();
+	});
+});
+
+describe("session_start in a child session", () => {
+	test("no resume card at child session_start", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.pi.fire("session_start", { type: "session_start", reason: "startup" }, asChild(h.ctx));
+		expect(resumeMessages(h.pi.entries)).toEqual([]);
+	});
+
+	test("a child never replaces the parent session or clears its shared state", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.start();
+		const parent = getSession();
+		const forge = parent?.forge;
+		expect(forge).toBeDefined();
+		const generation = gateMemoGeneration();
+		let release!: () => void;
+		const held = withEvidenceLock(() => new Promise<void>((r) => (release = r)));
+		const child = asChild(h.ctx);
+		await h.pi.fire("session_start", { type: "session_start", reason: "startup" }, child);
+		let drained = false;
+		const shutdown = h.pi.fire("session_shutdown", { type: "session_shutdown" }, child).then(() => (drained = true));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(drained).toBe(true);
+		expect(getSession()).toBe(parent);
+		expect(getSession()?.forge).toBe(forge);
+		expect(parent?.shutdownSignal.aborted).toBe(false);
+		expect(gateMemoGeneration()).toBe(generation);
+		release();
+		await held;
+		await shutdown;
+	});
+
+	test("a child with no session yet gets one with the forge target only", async () => {
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.pi.fire("session_start", { type: "session_start", reason: "startup" }, asChild(h.ctx));
+		expect(getSession()?.forgeTarget()).toBeDefined();
+		expect(getSession()?.forge).toBeUndefined();
 	});
 });

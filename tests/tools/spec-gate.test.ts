@@ -295,6 +295,8 @@ describe("spec_gate", () => {
 		await seedGate(h, "plan", "r2");
 		const stale = { reason: "Q3 answer changes rate-limit", phases: ["define", "plan", "build", "review", "ship", "close"], units: [], after_plan: true };
 		await seedMarked(h, writeMarked("stale", "Q3", stale));
+		const review = { role: "reviewer", subject: "spec", round: 1, status: "DONE", advisory: true, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [] };
+		await seedMarked(h, writeMarked("finding-summary", "finding-summary.change.spec.1", review));
 		const out = await h.call("spec_next");
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
 		expect(textOf(out)).toContain("Ready for the define gate.");

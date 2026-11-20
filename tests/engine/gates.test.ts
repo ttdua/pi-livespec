@@ -14,6 +14,8 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
+import { finding, mark, rebutted, reviewed } from "../subagents/helpers.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 
 /** The fixture body with Q1 answered, so no blocking question is open. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", "- [x] Q1 (blocking): Which header carries the client IP behind the proxy? — Answer: X-Forwarded-For");
@@ -212,7 +214,7 @@ describe("gatePayload", () => {
 
 	test("named gate payload is the header", () => {
 		registerGate("new-dependency", { checks: [] });
-		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [] });
+		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [], findings: [] });
 	});
 });
 
@@ -241,5 +243,102 @@ describe("blockingStateRefusal", () => {
 	test("the first rule in order wins", () => {
 		const iterations = { count: 0, cap: undefined, blocking: false, stuckOpen: "S1" };
 		expect(blockingStateRefusal(stateFor("define", { iterations }))).toBe(Q1);
+	});
+});
+
+describe("subagent findings in the gate payload", () => {
+	const reviewer = (subject: string, over: Record<string, unknown> = {}) =>
+		reviewed({ subject: subject as never, unit: undefined, advisory: true, findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:3", evidence: "no scenario for 429" })], ...over });
+
+	test("advisory spec review in gate payload", () => {
+		const s = ready("define", { marked: [reviewer("spec")] });
+		const payload = gatePayload(s, pack, "define", FACTS);
+		expect(payload.summary).toContain("Subagent findings");
+		expect(payload.summary).toContain("CRITICAL");
+		expect(payload.summary).toContain(untrusted("no scenario for 429"));
+	});
+
+	test("an advisory finding does not block the gate request", () => {
+		const s = ready("define", { marked: [reviewer("spec")] });
+		expect(blockingStateRefusal(s)).toBeUndefined();
+	});
+
+	test("an advisory finding of another phase's reviewer is listed at the next gate", () => {
+		const s = ready("define", { marked: [reviewer("plan")] });
+		expect(gatePayload(s, pack, "define", FACTS).summary).toContain("no scenario for 429");
+	});
+
+	test("rebuttals in gate payload", () => {
+		const summary = reviewed({ unit: "U3", findings: [finding({ evidence: "off by one" })] });
+		const s = ready("define", { marked: [summary, rebutted(summary.commentId, 0, "limit is inclusive", "see ratelimit.ts:12")] });
+		const text = gatePayload(s, pack, "define", FACTS).summary;
+		expect(text).toContain("Subagent findings");
+		expect(text).toContain("Rebuttals");
+		expect(text).toContain(untrusted("limit is inclusive"));
+		expect(text).toContain(untrusted("see ratelimit.ts:12"));
+	});
+
+	test("a malformed advisory summary is skipped", () => {
+		const bad = { ...reviewer("spec"), data: { ...(reviewer("spec").data as object), findings: "oops" } } as MarkedComment;
+		const s = ready("define", { marked: [bad] });
+		expect(gatePayload(s, pack, "define", FACTS).summary).not.toContain("Subagent findings");
+	});
+
+	test("a superseded advisory summary is not listed", () => {
+		const old = reviewer("spec", { findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:3", evidence: "stale complaint" })] });
+		const latest = reviewer("spec", { findings: [finding({ severity: "CRITICAL", location: "specs/x/spec.md:9", evidence: "fresh complaint" })] });
+		const text = gatePayload(ready("define", { marked: [old, latest] }), pack, "define", FACTS).summary;
+		expect(text).toContain("fresh complaint");
+		expect(text).not.toContain("stale complaint");
+	});
+
+	const oos = () => reviewed({ findings: [finding({ scope: "out-of-scope", evidence: "unrelated module leaks" })] });
+	const gateComment = (findings: unknown): MarkedComment =>
+		mark(writeMarked("gate", "define.x", { phase: "define", outcome: "approved", notes: "", by: "a", at: "t", adapter: "in-session", head_sha: "f", waivers: [], findings }));
+
+	test("gatePayload returns the keys of the findings it lists", () => {
+		const review = oos();
+		const advisory = reviewer("spec");
+		const payload = gatePayload(ready("define", { marked: [review, advisory] }), pack, "define", FACTS);
+		expect([...payload.findings].sort()).toEqual([`${advisory.commentId}:0`, `${review.commentId}:0`].sort());
+	});
+
+	test("out-of-scope findings are listed until a gate comment has recorded them", () => {
+		const review = oos();
+		expect(gatePayload(ready("define", { marked: [review] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+		const shown = gateComment([`${review.commentId}:0`]);
+		const after = gatePayload(ready("define", { marked: [review, shown] }), pack, "define", FACTS);
+		expect(after.summary).not.toContain("Out-of-scope findings");
+		expect(after.findings).toEqual([]);
+	});
+
+	test("an unrelated amendment request does not mark findings shown", () => {
+		const review = oos();
+		const amend = mark(writeMarked("request", "amend-1.x", { kind: "gate", subject: "amend:1", mode: "blocking", head_sha: "f", snapshot: { action: "edit", unit: "U1", records: [] }, summary: "s" }));
+		expect(gatePayload(ready("define", { marked: [review, amend] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+	});
+
+	const buildAdvisory = () => reviewed({ subject: "unit", unit: "U1", advisory: true, findings: [finding({ evidence: "advisory build complaint" })] });
+
+	test("an advisory build-unit finding is listed at a later ship gate", () => {
+		const review = buildAdvisory();
+		const payload = gatePayload(ready("ship", { marked: [review] }), pack, "ship", FACTS);
+		expect(payload.summary).toContain("advisory build complaint");
+		expect(payload.findings).toEqual([`${review.commentId}:0`]);
+	});
+
+	test("an advisory finding is not listed again once a gate comment recorded it", () => {
+		const review = buildAdvisory();
+		const shown = gateComment([`${review.commentId}:0`]);
+		const after = gatePayload(ready("ship", { marked: [review, shown] }), pack, "ship", FACTS);
+		expect(after.summary).not.toContain("advisory build complaint");
+		expect(after.findings).toEqual([]);
+	});
+
+	test("malformed findings in a gate comment are ignored", () => {
+		const review = oos();
+		for (const bad of ["x", [1], { a: 1 }, null]) {
+			expect(gatePayload(ready("define", { marked: [review, gateComment(bad)] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
+		}
 	});
 });

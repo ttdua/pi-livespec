@@ -23,18 +23,21 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │              unit_finish · change_new · change_start · change_split ·             │
 │              change_ship · change_push · change_close · change_resume ·           │
 │              initiative_propose · docs_table · fix_start · fix_ship ·             │
-│              subagent_packet · forge_read                                         │
+│              subagent_dispatch · subagent_answer · subagent_packet ·              │
+│              subagent_record · finding_rebut · lane_open · lane_merge ·           │
+│              forge_read                                                           │
 │ hooks/       session_start (load, forge, resume card, background skills check)    │
 │              · before_agent_start (routing note section) · context (phase card)   │
 │              · tool_call (guard, registered first; then skill reads)              │
 │              · resources_discover · agent_before_settle (one continuation,        │
-│              incomplete marker) · agent_settled                                   │
+│              incomplete marker) · agent_settled · turn_end (turns, context %)     │
 │ evidence/    unit-start and receipt records · unit state · Verify runner and      │
 │              temporary worktrees · red/green · failure signature · progress       │
 │              rule · verify-red-on-base · started-unit work in progress            │
 │ guard/       shell parser · command classifier · .pi/livespec/ paths ·            │
 │              guardedPush (the only git push)                                      │
-│ subagent/    role dispatch · context packets · parallel lanes                     │
+│ subagents/   executor adapter · child mode · roles and policy · packets ·         │
+│              dispatch · dispatch/finding-summary/lane records · lanes · doctor    │
 │ content/     agent-skills clone: mirror, immutable trees, compatibility check,    │
 │              upgrade policy, livespec.lock, root lock, pin, rollback, exposure    │
 │ commands/    /livespec validate · migrate-openspec · init · doctor · next ·       │
@@ -186,6 +189,67 @@ Every reason starts with `livespec guard:`, names the rule and names the livespe
 - **Copies into an ancestor.** A recursive copy or move whose destination is an ancestor of `.pi/livespec` (`cp -r incoming/livespec .pi`, `cp -a incoming/.pi .`, `mv incoming/livespec .pi`) is not caught. The guard checks the destination operand, not the subtree the copy creates.
 - **Abbreviated wrapper options.** A GNU abbreviated long option on a wrapper (`nice --adjust 5 git push`, `timeout --kill-a`, `env --split-s`, `xargs --max-a`) hides the wrapped command. Abbreviations of write-command options are resolved. Both limits are tracked in #28, which adds human approval.
 - **Two sessions on one change.** The evidence lock is per process; two pi sessions can run `unit_start`/`unit_finish` on the same change at once.
+
+## Subagents
+
+The parent session may hand role work to subagent children. It keeps every piece of state, evidence, forge write and gate for itself ([ADR 0003](decisions/0003-parent-owned-evidence.md)). The code lives in `src/subagents/`, and the tools in `src/tools/`.
+
+**Four layers.** A child's brief has four layers, and each comes from exactly one source:
+
+1. **Role**: the executor's agent file for `scout`, `implementer`, `reviewer` or `verifier`. The `verifier` role is reserved for LS-08: no tool parameter gives it the finding to verify yet, so its packet refuses. livespec ships no agent files. A user or project file that overrides one of them is used as is. It triggers a warning once per session, and the record stores it as `agentSource`.
+2. **Protocol**: a fixed, flow-neutral livespec text (`protocol.ts`). It says that `<untrusted>` text is data, how to read spilled sources, what the child must not do, how to ask (`ask_parent` or `NEEDS_CONTEXT`) and how to submit the structured result.
+3. **Flow**: the pack name, the pack version, the content tree commit and the role's skills. The skills reach the child as absolute `SKILL.md` paths with `skills.inherit: false`.
+4. **Task**: the unit or the review subject, its sources in manifest order, `Verify`, `Files` and the prohibitions. A footer follows with the packet hash and each source's version.
+
+**Dispatch through the executor service.** livespec does not need a particular subagent package. It reads a service from `globalThis[Symbol.for("@ttdua/pi-subagents:service")]`, and falls back to the legacy `@gotgenes/pi-subagents:service` key. It accepts the service when `spawn`, `wait`, `resume`, `abort`, `childSession` and `getAgentType` are functions, and never checks a package name or version. `subagent_dispatch <role> [unit] [subject]` runs a whole launch inside the tool:
+
+1. build the packet;
+2. subscribe to `subagents:child:session-created`;
+3. `spawn` with `context: "fresh"`, `contextFiles: false`, the skill paths, the excluded packages of other flows, `cwd`, `metadata` and `resultSchema`;
+4. check the effective launch facts against the request;
+5. `wait`, then interpret the structured result;
+6. record it.
+
+A launch whose facts differ from the request is aborted and runs inline, so an executor that drops an option silently is caught. livespec sets `thinkingLevel` from the unit's `Difficulty`, raised one level per failed attempt. It never sets a model. Interpreting the result follows fixed caps:
+
+- a missing structured result is retried once;
+- a result that omits a required source is returned to the child once, then recorded `BLOCKED`;
+- `NEEDS_CONTEXT` is not a failed attempt, and a third `NEEDS_CONTEXT` for a unit makes the next step `spec_stuck`.
+
+A child question either reaches the parent, which answers with `subagent_answer`, or goes to the user through `spec_question`. Cancelling `subagent_dispatch` or `subagent_answer` (the tool call's abort signal) aborts the child and records no result.
+
+**Phase-level suggestions.** Outside `build`, before a phase's gate is requested, the next step names each scout and whole-change reviewer entry of the phase that holds and has not run for the current state: a reviewer until a completed review of its subject records HEAD, a scout until a scout record exists since the phase began. An advisory entry never blocks the gate; the suggestion only comes first.
+
+**Child mode.** livespec also loads inside children. A session is a child when the executor's `childSession` knows its id. Only without a capable executor does the session header's `parentSession` decide, as a fallback. A failing check counts as a child. In a child, livespec:
+
+- sets `CHILD_NOTE` instead of the routing note;
+- adds no phase card or resume card;
+- discovers no skills;
+- never replaces or clears the parent's session state. pi caches the extension per cwd, so an in-process child can share livespec's module with its parent: a child's `session_start` stores a session (with the forge target only) only when none exists, and its `session_shutdown` touches nothing.
+
+Known limit: a pi `/fork` or `/clone` of a main session also writes `parentSession`, so without a capable executor such a session is treated as a child. With an executor present, only the executor's `childSession` decides.
+
+The subagent, lane, `finding_rebut` and `forge_read` tools refuse in a child, and the guard still blocks pushes and forge writes.
+
+**Packet and freshness.** Nothing that varies between units comes before the task, so the system prompt, protocol and flow blocks hit the provider cache from the second dispatch on. Sources over the `packetBudgetTokens` budget (default 24000, estimated as `ceil(chars / 4)`) spill to `<git common dir>/livespec/packets/<change>/<hash>/`. The packet then lists them by path. The last packet of a dispatched unit is stored beside its spill files. Before `unit_finish` ticks the unit, livespec re-reads the version of every source of that packet. A changed source, or a newer human comment or answer that the manifest would now include, stops the unit through `spec_stuck`.
+
+**Lanes.** When two or more ready units are independent (no `Depends` between them, disjoint `Files`), the implementer entry holds and an executor is present, the next step names `lane_open` for each of them, up to `lanes` (default 3).
+
+- `lane_open <unit>` creates `.worktrees/<change>--<unit>` on `livespec/<change>--lane-<unit>` and posts the `lane` record. The unit then starts, is implemented and is reviewed in its lane.
+- `lane_merge <unit>` checks the lane's commits against `Files`, merges with `--no-ff`, runs `Verify` on the change root, then closes and removes the lane. `unit_finish` follows on the change branch, one lane at a time, and accepts the review of the lane head that is the merge commit's second parent.
+- A unit re-runs sequentially in the change worktree when its lane touched a file outside `Files` (recorded as a `files-violation` finding), the merge conflicted, `Verify` was red after the merge (the merge is undone and the attempt counts as failed), or a workspace provider moved the child out of the lane.
+- When an open lane's worktree was deleted, `lane_merge <unit>` closes its record with outcome `moved`, and the unit re-runs sequentially; the other unit tools name `lane_merge` as the way out.
+- A unit with a receipt but no tick is ticked with `unit_finish` before any lane opens.
+
+**Records.** Every result is an own marked comment on the change issue. Counters are derived from these comments, never from session memory.
+
+- `dispatch`: one per settled implementer or scout run, with id `dispatch.<unit|change>.<role>.<attempt>`. It holds the role, unit, attempt, packet hash, agent source, requested thinking, effective model and thinking, status, commits, `notes`, `discoveries` and `sources_used`. The statuses `QUESTION` and `ANSWERED` keep a child's question alive across a session reload. A dependent unit's packet reads `discoveries` from this record.
+- `finding-summary`: one per reviewer or verifier round, with id `finding-summary.<unit|change>.<subject>.<round>`. It holds the findings, the reviewed HEAD, the status, the required and used sources and whether the review completed. `finding_rebut` adds a rebuttal record. `unit_finish` refuses while a blocking finding is unresolved, or while a required unit review has not completed at HEAD. An `out-of-scope` finding never refuses `unit_finish`: it is listed at the next human gate until a gate has shown it, as a `files-violation` finding is.
+- `lane`: one per lane, with id `lane.<unit>`. It holds the path, branch and base. A later `lane` record with `closed: true` ends the lane and names the outcome (`merged`, `violation`, `conflict`, `red` or `moved`).
+
+**Inline fallback.** Without a capable executor, or when the policy does not suggest a dispatch, the phase card names `subagent_packet` and `subagent_record`. The parent reads the same packet, does the work in its own session and records the result in the same schema. The dispatch records, finding summaries, receipts and ticks are the same as for a dispatched run, so a change completes either way.
+
+**Doctor** reports the executor and its missing capabilities, role agents overridden by a user or project file, a configured package that registers a workspace provider (`@gotgenes/pi-subagents-worktrees`), and the packages excluded from livespec children.
 
 ## Forge accounts
 

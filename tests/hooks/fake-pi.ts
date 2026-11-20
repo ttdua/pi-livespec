@@ -25,6 +25,7 @@ export type FakeCtx = {
 		input: ReturnType<typeof vi.fn<InputFn>>;
 	};
 	isProjectTrusted: () => boolean;
+	sessionManager: { getSessionId(): string; getHeader(): { type: "session"; id: string; parentSession?: string } };
 };
 
 export class FakePi {
@@ -81,5 +82,17 @@ export function fakeCtx(cwd: string, trusted = true, ui: FakeUI = {}): FakeCtx {
 	const select = vi.fn<SelectFn>(ui.select ?? (async () => undefined));
 	const confirm = vi.fn<ConfirmFn>(ui.confirm ?? (async () => false));
 	const input = vi.fn<InputFn>(ui.input ?? (async () => undefined));
-	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select, confirm, input }, isProjectTrusted: () => trusted };
+	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select, confirm, input }, isProjectTrusted: () => trusted, sessionManager: sessionManagerOf() };
+}
+
+function sessionManagerOf(parentSession?: string): FakeCtx["sessionManager"] {
+	return {
+		getSessionId: () => "fake-session",
+		getHeader: () => ({ type: "session", id: "fake-session", ...(parentSession === undefined ? {} : { parentSession }) }),
+	};
+}
+
+/** The same ctx as a child session: its header names a parent, so `isChildSession` is true without an executor. */
+export function asChild(ctx: FakeCtx): FakeCtx {
+	return { ...ctx, sessionManager: sessionManagerOf("/sessions/parent.jsonl") };
 }

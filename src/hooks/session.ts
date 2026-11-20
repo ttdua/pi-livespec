@@ -33,6 +33,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
@@ -75,7 +76,7 @@ export function defaultSessionDeps(): SessionDeps {
 }
 
 export class Session {
-	config: LoadedConfig = { project: null, user: { agentSkills: { channel: "auto" } }, warnings: [] };
+	config: LoadedConfig = { project: null, user: { agentSkills: { channel: "auto" }, lanes: 3, packetBudgetTokens: 24000, isolation: { excludePackages: [] } }, warnings: [] };
 	pack: LoadedPack = { ok: false, errors: [] };
 	forge?: CachedForge;
 	comments?: CommentsCache;
@@ -100,6 +101,8 @@ export class Session {
 	accountNotice?: string;
 	/** Command comments the last approval poll ignored, with the reason; copied into the change state. */
 	commandWarnings: string[] = [];
+	/** Turns completed and the context usage after the last one; the card input copies them into `ChangeState.subagents`. */
+	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
 	private first = true;
@@ -499,6 +502,20 @@ async function suggestInit(session: Session, ctx: ExtensionContext): Promise<voi
 	safeNotify(ctx, hasOpenSpec ? MIGRATE_HINT : INIT_HINT, "info");
 }
 
+/**
+ * pi caches the extension factory per cwd, so an in-process child can share this module with its parent.
+ * A child therefore never replaces an existing session. Only when none exists (a fresh module) does it store
+ * one with the forge target alone, which the guard's endpoint list needs. It never connects the forge
+ * (`reconnect` can advance the change), selects an account, polls approvals or shows the resume card.
+ */
+async function startChild(d: SessionDeps, ctx: ExtensionContext): Promise<void> {
+	if (getSession() !== undefined) return;
+	const session = new Session(ctx.cwd, createGit(ctx.cwd));
+	await loadSessionBasics(session, d, d.content(d.home));
+	if (session.initialized) await targetFor(session, d);
+	if (getSession() === undefined) setSession(session);
+}
+
 async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionContext): Promise<void> {
 	const session = new Session(ctx.cwd, createGit(ctx.cwd));
 	setSession(session);
@@ -534,9 +551,13 @@ async function shutdownEvidence(): Promise<void> {
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
 	const deps: SessionDeps = { ...defaultSessionDeps(), ...d };
 	registerResumeRenderer(pi);
-	pi.on("session_shutdown", shutdownEvidence);
+	// The gate memo, the evidence locks and the session are the parent's; a child's start and shutdown leave them alone.
+	pi.on("session_shutdown", async (_event, ctx) => {
+		if (!isChildSession(ctx)) await shutdownEvidence();
+	});
 	pi.on("session_start", async (_event, ctx) => {
 		try {
+			if (isChildSession(ctx)) return await startChild(deps, ctx);
 			clearGateMemo();
 			await startSession(pi, deps, ctx);
 		} catch (error) {

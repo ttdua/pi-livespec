@@ -2,15 +2,19 @@
 // change resolution, the refusal rules and the run environment; and the texts
 // of a blocked, invalid or aborted `Verify` run.
 
+import { existsSync } from "node:fs";
 import type { Unit } from "../core/change.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import { createGit, type Git } from "../engine/git.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import type { RunClass } from "../evidence/red-green.ts";
 import type { VerifyRun } from "../evidence/runner.ts";
-import { type VerifyEnv, verifyEnv } from "../evidence/verify-env.ts";
+import { type RunWorktree, type VerifyEnv, verifyEnv } from "../evidence/verify-env.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { displayUnitId } from "../interaction/display-ids.ts";
+import { unitRoot } from "../subagents/state.ts";
+import type { Session } from "../hooks/session.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { withStep } from "./request-flow.ts";
 
@@ -36,18 +40,33 @@ export type UnitCall = {
 /** The refusal of the D10 rules, or the go-ahead. */
 export type Precheck = { refused: string } | { ok: true };
 
+/** The refusal rules may be async: the finish gate reads git. `git` is the unit's worktree git. */
+export type PrecheckFn = (state: ChangeState, pack: Pack, git: Git) => Precheck | Promise<Precheck>;
+
 export const startable = (refusal: string | undefined): Precheck => (refusal === undefined ? { ok: true } : { refused: refusal });
+
+/** The unit's worktree: its open lane, else the change worktree. The state's HEAD and dirty flag are read there. */
+async function unitWorktree(session: Session, state: ChangeState, unit: string): Promise<{ state: ChangeState; at: RunWorktree | undefined } | { refused: string }> {
+	const root = unitRoot(state, unit, session.cwd);
+	if (root === session.cwd) return { state, at: undefined };
+	if (!existsSync(root)) return { refused: `the lane worktree of ${displayUnitId(unit)} is gone (${root}); run lane_merge ${displayUnitId(unit)} to close the lane, then ${displayUnitId(unit)} re-runs in the change worktree.` };
+	const git = createGit(root);
+	const [head, dirty] = await Promise.all([git.head(), git.isDirty()]);
+	return { state: { ...state, git: { ...state.git, head, dirty } }, at: { root, git } };
+}
 
 /**
  * Runs `body` for `unit` under the evidence lock, after `prepareWrite` (which refreshes), `requireChange`,
  * the `precheck` rules and a run environment whose signal is not aborted yet. Every refusal writes nothing.
+ * `where: "change"` keeps the change worktree even when the unit has an open lane (`lane_merge`).
  */
 export function lockedEvidenceCall(
 	tool: string,
 	unit: string,
 	signal: AbortSignal | undefined,
-	precheck: (state: ChangeState, pack: Pack) => Precheck,
+	precheck: PrecheckFn,
 	body: (c: UnitCall) => Promise<ToolResult<undefined>>,
+	where: "unit" | "change" = "unit",
 ): Promise<ToolResult<undefined>> {
 	const refuse = (message: string): ToolResult<undefined> => toolResult(message.startsWith(`${tool} refused`) ? message : `${tool} refused: ${message}`, undefined, true);
 	return withEvidenceLock(async () => {
@@ -55,12 +74,14 @@ export function lockedEvidenceCall(
 		if (!w.ok) return refuse(w.message);
 		const change = requireChange(w.session);
 		if (!change.ok) return refuse(change.message);
-		const { state } = change;
-		const check = precheck(state, w.pack);
+		const lane = where === "change" ? { state: change.state, at: undefined } : await unitWorktree(w.session, change.state, unit);
+		if ("refused" in lane) return refuse(lane.refused);
+		const { state } = lane;
+		const check = await precheck(state, w.pack, lane.at?.git ?? w.session.git);
 		if ("refused" in check) return refuse(check.refused);
 		const target = state.change.units.find((u) => u.id === unit);
 		if (target === undefined) return refuse(`${displayUnitId(unit)} is not a unit of this change.`);
-		const env = await verifyEnv(w.session, signal);
+		const env = await verifyEnv(w.session, signal, lane.at);
 		const cancelled = (): ToolResult<undefined> | undefined => (env.run.signal?.aborted ? refuse(ABORTED) : undefined);
 		const stop = cancelled();
 		if (stop !== undefined) return stop;

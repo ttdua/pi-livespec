@@ -7,6 +7,9 @@ import type { UnitEvidence } from "../evidence/unit-state.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { AdapterName } from "../interaction/approver.ts";
 import type { RequestsState } from "../interaction/requests.ts";
+import type { ReviewSubject, Role } from "../subagents/roles.ts";
+import type { LaneRecord } from "../subagents/state.ts";
+import type { UnfamiliarFacts } from "../subagents/unfamiliar.ts";
 import type { IterationState } from "./iterations.ts";
 import type { LockState } from "./locks.ts";
 
@@ -42,6 +45,22 @@ export type ChangeState = {
 	commandWarnings: string[];
 	/** Started, receipted and blocked units, derived from own `unit-start`, `receipt` and `progress` comments. */
 	evidence: UnitEvidence;
+	/** Executor availability, context usage, open lanes and the unanswered child question; filled at refresh. */
+	subagents: {
+		executor: { ok: boolean; missing: string[] };
+		contextPercent?: number;
+		turnsCompleted: number;
+		lanes: Record<string, LaneRecord>;
+		/** HEAD of each open lane worktree that exists, read at refresh. */
+		laneHeads?: Record<string, string>;
+		/** Units whose latest merged lane head is the second parent of the merge commit at HEAD, read at refresh. */
+		mergedLaneHeads?: Record<string, string>;
+		/** The user's `lanes` limit, copied at refresh; the default when absent. */
+		laneLimit?: number;
+		/** The `unfamiliar-code` fact, read from the living specs at refresh. */
+		unfamiliar: UnfamiliarFacts;
+		pending?: { unit?: string; agentId: string; question: string };
+	};
 };
 
 export type NextStep = {
@@ -69,6 +88,10 @@ export type NextStep = {
 	staleUnits: string[];
 	/** The unanswered stuck report, if any. */
 	stuckOpen?: string;
+	/** The subagent run the parent should dispatch next; `inline` when it runs in this session. */
+	dispatch?: { role: Role; unit?: string; subject?: ReviewSubject; inline: boolean };
+	/** A child waiting on an answer. */
+	pendingChild?: { agentId: string; question: string };
 	advance?: string;
 	next: string;
 };

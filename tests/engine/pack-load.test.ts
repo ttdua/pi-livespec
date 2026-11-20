@@ -52,6 +52,15 @@ describe("default pack", () => {
 		expect(r.ok).toBe(true);
 	});
 
+	test("default pack build entries validate", async () => {
+		const r = await load();
+		expect(r.ok).toBe(true);
+		expect(phase(r, "build").subagents).toEqual([
+			{ role: "implementer", mode: "auto", when: ["units>=3", "difficulty>=medium", "context>=60%"] },
+			{ role: "reviewer", subject: "unit", mode: "auto", when: ["difficulty>=medium"], skills: ["code-review-and-quality"] },
+		]);
+	});
+
 	test("Default pack loads", async () => {
 		const r = await load();
 		expect(r.ok).toBe(true);

@@ -2,14 +2,18 @@
 // state. Forge and git errors propagate; `Session.refresh` turns them into a
 // degraded card.
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
 import { runChecks } from "../engine/checks.ts";
+import { createGit, type Git } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
+import { latestLaneClose } from "../subagents/state.ts";
+import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { isOffline } from "../forge/errors.ts";
 import type { CardAccount, CardInput } from "./phase-card.ts";
@@ -46,6 +50,29 @@ function unnotedSkills(session: Session, step: NextStep, state: ChangeState): st
 }
 
 
+/** HEAD of each open lane whose worktree exists; a lane git cannot read is left out. */
+async function readLaneHeads(lanes: ChangeState["subagents"]["lanes"]): Promise<Record<string, string>> {
+	const heads: Record<string, string> = {};
+	for (const [unit, lane] of Object.entries(lanes)) {
+		if (!existsSync(lane.path)) continue;
+		const head = await createGit(lane.path).head().catch(() => undefined);
+		if (head !== undefined) heads[unit] = head;
+	}
+	return heads;
+}
+
+/** Units whose latest merged lane head is the second parent of the merge commit at HEAD. */
+async function readMergedLaneHeads(git: Git, marked: ChangeState["marked"]): Promise<Record<string, string>> {
+	const second = (await git.parents(await git.head()).catch(() => []))[1];
+	const heads: Record<string, string> = {};
+	if (second === undefined) return heads;
+	for (const unit of new Set(marked.filter((m) => m.kind === "lane").map((m) => (m.data as { unit?: string } | null)?.unit))) {
+		const close = unit === undefined ? undefined : latestLaneClose(marked, unit);
+		if (unit !== undefined && close?.data.outcome === "merged" && close.data.head === second) heads[unit] = second;
+	}
+	return heads;
+}
+
 type Resolved = { kind: "change"; number: number; warning?: string } | Exclude<CardInput, { kind: "change" }>;
 
 /**
@@ -76,7 +103,10 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
-	return { ...snapshot, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
+	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
+	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
+	return { ...snapshot, subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {

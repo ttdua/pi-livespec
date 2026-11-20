@@ -22,9 +22,13 @@ import { failureSignature } from "../evidence/signature.ts";
 import { budgetWindow } from "../evidence/unit-state.ts";
 import { RECEIPT_OUTPUT_BYTES } from "../evidence/verify-env.ts";
 import { withTempWorktree } from "../evidence/worktree.ts";
+import { staleSince, stuckFor } from "../subagents/finish-freshness.ts";
+import { finishGateRefusal } from "../subagents/finish-gate.ts";
+import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { invalidText, lockedEvidenceCall, type Precheck, refusedRun, startable, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
+import { runSpecStuck } from "./spec-stuck.ts";
+import { invalidText, lockedEvidenceCall, type Precheck, type PrecheckFn, refusedRun, startable, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
 
 const TOOL = "unit_finish";
 const RETRY = "Debug the failure with the debugging-and-error-recovery skill, commit the fix, then run unit_finish again.";
@@ -141,7 +145,8 @@ function evidenceLinks(state: ChangeState, unit: string, posted?: string): strin
 	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ${commentLink(url, posted)}`])];
 }
 
-async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<ToolResult<undefined>> {
+/** Posts the `progress` record of a red or invalid run at `postSha` (HEAD by default) as a failed attempt; `lane_merge` reuses it. */
+export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, postSha: string = c.state.git.head): Promise<ToolResult<undefined>> {
 	const { w, state, unit: u } = c;
 	const cap = w.pack.loops.unit_attempts ?? Number.POSITIVE_INFINITY;
 	const attempt = (state.evidence.attempts[u.id] ?? 0) + 1;
@@ -152,7 +157,7 @@ async function failed(c: UnitCall, start: StartRecord, run: VerifyRun): Promise<
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
-	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha: state.git.head, signature, outputTail: run.output, decided });
+	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
 	const comment = await w.forge.createComment(state.issue.number, decisionComment(record));
 	await afterForgeWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
@@ -171,8 +176,31 @@ async function reconcile(c: UnitCall): Promise<ToolResult<undefined>> {
 	return c.done(`${c.unit.id} already has a receipt; no Verify was run. ${tickText(c.unit.id, ticked)}`);
 }
 
-async function runFinish(c: UnitCall): Promise<ToolResult<undefined>> {
+/** The stale sources of the unit's last packet; nothing is sent here, because a human request must never wait under the evidence lock. */
+type Staleness = { stale?: string[] };
+
+async function staleStop(c: UnitCall, found: Staleness): Promise<ToolResult<undefined> | undefined> {
+	const { w, state, env, unit: u } = c;
+	const stale = await staleSince({ session: w.session, state, pack: w.pack, forge: w.forge, git: env.git, root: env.root, cwd: env.root, budgetTokens: w.session.config.user.packetBudgetTokens }, u.id);
+	if (stale === undefined) return undefined;
+	const cancelled = c.cancelled();
+	if (cancelled !== undefined) return cancelled;
+	found.stale = stale;
+	return c.refuse(`${staleHead(u.id, stale)} Report it with spec_stuck.`);
+}
+
+const staleHead = (unit: string, stale: string[]): string => `unit_finish refused: ${unit} is not ticked; its dispatched packet is stale (${stale.join(", ")}).`;
+
+/** After the lock: the stale report goes to the human through `spec_stuck`, and its text follows the refusal. */
+async function reportStale(unit: string, stale: string[], ctx: ApproverCtx): Promise<ToolResult<undefined>> {
+	const sent = await runSpecStuck(stuckFor(unit, stale), ctx);
+	return { ...sent, content: [{ type: "text", text: `${staleHead(unit, stale)}\n${sent.content.map((x) => x.text).join("\n")}` }], isError: true };
+}
+
+async function runFinish(c: UnitCall, found: Staleness): Promise<ToolResult<undefined>> {
 	const { env, state, unit: u } = c;
+	const stale = await staleStop(c, found);
+	if (stale !== undefined) return stale;
 	if (finishMode(state, u.id) === "reconcile") return reconcile(c);
 	const start = state.evidence.started[u.id] as StartRecord;
 	const blocked = env.run.guard(start.verify);
@@ -188,16 +216,20 @@ async function runFinish(c: UnitCall): Promise<ToolResult<undefined>> {
 }
 
 /** The D10 refusal; a blocked unit's refusal links its receipts and failed attempts from the refreshed state. */
-function precheck(unit: string): (state: ChangeState, pack: Parameters<typeof unitFinishRefusal>[1]) => Precheck {
-	return (state, pack) => {
+function precheck(unit: string): PrecheckFn {
+	return async (state, pack, git) => {
+		const gate = await finishGateRefusal(state, pack, unit, git);
+		if (gate !== undefined) return { refused: gate };
 		const refusal = unitFinishRefusal(state, pack, unit, finishMode(state, unit));
 		if (refusal === undefined || refusal !== blockedRefusal(state, unit)) return startable(refusal);
 		return { refused: [`${refusal} Link this evidence:`, ...evidenceLinks(state, unit)].join("\n") };
 	};
 }
 
-export function runUnitFinish(unit: string, signal?: AbortSignal): Promise<ToolResult<undefined>> {
-	return lockedEvidenceCall(TOOL, unit, signal, precheck(unit), runFinish);
+export async function runUnitFinish(unit: string, signal?: AbortSignal, ctx?: ApproverCtx): Promise<ToolResult<undefined>> {
+	const found: Staleness = {};
+	const result = await lockedEvidenceCall(TOOL, unit, signal, precheck(unit), (c) => runFinish(c, found));
+	return found.stale !== undefined && ctx !== undefined ? reportStale(unit, found.stale, ctx) : result;
 }
 
 export function registerUnitFinish(pi: ExtensionAPI): void {
@@ -208,6 +240,6 @@ export function registerUnitFinish(pi: ExtensionAPI): void {
 			"Finish a started unit: livespec runs its Verify at HEAD. When it passes, a receipt is posted and the unit is ticked done; when it fails, the failed attempt is recorded. A unit with a receipt but no tick is ticked without running Verify. Takes only the unit id.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No outcome, verdict, attempt or exit parameter.
 		parameters: UNIT_PARAMETERS as never,
-		execute: (_id, params, signal) => runUnitFinish((params as { unit: string }).unit, signal),
+		execute: (_id, params, signal, _update, ctx) => runUnitFinish((params as { unit: string }).unit, signal, ctx as ApproverCtx),
 	});
 }

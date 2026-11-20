@@ -25,6 +25,8 @@ export type GateCommentInput = {
 	superseded?: boolean;
 	locked?: Record<string, string>;
 	agentSkills?: string;
+	/** Keys of the subagent findings the gate payload listed. */
+	findings?: string[];
 };
 
 /** The `gate` result comment, id `<phase|gate>.<request id | self-<base36 ms>>`. */
@@ -40,6 +42,7 @@ export function gateComment(id: string, g: GateCommentInput): string {
 	if (g.superseded) data.superseded = true;
 	if (g.locked) data.locked = g.locked;
 	if (g.agentSkills !== undefined) data.agent_skills = g.agentSkills;
+	if (g.findings !== undefined && g.findings.length > 0) data.findings = g.findings;
 	return writeMarked("gate", `${g.target}.${id}`, data);
 }
 
@@ -77,6 +80,8 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 		headSha: request.head_sha,
 		waivers: !superseded && answer.choice === WAIVE ? [...gateSnapshotOf(request).failingWaivable] : [],
 	};
+	const shown = gateSnapshotOf(request).findings;
+	if (shown !== undefined) input.findings = shown;
 	if (superseded) input.superseded = true;
 	if (approvedPlan) {
 		input.locked = await lockedDigests(run);
