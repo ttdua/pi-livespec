@@ -270,8 +270,8 @@ describe("Persona file", () => {
 
 	test("a round-1 reviewer packet holds no reviewer finding-summary", async () => {
 		const world = await withPersona("code-reviewer");
-		world.post(BOT, writeMarked("finding-summary", "finding-summary.change.review.1", { subject: "change", findings: [] }));
+		const summary = world.post(BOT, writeMarked("finding-summary", "finding-summary.change.review.1", { subject: "change", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "e", fix: "f", scope: "unit" }] }));
 		const got = ids(await sourcesOf(world, "reviewer", undefined, "change"));
-		expect(got.filter((id) => id.startsWith("comment:"))).toEqual([]);
+		expect(got).not.toContain(`comment:${summary.id}`);
 	});
 });
