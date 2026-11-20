@@ -1,17 +1,19 @@
-// Evidence records: the `unit-start` and `receipt` marked comments, their ids and their parsers.
+// Evidence records: the `unit-start`, `receipt` and `rebuild` marked comments, their ids and their parsers.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
 
 const START_KIND = "unit-start";
 const RECEIPT_KIND = "receipt";
+const REBUILD_KIND = "rebuild";
 
 registerKind(START_KIND);
+registerKind(REBUILD_KIND);
 
 export type StartData = {
 	unit: string;
 	digest: string;
 	verify: string;
-	pre: { sha: string; exit?: number; verdict?: "red" | "green"; output?: string };
+	pre: { sha: string; exit?: number; verdict?: "red" | "green" | "rebuild"; output?: string };
 	pending?: true;
 	refactor?: true;
 };
@@ -28,10 +30,14 @@ export type ReceiptData = {
 	pending_commit?: string;
 };
 
+/** A review-routed finding that sends a built unit back to be rebuilt: id `rebuild.<unit>.<round>`. */
+export type RebuildData = { unit: string; round: number; finding: string };
+
 /** `index` is the record's position in comment order. */
 type Located = { id: string; commentId: string; index: number };
 export type StartRecord = StartData & Located;
 export type ReceiptRecord = ReceiptData & Located;
+export type RebuildRecord = RebuildData & Located;
 
 type Raw = Record<string, unknown>;
 
@@ -45,7 +51,7 @@ const isRun = (v: unknown): boolean => isObject(v) && isString(v.sha) && isNumbe
 
 function isStartPre(v: unknown): boolean {
 	if (!isObject(v) || !isString(v.sha)) return false;
-	return optional(v, "exit", isNumber) && optional(v, "verdict", (x) => x === "red" || x === "green") && optional(v, "output", isString);
+	return optional(v, "exit", isNumber) && optional(v, "verdict", (x) => x === "red" || x === "green" || x === "rebuild") && optional(v, "output", isString);
 }
 
 function isStartData(d: unknown): d is StartData {
@@ -68,6 +74,11 @@ export function receiptComment(id: string, d: ReceiptData): string {
 	return writeMarked(RECEIPT_KIND, id, d);
 }
 
+/** The `rebuild` comment body. */
+export function rebuildComment(data: RebuildData): string {
+	return writeMarked(REBUILD_KIND, `rebuild.${data.unit}.${data.round}`, data);
+}
+
 /** An evidence id `<unit>.<base36 ms>`. */
 export function newEvidenceId(unit: string, now: Date): string {
 	return `${unit}.${now.getTime().toString(36)}`;
@@ -85,6 +96,15 @@ export function asStartRecord(m: MarkedComment, index: number): StartRecord | un
 /** The receipt record of comment `m` at comment index `index`, when it is a well-formed `receipt`. */
 export function asReceiptRecord(m: MarkedComment, index: number): ReceiptRecord | undefined {
 	return located(m, index, RECEIPT_KIND, isReceiptData);
+}
+
+function isRebuildData(d: unknown): d is RebuildData {
+	return isObject(d) && isString(d.unit) && isNumber(d.round) && isString(d.finding);
+}
+
+/** The rebuild record of comment `m` at comment index `index`, when it is a well-formed `rebuild`. */
+export function asRebuildRecord(m: MarkedComment, index: number): RebuildRecord | undefined {
+	return located(m, index, REBUILD_KIND, isRebuildData);
 }
 
 export function readStarts(marked: MarkedComment[]): StartRecord[] {

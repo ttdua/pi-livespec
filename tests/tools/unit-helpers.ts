@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
 import { parseChange, type Unit } from "../../src/core/change.ts";
+import { unitDigest } from "../../src/core/digest.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -196,4 +197,12 @@ export async function waitFor(check: () => boolean, ms = 10_000): Promise<void> 
 		if (Date.now() > until) throw new Error("condition not reached in time");
 		await new Promise((r) => setTimeout(r, 20));
 	}
+}
+
+/** Seeds a receipt for `unit` at its current digest, then a `rebuild` marker for round `round`, as the review route stage leaves them. */
+export async function seedRebuild(h: UnitHarness, unit: string, round = 1): Promise<void> {
+	const u = (await h.units()).find((x) => x.id === unit) as Unit;
+	const sha = "a".repeat(40);
+	await h.seed("receipt", `${unit}.old`, { unit, digest: unitDigest(u), verify: u.verify, pre: { sha, exit: 1 }, post: { sha, exit: 0 }, output: "", start: `${unit}.s` });
+	await h.seed("rebuild", `rebuild.${unit}.${round}`, { unit, round, finding: "c1:0" });
 }

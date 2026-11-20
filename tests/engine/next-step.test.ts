@@ -513,6 +513,11 @@ describe("unit evidence rules", () => {
 		expect(step.activeUnits).toEqual(["U1", "U3"]);
 	});
 
+	test("Rebuild names unit_start", () => {
+		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ rebuilds: { U3: { round: 1, finding: "c1:0" } } }) }));
+		expect(step.next).toBe("Rebuild U3 — Rate limit per IP: run unit_start U3.");
+	});
+
 	test("Receipted, not ticked", () => {
 		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ untickedReceipts: ["U3"] }) }));
 		expect(step.next).toBe("Run unit_finish U3 again to tick it.");
