@@ -14,7 +14,8 @@ export type DispatchOutcome =
 	| { kind: "inline"; reason: string; packet: Packet }
 	| { kind: "sequential"; reason: string }
 	| { kind: "blocked"; reason: string; result?: SubagentResult }
-	| { kind: "stuck"; reason: string; result?: SubagentResult };
+	| { kind: "stuck"; reason: string; result?: SubagentResult }
+	| { kind: "cancelled"; reason: string };
 
 export type AgentInfo = { name: string; source: string; filePath?: string };
 
@@ -24,6 +25,8 @@ export type DispatchDeps = RecordDeps & {
 	events: EventsLike;
 	/** Called for a role agent that is not the executor's built-in. */
 	onOverride(agent: AgentInfo): void;
+	/** The tool call's signal: passed to every `wait`; when it aborts, the child is aborted and nothing more is recorded. */
+	signal?: AbortSignal;
 };
 
 export type DispatchRequest = {
@@ -68,9 +71,33 @@ function agentFor(deps: DispatchDeps, request: DispatchRequest): AgentInfo | Dis
 	return agent;
 }
 
+/** Aborts child `agentId` when `signal` aborts (the user cancelled the tool call); returns the listener's disposer. */
+export function abortChildOnCancel(service: SubagentsServiceLike, agentId: string, signal: AbortSignal | undefined): () => void {
+	if (signal === undefined) return () => undefined;
+	const stop = (): void => {
+		service.abort(agentId);
+	};
+	if (signal.aborted) stop();
+	else signal.addEventListener("abort", stop, { once: true });
+	return () => signal.removeEventListener("abort", stop);
+}
+
+/** The outcome of a tool call the user cancelled: the child is aborted and no result is recorded. */
+export const cancelledOutcome = (agentId: string | undefined): DispatchOutcome => ({
+	kind: "cancelled",
+	reason: agentId === undefined ? "the call was cancelled before any child was launched" : `the call was cancelled, so child ${agentId} was aborted and no result was recorded`,
+});
+
+/** Read through a function: TypeScript narrows `signal.aborted` after an earlier check, but a cancel can arrive at any await. */
+export const isCancelled = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
+
+/** `wait` with the tool call's signal, so a cancel stops waiting at once. */
+export const waitFor = (service: SubagentsServiceLike, agentId: string, signal: AbortSignal | undefined): Promise<RecordLike> =>
+	service.wait(agentId, signal === undefined ? undefined : { signal });
+
 /** Waits for the run while the watcher waits for `session-created`; the watcher gives up once the run settles. */
 async function waitWithFacts(deps: DispatchDeps, agentId: string, watch: ReturnType<typeof watchLaunch>, settled: AbortController): Promise<{ facts: LaunchFacts | undefined; waited: Promise<RecordLike> }> {
-	const waited = deps.service.wait(agentId);
+	const waited = waitFor(deps.service, agentId, deps.signal);
 	waited.then(() => settled.abort(), () => settled.abort());
 	return { facts: await watch.factsFor(agentId), waited };
 }
@@ -82,6 +109,7 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 	});
 	const settled = new AbortController();
 	const watch = watchLaunch(deps.events, settled.signal);
+	let disposeCancel = (): void => undefined;
 	try {
 		let agentId: string;
 		try {
@@ -89,12 +117,18 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 		} catch (error) {
 			return { kind: "stop", outcome: { kind: "inline", reason: `the executor refused the launch: ${messageOf(error)}; ${request.role} runs inline`, packet: request.packet } };
 		}
+		disposeCancel = abortChildOnCancel(deps.service, agentId, deps.signal);
 		const { facts, waited } = await waitWithFacts(deps, agentId, watch, settled);
+		if (isCancelled(deps.signal)) {
+			waited.catch(() => undefined);
+			return { kind: "stop", outcome: cancelledOutcome(agentId) };
+		}
 		const run: Run = { agentId, facts: facts ?? { context: "unknown", cwd: "unknown" }, thinking: options.thinkingLevel, agentSource };
 		const check = checkLaunch(options, facts);
 		if (!check.ok) return { kind: "stop", outcome: await mismatchOutcome(deps, request, run, check, waited) };
 		return { kind: "settled", run, record: await waited.catch((error: unknown): RecordLike => ({ id: agentId, status: "error", error: messageOf(error) })) };
 	} finally {
+		disposeCancel();
 		watch.dispose();
 	}
 }
@@ -140,12 +174,15 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 /** Resumes the child naming the missing sources and waits for its next run; a refused resume blocks. */
 async function returnToChild(deps: DispatchDeps, agentId: string, missing: string[]): Promise<RecordLike | string> {
 	const message = `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every source you used.`;
+	const disposeCancel = abortChildOnCancel(deps.service, agentId, deps.signal);
 	try {
 		const resumed = (await deps.service.resume(agentId, message)) as { kind?: string; reason?: string } | undefined;
 		if (resumed?.kind === "refused") return `the executor refused to resume ${agentId}: ${resumed.reason ?? "no reason"}`;
-		return await deps.service.wait(agentId);
+		return await waitFor(deps.service, agentId, deps.signal);
 	} catch (error) {
 		return `resuming ${agentId} failed: ${messageOf(error)}`;
+	} finally {
+		disposeCancel();
 	}
 }
 
@@ -154,6 +191,7 @@ export async function settle(deps: DispatchDeps, request: DispatchRequest, first
 	let { run, record } = first;
 	let seen = history;
 	for (;;) {
+		if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 		const facts = runFacts(request, run);
 		const decision = interpret(record, request.packet, request.role, seen);
 		if (decision.kind === "retry") {
@@ -165,6 +203,7 @@ export async function settle(deps: DispatchDeps, request: DispatchRequest, first
 		}
 		if (decision.kind === "return") {
 			const next = await returnToChild(deps, run.agentId, decision.missing);
+			if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 			if (typeof next === "string") return finish(deps, facts, request.packet.cwd, run.facts, { kind: "blocked", reason: next });
 			record = next;
 			seen = { ...seen, returns: seen.returns + 1 };
@@ -176,6 +215,7 @@ export async function settle(deps: DispatchDeps, request: DispatchRequest, first
 
 /** One dispatch: the role's agent, a checked launch, then the interpreted result. */
 export async function runDispatch(deps: DispatchDeps, request: DispatchRequest): Promise<DispatchOutcome> {
+	if (isCancelled(deps.signal)) return cancelledOutcome(undefined);
 	const agent = agentFor(deps, request);
 	if ("kind" in agent) return agent;
 	const launched = await launch(deps, request, agent.source);

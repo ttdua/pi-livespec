@@ -2,7 +2,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ChangeState } from "../engine/state-types.ts";
-import { type DispatchOutcome, resumedRun, settle } from "../subagents/dispatch.ts";
+import { abortChildOnCancel, cancelledOutcome, type DispatchOutcome, isCancelled, resumedRun, settle, waitFor } from "../subagents/dispatch.ts";
 import { findExecutor, type RecordLike, type SubagentsServiceLike } from "../subagents/executor.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
 import { readPacket } from "../subagents/packet-store.ts";
@@ -32,14 +32,17 @@ async function packetOf(w: WriteContext, state: ChangeState, q: Question): Promi
 	return built.ok ? built.packet : built.message;
 }
 
-/** Resumes the child with the answer; a refusal or an unknown id is the reason to dispatch again. */
-async function resume(service: SubagentsServiceLike, id: string, answer: string): Promise<RecordLike | string> {
+/** Resumes the child with the answer; a refusal or an unknown id is the reason to dispatch again. A cancel aborts the child. */
+async function resume(service: SubagentsServiceLike, id: string, answer: string, signal: AbortSignal | undefined): Promise<RecordLike | string> {
+	const disposeCancel = abortChildOnCancel(service, id, signal);
 	try {
 		const resumed = (await service.resume(id, answer)) as { kind?: string; reason?: string } | undefined;
 		if (resumed?.kind === "refused") return `the executor refused to resume ${id} (${resumed.reason ?? "no reason"})`;
-		return await service.wait(id);
+		return await waitFor(service, id, signal);
 	} catch (error) {
 		return `the executor could not resume ${id}: ${error instanceof Error ? error.message : String(error)}`;
+	} finally {
+		disposeCancel();
 	}
 }
 
@@ -54,7 +57,7 @@ function serviceOf(): SubagentsServiceLike | undefined {
 	return found.ok ? found.service : undefined;
 }
 
-export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps): Promise<ToolResult<undefined>> {
+export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps, signal?: AbortSignal): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
 	if (typeof p.answer !== "string" || p.answer.trim() === "") return refusal(TOOL, "the answer is empty.");
@@ -72,13 +75,14 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	if (typeof packet === "string") return refusal(TOOL, packet);
 	const t = targetOf(q);
 	const request = await dispatchRequest(w, state, t, packet, deps);
-	const d = dispatchDeps(pi, w, state.issue.number, service, warn(ctx));
+	const d = { ...dispatchDeps(pi, w, state.issue.number, service, warn(ctx)), ...(signal === undefined ? {} : { signal }) };
 	await d.post(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
-	const record = await resume(service, p.id, p.answer);
+	const record = await resume(service, p.id, p.answer, signal);
+	if (isCancelled(signal)) return toolResult(withStep(w.session, outcomeText(t, cancelledOutcome(p.id))), undefined, true);
 	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded on the forge, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
 	const run = resumedRun(p.id, packet.cwd, q.launch, request.difficulty);
 	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0 });
-	return toolResult(withStep(w.session, outcomeText(t, outcome)), undefined);
+	return toolResult(withStep(w.session, outcomeText(t, outcome)), undefined, outcome.kind === "cancelled");
 }
 
 export function registerSubagentAnswer(pi: ExtensionAPI, deps: SubagentToolDeps = defaultSubagentDeps): void {
@@ -89,6 +93,6 @@ export function registerSubagentAnswer(pi: ExtensionAPI, deps: SubagentToolDeps 
 			"Answer the pending question of a child launched by subagent_dispatch, resume it and record its result. Do not answer what only the user can decide (scope, requirements, public contracts, acceptance criteria): raise those with spec_question first.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: { id: { type: "string", description: "Agent id of the child" }, answer: { type: "string" } }, required: ["id", "answer"] } as never,
-		execute: (_id, params, _signal, _update, ctx) => runSubagentAnswer(pi, params as AnswerParams, ctx as never, deps),
+		execute: (_id, params, signal, _update, ctx) => runSubagentAnswer(pi, params as AnswerParams, ctx as never, deps, signal),
 	});
 }

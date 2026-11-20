@@ -32,6 +32,48 @@ function next(h: Awaited<ReturnType<typeof subagentHarness>>, make: () => unknow
 	};
 }
 
+/**
+ * A wait that settles only when its signal aborts, as the executor's `wait(id, { signal })` does. It records the
+ * signal it got, then the user cancels the tool call (`cancel`) while the child runs.
+ */
+function hangUntilAborted(h: Awaited<ReturnType<typeof subagentHarness>>, signals: (AbortSignal | undefined)[], cancel: AbortController) {
+	h.fake.service.wait = ((id: string, o?: { signal?: AbortSignal }) => {
+		signals.push(o?.signal);
+		const settled = new Promise((_resolve, reject) => o?.signal?.addEventListener("abort", () => reject(new Error(`wait for ${id} aborted`))));
+		setTimeout(() => cancel.abort(), 5);
+		return settled;
+	}) as never;
+}
+
+describe("cancelling a dispatch or an answer", () => {
+	test("subagent_dispatch passes its signal to wait and aborts the child when cancelled", async () => {
+		const h = await subagentHarness({ executor: {} });
+		const signals: (AbortSignal | undefined)[] = [];
+		const cancel = new AbortController();
+		hangUntilAborted(h, signals, cancel);
+		const call = h.call("subagent_dispatch", { role: "implementer", unit: "U1" }, cancel.signal);
+		const out = await call;
+		expect(signals[0]).toBeDefined();
+		expect(h.fake.aborted).toEqual(["agent-1"]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("cancelled");
+	});
+
+	test("subagent_answer passes its signal to wait and aborts the child when cancelled", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: { text: "Which?" } }] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		const signals: (AbortSignal | undefined)[] = [];
+		const cancel = new AbortController();
+		hangUntilAborted(h, signals, cancel);
+		const call = h.call("subagent_answer", { id: "agent-1", answer: "this one" }, cancel.signal);
+		const out = await call;
+		expect(signals[0]).toBeDefined();
+		expect(h.fake.aborted).toEqual(["agent-1"]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("cancelled");
+	});
+});
+
 describe("subagent-dispatch tools", () => {
 	test("capable executor launches through the new key", async () => {
 		const h = await subagentHarness({ executor: {} });

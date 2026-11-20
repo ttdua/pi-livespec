@@ -16,7 +16,7 @@ import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParam
 
 const TOOL = "subagent_dispatch";
 
-export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps): Promise<ToolResult<undefined>> {
+export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps, signal?: AbortSignal): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
 	const w = await prepareWrite();
@@ -33,9 +33,10 @@ export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx
 	if (!executor.ok) return toolResult(inlineText(target, `no capable subagent executor (missing ${executor.missing.join(", ")})`, built.packet), undefined);
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
-	const outcome = await runDispatch(dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), request);
+	const d = { ...dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), ...(signal === undefined ? {} : { signal }) };
+	const outcome = await runDispatch(d, request);
 	if (outcome.kind === "sequential") await closeMovedLane(w, state, target.unit);
-	return toolResult(withStep(w.session, outcomeText(target, outcome)), undefined);
+	return toolResult(withStep(w.session, outcomeText(target, outcome)), undefined, outcome.kind === "cancelled");
 }
 
 /** A child moved out of its lane: the lane is closed and removed, so the unit re-runs in the change worktree. */
@@ -55,6 +56,6 @@ export function registerSubagentDispatch(pi: ExtensionAPI, deps: SubagentToolDep
 			"Launch the role's subagent (scout, implementer, reviewer, verifier) with a livespec packet, wait for it and record its result. A unit id is required for implementer and the unit subject; a reviewer needs a subject. Without a capable executor it returns the packet to run inline.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: TARGET_PROPERTIES, required: ["role"] } as never,
-		execute: (_id, params, _signal, _update, ctx) => runSubagentDispatch(pi, params as TargetParams, ctx as never, deps),
+		execute: (_id, params, signal, _update, ctx) => runSubagentDispatch(pi, params as TargetParams, ctx as never, deps, signal),
 	});
 }

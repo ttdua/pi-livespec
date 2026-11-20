@@ -53,6 +53,8 @@ export function outcomeText(t: Target, outcome: DispatchOutcome): string {
 			return `${outcome.reason}. The lane is closed and removed; run ${t.unit} in the change worktree.`;
 		case "blocked":
 			return `${argsOf(t)} is BLOCKED: ${outcome.reason}. Send a stuck report with spec_stuck.`;
+		case "cancelled":
+			return `${argsOf(t)} was cancelled: ${outcome.reason}. Dispatch it again when ready.`;
 		case "stuck":
 			return `${argsOf(t)} needs a decision: ${outcome.reason}. Send a stuck report with spec_stuck for ${t.unit ?? "the change"}.${outcome.result ? `\n${resultLines(t, outcome.result, undefined).join("\n")}` : ""}`;
 	}
