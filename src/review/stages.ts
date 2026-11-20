@@ -20,7 +20,7 @@ import { runSpecQuestion } from "../tools/spec-question.ts";
 import { dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "../tools/subagent-request.ts";
 import { argsOf, type Target, type ToolCtx, warn } from "../tools/subagent-target.ts";
 import { mergeFindings, withRoutes } from "./aggregate.ts";
-import { applyRoutes } from "./effects.ts";
+import { applyRoutes, QuestionNotSent, type RouteEffects } from "./effects.ts";
 import { fanOut } from "./fanout.ts";
 import { aggregateComment, aggregateOf, latestRun, reviewRunComment } from "./records.ts";
 import { completedReview, type NextStage, roundNumber } from "./round.ts";
@@ -140,7 +140,13 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 		return r === undefined ? [] : [{ commentId: r.commentId, findings: r.data.findings }];
 	});
 	const merged = mergeFindings({ parent: run.parentFindings, reviews });
-	const diffFiles = diffFilesOf(await c.w.session.git.diffNameStatus(baseOf(c.state), run.head));
+	const base = baseOf(c.state);
+	let diffFiles: string[];
+	try {
+		diffFiles = diffFilesOf(await c.w.session.git.diffNameStatus(base, run.head));
+	} catch (error) {
+		return { text: `spec_review refused: git diff ${base}..${run.head} failed: ${error instanceof Error ? error.message : String(error)}. Nothing was written.`, stop: true, error: true };
+	}
 	const units = c.state.change.units.map((u) => ({ id: u.id, files: u.files }));
 	const subject = `review-${run.round}`;
 	const routes: RouteResult[] = [];
@@ -154,7 +160,7 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 	await post(c, decisionComment({ point: "finding-scope", subject, source: "rule", outcome, facts: { diffFiles, units }, reason: "routes from the finding's location, the units' Files and the diff" }));
 	const findings = withRoutes(merged, routes, verifierOff(c));
 	await post(c, aggregateComment({ round: run.round, head: run.head, reviews: reviews.map((r) => r.commentId), findings }));
-	const summary = findings.map((f, i) => `${i}: ${f.severity} ${f.kind} at ${f.location} → ${f.route}${f.routeUnit === undefined ? "" : ` ${f.routeUnit}`} (verify ${f.verify})`);
+	const summary = findings.map((f, i) => `${i}: ${f.severity} ${untrusted(f.kind)} at ${untrusted(f.location)} → ${f.route}${f.routeUnit === undefined ? "" : ` ${f.routeUnit}`} (verify ${f.verify})`);
 	return { text: `Aggregated review round ${run.round}: ${findings.length} finding(s).${summary.length === 0 ? "" : `\n${summary.join("\n")}`}`, stop: false };
 }
 
@@ -165,16 +171,29 @@ async function askQuestion(c: StageCtx, text: string): Promise<string | undefine
 	return result.isError ? result.content.map((x) => x.text).join("\n") : undefined;
 }
 
+async function reaskQuestion(c: StageCtx, id: string): Promise<string | undefined> {
+	const result = await runSpecQuestion({ reask: id }, c.tool);
+	return result.isError ? result.content.map((x) => x.text).join("\n") : undefined;
+}
+
 async function routeStage(c: StageCtx): Promise<StageReport> {
 	const run = latestRun(c.state.marked);
 	const aggregate = run === undefined ? undefined : aggregateOf(c.state.marked, run.round);
 	if (run === undefined || aggregate === undefined) throw new Error("no aggregate to route");
 	const issue = c.state.issue.number;
-	const effects = await applyRoutes({
-		forge: c.w.forge, issue, branch: c.state.change.header.branch,
-		ask: (text) => askQuestion(c, text),
-		afterWrite: () => afterForgeWrite(c.w.session, issue),
-	}, c.state, aggregate);
+	let effects: RouteEffects;
+	try {
+		effects = await applyRoutes({
+			forge: c.w.forge, issue, branch: c.state.change.header.branch,
+			ask: (text) => askQuestion(c, text),
+			reask: (id) => reaskQuestion(c, id),
+			afterWrite: () => afterForgeWrite(c.w.session, issue),
+		}, c.state, aggregate);
+	} catch (error) {
+		if (!(error instanceof QuestionNotSent)) throw error;
+		const done = error.effects.posted.length === 0 ? "" : ` Applied: ${error.effects.posted.join(", ")}.`;
+		return { text: `Route of review round ${run.round} is not complete, so it is not marked routed:${done}\n${error.errors.join("\n")}\nCall spec_review again to finish it.`, stop: true, error: true };
+	}
 	const prComments = effects.posted.filter((p) => p.startsWith("pr ")).map((p) => p.slice(3));
 	const { commentId: _, ...data } = run;
 	await post(c, reviewRunComment({ ...data, routed: true, ...(prComments.length === 0 ? {} : { prComments }) }));

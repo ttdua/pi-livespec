@@ -1,6 +1,9 @@
 // Tests of the route effects: rebuild before untick, one question, pull request comments once.
 import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
+import { tickUnit } from "../../src/core/tick.ts";
+import type { ChangeState } from "../../src/engine/state-types.ts";
+import { receiptComment, startComment } from "../../src/evidence/records.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
 import { applyRoutes, type EffectDeps, prMarker, QuestionNotSent } from "../../src/review/effects.ts";
 import type { AggregateFinding, FindingSummaryData } from "../../src/subagents/records.ts";
@@ -32,7 +35,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 	});
 	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments] }, await w.bodyOf(n));
 	const deps = (over: Partial<EffectDeps> = {}): EffectDeps => ({
-		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined,
+		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined, reask: async () => undefined,
 		ask: async (text) => {
 			asked.push(text);
 			const issue = await w.forge.getIssue(n);
@@ -75,7 +78,7 @@ describe("applyRoutes", () => {
 			[1, 10].includes(i) ? agg({ route: "question", needsDecision: true, verify: "skipped-parent", location: `q${i}.ts:1` }) : agg({ severity: "SUGGESTION", route: "record", location: `r${i}.ts:1`, verify: "skipped-suggestion" }));
 		const t = await world(findings);
 		const issue = await t.w.forge.getIssue(t.n);
-		await t.w.forge.updateIssueBody(t.n, issue.body.replace("## Questions\n", `## Questions\n- [ ] Q1 (non-blocking): Review finding:${t.a.commentId}:10 needs a decision\n`), issue.version);
+		await t.w.forge.updateIssueBody(t.n, issue.body.replace("## Questions\n", `## Questions\n- [x] Q1 (non-blocking): Review finding:${t.a.commentId}:10 needs a decision\n`), issue.version);
 		const out = await applyRoutes(t.deps(), await t.state(), t.agg);
 		expect(t.asked).toHaveLength(1);
 		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:1 `);
@@ -114,6 +117,46 @@ describe("applyRoutes", () => {
 		await t.w.seedPullRequest({ head: BRANCH });
 		const forge = new Proxy(t.w.forge, { get: (target, prop) => (prop === "createReviewComment" ? async () => { throw new Error("line not in diff"); } : Reflect.get(target, prop, target)) });
 		const out = await applyRoutes(t.deps({ forge: forge as EffectDeps["forge"] }), await t.state(), t.agg);
-		expect(out.rejected).toEqual([`${t.a.commentId}:0`]);
+		expect(out.rejected).toEqual([`${t.a.commentId}:0 (line not in diff)`]);
+	});
+});
+
+describe("applyRoutes retry after a question was not sent", () => {
+	const rebuilt = async (t: Awaited<ReturnType<typeof world>>) => {
+		const digest = "d";
+		await t.w.forge.createComment(t.n, startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } }));
+		await t.w.forge.createComment(t.n, receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a" }));
+		const issue = await t.w.forge.getIssue(t.n);
+		await t.w.forge.updateIssueBody(t.n, tickUnit(issue.body, "U2"), issue.version);
+	};
+
+	test("a rebuilt unit is not unticked again", async () => {
+		const t = await world([agg({ route: "unit", routeUnit: "U2" }), agg({ route: "question", needsDecision: true, verify: "skipped-parent", location: "q.ts:1" })], (k) => [verifier(k(0))]);
+		const failed = await applyRoutes(t.deps({ ask: async () => "no adapter" }), await t.state(), t.agg).then(() => undefined, (e: unknown) => e);
+		expect(failed).toBeInstanceOf(QuestionNotSent);
+		expect(parseChange(await t.w.bodyOf(t.n)).units.find((u) => u.id === "U2")?.done).toBe(false);
+		await rebuilt(t);
+		const out = await applyRoutes(t.deps(), await t.state(), t.agg);
+		expect(out.posted).not.toContain("untick U2");
+		expect(parseChange(await t.w.bodyOf(t.n)).units.find((u) => u.id === "U2")?.done).toBe(true);
+	});
+
+	test("an unsent question is sent again, not skipped", async () => {
+		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
+		const failing = t.deps({ ask: async (text) => { await t.deps().ask(text); return "no adapter"; } });
+		await applyRoutes(failing, await t.state(), t.agg).catch(() => undefined);
+		const reasked: string[] = [];
+		const out = await applyRoutes(t.deps({ reask: async (id) => { reasked.push(id); return undefined; } }), await t.state(), t.agg);
+		expect(reasked).toEqual(["Q1"]);
+		expect(out.posted).toEqual([`question ${t.a.commentId}:0`]);
+	});
+
+	test("a question with an open request is not asked again", async () => {
+		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
+		await applyRoutes(t.deps(), await t.state(), t.agg);
+		const state = { ...(await t.state()), requests: { pending: [{ id: "r1", subject: "question:Q1" }], applying: [] } } as unknown as ChangeState;
+		const reasked: string[] = [];
+		await applyRoutes(t.deps({ reask: async (id) => { reasked.push(id); return undefined; } }), state, t.agg);
+		expect(reasked).toEqual([]);
 	});
 });

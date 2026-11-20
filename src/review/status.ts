@@ -5,6 +5,7 @@ import type { Result } from "../core/result.ts";
 import { ANSWER_SUFFIX, isStuckReport, liftsCap } from "../engine/iterations.ts";
 import { type CheckFn, registerCheck } from "../engine/registry.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { type AggregateFinding, aggregateFinding, answeredFindingKeys, findingKey, isBlocking, rebuttedKeys } from "../subagents/records.ts";
 import { aggregates, latestRun, verifierRecord } from "./records.ts";
 
@@ -82,7 +83,7 @@ export function reviewRounds(marked: MarkedComment[], cap: number | undefined): 
 
 const CHECK = "review-clean";
 const fail = (message: string): Result[] => [{ code: CHECK, severity: "error", message }];
-const describe = (b: { index: number; finding: AggregateFinding }): string => `${b.index} (${b.finding.severity} ${b.finding.kind} at ${b.finding.location}, ${b.finding.route})`;
+const describe = (b: { index: number; finding: AggregateFinding }): string => `${b.index} (${b.finding.severity} ${b.finding.kind} at ${untrusted(b.finding.location)}, ${b.finding.route})`;
 
 /** Passes only when the latest aggregate reviewed HEAD and none of its findings blocks. */
 const reviewClean: CheckFn = async ({ change, git, marked }) => {

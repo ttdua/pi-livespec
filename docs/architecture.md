@@ -258,7 +258,7 @@ The `review` phase runs a fan-out of reviewers over the whole change, verifies a
 **Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and every write is an own marked comment on the change issue:
 
 1. `start`: refuses a dirty tree, a missing `Base`, an open blocking question or an unanswered stuck report. It runs every unit's `Verify` at `HEAD` and posts a `review-run` (round, `head`, selected subjects, tags, verify results, parent findings, `routed: false`). A `HEAD` that differs from the open round's restarts it as a new round.
-2. `review`: launches the missing reviewers in parallel ( `subagent_packet`/`subagent_record` inline without an executor). A reviewer's packet holds no other reviewer's output.
+2. `review`: launches the missing reviewers in parallel (`subagent_packet`/`subagent_record` inline without an executor). A reviewer's packet holds no other reviewer's output.
 3. `aggregate`: merges the findings of all reviewers into one `finding-summary` aggregate, with the parent findings added.
 4. `verify`: sends each finding that needs it to a `verifier` child.
 5. `route`: runs `finding-scope` per finding, applies the effects and updates the `review-run` with `routed: true`.

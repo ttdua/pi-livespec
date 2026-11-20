@@ -5,7 +5,9 @@
 import { parseChange } from "../core/change.ts";
 import { untickUnit } from "../core/tick.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import { rebuildComment } from "../evidence/records.ts";
+import { asReceiptRecord, asStartRecord, rebuildComment } from "../evidence/records.ts";
+import { isSubject } from "../interaction/approver.ts";
+import { openRequestFor } from "../interaction/requests.ts";
 import type { Forge } from "../forge/types.ts";
 import { type AggregateFinding, type FindingSummaryData, findingKey } from "../subagents/records.ts";
 import { normalizeLocation } from "./route.ts";
@@ -20,6 +22,8 @@ export type EffectDeps = {
 	branch: string | undefined;
 	/** Raises `text` as a non-blocking question (`spec_question`); returns the tool's error text, if any. */
 	ask(text: string): Promise<string | undefined>;
+	/** Sends the open question `id` again (`spec_question { reask }`); returns the tool's error text, if any. */
+	reask(id: string): Promise<string | undefined>;
 	/** Called after each own write, so later reads see it. */
 	afterWrite(): Promise<void>;
 };
@@ -57,11 +61,18 @@ async function untick(deps: EffectDeps, unit: string, out: RouteEffects): Promis
 	throw new Error(`the issue body changed twice while ${unit} was unticked; run spec_review again`);
 }
 
+/** True when `unit` was started or receipted after its `rebuild.<unit>.<round>` marker: it was rebuilt already. */
+function rebuiltSince(state: ChangeState, unit: string, round: number): boolean {
+	const at = state.marked.findIndex((m) => m.kind === "rebuild" && m.id === `rebuild.${unit}.${round}`);
+	if (at < 0) return false;
+	return state.marked.some((m, i) => i > at && (asStartRecord(m, i)?.unit === unit || asReceiptRecord(m, i)?.unit === unit));
+}
+
 /** The rebuild marker first, then the untick: a crash between them leaves a marker the next call completes. */
 async function routeToUnit(deps: EffectDeps, state: ChangeState, round: number, key: string, f: AggregateFinding, out: RouteEffects): Promise<void> {
 	if (f.routeUnit === undefined) return;
 	await postOnce(deps, state, `rebuild.${f.routeUnit}.${round}`, rebuildComment({ unit: f.routeUnit, round, finding: key }), out);
-	await untick(deps, f.routeUnit, out);
+	if (!rebuiltSince(state, f.routeUnit, round)) await untick(deps, f.routeUnit, out);
 }
 
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
@@ -71,9 +82,21 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\
 /** `finding:<key>` as a whole token, so `c9:1` never matches `finding:c9:10`. */
 const namesFinding = (text: string, key: string): boolean => new RegExp(`finding:${escapeRegExp(key)}(?!\\d)`).test(text);
 
-async function raiseQuestion(deps: EffectDeps, key: string, f: AggregateFinding, out: RouteEffects): Promise<string | undefined> {
+const hasOpenRequest = (state: ChangeState, id: string): boolean => {
+	const subject = `question:${id}`;
+	return isSubject(subject) && openRequestFor(state.requests, subject) !== undefined;
+};
+
+/** A question already added for the finding is sent again unless it is answered or has an open request. */
+async function raiseQuestion(deps: EffectDeps, state: ChangeState, key: string, f: AggregateFinding, out: RouteEffects): Promise<string | undefined> {
 	const body = (await deps.forge.getIssue(deps.issue)).body;
-	if (parseChange(body).questions.some((q) => namesFinding(q.text, key))) return undefined;
+	const asked = parseChange(body).questions.find((q) => namesFinding(q.text, key));
+	if (asked !== undefined) {
+		if (asked.checked || hasOpenRequest(state, asked.id)) return undefined;
+		const again = await deps.reask(asked.id);
+		if (again === undefined) out.posted.push(`question ${key}`);
+		return again;
+	}
 	const error = await deps.ask(oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${f.location}. Proposed fix: ${f.fix}`));
 	if (error === undefined) out.posted.push(`question ${key}`);
 	return error;
@@ -103,8 +126,8 @@ async function postPrComments(deps: EffectDeps, items: { key: string; finding: A
 		try {
 			await deps.forge.createReviewComment(pr.number, { path, line, body: prBody(key, finding) });
 			out.posted.push(`pr ${key}`);
-		} catch {
-			out.rejected.push(key);
+		} catch (error) {
+			out.rejected.push(`${key} (${error instanceof Error ? error.message : String(error)})`);
 		}
 	}
 }
@@ -120,7 +143,7 @@ export async function applyRoutes(deps: EffectDeps, state: ChangeState, aggregat
 	for (const { key, finding } of live) {
 		if (finding.route === "unit") await routeToUnit(deps, state, round, key, finding, out);
 		if (finding.route === "question") {
-			const error = await raiseQuestion(deps, key, finding, out);
+			const error = await raiseQuestion(deps, state, key, finding, out);
 			if (error !== undefined) errors.push(error);
 		}
 	}

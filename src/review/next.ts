@@ -2,6 +2,7 @@
 
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState, Decision } from "../engine/state-types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import type { ReviewSubject } from "../subagents/roles.ts";
 import { aggregates, runAtHead } from "./records.ts";
 import { completedReview, type NextStage, nextStage, stillBlocked } from "./round.ts";
@@ -79,6 +80,6 @@ export function reviewStep(pack: Pack, state: ChangeState): Decision | undefined
 	if (pending.length > 0) return { next: `Return to build to rebuild ${pending.join(", ")}.`, advance: BUILD_PHASE };
 	if (run === undefined || !run.routed) return specReview(state, stage);
 	const path = inChangePath(state);
-	if (path !== undefined) return { next: `A blocking in-change finding is at ${path}: add a unit for it with unit_amend --add.` };
+	if (path !== undefined) return { next: `A blocking in-change finding is at ${untrusted(path)}: add a unit for it with unit_amend --add.` };
 	return simplifyOffer(state);
 }
