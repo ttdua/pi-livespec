@@ -40,6 +40,7 @@ export type StageCtx = {
 };
 
 const REVIEW = "review";
+const CHECK_PREFIX = "check:";
 const COMPLETED = new Set(["DONE", "DONE_WITH_CONCERNS"]);
 
 async function post(c: StageCtx, body: string): Promise<void> {
@@ -151,7 +152,9 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 	const subject = `review-${run.round}`;
 	const routes: RouteResult[] = [];
 	for (const finding of merged) {
-		const facts = { finding, path: normalizeLocation(finding.location).path, units, diffFiles, needsDecision: finding.needsDecision };
+		const check = finding.location.startsWith(CHECK_PREFIX);
+		const path = check ? finding.location : normalizeLocation(finding.location).path;
+		const facts = { finding, path, units, diffFiles, needsDecision: finding.needsDecision, check };
 		const decided = await decide("finding-scope", facts, { config: c.w.pack.decisions["finding-scope"], subject });
 		if (decided.status !== "decided") throw new Error("the finding-scope rule never asks");
 		routes.push(decided.outcome as RouteResult);
@@ -188,7 +191,7 @@ async function routeStage(c: StageCtx): Promise<StageReport> {
 			ask: (text) => askQuestion(c, text),
 			reask: (id) => reaskQuestion(c, id),
 			afterWrite: () => afterForgeWrite(c.w.session, issue),
-		}, c.state, aggregate);
+		}, c.state, aggregate, { postReviewComments: run.source !== "pull-request" });
 	} catch (error) {
 		if (!(error instanceof QuestionNotSent)) throw error;
 		const done = error.effects.posted.length === 0 ? "" : ` Applied: ${error.effects.posted.join(", ")}.`;

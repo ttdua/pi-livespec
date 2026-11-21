@@ -103,6 +103,8 @@ export function nextStage(state: ChangeState, pack: Pack): NextStage {
 	const run = latestRun(state.marked);
 	if (run === undefined) return startStage(state, pack);
 	const aggregate = aggregateOf(state.marked, run.round);
+	// A pull request feedback round is never replaced: it is aggregated and routed at its own head, whatever HEAD and the cap are now.
+	if (run.source === "pull-request" && !run.routed) return aggregate === undefined ? { stage: "aggregate" } : laterStage(state, aggregate);
 	// A round already aggregated always finishes, whatever HEAD and the cap are now.
 	if (aggregate !== undefined && !run.routed) return laterStage(state, aggregate);
 	if (run.routed) return run.head === state.git.head ? { stage: "done" } : startStage(state, pack);

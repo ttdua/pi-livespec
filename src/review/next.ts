@@ -50,12 +50,12 @@ function aggregateAtHead(state: ChangeState): ReturnType<typeof aggregates>[numb
 	return latest?.data.head === state.git.head ? latest : undefined;
 }
 
-/** The file of the first blocking `in-change` finding of the aggregate at HEAD. */
-function inChangePath(state: ChangeState): string | undefined {
+/** The location of the first blocking `in-change` finding of the aggregate at HEAD. */
+function inChangeLocation(state: ChangeState): string | undefined {
 	const latest = aggregateAtHead(state);
 	if (latest === undefined) return undefined;
 	const first = blockingFindings(state.marked, latest.commentId, state.change.questions).find((b) => b.finding.route === "in-change");
-	return first === undefined ? undefined : normalizeLocation(first.finding.location).path;
+	return first?.finding.location;
 }
 
 /** Design D12: offered before the gate when the skill was read, no `simplify` unit exists and the round at HEAD is clean. */
@@ -79,7 +79,8 @@ export function reviewStep(pack: Pack, state: ChangeState): Decision | undefined
 	const pending = state.change.units.filter((u) => !u.done).map((u) => u.id);
 	if (pending.length > 0) return { next: `Return to build to rebuild ${pending.join(", ")}.`, advance: BUILD_PHASE };
 	if (run === undefined || !run.routed) return specReview(state, stage);
-	const path = inChangePath(state);
-	if (path !== undefined) return { next: `A blocking in-change finding is at ${untrusted(path)}: add a unit for it with unit_amend --add.` };
+	const location = inChangeLocation(state);
+	if (location?.startsWith("check:")) return { next: `Fix the failing check ${untrusted(location.slice("check:".length))} in a unit added with unit_amend --add.` };
+	if (location !== undefined) return { next: `A blocking in-change finding is at ${untrusted(normalizeLocation(location).path)}: add a unit for it with unit_amend --add.` };
 	return simplifyOffer(state);
 }

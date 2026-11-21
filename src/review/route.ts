@@ -13,6 +13,8 @@ export type RouteFacts = {
 	units: { id: string; files: string[] }[];
 	diffFiles: string[];
 	needsDecision: boolean;
+	/** The location names a CI check (`check:<name>`), not a file. */
+	check: boolean;
 };
 
 export type RouteResult = { route: Route; unit?: string };
@@ -29,10 +31,11 @@ export function normalizeLocation(location: string): { path: string; line: numbe
 const unitOwning = (path: string, units: RouteFacts["units"]): string | undefined =>
 	units.find((u) => u.files.some((f) => f === path || matchGlob(f, path)))?.id;
 
-/** Design D5 order: record, question, unit, in-change, out-of-scope. */
+/** Design D5 order: record, question, check, unit, in-change, out-of-scope. */
 export function routeFinding(finding: Finding, facts: RouteFacts): RouteResult {
 	if (finding.severity === "SUGGESTION" && finding.kind !== "missed-context") return { route: "record" };
 	if (facts.needsDecision) return { route: "question" };
+	if (facts.check) return { route: "in-change" };
 	const unit = unitOwning(facts.path, facts.units);
 	if (unit !== undefined) return { route: "unit", unit };
 	if (facts.diffFiles.includes(facts.path) || finding.kind === "missed-context") return { route: "in-change" };
@@ -51,7 +54,7 @@ const REASONS: Record<Route, string> = {
 	record: "a suggestion is only recorded",
 	question: "the finding needs a human decision",
 	unit: "the path is in a unit's Files",
-	"in-change": "the path is in the diff or the finding is missed context",
+	"in-change": "the path is in the diff, a failing check or the finding is missed context",
 	"out-of-scope": "the path is outside every unit and the diff",
 };
 

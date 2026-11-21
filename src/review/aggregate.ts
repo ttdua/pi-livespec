@@ -23,11 +23,12 @@ export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: 
 	];
 	const merged = new Map<string, MergedFinding>();
 	for (const { finding, from } of sources) {
-		const { path, line } = normalizeLocation(finding.location);
+		const check = finding.location.startsWith("check:");
+		const { path, line } = check ? { path: finding.location, line: 0 } : normalizeLocation(finding.location);
 		const key = `${path}:${line}:${finding.kind}`;
 		const marked = finding.scope === "needs-decision";
 		const seen = merged.get(key);
-		if (seen === undefined) merged.set(key, { ...finding, location: `${path}:${line}`, from: [from], needsDecision: marked });
+		if (seen === undefined) merged.set(key, { ...finding, location: check ? path : `${path}:${line}`, from: [from], needsDecision: marked });
 		else merged.set(key, { ...seen, severity: higher(seen.severity, finding.severity), from: [...seen.from, from], needsDecision: seen.needsDecision || marked });
 	}
 	return [...merged.values()];

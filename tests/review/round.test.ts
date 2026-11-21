@@ -87,6 +87,29 @@ describe("nextStage", () => {
 	});
 });
 
+describe("nextStage feedback rounds", () => {
+	const FB = { source: "pull-request" as const, selected: [], feedbackKeys: ["check:a1:ci/test"], head: "a1" };
+
+	test("Feedback round kept on a new HEAD", () => {
+		const fb = run({ ...FB, parentFindings: [] });
+		expect(nextStage(at([fb]), pack)).toEqual({ stage: "aggregate" });
+		const a = aggregate([agg({ verify: "skipped-parent" })], 1, "a1");
+		expect(nextStage(at([fb, a]), pack)).toEqual({ stage: "route" });
+		const routed = run({ ...FB, routed: true });
+		expect(nextStage(at([fb, a, routed]), pack)).toEqual({ stage: "start" });
+		expect(roundNumber([fb, a, routed])).toBe(2);
+	});
+
+	test("the cap blocks a new start but not a feedback round's aggregate and route", () => {
+		const capped = { ...pack, loops: { ...pack.loops, review_rounds: 1 } };
+		const fb = run(FB);
+		expect(nextStage(at([fb]), capped)).toEqual({ stage: "aggregate" });
+		const a = aggregate([agg({ verify: "skipped-parent" })], 1, "a1");
+		expect(nextStage(at([fb, a]), capped)).toEqual({ stage: "route" });
+		expect(nextStage(at([fb, a, run({ ...FB, routed: true })]), capped).stage).toBe("refused");
+	});
+});
+
 describe("nextStage refusals", () => {
 	const reason = (s: ChangeState): string => {
 		const r = nextStage(s, pack);

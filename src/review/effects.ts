@@ -132,8 +132,8 @@ async function postPrComments(deps: EffectDeps, items: { key: string; finding: A
 	}
 }
 
-/** Applies the route effects of every non-`DISPUTED` finding of `aggregate`; question errors are thrown after the rest. */
-export async function applyRoutes(deps: EffectDeps, state: ChangeState, aggregate: Aggregate): Promise<RouteEffects> {
+/** Applies the route effects of every non-`DISPUTED` finding of `aggregate` (no pull request comments for a feedback round: the human wrote them); question errors are thrown after the rest. */
+export async function applyRoutes(deps: EffectDeps, state: ChangeState, aggregate: Aggregate, opts: { postReviewComments: boolean } = { postReviewComments: true }): Promise<RouteEffects> {
 	const out: RouteEffects = { posted: [], rejected: [] };
 	const round = aggregate.data.round;
 	const live = (aggregate.data.findings as AggregateFinding[])
@@ -147,7 +147,7 @@ export async function applyRoutes(deps: EffectDeps, state: ChangeState, aggregat
 			if (error !== undefined) errors.push(error);
 		}
 	}
-	await postPrComments(deps, live.filter((x) => x.finding.route !== "record"), out);
+	if (opts.postReviewComments) await postPrComments(deps, live.filter((x) => x.finding.route !== "record"), out);
 	if (errors.length > 0) throw new QuestionNotSent(errors, out);
 	return out;
 }

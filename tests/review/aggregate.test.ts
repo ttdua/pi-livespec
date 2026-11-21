@@ -57,3 +57,8 @@ describe("withRoutes", () => {
 		expect(routed[1]).not.toHaveProperty("routeUnit");
 	});
 });
+
+it("a check location is kept as written", () => {
+	const f = finding({ severity: "CRITICAL", location: "check:ci/test" });
+	expect(mergeFindings({ parent: [f, f], reviews: [] }).map((m) => m.location)).toEqual(["check:ci/test"]);
+});

@@ -121,6 +121,16 @@ describe("applyRoutes", () => {
 	});
 });
 
+describe("applyRoutes feedback round", () => {
+	test("Feedback round not posted back", async () => {
+		const t = await world([agg({ route: "in-change", verify: "skipped-parent" })]);
+		await t.w.seedPullRequest({ head: BRANCH });
+		const out = await applyRoutes(t.deps(), await t.state(), t.agg, { postReviewComments: false });
+		expect(out).toEqual({ posted: [], rejected: [] });
+		expect(t.order).toEqual([]);
+	});
+});
+
 describe("applyRoutes retry after a question was not sent", () => {
 	const rebuilt = async (t: Awaited<ReturnType<typeof world>>) => {
 		const digest = "d";
