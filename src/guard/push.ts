@@ -1,7 +1,8 @@
 // The only code path that runs `git push` (design D8). It is not a tool and not
 // a bash command, so the guard never sees it. Only `change_ship` and `change_push`
 // call it, after their refusal checks, with remote `origin` and refspec
-// `HEAD:refs/heads/<Branch line>` (command-guards "Guarded push").
+// `HEAD:refs/heads/<Branch line>` (command-guards "Guarded push"). `fix_ship` is the
+// third caller: refspec `HEAD:refs/heads/fix/<slug>` from the checked-out fix branch.
 
 import type { GitExec } from "../engine/git-exec.ts";
 import { GitError } from "../engine/git.ts";
