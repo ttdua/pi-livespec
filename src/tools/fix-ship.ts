@@ -29,8 +29,10 @@ const TEST_TAIL_BYTES = 4096;
 export type FixShipDetails = { pr?: number };
 
 type Fix = { w: WriteContext; slug: string; branch: string };
-type Range = { base: string; subjects: string[] };
+type Range = { integration: string; base: string; subjects: string[] };
 type Refused = { refused: string };
+/** What the push and the pull request write need, all resolved before the push. */
+type Publish = { integration: string; target: PullRequest | undefined; content: { title: string; body: string }; head: string };
 
 const refuse = (message: string): ToolResult<FixShipDetails> => toolResult(`${TOOL} refused: ${message} Nothing was pushed or opened.`, {}, true);
 const failed = (message: string): ToolResult<FixShipDetails> => toolResult(`${TOOL} failed: ${message}`, {}, true);
@@ -54,7 +56,7 @@ async function fixRange(f: Fix): Promise<Range | Refused> {
 		const base = await fixMergeBase(git, integration);
 		const subjects = await git.subjects(base, "HEAD");
 		if (subjects.length === 0) return { refused: `there is nothing to ship: ${f.branch} has no commit after the merge base with ${REMOTE}/${integration}; switch back to ${integration}.` };
-		return { base, subjects };
+		return { integration, base, subjects };
 	} catch (error) {
 		return { refused: `git failed while finding the merge base with ${REMOTE}/${integration}: ${untrusted(messageOf(error))}.` };
 	}
@@ -78,7 +80,18 @@ async function laneDecision(f: Fix, range: Range): Promise<DecisionRecord | Refu
 	return { point: "lane", subject: f.slug, source: decided.source, outcome, reason: decided.reason, facts: decided.facts };
 }
 
-/** Refusals 5–6: `testCommand` is set and exits 0 at the project root through the guard. */
+/** After the test: the same branch and HEAD, and still a clean tree (the test command may have changed them). */
+async function unchangedRefusal(f: Fix, head: string): Promise<string | undefined> {
+	const git = f.w.session.git;
+	const branch = await git.branch();
+	if (branch !== f.branch) return `testCommand switched the branch from ${f.branch} to ${untrusted(branch)}; switch back and rerun.`;
+	const after = await git.head();
+	if (after !== head) return `testCommand moved HEAD from ${head.slice(0, 7)} to ${after.slice(0, 7)}; check the new commit and rerun.`;
+	if (await git.isDirty()) return "testCommand left uncommitted changes in the working tree; clean them up and rerun.";
+	return undefined;
+}
+
+/** Refusals 5–6: `testCommand` is set and exits 0 at the project root through the guard, leaving branch, HEAD and tree as they were. */
 async function runTests(f: Fix, signal: AbortSignal | undefined): Promise<FixTest | Refused> {
 	const command = f.w.session.config.project?.testCommand;
 	if (command === undefined) return { refused: "no test command is configured: set testCommand in .pi/livespec/config.yaml." };
@@ -90,6 +103,8 @@ async function runTests(f: Fix, signal: AbortSignal | undefined): Promise<FixTes
 		const why = run.timedOut ? "timed out" : run.aborted ? "was aborted" : run.spawnError !== undefined ? `failed to start (${run.spawnError})` : `exit ${run.exit}`;
 		return { refused: `testCommand \`${untrusted(command)}\` ${why}, output tail:\n${untrusted(run.output)}\n` };
 	}
+	const changed = await unchangedRefusal(f, head);
+	if (changed !== undefined) return { refused: changed };
 	return { command, exit: run.exit, head, output: run.output };
 }
 
@@ -104,15 +119,11 @@ async function pullRequestTarget(f: Fix): Promise<{ pr: PullRequest | undefined 
 }
 
 /** Opens the pull request or updates the read one with its version; the branch is already pushed. */
-async function openOrUpdate(f: Fix, target: PullRequest | undefined, content: { title: string; body: string }): Promise<PullRequest | { failed: string }> {
+async function openOrUpdate(f: Fix, p: Publish): Promise<PullRequest | { failed: string }> {
+	const { target, content } = p;
 	const pushed = `the branch ${f.branch} was pushed, but`;
 	try {
-		if (target === undefined) {
-			const project = f.w.session.config.project;
-			const base = project === null ? undefined : await integrationBranch(project, f.w.session.git);
-			if (base === undefined) return { failed: `${pushed} the integration branch is unknown; run ${TOOL} again.` };
-			return await f.w.forge.createPullRequest({ head: f.branch, base, ...content });
-		}
+		if (target === undefined) return await f.w.forge.createPullRequest({ head: f.branch, base: p.integration, ...content });
 		const write = await f.w.forge.updatePullRequest(target.number, content, target.version);
 		if (write.status === "written") return write.item;
 		return { failed: `${pushed} pull request #${target.number} changed since it was read (${write.changed.join(", ")}); run ${TOOL} again.` };
@@ -123,16 +134,16 @@ async function openOrUpdate(f: Fix, target: PullRequest | undefined, content: { 
 }
 
 /** Push, then open or update the pull request. */
-async function publish(f: Fix, target: PullRequest | undefined, content: { title: string; body: string }, head: string): Promise<ToolResult<FixShipDetails>> {
+async function publish(f: Fix, p: Publish): Promise<ToolResult<FixShipDetails>> {
 	try {
 		await guardedPush(f.w.session.exec, f.w.session.cwd, REMOTE, `HEAD:refs/heads/${f.branch}`);
 	} catch (error) {
 		return refuse(`pushing ${f.branch} failed: ${untrusted(messageOf(error))}.`);
 	}
-	const pr = await openOrUpdate(f, target, content);
+	const pr = await openOrUpdate(f, p);
 	if ("failed" in pr) return failed(pr.failed);
-	const verb = target === undefined ? "Opened" : "Updated";
-	return toolResult(`Pushed ${f.branch} at ${head.slice(0, 7)}. ${verb} pull request #${pr.number}; a human merges it on the forge.`, { pr: pr.number });
+	const verb = p.target === undefined ? "Opened" : "Updated";
+	return toolResult(`Pushed ${f.branch} at ${p.head.slice(0, 7)}. ${verb} pull request #${pr.number}; a human merges it on the forge.`, { pr: pr.number });
 }
 
 /** Every refusal in order, then the push and the pull request. */
@@ -150,7 +161,7 @@ async function ship(signal: AbortSignal | undefined): Promise<ToolResult<FixShip
 	const target = await pullRequestTarget(f);
 	if (isRefused(target)) return refuse(target.refused);
 	const content = fixPullRequestBody({ slug: f.slug, subjects: range.subjects, test, record });
-	return publish(f, target.pr, content, test.head);
+	return publish(f, { integration: range.integration, target: target.pr, content, head: test.head });
 }
 
 export function runFixShip(ctx: ToolCtx, signal?: AbortSignal): Promise<ToolResult<FixShipDetails>> {

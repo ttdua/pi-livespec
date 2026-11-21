@@ -90,6 +90,26 @@ describe("fix_ship", () => {
 		expect(await openPulls(h)).toHaveLength(0);
 	});
 
+	test("a test command that commits is refused", async () => {
+		const h = await fixReady({ testCommand: "git -c user.name=t -c user.email=t@t commit -q --allow-empty -m sneaky" });
+		const head = h.git("rev-parse", "HEAD");
+		await refusedUnchanged(h, "moved HEAD");
+		expect(h.git("rev-parse", "HEAD~1")).toBe(head);
+		expect(await openPulls(h)).toHaveLength(0);
+	});
+
+	test("a test command that dirties the tree is refused", async () => {
+		const h = await fixReady({ testCommand: "echo x > README.md" });
+		await refusedUnchanged(h, "uncommitted");
+		expect(await openPulls(h)).toHaveLength(0);
+	});
+
+	test("a test command that switches the branch is refused", async () => {
+		const h = await fixReady({ testCommand: "git switch -q main" });
+		await refusedUnchanged(h, "switched the branch");
+		expect(await openPulls(h)).toHaveLength(0);
+	});
+
 	test("Rerun updates the pull request", async () => {
 		const h = await fixReady();
 		const first = await h.call("fix_ship");

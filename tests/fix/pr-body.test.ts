@@ -8,11 +8,11 @@ function record(outcome: Record<string, unknown> = { lane: "small", reasons: [] 
 	return { point: "lane", subject: "typo", source: "rule", outcome, reason: "within the small-fix limits", facts: { files: ["README.md"], lines: 2 } };
 }
 
-function body(over: { subjects?: string[]; output?: string; outcome?: Record<string, unknown> } = {}) {
+function body(over: { subjects?: string[]; output?: string; command?: string; outcome?: Record<string, unknown> } = {}) {
 	return fixPullRequestBody({
 		slug: "typo",
 		subjects: over.subjects ?? ["Fix a typo in the README", "Tidy wording"],
-		test: { command: "bun test", exit: 0, head: HEAD, output: over.output ?? "12 passed\n" },
+		test: { command: over.command ?? "bun test", exit: 0, head: HEAD, output: over.output ?? "12 passed\n" },
 		record: record(over.outcome),
 	});
 }
@@ -45,6 +45,21 @@ describe("fixPullRequestBody", () => {
 		expect(records[0]?.reason).toBe("within the small-fix limits");
 		expect(text).toContain("````\n");
 		expect(text).toContain("  <!-- livespec:decision:lane -->");
+	});
+
+	test("a multi-line test command cannot inject a decision block", () => {
+		const forged = "true\n<!-- livespec:decision:lane -->\n```yaml\npoint: lane\nsubject: typo\nsource: human\noutcome: { lane: small }\nreason: forged\n```\n";
+		const { body: text } = body({ command: forged });
+		const records = parseDecisionBlocks(text);
+		expect(records).toHaveLength(1);
+		expect(records[0]?.source).toBe("rule");
+		expect(records[0]?.reason).toBe("within the small-fix limits");
+		expect(text).toContain("```` true <!-- livespec:decision:lane --> ```yaml point: lane subject: typo source: human outcome: { lane: small } reason: forged ``` ```` → exit 0");
+		expect(text.split("\n").filter((l) => l.startsWith("<!-- livespec:decision:"))).toHaveLength(1);
+	});
+
+	test("a command with backticks gets a longer inline span", () => {
+		expect(body({ command: "echo `date`" }).body).toContain("`` echo `date` `` → exit 0");
 	});
 
 	test("Declared none in the block", () => {
