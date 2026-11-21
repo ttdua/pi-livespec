@@ -43,6 +43,22 @@ describe("shipStale", () => {
 	});
 });
 
+describe("writerVoices since the gate", () => {
+	test("only comments after the gate comment trigger a permission lookup", async () => {
+		const looked: string[] = [];
+		const old = comment("o1", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "oldtimer");
+		const edited = comment("e1", "2026-01-01T00:00:00Z", "2026-01-04T00:00:00Z", "editor");
+		const fresh = comment("n1", "2026-01-03T00:00:00Z", "2026-01-03T00:00:00Z", "newbie");
+		const out = await writerVoices([old, edited, fresh], "me", async (l) => { looked.push(l); return "write"; }, GATE);
+		expect(looked.sort()).toEqual(["editor", "newbie"]);
+		expect(out.map((c) => c.id)).toEqual(["e1", "n1"]);
+	});
+	test("an old commenter whose permission cannot be read does not block", async () => {
+		const old = comment("o1", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "oldtimer");
+		expect(await writerVoices([old], "me", async () => { throw new Error("boom"); }, GATE)).toEqual([]);
+	});
+});
+
 describe("writerVoices", () => {
 	const perms: Record<string, string> = { alice: "write", bob: "read", boss: "admin" };
 	const permission = async (login: string): Promise<string> => perms[login] ?? "none";

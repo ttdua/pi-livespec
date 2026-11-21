@@ -9,6 +9,8 @@ import { SHIP_PHASE } from "./phase.ts";
 import { writerLookup } from "./writers.ts";
 
 
+const time = (iso: string): number => new Date(iso).getTime();
+
 /** The comments that are not the account's own marked ones (author is `login` and a marker parses). */
 export function humanVoices(comments: Comment[], login: string): Comment[] {
 	return comments.filter((c) => !(c.author === login && parseMarked(c.body) !== null));
@@ -18,14 +20,14 @@ export function humanVoices(comments: Comment[], login: string): Comment[] {
  * The human voices that count for freshness: those of authors with `write`/`admin` permission. A failed permission
  * read rejects (fail closed: the caller refuses rather than ship on an unknown voice).
  */
-export async function writerVoices(comments: Comment[], login: string, permission: (login: string) => Promise<string>): Promise<Comment[]> {
+export async function writerVoices(comments: Comment[], login: string, permission: (login: string) => Promise<string>, gateComment?: Comment): Promise<Comment[]> {
 	const isWriter = writerLookup(permission);
-	const humans = humanVoices(comments, login);
+	// Only voices newer than the gate comment matter, so old commenters' permissions are never read (and never block).
+	const since = gateComment === undefined ? undefined : time(gateComment.createdAt);
+	const humans = humanVoices(comments, login).filter((c) => since === undefined || time(c.createdAt) > since || time(c.updatedAt) > since);
 	const writers = await Promise.all(humans.map((c) => isWriter(c.author)));
 	return humans.filter((_, i) => writers[i]);
 }
-
-const time = (iso: string): number => new Date(iso).getTime();
 
 /**
  * Why the ship approval is stale: `missing` when freshness cannot be checked, `comment` for a human comment newer

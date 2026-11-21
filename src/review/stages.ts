@@ -139,7 +139,7 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 		const r = completedReview(c.state.marked, s, run.head);
 		return r === undefined ? [] : [{ commentId: r.commentId, findings: r.data.findings }];
 	});
-	const merged = mergeFindings({ parent: run.parentFindings, reviews });
+	const merged = mergeFindings({ parent: run.parentFindings, reviews }, { keepParents: run.source === "pull-request" });
 	const base = baseOf(c.state);
 	let diffFiles: string[];
 	try {

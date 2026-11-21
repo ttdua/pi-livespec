@@ -14,9 +14,10 @@ const higher = (a: Finding["severity"], b: Finding["severity"]): Finding["severi
 /**
  * Parent findings first, then each review's findings, de-duplicated by `${path}:${line}:${kind}` of the normalized
  * location. A merged finding keeps the highest severity, the first evidence and fix, every source key and
- * the `needs-decision` mark of any source.
+ * the `needs-decision` mark of any source. With `keepParents` (a pull request feedback round) each parent finding
+ * stays its own item: the round's comments share a location but are separate feedback.
  */
-export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: string; findings: Finding[] }[] }): MergedFinding[] {
+export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: string; findings: Finding[] }[] }, opts: { keepParents?: boolean } = {}): MergedFinding[] {
 	const sources = [
 		...input.parent.map((finding) => ({ finding, from: PARENT })),
 		...input.reviews.flatMap((r) => r.findings.map((finding, i) => ({ finding, from: `${r.commentId}:${i}` }))),
@@ -25,10 +26,9 @@ export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: 
 	for (const { finding, from } of sources) {
 		const check = finding.location.startsWith(CHECK_PREFIX);
 		const { path, line } = check ? { path: finding.location, line: 0 } : normalizeLocation(finding.location);
-		// Each parent finding is its own item (a feedback round's comments share a location), so it never merges with another parent finding.
 		const base = `${path}:${line}:${finding.kind}`;
 		let key = base;
-		if (from === PARENT) for (let n = 1; merged.get(key)?.from.includes(PARENT) === true; n++) key = `${base}#${n}`;
+		if (opts.keepParents === true && from === PARENT) for (let n = 1; merged.get(key)?.from.includes(PARENT) === true; n++) key = `${base}#${n}`;
 		const marked = finding.scope === "needs-decision";
 		const seen = merged.get(key);
 		if (seen === undefined) merged.set(key, { ...finding, location: check ? path : `${path}:${line}`, from: [from], needsDecision: marked });

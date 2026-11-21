@@ -60,7 +60,7 @@ async function freshnessRefusal(s: Ship, login: string): Promise<ToolResult<unde
 	const gateComment = comments.find((c) => c.id === gateCommentId);
 	let humans: Comment[];
 	try {
-		humans = await writerVoices(comments, login, (author) => s.w.forge.getPermission(author));
+		humans = await writerVoices(comments, login, (author) => s.w.forge.getPermission(author), gateComment);
 	} catch (error) {
 		return refuse(`cannot read the permission of a commenter (${untrusted(messageOf(error))}), so freshness cannot be checked.`);
 	}

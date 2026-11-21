@@ -176,6 +176,11 @@ export class MemoryWorld implements ContractWorld {
 		return this.state.pull(pr).reviewComments.map((c) => ({ ...c }));
 	}
 
+	/** A review comment by a human `author` (no forge call creates one for another account). */
+	async seedReviewComment(pr: number, c: { author: string; path: string; line: number; body: string }): Promise<void> {
+		this.state.pull(pr).reviewComments.push({ ...c, id: this.state.nextId(), updatedAt: this.state.tick() });
+	}
+
 	async editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void> {
 		const comment = this.state.pull(pr).reviewComments.find((c) => c.id === id);
 		if (!comment) throw new Error(`no review comment ${id} on pull ${pr}`);
