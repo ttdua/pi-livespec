@@ -26,10 +26,10 @@ Blocked by: 2
 
 Blocked by: 2, 3
 
-- [ ] 4.1 `src/fix/pr-body.ts`: title and body with commit subjects, `## Test`, the `lane` decision block via `formatDecisionBlock`, `neutralizeClosing` outside the block; round-trip test with `parseDecisionBlocks` (small-fix-lane "Fix pull request body")
-- [ ] 4.2 `src/tools/fix-ship.ts`, registered in `src/tools/change-tools.ts` (and the two tool-name test lists): refusals in spec order under `withEvidenceLock`, `testCommand` through `runVerify`/`verifyEnv`, `guardedPush` with `HEAD:refs/heads/fix/<slug>`, create or update the one pull request (small-fix-lane "Fix ship tool")
-- [ ] 4.3 Allow `fix-ship.ts` in `tests/guard/push-callers.test.ts` and add the fix refspec test (command-guards "Guarded push")
-- [ ] 4.4 Tool tests in `tests/tools/fix-ship.test.ts` against the memory forge and a real origin: ship, forced refusal, failing tests, no `testCommand`, nothing to ship, foreign pull request, rerun updates the pull request, no `decision` comment written
+- [x] 4.1 `src/fix/pr-body.ts`: title and body with commit subjects, `## Test`, the `lane` decision block via `formatDecisionBlock`, `neutralizeClosing` outside the block; round-trip test with `parseDecisionBlocks` (small-fix-lane "Fix pull request body")
+- [x] 4.2 `src/tools/fix-ship.ts`, registered in `src/tools/change-tools.ts` (and the two tool-name test lists): refusals in spec order under `withEvidenceLock`, `testCommand` through `runVerify`/`verifyEnv`, `guardedPush` with `HEAD:refs/heads/fix/<slug>`, create or update the one pull request (small-fix-lane "Fix ship tool")
+- [x] 4.3 Allow `fix-ship.ts` in `tests/guard/push-callers.test.ts` and add the fix refspec test (command-guards "Guarded push")
+- [x] 4.4 Tool tests in `tests/tools/fix-ship.test.ts` against the memory forge and a real origin: ship, forced refusal, failing tests, no `testCommand`, nothing to ship, foreign pull request, rerun updates the pull request, no `decision` comment written
 
 ## 5. Move a fix into a change
 
