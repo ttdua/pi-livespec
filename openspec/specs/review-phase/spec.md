@@ -7,7 +7,7 @@ Defines the review phase: `spec_review` and its stages, reviewer selection with 
 ## Requirements
 
 ### Requirement: Review tool
-`spec_review` SHALL run one review round of the whole change in stages: start, review, aggregate, verify, route. Each stage SHALL be skipped when its record already exists for the current HEAD, so a repeated call resumes the round where it stopped. A round's number SHALL be the count of aggregate records plus one; a `review-run` record for a HEAD that is no longer HEAD SHALL be replaced by a new `review-run` with the same number. `spec_review` MUST refuse, writing nothing, when:
+`spec_review` SHALL run one review round of the whole change in stages: start, review, aggregate, verify, route. Each stage SHALL be skipped when its record already exists for the current HEAD, so a repeated call resumes the round where it stopped. A round's number SHALL be the count of aggregate records plus one; a `review-run` record for a HEAD that is no longer HEAD SHALL be replaced by a new `review-run` with the same number, except a `review-run` with `source: pull-request` (see pull-request-feedback), which SHALL never be replaced: its aggregate and route stages SHALL run at its recorded head, and the next round starts at the new HEAD. `spec_review` MUST refuse, writing nothing, when:
 - the call is made in a child session;
 - the change is not in a phase whose `review` entries exist (the `review` phase of the default pack);
 - a unit is not done;
@@ -36,6 +36,10 @@ Defines the review phase: `spec_review` and its stages, reviewer selection with 
 #### Scenario: New HEAD restarts the round
 - **WHEN** round 2's `review-run` records HEAD `a1`, no aggregate exists for round 2, a commit moves HEAD to `b2`, and `spec_review` runs
 - **THEN** a new `review-run` for round 2 records `b2` and reviewers are launched for `b2`
+
+#### Scenario: Feedback round kept on a new HEAD
+- **WHEN** round 3 is a feedback round recorded at `a1` with no aggregate, a commit moves HEAD to `b2`, and `spec_review` runs
+- **THEN** round 3 is aggregated and routed at `a1` with its feedback findings, and the next call starts round 4 at `b2`
 
 ### Requirement: Verify every unit at review
 The start stage SHALL run every unit's `Verify` at HEAD through the command guard and the `Verify` runner, in body order. A run that is `red` or `invalid` SHALL add a parent finding with severity `CRITICAL`, kind `defect`, location `<first entry of the unit's Files>:1`, the redacted output tail as evidence and scope `unit`. Reviewers SHALL still be launched in that round.
@@ -135,7 +139,7 @@ In the `review` phase, after the checks rule and before the gate, the next step 
 3. the `review_rounds` cap blocking: `spec_stuck`;
 4. a pending unit: return to `build` to rebuild it, with `advance: build`;
 5. no routed round at HEAD: `spec_review`;
-6. the latest aggregate at HEAD has a blocking `in-change` finding: `unit_amend --add` naming its file.
+6. the latest aggregate at HEAD has a blocking `in-change` finding: `unit_amend --add` naming its file, or, for a finding at `check:<name>`, naming the failing check and saying to fix it in a unit added with `unit_amend --add`.
 A round SHALL be **routed** when its `review-run` record says its route stage completed.
 
 #### Scenario: Back to build
@@ -149,6 +153,10 @@ A round SHALL be **routed** when its `review-run` record says its route stage co
 #### Scenario: In-change finding
 - **WHEN** the latest aggregate at HEAD has a blocking `in-change` finding at `src/util/clock.ts:4`
 - **THEN** the next step names `unit_amend --add` and `src/util/clock.ts`
+
+#### Scenario: Failing check finding
+- **WHEN** the latest aggregate at HEAD has a blocking `in-change` finding at `check:ci/test` from a pull request feedback round
+- **THEN** the next step names `unit_amend --add` and the failing check `ci/test`
 
 ### Requirement: Code simplification unit
 When the agent read the `code-simplification` skill in `review`, no unit is titled `simplify`, and the latest aggregate at HEAD left nothing blocking, the gate step SHALL first offer adding a unit titled `simplify` with `unit_amend --add`, `Kind: refactor` and the full test suite as `Verify`. Adding it SHALL make a unit pending, so the change returns to `build` and the next round reviews the simplified code.
