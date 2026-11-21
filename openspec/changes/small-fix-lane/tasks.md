@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 `testCommand` in `ProjectConfig` and `PROJECT_KEYS` of `src/config.ts`, a non-string is a warning and ignored; tests in `tests/config.test.ts` (init-and-doctor "Config files": "Test command", "Invalid test command")
-- [ ] 1.2 Add `diffNumstat(from, to)` (path, added, deleted; binary → 0/0 with `binary: true`), `showFile(rev, path)` (undefined when missing), `renameBranch(from, to)`, `isTracked(path)` and `subjects(from, to)` to `Git` in `src/engine/git.ts`, with tests on a real temporary repo in `tests/engine/`
-- [ ] 1.3 Export `livingSpecs` from `src/ship/context.ts` and `capOf` from `src/core/capabilities-diff.ts` (no behavior change)
+- [x] 1.1 `testCommand` in `ProjectConfig` and `PROJECT_KEYS` of `src/config.ts`, a non-string is a warning and ignored; tests in `tests/config.test.ts` (init-and-doctor "Config files": "Test command", "Invalid test command")
+- [x] 1.2 Add `diffNumstat(from, to)` (path, added, deleted; binary → 0/0 with `binary: true`), `showFile(rev, path)` (undefined when missing), `renameBranch(from, to)`, `isTracked(path)` and `subjects(from, to)` to `Git` in `src/engine/git.ts`, with tests on a real temporary repo in `tests/engine/`
+- [x] 1.3 Export `livingSpecs` from `src/ship/context.ts` and `capOf` from `src/core/capabilities-diff.ts` (no behavior change)
 
 ## 2. Lane rule
 
