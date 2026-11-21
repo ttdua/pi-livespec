@@ -72,7 +72,7 @@ async function gitRefusal(session: Session, state: ChangeState, context: ShipCon
 	}
 	if (!descends) return `the pushed head ${pushedHead.slice(0, 7)} is not an ancestor of HEAD ${state.git.head.slice(0, 7)}: ${REMOTE}/${state.git.branch} diverged from this branch; reconcile it before pushing.`;
 	const errors = durableDocsRule(context.facts).errors;
-	if (errors.length > 0) return `durable-docs reports: ${errors.join("; ")}.`;
+	if (errors.length > 0) return `durable-docs reports: ${untrusted(errors.join("; "))}.`;
 	return reconfirmRefusal(state, context);
 }
 

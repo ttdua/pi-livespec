@@ -50,3 +50,12 @@ describe("staleShipId", () => {
 		expect(staleShipId({ kind: "digest", reason: "r", digest: "ab" }, "IC_k w/x:1")).toBe("stale.ship.ICkwx1.digest.ab");
 	});
 });
+
+describe("forge text in refusals is untrusted", () => {
+	test("a foreign pull request's author and head are wrapped", () => {
+		const open = [{ number: 5, author: "evil", head: "x<y", body: "", state: "open" }] as unknown as PullRequest[];
+		const choice = pullRequestChoice(open, { login: "me", change: 1 });
+		expect(choice).toMatchObject({ kind: "refused", reason: expect.stringContaining("<untrusted>evil</untrusted>") });
+		expect(choice.kind === "refused" && choice.reason).toContain("<untrusted>x&lt;y</untrusted>");
+	});
+});

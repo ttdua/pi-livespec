@@ -3,6 +3,7 @@
 
 import type { ChangeState } from "../engine/state-types.ts";
 import type { PullRequest } from "../forge/types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import type { ShipStaleness } from "./freshness.ts";
 import { filesOutsideUnits } from "./diff.ts";
 import { SHIP_PHASE } from "./phase.ts";
@@ -23,7 +24,7 @@ export function cleanBranchRefusal(state: ChangeState): string | undefined {
 	const { branch } = state.change.header;
 	if (state.git.dirty) return "the working tree is not clean: commit or stash the changes first.";
 	if (branch === undefined) return "the issue has no Branch line: run change_start first.";
-	if (branch !== state.git.branch) return `the current branch is ${state.git.branch}, but the issue's Branch line is ${branch}: switch to ${branch} first.`;
+	if (branch !== state.git.branch) return `the current branch is ${untrusted(state.git.branch)}, but the issue's Branch line is ${untrusted(branch)}: switch to ${untrusted(branch)} first.`;
 	return undefined;
 }
 
@@ -31,7 +32,7 @@ export function cleanBranchRefusal(state: ChangeState): string | undefined {
 export function filesRefusal(files: string[], units: ChangeState["change"]["units"]): string | undefined {
 	const outside = filesOutsideUnits(files, units);
 	if (outside.length === 0) return undefined;
-	return `the change diff touches files no unit lists and not under specs/: ${outside.join(", ")}; add them to a unit's Files with unit_amend.`;
+	return `the change diff touches files no unit lists and not under specs/: ${untrusted(outside.join(", "))}; add them to a unit's Files with unit_amend.`;
 }
 
 /** Phase, no `PR` line, clean tree, current branch = `Branch` line; undefined when all hold. */
@@ -39,7 +40,7 @@ export function shipLocalRefusal(state: ChangeState): string | undefined {
 	const phase = shipPhaseRefusal(state, "change_ship");
 	if (phase !== undefined) return phase;
 	const { pr } = state.change.header;
-	if (pr !== undefined) return `the issue already records PR: ${pr}; update that pull request with change_push.`;
+	if (pr !== undefined) return `the issue already records PR: ${untrusted(pr)}; update that pull request with change_push.`;
 	return cleanBranchRefusal(state);
 }
 
@@ -53,7 +54,7 @@ export function pullRequestChoice(open: PullRequest[], o: { login: string; chang
 	const refs = new RegExp(`\\bRefs #${o.change}\\b`);
 	const foreign = open.find((p) => p.author !== o.login || !refs.test(p.body));
 	if (foreign !== undefined) {
-		return { kind: "refused", reason: `the pull request #${foreign.number} by ${foreign.author} is already open from ${foreign.head}; close it or ship it by hand.` };
+		return { kind: "refused", reason: `the pull request #${foreign.number} by ${untrusted(foreign.author)} is already open from ${untrusted(foreign.head)}; close it or ship it by hand.` };
 	}
 	const own = open[0];
 	return own === undefined ? { kind: "open" } : { kind: "adopt", pr: own };
