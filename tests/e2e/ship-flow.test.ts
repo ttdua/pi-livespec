@@ -51,7 +51,7 @@ test("ship, failing check on the same pull request, reviewed fix push, merge and
 	expect(run.parentFindings).toEqual([expect.objectContaining({ location: "check:ci/test", scope: "in-change" })]);
 
 	// spec_review routes the feedback round itself: no reviewer or executor, the parent finding is verified as skipped.
-	registerSpecReview(h.pi.api as never, { home: () => h.home });
+	registerSpecReview(h.pi.api as never);
 	for (let i = 0; i < 4 && !(latestRun(await marked(h))?.routed); i++) {
 		const out = await h.call("spec_review", {});
 		expect(out.isError, textOf(out)).toBeFalsy();
