@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { type GitExec, defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { Session } from "../../src/hooks/session.ts";
@@ -6,8 +6,6 @@ import { shipContext } from "../../src/ship/context.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { stateFor } from "../helpers/change-state.ts";
 import { fixture, sh } from "./repo.ts";
-
-afterEach(() => undefined);
 
 describe("shipContext", () => {
 	test("two calls at the same HEAD fetch once", async () => {

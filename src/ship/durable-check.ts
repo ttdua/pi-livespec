@@ -3,14 +3,14 @@
 import type { Result } from "../core/result.ts";
 import type { CheckFn } from "../engine/registry.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import { type DurableFacts, durableDocsRule } from "./durable-docs.ts";
+import { DECISIONS, type DurableFacts, durableDocsRule } from "./durable-docs.ts";
 
 const NOT_NEEDED = "not needed";
-const DECISIONS = "specs/decisions/";
 
 /** Errors as `error`, confirmation items as `warning`; nothing without a ship context (outside `ship`). */
 export const durableDocsCheck: CheckFn = async ({ ship }) => {
 	if (ship === undefined) return [];
+	if ("refused" in ship) return [{ code: "durable-docs", severity: "error", message: `the durable docs cannot be checked: ${ship.refused}` }];
 	const outcome = durableDocsRule(ship.facts);
 	const result = (severity: Result["severity"]) => (message: string): Result => ({ code: "durable-docs", severity, message });
 	return [...outcome.errors.map(result("error")), ...outcome.confirm.map(result("warning"))];

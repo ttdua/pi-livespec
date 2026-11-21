@@ -6,6 +6,7 @@ import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
 import { type GateResult, validApproval } from "./locks.ts";
+import { SHIP_PHASE } from "../ship/phase.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
@@ -48,7 +49,6 @@ const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff" | "issue#Durable
 const UNITS_SENTENCE = "Write Units with plan_units.";
 const DOCS_TABLE_SENTENCE = "Write the Durable docs table with docs_table.";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
-const SHIP_PHASE = "ship";
 const STUCK_SUBJECT = "stuck:";
 const FORGE_ADAPTER: AdapterName = "forge";
 const ADAPTER_PLACE: Record<AdapterName, string> = { forge: "on the forge", "in-session": "in session" };

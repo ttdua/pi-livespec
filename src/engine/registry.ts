@@ -13,7 +13,7 @@ export type SubSchema = {
 
 export type CheckGit = { diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string> };
 /** `marked` are the own marked comments of the change issue, in comment order. */
-export type CheckContext = { root: string; change: Change; git: CheckGit; marked: MarkedComment[]; ship?: ShipContext };
+export type CheckContext = { root: string; change: Change; git: CheckGit; marked: MarkedComment[]; ship?: ShipContext | { refused: string } };
 export type CheckFn = (ctx: CheckContext) => Promise<Result[]>;
 
 const schemas = new Map<"decisions" | "subagents", SubSchema>();

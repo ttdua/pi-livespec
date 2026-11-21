@@ -138,7 +138,7 @@ const tag = (name: string, produced: Result[]): CheckResult[] => produced.map((r
 export async function runChecks(
 	pack: Pack,
 	state: Omit<ChangeState, "checks">,
-	ctx: { root: string; git: Git; ship?: ShipContext },
+	ctx: { root: string; git: Git; ship?: ShipContext | { refused: string } },
 	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
 	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);

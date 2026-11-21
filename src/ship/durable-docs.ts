@@ -1,11 +1,11 @@
 // The `durable-docs` rule (design D6): from facts built by code, the errors and confirmation items of a change's
 // durable documentation, and whether the table needs rows. Pure; the registered rule never asks.
 
+import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Change } from "../core/change.ts";
 import type { RuleResult, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
-import { isMap } from "yaml";
 import type { ChangeDiff } from "./diff.ts";
 
 export type DurableFacts = {
@@ -19,7 +19,7 @@ export type DurableFacts = {
 export type DurableOutcome = { errors: string[]; confirm: string[]; needsRows: boolean };
 
 const SPECS = "specs/";
-const DECISIONS = "specs/decisions/";
+export const DECISIONS = "specs/decisions/";
 const PRODUCT = "specs/product.md";
 const CONSTRAINTS = "specs/constraints.md";
 
@@ -78,7 +78,7 @@ export function durableDocsRule(facts: DurableFacts): DurableOutcome {
 	const constraints = constraintsOutcome(facts);
 	const errors = [...coveredErrors(facts), ...(constraints.error === undefined ? [] : [constraints.error]), ...rowErrors(facts)];
 	const confirm = [...(constraints.confirm === undefined ? [] : [constraints.confirm]), ...capabilityConfirms(facts)];
-	const needsRows = facts.files.some((f) => f.startsWith(SPECS)) || facts.capabilities.new.length > 0 || capabilityCode(facts).length > 0;
+	const needsRows = facts.files.some(isSpecDoc) || facts.capabilities.new.length > 0 || capabilityCode(facts).length > 0;
 	return { errors, confirm, needsRows };
 }
 

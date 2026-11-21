@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
+import { replaceSection } from "../../src/core/sections.ts";
 import { decisionComment } from "../../src/decide/records.ts";
 import { registerGate, resetGatesForTests } from "../../src/engine/gates.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
@@ -13,7 +14,6 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
-import { replaceSection } from "../../src/core/sections.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts";
@@ -38,13 +38,13 @@ const labels = (phase: string) => ["livespec", `livespec:phase/${phase}`];
 type Opts = { config?: string; ui?: FakeUI; files?: Record<string, string>; forge?: (world: MemoryWorld) => Forge; edit?: (b: string) => string };
 type Gate = ToolHarness & { n: number };
 
+/** Every unit done and a Durable docs table that covers the spec file the fixture commits. */
+const shipReady = (body: string): string => replaceSection(allDone(body), "Durable docs", "| File | Status |\n|---|---|\n| specs/rate-limit/spec.md | updated |");
+
 /**
  * A change on its branch whose `Base` is the commit before a valid spec commit, so every define
  * check passes and the tree is clean. The harness registers `spec_gate` with the change tools.
  */
-/** Every unit done and a Durable docs table that covers the spec file the fixture commits. */
-const shipReady = (body: string): string => replaceSection(allDone(body), "Durable docs", "| File | Status |\n|---|---|\n| specs/rate-limit/spec.md | updated |");
-
 async function change(phase: string, o: Opts = {}): Promise<Gate> {
 	const h = await toolHarness({
 		branch: CHANGE_BRANCH,
@@ -338,6 +338,14 @@ describe("spec_gate", () => {
 		await h.call("spec_status");
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
 		expect(await ofKind(h, "gate")).toHaveLength(1);
+	});
+
+	test("ship gate is refused naming durable-docs when the ship context cannot be built", async () => {
+		const h = await change("ship", { ui: human("approve"), edit: shipReady, config: "# no integrationBranch\n" });
+		const out = await h.call("spec_gate", { target: "ship" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("durable-docs");
+		expect(await ofKind(h, "gate")).toEqual([]);
 	});
 
 	test("Ship approved", async () => {

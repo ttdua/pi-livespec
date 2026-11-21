@@ -9,6 +9,7 @@ import { integrationBranch } from "../engine/git.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Session } from "../hooks/session.ts";
 import { type ChangeDiff, changeDiff } from "./diff.ts";
+import { SHIP_PHASE } from "./phase.ts";
 import { type DurableFacts, durableDocsRule, durableFacts } from "./durable-docs.ts";
 
 export type ShipContext = { diff: ChangeDiff; integrationTip: string; facts: DurableFacts };
@@ -62,20 +63,18 @@ export async function shipContext(session: Session, state: Pick<ChangeState, "gi
 	return { ...fetched, facts };
 }
 
-const SHIP_PHASE = "ship";
-
-/** The ship context in the `ship` phase only; a refusal or a git failure leaves it out, so the check reports nothing. */
-export async function shipFor(session: Session, state: Pick<ChangeState, "phase" | "git" | "change">): Promise<ShipContext | undefined> {
+/** The ship context in the `ship` phase only (undefined elsewhere); a refusal or a git failure is carried, so the check fails closed. */
+export async function shipFor(session: Session, state: Pick<ChangeState, "phase" | "git" | "change">): Promise<ShipContext | { refused: string } | undefined> {
 	if (state.phase.kind !== "ok" || state.phase.id !== SHIP_PHASE) return undefined;
 	try {
-		const context = await shipContext(session, state);
-		return "refused" in context ? undefined : context;
-	} catch {
-		return undefined;
+		return await shipContext(session, state);
+	} catch (error) {
+		return { refused: messageOf(error) };
 	}
 }
 
 /** The `ChangeState.ship` fields this context gives. */
-export function shipFacts(ship: ShipContext): NonNullable<ChangeState["ship"]> {
+export function shipFacts(ship: ShipContext | { refused: string }): NonNullable<ChangeState["ship"]> {
+	if ("refused" in ship) return {};
 	return { docsRowsNeeded: durableDocsRule(ship.facts).needsRows, durableFacts: ship.facts };
 }

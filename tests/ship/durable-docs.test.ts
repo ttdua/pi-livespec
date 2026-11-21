@@ -87,9 +87,9 @@ describe("durableDocsRule", () => {
 		expect(r).toEqual({ errors: [], confirm: [], needsRows: false });
 	});
 
-	test("a changed decision file alone needs rows but no row for itself", () => {
+	test("a diff touching only specs/decisions needs no rows", () => {
 		const r = durableDocsRule(facts({ files: ["specs/decisions/0001-x.md"], added: ["specs/decisions/0001-x.md"] }));
-		expect(r).toEqual({ errors: [], confirm: [], needsRows: true });
+		expect(r).toEqual({ errors: [], confirm: [], needsRows: false });
 	});
 });
 
@@ -107,6 +107,11 @@ describe("durable-docs check and payload", () => {
 
 	test("outside ship (no context) it reports nothing", async () => {
 		expect(await durableDocsCheck(ctx())).toEqual([]);
+	});
+
+	test("a refused ship context is an error naming the cause", async () => {
+		const out = await durableDocsCheck({ root: "", change: {}, git: {}, marked: [], ship: { refused: "no integration branch" } } as never);
+		expect(out).toEqual([{ code: "durable-docs", severity: "error", message: expect.stringContaining("no integration branch") }]);
 	});
 
 	test("errors are errors and confirm items are warnings", async () => {
