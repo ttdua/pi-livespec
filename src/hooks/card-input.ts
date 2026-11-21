@@ -124,12 +124,7 @@ export async function buildCardInput(d: { session: Session; first: boolean }): P
 	const pack = session.pack.pack;
 	const branch = await session.git.branch();
 	const slug = fixSlug(branch);
-	if (slug !== undefined) {
-		// No change is resolved here, so one tracked read keeps the forge's read-only mode current for
-		// `requireWritable` (fix_ship); its failure belongs to the forge state, not to the fix card.
-		await session.forge?.whoami().catch(() => undefined);
-		return { ...common, kind: "fix", ...(await fixCard(session, slug)) };
-	}
+	if (slug !== undefined) return { ...common, kind: "fix", ...(await fixCard(session, slug)) };
 	const resolved = await resolve(session, common, branch);
 	if (resolved.kind !== "change") return resolved;
 	const state = await changeState(session, pack, resolved.number, resolved.warning);

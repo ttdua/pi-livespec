@@ -167,6 +167,18 @@ describe("change_new from_fix", () => {
 		await noIssue(h);
 	});
 
+	test("read-only forge refused on a fix branch", async () => {
+		const h = await forcedFix();
+		await h.session.refresh();
+		await h.world.makeUnreachable();
+		const out = await moveCall(h);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("read-only");
+		await h.world.restore();
+		await noIssue(h);
+		expect(h.git("branch", "--show-current")).toBe("fix/retry");
+	});
+
 	test("fetch failure refused", async () => {
 		const h = await forcedFix();
 		h.git("remote", "remove", "origin");

@@ -115,6 +115,9 @@ export async function prepareWrite(): Promise<({ ok: true } & WriteContext) | Re
 	const pack = requireValidPack(s.session);
 	if (!pack.ok) return pack;
 	await s.session.refresh();
+	// A fix card reads no forge, so one tracked read brings the read-only mode up to date before a fix
+	// write (fix_ship, change_new --from-fix); its failure only sets that mode, so it is ignored.
+	if (s.session.card.kind === "fix") await s.session.forge?.whoami().catch(() => undefined);
 	const writable = requireWritable(s.session);
 	if (!writable.ok) return writable;
 	return { ok: true, session: s.session, pack: pack.pack, forge: writable.forge };

@@ -115,6 +115,26 @@ describe("buildCardInput on a fix branch", () => {
 		expect(h.gitCalls.filter((a) => a[0] === "fetch")).toHaveLength(2);
 	});
 
+	test("a card refresh on a fix branch makes no forge call", async () => {
+		const h = await onFix();
+		const calls: string[] = [];
+		const forge = h.session.forge as unknown as Record<string, unknown>;
+		const spied = new Proxy(forge, {
+			get(target, prop, receiver) {
+				const value = Reflect.get(target, prop, receiver);
+				if (typeof value !== "function") return value;
+				return (...args: unknown[]) => {
+					calls.push(String(prop));
+					return (value as (...a: unknown[]) => unknown).apply(target, args);
+				};
+			},
+		});
+		h.session.forge = spied as never;
+		await h.session.refresh();
+		expect(fixInput(h).outcome?.lane).toBe("small");
+		expect(calls.filter((c) => c !== "isReadOnly")).toEqual([]);
+	});
+
 	test("the card records no decision", async () => {
 		const h = await onFix();
 		await h.session.refresh();
