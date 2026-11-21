@@ -58,7 +58,7 @@ async function fetchOnce(session: Session, state: Pick<ChangeState, "git" | "cha
 }
 
 /** Each living spec's capability and `paths`; an unreadable or unparseable spec is left out. */
-async function livingSpecs(root: string): Promise<DurableFacts["specs"]> {
+export async function livingSpecs(root: string): Promise<DurableFacts["specs"]> {
 	const entries = await readdir(join(root, SPECS_DIR), { withFileTypes: true }).catch(() => []);
 	const specs: DurableFacts["specs"] = [];
 	for (const entry of entries) {

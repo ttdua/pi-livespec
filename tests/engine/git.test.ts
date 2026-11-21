@@ -369,3 +369,68 @@ describe("diffNameStatus", () => {
 		expect(diffFilesOf(entries).sort()).toEqual(["del.txt", "mod.txt", "new name.txt", "old name.txt"]);
 	});
 });
+
+describe("small-fix ports", () => {
+	async function twoCommits(): Promise<{ root: string; git: Git; base: string }> {
+		const root = await makeRepo();
+		await writeIn(root, "a.txt", "one\ntwo\n");
+		commitAll(root, "base");
+		return { root, git: createGit(root), base: git(root, "rev-parse", "HEAD") };
+	}
+
+	test("diffNumstat counts lines and flags binary files", async () => {
+		const { root, git: g, base } = await twoCommits();
+		await writeIn(root, "a.txt", "one\nthree\nfour\n");
+		execFileSync("sh", ["-c", "printf '\\000\\001\\002' > bin.dat"], { cwd: root });
+		commitAll(root, "change");
+		const entries = await g.diffNumstat(base, "HEAD");
+		expect(entries).toContainEqual({ path: "a.txt", added: 2, deleted: 1, binary: false });
+		expect(entries).toContainEqual({ path: "bin.dat", added: 0, deleted: 0, binary: true });
+	});
+
+	test("rename reports the new path once", async () => {
+		const { root, git: g, base } = await twoCommits();
+		git(root, "mv", "a.txt", "b.txt");
+		await writeIn(root, "b.txt", "one\ntwo\nthree\n");
+		commitAll(root, "rename");
+		const entries = await g.diffNumstat(base, "HEAD");
+		expect(entries.map((e) => e.path)).toEqual(["b.txt"]);
+		expect(entries[0]).toMatchObject({ added: 1, deleted: 0, binary: false });
+	});
+
+	test("showFile returns content or undefined", async () => {
+		const { git: g } = await twoCommits();
+		expect(await g.showFile("HEAD", "missing")).toBeUndefined();
+		expect(await g.showFile("HEAD", "a.txt")).toBe("one\ntwo\n");
+	});
+
+	test("renameBranch keeps HEAD and removes the old name", async () => {
+		const { root, git: g } = await twoCommits();
+		git(root, "switch", "-q", "-c", "fix/x");
+		const sha = git(root, "rev-parse", "HEAD");
+		await g.renameBranch("fix/x", "livespec/y");
+		expect(git(root, "rev-parse", "HEAD")).toBe(sha);
+		expect(await g.branchExists("fix/x")).toBe(false);
+		expect(await g.branchExists("livespec/y")).toBe(true);
+	});
+
+	test("isTracked distinguishes committed and untracked files", async () => {
+		const { root, git: g } = await twoCommits();
+		await writeIn(root, "new.txt", "x\n");
+		expect(await g.isTracked("a.txt")).toBe(true);
+		expect(await g.isTracked("new.txt")).toBe(false);
+	});
+
+	test("subjects lists commit subjects oldest first and skips merges", async () => {
+		const { root, git: g, base } = await twoCommits();
+		const main = git(root, "branch", "--show-current");
+		git(root, "switch", "-q", "-c", "side");
+		await writeIn(root, "s.txt", "s\n");
+		commitAll(root, "side work");
+		git(root, "switch", "-q", main);
+		await writeIn(root, "m.txt", "m\n");
+		commitAll(root, "main work");
+		git(root, "merge", "--no-ff", "-q", "-m", "merge side", "side");
+		expect(await g.subjects(base, "HEAD")).toEqual(["side work", "main work"]);
+	});
+});

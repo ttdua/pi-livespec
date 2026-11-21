@@ -5,7 +5,7 @@ import type { Result } from "./result.ts";
 // specs/<cap>/<file>: top-level specs/*.md and specs/decisions/ are not capabilities.
 const CAP_PATH = /^specs\/([^/]+)\/.+/;
 
-function capOf(path: string): string | undefined {
+export function capOf(path: string): string | undefined {
 	const c = CAP_PATH.exec(path)?.[1];
 	return c && c !== "decisions" ? c : undefined;
 }

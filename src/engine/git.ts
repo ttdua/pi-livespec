@@ -66,6 +66,37 @@ export interface Git {
 	isIgnored(path: string): Promise<boolean>;
 	/** `git config --get-regexp ^alias\.`: alias name to its expansion; `{}` when none is set. */
 	aliases(): Promise<Record<string, string>>;
+	/** `git diff --numstat -z -M <from>..<to>`; a rename is one entry with the new path, a binary file `binary: true` with 0/0. */
+	diffNumstat(from: string, to: string): Promise<NumstatEntry[]>;
+	/** `git show <rev>:<path>`; undefined when the path does not exist at `rev`. */
+	showFile(rev: string, path: string): Promise<string | undefined>;
+	/** `git branch -m -- <from> <to>`. */
+	renameBranch(from: string, to: string): Promise<void>;
+	/** `git ls-files --error-unmatch -- <path>`. */
+	isTracked(path: string): Promise<boolean>;
+	/** `git log --reverse --no-merges --format=%s <from>..<to>`, oldest first. */
+	subjects(from: string, to: string): Promise<string[]>;
+}
+
+export type NumstatEntry = { path: string; added: number; deleted: number; binary: boolean };
+
+/** `--numstat -z` output: `<added>\t<deleted>\t<path>\0`, and `<added>\t<deleted>\t\0<old>\0<new>\0` for a rename; `-` counts mean binary. */
+function parseNumstat(out: string): NumstatEntry[] {
+	const fields = out.split("\0");
+	const entries: NumstatEntry[] = [];
+	for (let i = 0; i < fields.length; ) {
+		const record = fields[i++] as string;
+		if (record === "") continue;
+		const [added = "", deleted = "", ...rest] = record.split("\t");
+		let path = rest.join("\t");
+		if (path === "") {
+			i++; // old path
+			path = fields[i++] as string;
+		}
+		const binary = added === "-" || deleted === "-";
+		entries.push({ path, added: binary ? 0 : Number(added), deleted: binary ? 0 : Number(deleted), binary });
+	}
+	return entries;
 }
 
 export type DiffEntry = { status: string; path: string; oldPath?: string };
@@ -118,6 +149,8 @@ const EXIT_NO_OBJECT = 128;
 /** `check-ignore` exits 1 when the path is not ignored. */
 const EXIT_NOT_IGNORED = 1;
 const ALIAS_PREFIX = "alias.";
+/** `ls-files --error-unmatch` exits 1 when the path is not tracked. */
+const EXIT_NOT_TRACKED = 1;
 
 /** Non-empty lines of a command's stdout. */
 const lines = (out: string | undefined): string[] => (out ?? "").split("\n").filter((l) => l !== "");
@@ -249,6 +282,13 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit])),
 		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
+		diffNumstat: async (from, to) => parseNumstat((await run(["diff", "--numstat", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
+		showFile: (rev, path) => run(["show", END_OF_OPTIONS, `${rev}:${path}`], EXIT_NO_OBJECT),
+		renameBranch: async (from, to) => {
+			await run(["branch", "-m", "--", from, to]);
+		},
+		isTracked: async (path) => (await run(["ls-files", "--error-unmatch", "--", path], EXIT_NOT_TRACKED)) !== undefined,
+		subjects: async (from, to) => lines(await run(["log", "--reverse", "--no-merges", "--format=%s", END_OF_OPTIONS, `${from}..${to}`])),
 		aliases: async () => parseAliases((await run(["config", "-z", "--get-regexp", "^alias\\."], EXIT_NOT_FOUND)) ?? ""),
 	};
 }
