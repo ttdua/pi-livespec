@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
 import { runChecks } from "../engine/checks.ts";
-import { createGit, type Git } from "../engine/git.ts";
+import { createGit, type Git, integrationBranch } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
@@ -17,11 +17,16 @@ import { latestLaneClose } from "../subagents/state.ts";
 import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { isOffline } from "../forge/errors.ts";
-import type { CardAccount, CardInput } from "./phase-card.ts";
+import { messageOf } from "../core/messages.ts";
+import { fixRange, fixSlug } from "../fix/branch.ts";
+import { laneFacts } from "../fix/lane-facts.ts";
+import { type LaneConfig, laneRule } from "../fix/lane.ts";
+import type { CardAccount, CardInput, FixCard } from "./phase-card.ts";
 import type { Session } from "./session.ts";
 
 const CONSTRAINTS_FILE = ["specs", "constraints.md"];
 const FORGE_NOT_CONNECTED = "the forge is not connected";
+const NO_INTEGRATION = "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml";
 
 type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills" | "account">;
 
@@ -117,9 +122,47 @@ export async function buildCardInput(d: { session: Session; first: boolean }): P
 	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session) };
 	if (!session.pack.ok) return { ...common, kind: "pack-errors", errors: session.pack.errors };
 	const pack = session.pack.pack;
-	const resolved = await resolve(session, common, await session.git.branch());
+	const branch = await session.git.branch();
+	const slug = fixSlug(branch);
+	if (slug !== undefined) {
+		// No change is resolved here, so one tracked read keeps the forge's read-only mode current for
+		// `requireWritable` (fix_ship); its failure belongs to the forge state, not to the fix card.
+		await session.forge?.whoami().catch(() => undefined);
+		return { ...common, kind: "fix", ...(await fixCard(session, slug)) };
+	}
+	const resolved = await resolve(session, common, branch);
 	if (resolved.kind !== "change") return resolved;
 	const state = await changeState(session, pack, resolved.number, resolved.warning);
 	const step = nextStep(pack, state);
 	return { ...common, unnotedSkills: unnotedSkills(session, step, state), kind: "change", step, state };
+}
+
+/** The facts of the committed fix diff and the `lane` rule outcome; throws on any git failure. */
+async function buildFixCard(session: Session, pack: Pack, slug: string, integration: string): Promise<FixCard> {
+	const { mergeBase, subjects } = await fixRange(session.git, integration);
+	if (subjects.length === 0) return { slug, empty: true };
+	const facts = await laneFacts(session.git, session.cwd, mergeBase);
+	return { slug, outcome: laneRule(facts, pack.decisions.lane as LaneConfig) };
+}
+
+/**
+ * The fix card of `fix/<slug>`, memoized on the session by HEAD and integration branch so a refresh at the
+ * same HEAD does not fetch again. Never throws and never records a decision: a failure becomes `error`
+ * (not memoized, so the next refresh retries).
+ */
+export async function fixCard(session: Session, slug: string): Promise<FixCard> {
+	if (!session.pack.ok) return { slug, error: "the flow pack is invalid" };
+	const pack = session.pack.pack;
+	try {
+		const project = session.config.project;
+		const integration = project === null ? undefined : await integrationBranch(project, session.git);
+		if (integration === undefined) return { slug, error: NO_INTEGRATION };
+		const key = `${await session.git.head()}\0${integration}`;
+		if (session.fixMemo?.key === key && session.fixMemo.value.slug === slug) return session.fixMemo.value;
+		const value = await buildFixCard(session, pack, slug, integration);
+		session.fixMemo = { key, value };
+		return value;
+	} catch (error) {
+		return { slug, error: messageOf(error) };
+	}
 }

@@ -6,7 +6,7 @@ import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
-import { untrusted } from "../hooks/phase-card.ts";
+import { type FixCard, fixLaneText, fixNextStep, untrusted } from "../hooks/phase-card.ts";
 import { pendingText } from "../interaction/card.ts";
 import { displayStuckId, displayUnitList } from "../interaction/display-ids.ts";
 
@@ -107,4 +107,14 @@ function openChangeText(c: OpenChange): string {
 export function formatOpenChanges(open: OpenChange[]): string {
 	const changes = open.length === 0 ? ["Open changes: none"] : listLines("Open changes", open.map(openChangeText));
 	return ["No change is resolved on this branch.", ...changes, `Next: ${NO_CHANGE_NEXT}`].join("\n");
+}
+
+/** A fix branch: the slug, the lane outcome with its reasons, and the fix card's next step. */
+export function formatFix(fix: FixCard): string {
+	return [`Fix branch fix/${fix.slug}`, `Lane: ${fixLaneText(fix)}`, ...listLines("Reasons", (fix.outcome?.reasons ?? []).map(untrusted)), `Next: ${fixNextStep(fix)}`].join("\n");
+}
+
+/** The structured fix details of `spec_next` and `spec_status`. */
+export function fixDetails(fix: FixCard): FixCard & { next: string } {
+	return { ...fix, next: fixNextStep(fix) };
 }

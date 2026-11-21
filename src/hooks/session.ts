@@ -36,7 +36,7 @@ import { pollApprovals } from "../interaction/poll.ts";
 import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
-import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
+import { type CardInput, type FixCard, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
 import { getSession, setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
@@ -87,6 +87,8 @@ export class Session {
 	card: CardInput;
 	/** The change last resolved for a branch, reused while the forge is offline. */
 	lastResolved?: { branch: string; number: number };
+	/** The fix card last built, keyed by HEAD and the integration branch, so a refresh at the same HEAD does not fetch again. */
+	fixMemo?: { key: string; value: FixCard };
 	/** The background agent-skills check started at session start. */
 	upgrade?: Promise<void>;
 	readonly skillReads = new SkillReads();

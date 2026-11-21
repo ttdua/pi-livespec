@@ -8,7 +8,7 @@ import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import type { Session } from "../hooks/session.ts";
-import { untrusted } from "../hooks/phase-card.ts";
+import { type FixCard, untrusted } from "../hooks/phase-card.ts";
 import { getSession } from "../hooks/session-store.ts";
 
 export type Refusal = { ok: false; message: string };
@@ -62,7 +62,18 @@ export function requireWritable(session: Session): { ok: true; forge: CachedForg
 export type CurrentChange =
 	| { kind: "change"; step: NextStep; state: ChangeState }
 	| { kind: "list"; open: OpenChange[] }
+	| { kind: "fix"; fix: FixCard }
 	| { kind: "refused"; message: string };
+
+/** The fix part of a fix card, without the shared card fields. */
+function fixOf(card: FixCard): FixCard {
+	return {
+		slug: card.slug,
+		...(card.outcome !== undefined ? { outcome: card.outcome } : {}),
+		...(card.error !== undefined ? { error: card.error } : {}),
+		...(card.empty ? { empty: true as const } : {}),
+	};
+}
 
 /** The change of the session's current card, the open changes, or why neither is known. */
 export function currentChange(session: Session): CurrentChange {
@@ -72,6 +83,8 @@ export function currentChange(session: Session): CurrentChange {
 			return { kind: "change", step: card.step, state: card.state };
 		case "list":
 			return { kind: "list", open: card.open };
+		case "fix":
+			return { kind: "fix", fix: fixOf(card) };
 		case "pack-errors":
 			return { kind: "refused", message: packErrorsMessage(card.errors) };
 		case "forge-unavailable":
@@ -85,6 +98,7 @@ export function currentChange(session: Session): CurrentChange {
 export function requireChange(session: Session): { ok: true; step: NextStep; state: ChangeState } | Refusal {
 	const current = currentChange(session);
 	if (current.kind === "change") return { ok: true, step: current.step, state: current.state };
+	if (current.kind === "fix") return { ok: false, message: `On fix/${current.fix.slug}: run fix_ship or change_new <name> --from-fix; there is no change issue.` };
 	return { ok: false, message: current.kind === "list" ? NO_CHANGE : current.message };
 }
 

@@ -51,7 +51,7 @@
 | `LaneConfig` | new | `{ mode: "rule"; max_files: number; max_lines: number }` | yes (pack key `decisions.lane`) |
 | `LaneOutcome` | new | `{ lane: "small" \| "forced"; reasons: string[]; behavior_change?: "declared-none"; capabilities?: string[] }` | yes (in the PR decision block) |
 | `laneRule` / `laneRuleFn` / `laneSchema` | new | `laneRule(facts: LaneFacts, config: LaneConfig): LaneOutcome`; `laneRuleFn: RuleFn`; `laneSchema: RuleSchema` in `src/fix/lane.ts` | no |
-| `fixNextStep` | new | `fixNextStep(fix: FixCard): string` in `src/hooks/phase-card.ts` (the one `Next:` sentence: `fix_ship`, `change_new <name> --from-fix`, nothing to ship, or the facts error) | no |
+| `fixNextStep` | new | `fixNextStep(fix: FixCard): string` in `src/hooks/phase-card.ts` (the one `Next:` sentence: `fix_ship`, `change_new <name> --from-fix`, nothing to ship, or the facts error); also `fixLaneText(fix)` there and `formatFix(fix)` / `fixDetails(fix)` in `src/tools/format-step.ts` (Task 6: shared lane text and tool formatting, so the card and the three tools agree) | no |
 | `fixPullRequestBody` | new | `fixPullRequestBody(i: { slug: string; subjects: string[]; test: { command: string; exit: number; head: string; output: string }; record: DecisionRecord }): { title: string; body: string }` in `src/fix/pr-body.ts` | no |
 | Fix PR body format | new | commit subject list, `## Test` (command, `exit 0`, short SHA, fenced tail ≤ 4096 bytes), then `formatDecisionBlock("lane", record)` | yes |
 | Tool `fix_start` | new | params `{ slug: string }`; details `{ branch?: string }` | yes |
