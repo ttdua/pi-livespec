@@ -81,6 +81,6 @@ Blocked by: 5, 6, 7
 
 Blocked by: 9, 10
 
-- [ ] 11.1 `tests/e2e/ship-flow.test.ts` covering issue #32 "Done when"
-- [ ] 11.2 `docs/architecture.md` (Ship, Pull request feedback, Close, tool list) and `docs/glossary.md` ("Reviewed SHA", integration branch)
-- [ ] 11.3 `bun run typecheck` and `bun run test` pass
+- [x] 11.1 `tests/e2e/ship-flow.test.ts` covering issue #32 "Done when"
+- [x] 11.2 `docs/architecture.md` (Ship, Pull request feedback, Close, tool list) and `docs/glossary.md` ("Reviewed SHA", integration branch)
+- [x] 11.3 `bun run typecheck` and `bun run test` pass
