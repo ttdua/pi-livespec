@@ -13,6 +13,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
+import { replaceSection } from "../../src/core/sections.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts";
@@ -41,6 +42,9 @@ type Gate = ToolHarness & { n: number };
  * A change on its branch whose `Base` is the commit before a valid spec commit, so every define
  * check passes and the tree is clean. The harness registers `spec_gate` with the change tools.
  */
+/** Every unit done and a Durable docs table that covers the spec file the fixture commits. */
+const shipReady = (body: string): string => replaceSection(allDone(body), "Durable docs", "| File | Status |\n|---|---|\n| specs/rate-limit/spec.md | updated |");
+
 async function change(phase: string, o: Opts = {}): Promise<Gate> {
 	const h = await toolHarness({
 		branch: CHANGE_BRANCH,
@@ -337,7 +341,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Ship approved", async () => {
-		const h = await change("ship", { ui: human("approve"), edit: allDone });
+		const h = await change("ship", { ui: human("approve"), edit: shipReady });
 		const out = await h.call("spec_gate", { target: "ship" });
 		expect(out.isError).toBe(false);
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "ship", outcome: "approved" });

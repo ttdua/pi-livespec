@@ -2,6 +2,7 @@ import type { Node } from "yaml";
 import type { Change } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import type { ShipContext } from "../ship/context.ts";
 import type { Pack } from "./pack-types.ts";
 import type { CheckResult } from "./state-types.ts";
 
@@ -12,7 +13,7 @@ export type SubSchema = {
 
 export type CheckGit = { diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string> };
 /** `marked` are the own marked comments of the change issue, in comment order. */
-export type CheckContext = { root: string; change: Change; git: CheckGit; marked: MarkedComment[] };
+export type CheckContext = { root: string; change: Change; git: CheckGit; marked: MarkedComment[]; ship?: ShipContext };
 export type CheckFn = (ctx: CheckContext) => Promise<Result[]>;
 
 const schemas = new Map<"decisions" | "subagents", SubSchema>();

@@ -38,7 +38,7 @@ type RuleInput = {
 
 type Rule = (i: RuleInput) => Decision | undefined;
 
-const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> = {
+const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff" | "issue#Durable docs">, SectionName> = {
 	"issue#Capabilities": "Capabilities",
 	"issue#Proposal": "Proposal",
 	"issue#Design": "Design",
@@ -46,6 +46,7 @@ const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> =
 };
 
 const UNITS_SENTENCE = "Write Units with plan_units.";
+const DOCS_TABLE_SENTENCE = "Write the Durable docs table with docs_table.";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
 const SHIP_PHASE = "ship";
 const STUCK_SUBJECT = "stuck:";
@@ -187,6 +188,7 @@ const blockingQuestion: Rule = ({ blockingQuestions }) => {
 
 function missingOutputSentence(output: PhaseOutput, state: ChangeState): string | undefined {
 	if (output === "specs-diff") return state.git.specsChanged === true ? undefined : SPECS_DIFF_SENTENCE;
+	if (output === "issue#Durable docs") return state.ship?.docsRowsNeeded === false || state.change.durableDocs.length > 0 ? undefined : DOCS_TABLE_SENTENCE;
 	const section = OUTPUT_SECTIONS[output];
 	if (state.sections[section]) return undefined;
 	return section === "Units" ? UNITS_SENTENCE : `Write ${section} with spec_write.`;

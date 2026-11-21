@@ -3,6 +3,7 @@
 
 import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
+import type { DurableFacts } from "../ship/durable-docs.ts";
 import type { UnitEvidence } from "../evidence/unit-state.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { IssueState } from "../forge/types.ts";
@@ -34,6 +35,8 @@ export type ChangeState = {
 	/** `specsChanged` is undefined without `Base`, else whether `git diff <Base>..HEAD -- specs/` is non-empty. */
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
 	checks: CheckResult[];
+	/** Git-dependent ship facts, filled at refresh in `src/hooks/card-input.ts` (`nextStep` does no git work). */
+	ship?: { docsRowsNeeded?: boolean; durableFacts?: DurableFacts };
 	stale: boolean;
 	readOnly: boolean;
 	warnings: string[];

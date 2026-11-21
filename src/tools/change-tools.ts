@@ -3,6 +3,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerChangeNew } from "./change-new.ts";
 import { registerChangeStart } from "./change-start.ts";
+import { registerDocsTable } from "./docs-table.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
 import { registerForgeRead } from "./forge-read.ts";
 import { registerLaneMerge } from "./lane-merge.ts";
@@ -47,4 +48,5 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerForgeRead(pi);
 	registerLaneOpen(pi);
 	registerLaneMerge(pi);
+	registerDocsTable(pi);
 }

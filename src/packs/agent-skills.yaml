@@ -19,6 +19,7 @@ decisions:
   difficulty: { mode: rule }
   progress: { mode: rule }
   finding-scope: { mode: rule }
+  durable-docs: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -77,6 +78,8 @@ phases:
   - id: ship
     requires: [review]
     skills: { required: [shipping-and-launch], optional: [ci-cd-and-automation, documentation-and-adrs] }
+    outputs: [issue#Durable docs]
+    checks: [durable-docs]
     gate: human
   - id: close
     requires: [ship]

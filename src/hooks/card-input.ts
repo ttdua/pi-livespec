@@ -12,6 +12,7 @@ import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
+import { shipFacts, shipFor } from "../ship/context.ts";
 import { latestLaneClose } from "../subagents/state.ts";
 import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
@@ -101,12 +102,13 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	if (forge === undefined || comments === undefined) throw new Error(FORGE_NOT_CONNECTED);
 	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds };
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
-	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git });
+	const ship = await shipFor(session, snapshot);
+	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
 	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
 	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
-	return { ...snapshot, subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	return { ...snapshot, ...(ship === undefined ? {} : { ship: shipFacts(ship) }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {

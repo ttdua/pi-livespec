@@ -65,7 +65,7 @@ describe("livespec extension", () => {
 		const { commands, tools } = loadExtension();
 		expect([...commands.keys()]).toEqual(["livespec"]);
 		expect([...tools.keys()].sort()).toEqual(
-			["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units", "unit_amend", "unit_start", "unit_finish", "spec_question", "spec_stuck", "subagent_dispatch", "subagent_answer", "subagent_packet", "subagent_record", "spec_review", "finding_rebut", "forge_read", "lane_open", "lane_merge"].sort(),
+			["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units", "unit_amend", "unit_start", "unit_finish", "spec_question", "spec_stuck", "subagent_dispatch", "subagent_answer", "subagent_packet", "subagent_record", "spec_review", "finding_rebut", "forge_read", "lane_open", "lane_merge", "docs_table"].sort(),
 		);
 	});
 

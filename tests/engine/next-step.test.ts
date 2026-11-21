@@ -146,6 +146,18 @@ describe("nextStep", () => {
 		expect(nextStep(pack, state("plan", NO_QUESTION, { sections })).next).toBe("Write Units with plan_units.");
 	});
 
+	test("Missing table", () => {
+		const empty = NO_QUESTION.replace(/^\|.*\n/gm, "");
+		const step = nextStep(pack, state("ship", empty, { ship: { docsRowsNeeded: true } }));
+		expect(step.next).toBe("Write the Durable docs table with docs_table.");
+		expect(nextStep(pack, state("ship", empty)).next).toBe("Write the Durable docs table with docs_table.");
+	});
+
+	test("no rows needed and no rows: no missing output", () => {
+		const step = nextStep(pack, state("ship", NO_QUESTION.replace(/^\|.*\n/gm, ""), { ship: { docsRowsNeeded: false } }));
+		expect(step.next).not.toContain("docs_table");
+	});
+
 	test("specs-diff output missing in define", () => {
 		const git = { branch: "livespec/per-ip-cap", head: "f".repeat(40), dirty: false, specsChanged: false };
 		expect(nextStep(pack, state("define", NO_QUESTION, { git })).next).toBe("Edit specs/ for the declared capabilities.");
