@@ -5,7 +5,8 @@ import { describe, expect, test } from "vitest";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { GitError } from "../../src/engine/git.ts";
 import { guardedPush } from "../../src/guard/push.ts";
-import { cleanupDirs, originRefs, toolHarness } from "../tools/helpers.ts";
+import { commitAll, writeIn } from "../helpers/repo.ts";
+import { cleanupDirs, originRefs, textOf, toolHarness } from "../tools/helpers.ts";
 import { afterEach } from "vitest";
 
 afterEach(cleanupDirs);
@@ -21,14 +22,23 @@ function sourcesUnder(dir: string): string[] {
 }
 
 describe("command-guards", () => {
-	test("Only change_ship and change_push call the push path", () => {
+	test("Only change_ship, change_push and fix_ship call the push path", () => {
 		const sources = sourcesUnder(SRC_DIR);
 		expect(sources.length).toBeGreaterThan(0);
 		const importing = sources.filter((path) => !path.endsWith("/guard/push.ts") && /guard\/push(\.ts)?["']|from "\.\/push(\.ts)?"/.test(readFileSync(path, "utf8")));
-		const allowed = new Set(["change-ship.ts", "change-push.ts"]);
+		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts"]);
 		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
 		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
 		expect(importing.every((path) => path.includes("/src/tools/"))).toBe(true);
+	});
+
+	test("Refspec from the fix branch", async () => {
+		const h = await toolHarness({ config: "integrationBranch: main\ntestCommand: \"true\"\n", branch: "fix/typo" });
+		await writeIn(h.root, "README.md", "fixed\n");
+		commitAll(h.root, "Fix a typo");
+		const out = await h.call("fix_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(h.gitCalls.filter((args) => args[0] === "push")).toEqual([["push", "--", "origin", "HEAD:refs/heads/fix/typo"]]);
 	});
 });
 
