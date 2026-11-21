@@ -16,11 +16,6 @@ type Emitter = { events: { emit: (name: string, data: unknown) => void } };
 
 const refuse = (message: string): ToolResult<undefined> => toolResult(`${TOOL} refused: ${message} Nothing was written.`, undefined, true);
 
-function emitEvents(pi: Emitter, events: CloseEvents): void {
-	pi.events.emit("livespec:change-closed", events.closed);
-	if (events.initiativeClosed !== undefined) pi.events.emit("livespec:initiative-closed", events.initiativeClosed);
-}
-
 async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refuse(w.message);
@@ -33,18 +28,44 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	const n = state.issue.number;
 	const data = summaryData(state, state.pr, abandon);
 	const initiative = initiativeNumber(state.change.header);
+	let initiativeClosed: CloseEvents["initiativeClosed"];
 	try {
 		await postChangeSummary(w.forge, state, data);
-		const initiativeClosed = abandon === undefined && initiative !== undefined ? await closeInitiative(w.forge, initiative, n, data) : undefined;
+		initiativeClosed = abandon === undefined && initiative !== undefined ? await closeInitiative(w.forge, initiative, n, data) : undefined;
 		await w.forge.closeIssue(n);
-		await afterForgeWrite(w.session, n);
-		const closed = { change: n, pr: state.pr.number, ...(initiative === undefined ? {} : { initiative }), ...(abandon === undefined ? {} : { abandoned: true as const }) };
-		emitEvents(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) });
 	} catch (error) {
-		await afterForgeWrite(w.session, n);
+		await refreshQuietly(w.session, n);
 		return toolResult(`${TOOL} failed: ${messageOf(error)}. Steps already done are kept; run ${TOOL} again.`, undefined, true);
 	}
-	return toolResult(`Closed change #${n}${abandon === undefined ? "" : ` (abandoned: ${abandon.trim()})`}.`, undefined);
+	// The issue is closed: from here every failure is reported, never an error result, and the events always go first.
+	const closed = { change: n, pr: state.pr.number, ...(initiative === undefined ? {} : { initiative }), ...(abandon === undefined ? {} : { abandoned: true as const }) };
+	const problems = [emitQuietly(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) }), await refreshQuietly(w.session, n)].filter((m): m is string => m !== undefined);
+	const note = problems.length === 0 ? "" : ` Closed, but: ${problems.join("; ")}.`;
+	return toolResult(`Closed change #${n}${abandon === undefined ? "" : ` (abandoned: ${abandon.trim()})`}.${note}`, undefined);
+}
+
+/** Emits each event in order; a failing listener is reported and does not stop the next event. */
+function emitQuietly(pi: Emitter, events: CloseEvents): string | undefined {
+	const errors: string[] = [];
+	const send = (name: string, data: unknown): void => {
+		try {
+			pi.events.emit(name, data);
+		} catch (error) {
+			errors.push(`the ${name} event failed (${messageOf(error)})`);
+		}
+	};
+	send("livespec:change-closed", events.closed);
+	if (events.initiativeClosed !== undefined) send("livespec:initiative-closed", events.initiativeClosed);
+	return errors.length === 0 ? undefined : errors.join("; ");
+}
+
+async function refreshQuietly(session: Parameters<typeof afterForgeWrite>[0], n: number): Promise<string | undefined> {
+	try {
+		await afterForgeWrite(session, n);
+		return undefined;
+	} catch (error) {
+		return `the session refresh failed (${messageOf(error)})`;
+	}
 }
 
 export function runChangeClose(p: ChangeCloseParams, ctx: ToolCtx, pi: Emitter): Promise<ToolResult<undefined>> {

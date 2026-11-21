@@ -68,7 +68,7 @@ async function tickEntry(forge: Forge, tracking: number, change: number): Promis
 	for (let attempt = 0; attempt <= RETRIES; attempt++) {
 		const issue = await forge.getIssue(tracking);
 		const entry = parseInitiative(issue.body).changes.find((c) => c.number === change);
-		if (!entry) throw new Error(`change #${change} is not listed in initiative #${tracking}`);
+		if (!entry) throw new Error(`the Initiative line names initiative #${tracking}, which does not list change #${change}; fix the Initiative line or the initiative`);
 		if (entry.checked) return issue.body;
 		const written = await forge.updateIssueBody(tracking, tickChange(issue.body, change), issue.version);
 		if (written.status === "written") return tickChange(issue.body, change);
