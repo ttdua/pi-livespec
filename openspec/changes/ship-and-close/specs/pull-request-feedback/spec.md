@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Feedback poll
-The system SHALL poll pull request feedback at `session_start` after the approval poll, when `/livespec next` runs, and first in `change_push`. A poll SHALL run only when the change is in `ship`, its `PR` line names an open pull request that is not merged, the tree is clean, the forge is writable, and no review round is unrouted. Concurrent callers in one session SHALL share one run. A failed poll SHALL be recorded and MUST NOT fail the hook or command; `change_push` SHALL refuse after a failed poll.
+The system SHALL poll pull request feedback at `session_start` after the approval poll, when `/livespec next` runs, and first in `change_push`. A poll SHALL run only when the change is in `ship`, its `PR` line names an open pull request that is not merged, the tree is clean, the forge is writable, and no review round is unrouted, except an unrouted feedback round whose `stale` comment or move to `review` is missing, which the poll SHALL finish. Concurrent callers in one session SHALL share one run. A failed poll SHALL be recorded and MUST NOT fail the hook or command; `change_push` SHALL refuse after a failed poll.
 
 #### Scenario: Not in ship
 - **WHEN** the change is in `build` and a human commented on its pull request

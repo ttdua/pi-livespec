@@ -67,8 +67,8 @@ Blocked by: 1
 
 Blocked by: 4, 7, 8
 
-- [ ] 9.1 `src/ship/feedback.ts`: human voices with the permission check, mapping, keys and the ingest-once filter (pull-request-feedback "Human voices", "Feedback findings")
-- [ ] 9.2 `src/ship/feedback-poll.ts`: single-flight poll posting the `review-run`, the `stale` comment and the move to `review`; called after `pollApprovals` at `session_start` and in `/livespec next`; `change_push`'s default poll (pull-request-feedback "Feedback poll", "Feedback round")
+- [x] 9.1 `src/ship/feedback.ts`: human voices with the permission check, mapping, keys and the ingest-once filter (pull-request-feedback "Human voices", "Feedback findings")
+- [x] 9.2 `src/ship/feedback-poll.ts`: single-flight poll posting the `review-run`, the `stale` comment and the move to `review`; called after `pollApprovals` at `session_start` and in `/livespec next`; `change_push`'s default poll (pull-request-feedback "Feedback poll", "Feedback round")
 
 ## 10. Close
 

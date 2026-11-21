@@ -85,7 +85,7 @@ A forge comment, review or review comment is **own** when its author is the curr
 
 ### D8. Feedback as a pull-request round
 
-The poll runs only when the change is in `ship`, `PR:` names an open, unmerged pull request, the tree is clean and no round is unrouted. It collects:
+The poll runs only when the change is in `ship`, `PR:` names an open, unmerged pull request, the tree is clean and no round is unrouted. Recovery (apply): an unrouted `source: pull-request` round whose `stale` comment or label move is missing is finished by the poll (stale comment posted once by id, then the idempotent move), so a crash between the posts cannot leave the change in `ship`. On GitHub `Review.updatedAt` is `submitted_at`, so an edited review body is not re-ingested (accepted). It collects:
 - review comments with a path and line → `WARNING` `defect` at `path:line`, key `review-comment:<id>@<updatedAt>`;
 - conversation comments and non-empty bodies of reviews that are not `approved` → `WARNING` `other` with scope `needs-decision`, location `pr#<n>`, key `comment:<id>@<updatedAt>` / `review:<id>@<updatedAt>`;
 - checks of the pushed head (the pull request's head, which CI ran on) with state `failure` → `CRITICAL` `defect` at `check:<name>`, key `check:<pushedHead>:<name>`.
