@@ -9,8 +9,8 @@ Defines the flow pack: its schema and validation errors with line and column, th
 ### Requirement: Default flow pack
 The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-skills.yaml` with:
 - `name: agent-skills`, `version: 1` and `content: agent-skills`;
-- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5 and `progress: { mode: rule }`, each with `mode: rule`;
-- the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close`, with the skills, outputs, redirects, checks and gates listed in issue #4, plus the `unit-classification` and `verify-red-on-base` checks in `plan`.
+- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, `progress: { mode: rule }` and `finding-scope: { mode: rule }`, each with `mode: rule`;
+- the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close`, with the skills, outputs, redirects, checks and gates listed in issue #4, plus the `unit-classification` and `verify-red-on-base` checks in `plan`, and the `review-clean` check and the `subagents` entries of review-phase "Reviewer selection" in `review`.
 
 The pack MUST NOT name a model or a lane count.
 
@@ -20,11 +20,11 @@ The pack MUST NOT name a model or a lane count.
 
 #### Scenario: Default pack contents
 - **WHEN** the default pack is loaded
-- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5 and #6, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks and gate
+- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5, #6 and #8, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks, gate and `subagents`
 
 #### Scenario: Spot check
 - **WHEN** the default pack is loaded
-- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification` and `verify-red-on-base`; and `decisions.difficulty.mode` and `decisions.progress.mode` are `rule`
+- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification` and `verify-red-on-base`; phase `review` checks `review-clean` and has `gate: self`; and `decisions.difficulty.mode`, `decisions.progress.mode` and `decisions.finding-scope.mode` are `rule`
 
 ### Requirement: Pack schema validation
 The loader SHALL validate a pack against a hand-written schema of the top-level keys `name`, `version`, `content`, `limits`, `loops`, `decisions`, `init`, `phases` and `extends`, and the phase keys `id`, `requires`, `per`, `skills.required`, `skills.optional`, `outputs`, `redirects`, `checks`, `gate` and `subagents`. Every error MUST carry the file, line and column of the offending node, and a YAML syntax error MUST be reported with its line and column.

@@ -48,7 +48,7 @@
 | `review-run` marker | new | kind `review-run`, id `review-run.<round>`, data `{ round: number; head: string; selected: ReviewSubject[]; tags: string[]; verify: Record<string, { exit: number \| null; verdict: "green" \| "red" \| "invalid" }>; parentFindings: Finding[]; routed: boolean; prComments?: string[] }` | no |
 | `rebuild` marker | new | kind `rebuild`, id `rebuild.<unit>.<round>`, data `{ unit: string; round: number; finding: string }` | no |
 | aggregate `finding-summary` id | new | `finding-summary.change.review.<round>` | no |
-| verifier `finding-summary` id | new | `finding-summary.verify.<token(key)>.<attempt>` | no |
+| verifier `finding-summary` id | new | `finding-summary.verify.<token(key)>.<round>`, where `round` is the per-key verifier count (`nextVerifyRound`) | no |
 | `decision` `finding-scope.review-<round>` | new | outcome `Record<string, { route: Route; unit?: string }>` keyed by aggregate index | no |
 | `decision` `tags.review` | new | outcome `string[]` (tags no unit carries), source `rule`, no digest | no |
 | `review-clean` check | new | gate-only check of the `review` phase, registered in `registerBuiltinChecks` | yes (pack check name) |
@@ -428,15 +428,15 @@
 - Reviewer packet has no other reviewer's output → `tests/subagents/sources.test.ts` "reviewer packet has no other reviewer's output"
 - Security tag from the plan → `tests/review/select.test.ts`
 - Three units → `tests/review/select.test.ts`
-- Auth file without a security tag → `tests/review/retag.test.ts` and `tests/tools/spec-review.test.ts` "security persona from the diff"
+- Auth file without a security tag → `tests/review/select.test.ts` and `tests/tools/spec-review.test.ts` "security persona from the diff"
 - Added skip → `tests/review/standards.test.ts` and `tests/tools/spec-review.test.ts` "added skip"
 - Expect-error with a reason → `tests/review/standards.test.ts`
 - Deleted test file → `tests/review/standards.test.ts`
 - Cap reached → `tests/review/status.test.ts` and `tests/review/next.test.ts`
 - Stuck answer restarts the budget → `tests/review/status.test.ts`
 - Last round finishes before the cap → `tests/review/status.test.ts` and `tests/review/round.test.ts`
-- Clean round passes the gate → `tests/review/status.test.ts` "review-clean passes"
-- Code changed after review → `tests/review/status.test.ts` "review-clean fails on new HEAD"
+- Clean round passes the gate → `tests/review/status.test.ts` "Clean round passes the gate"
+- Code changed after review → `tests/review/status.test.ts` "Code changed after review"
 - Back to build → `tests/review/next.test.ts`
 - Reviewer blocked → `tests/review/next.test.ts`
 - In-change finding → `tests/review/next.test.ts`
@@ -458,13 +458,13 @@
 - Suggestion → `tests/review/route.test.ts`
 - Unit unticked → `tests/review/effects.test.ts` and `tests/tools/unit-finish.test.ts` (next step `unit_start`)
 - Question raised once → `tests/review/effects.test.ts`
-- Out of scope does not block → `tests/tools/spec-review.test.ts` and `tests/engine/gate-payload.test.ts`
+- Out of scope does not block → `tests/tools/spec-review.test.ts` and `tests/review/payload.test.ts`
 - Unverified finding blocks → `tests/review/status.test.ts`
 - Answered question → `tests/review/status.test.ts`
 - No pull request → `tests/review/effects.test.ts`
 - Retried stage → `tests/review/effects.test.ts`
-- Disputed and inline at ship → `tests/engine/gate-payload.test.ts`
-- Rebutted aggregate finding → `tests/review/status.test.ts` and `tests/engine/gate-payload.test.ts`
+- Disputed and inline at ship → `tests/review/payload.test.ts`
+- Rebutted aggregate finding → `tests/review/status.test.ts` and `tests/review/payload.test.ts`
 
 **review-findings**
 - Needs a decision → existing `tests/subagents/records.test.ts` (unchanged)

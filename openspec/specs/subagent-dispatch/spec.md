@@ -34,7 +34,7 @@ The system SHALL look up the subagent executor service at each dispatch under `g
 - **THEN** a dispatch launches a child
 
 ### Requirement: Dispatch tool
-`subagent_dispatch` SHALL take a role (`scout`, `implementer`, `reviewer`, `verifier`), a unit id when the role or subject needs one, and for `reviewer` a subject (`spec`, `plan`, `unit`, `change` or `persona:<name>`). It SHALL build the packet (see `subagent-packets`), launch the role's agent, wait for its run, and return the interpreted result. It MUST refuse, launching nothing, when the role or subject is unknown, a needed unit id is missing, the unit does not exist, or the call is made in a child session. It MUST NOT write to the forge before the child's run has settled.
+`subagent_dispatch` SHALL take a role (`scout`, `implementer`, `reviewer`, `verifier`), a unit id when the role or subject needs one, for `reviewer` a subject (`spec`, `plan`, `unit`, `change` or `persona:<name>`), and for `verifier` a finding reference `<aggregateCommentId>:<index>`. `subagent_packet` and `subagent_record` SHALL take the same finding reference for `verifier`. It SHALL build the packet (see `subagent-packets`), launch the role's agent, wait for its run, and return the interpreted result. It MUST refuse, launching nothing, when the role or subject is unknown, a needed unit id is missing, the unit does not exist, a `verifier` call has no finding reference or one that names no aggregate finding, a finding reference is given for another role, or the call is made in a child session. It MUST NOT write to the forge before the child's run has settled. A verifier run SHALL be recorded as a `finding-summary` with `role: verifier`, the finding reference it verifies and its verdict.
 
 #### Scenario: Unit role without a unit
 - **WHEN** `subagent_dispatch implementer` is called with no unit id
@@ -43,6 +43,14 @@ The system SHALL look up the subagent executor service at each dispatch under `g
 #### Scenario: Called in a child
 - **WHEN** `subagent_dispatch` is called in a child session
 - **THEN** it refuses and says only the main session dispatches
+
+#### Scenario: Verifier without a finding
+- **WHEN** `subagent_dispatch verifier` is called with no finding reference
+- **THEN** it refuses, launches nothing, and says a finding reference is required
+
+#### Scenario: Verifier recorded
+- **WHEN** the verifier of `c1:0` returns `DONE` with verdict `refuted`
+- **THEN** a `finding-summary` with `role: verifier`, `verifies: c1:0` and verdict `refuted` is posted
 
 ### Requirement: Role agents
 The system SHALL launch the executor's agents by role name: `scout` → `scout`, `implementer` → `implementer`, `reviewer` → `reviewer`, `verifier` → `verifier`. It MUST NOT ship, register or edit agent files. When `getAgentType(name)` reports a source other than the executor's built-in, the system SHALL still launch it, warn once per session naming the agent and its file, and record the source in the dispatch record.
@@ -100,11 +108,15 @@ On `subagents:child:session-created` for the launch's agent id, the system SHALL
 - **THEN** the dispatch returns the executor's refusal and that the role runs inline
 
 ### Requirement: Return contract
-Each role's result schema SHALL require `status` (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`), `notes`, `discoveries` and `sources_used` (source ids), and SHALL accept `reason` and `evidence`. `implementer` SHALL also require `commits`; `reviewer` and `verifier` SHALL also require `findings` in the `review-findings` schema. `BLOCKED` and `NEEDS_CONTEXT` MUST carry `reason` and `evidence`; the system SHALL treat a result without them as a missing result.
+Each role's result schema SHALL require `status` (`DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_CONTEXT`), `notes`, `discoveries` and `sources_used` (source ids), and SHALL accept `reason` and `evidence`. `implementer` SHALL also require `commits`; `reviewer` and `verifier` SHALL also require `findings` in the `review-findings` schema; `verifier` SHALL also require `verdict` (`confirmed` or `refuted`). `BLOCKED` and `NEEDS_CONTEXT` MUST carry `reason` and `evidence`; the system SHALL treat a result without them as a missing result.
 
 #### Scenario: Blocked without evidence
 - **WHEN** a child submits `status: BLOCKED` with no `evidence`
 - **THEN** the result is treated as missing and the retry rule applies
+
+#### Scenario: Verifier without a verdict
+- **WHEN** a verifier child submits `status: DONE` with no `verdict`
+- **THEN** the result is invalid and the child may submit again
 
 ### Requirement: Result handling
 The system SHALL handle a settled run as follows:
