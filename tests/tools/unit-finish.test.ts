@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { registerSessionHooks } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
-import { cardState, type UnitHarness, type UnitHarnessOptions, type UnitSpec, unitHarness, waitFor, worktreeCount } from "./unit-helpers.ts";
+import { cardState, seedRebuild, type UnitHarness, type UnitHarnessOptions, type UnitSpec, unitHarness, waitFor, worktreeCount } from "./unit-helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -471,4 +471,29 @@ describe("fix round 1", () => {
 		});
 	});
 
+});
+
+describe("rebuild marker", () => {
+	const PASS: UnitSpec = { id: "U2", verify: "sh pass.sh" };
+	const scripts = { ...SCRIPTS, "pass.sh": 'echo run >> "$LOG"\nexit 0\n' };
+
+	test("Rebuild is not re-ticked", async () => {
+		const h = await unitHarness({ units: [U1, PASS], scripts });
+		await seedRebuild(h, "U2");
+		const { state, step } = cardState(h);
+		expect(state.evidence.untickedReceipts).toEqual([]);
+		expect(step.next).toContain("unit_start U2");
+		await expectFinishRefusal(h, "U2", ["unit_start U2"]);
+		expect(h.runs()).toBe(0);
+	});
+
+	test("A rebuild start with verdict rebuild finishes green without a red pre", async () => {
+		const h = await unitHarness({ units: [U1, PASS], scripts });
+		await seedRebuild(h, "U2");
+		expect((await h.start("U2")).isError).toBeFalsy();
+		const out = await h.finish("U2");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await h.ofKind("receipt")).toHaveLength(2);
+		expect((await h.units())[1]?.done).toBe(true);
+	});
 });

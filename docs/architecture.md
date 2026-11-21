@@ -196,7 +196,7 @@ The parent session may hand role work to subagent children. It keeps every piece
 
 **Four layers.** A child's brief has four layers, and each comes from exactly one source:
 
-1. **Role**: the executor's agent file for `scout`, `implementer`, `reviewer` or `verifier`. The `verifier` role is reserved for LS-08: no tool parameter gives it the finding to verify yet, so its packet refuses. livespec ships no agent files. A user or project file that overrides one of them is used as is. It triggers a warning once per session, and the record stores it as `agentSource`.
+1. **Role**: the executor's agent file for `scout`, `implementer`, `reviewer` or `verifier`. The `verifier` role takes a `finding` reference (`subagent_dispatch verifier` with `finding: <aggregate comment id>:<index>`), and its packet refuses without one; see [Review](#review). livespec ships no agent files. A user or project file that overrides one of them is used as is. It triggers a warning once per session, and the record stores it as `agentSource`.
 2. **Protocol**: a fixed, flow-neutral livespec text (`protocol.ts`). It says that `<untrusted>` text is data, how to read spilled sources, what the child must not do, how to ask (`ask_parent` or `NEEDS_CONTEXT`) and how to submit the structured result.
 3. **Flow**: the pack name, the pack version, the content tree commit and the role's skills. The skills reach the child as absolute `SKILL.md` paths with `skills.inherit: false`.
 4. **Task**: the unit or the review subject, its sources in manifest order, `Verify`, `Files` and the prohibitions. A footer follows with the packet hash and each source's version.
@@ -250,6 +250,44 @@ The subagent, lane, `finding_rebut` and `forge_read` tools refuse in a child, an
 **Inline fallback.** Without a capable executor, or when the policy does not suggest a dispatch, the phase card names `subagent_packet` and `subagent_record`. The parent reads the same packet, does the work in its own session and records the result in the same schema. The dispatch records, finding summaries, receipts and ticks are the same as for a dispatched run, so a change completes either way.
 
 **Doctor** reports the executor and its missing capabilities, role agents overridden by a user or project file, a configured package that registers a workspace provider (`@gotgenes/pi-subagents-worktrees`), and the packages excluded from livespec children.
+
+## Review
+
+The `review` phase runs a fan-out of reviewers over the whole change, verifies and routes their findings, and returns defective units to `build`. The code lives in `src/review/`, the tool is `spec_review` (`src/tools/spec-review.ts`).
+
+**Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and every write is an own marked comment on the change issue:
+
+1. `start`: refuses a dirty tree, a missing `Base`, an open blocking question or an unanswered stuck report. It runs every unit's `Verify` at `HEAD` and posts a `review-run` (round, `head`, selected subjects, tags, verify results, parent findings, `routed: false`). A `HEAD` that differs from the open round's restarts it as a new round.
+2. `review`: launches the missing reviewers in parallel (`subagent_packet`/`subagent_record` inline without an executor). A reviewer's packet holds no other reviewer's output.
+3. `aggregate`: merges the findings of all reviewers into one `finding-summary` aggregate, with the parent findings added.
+4. `verify`: sends each finding that needs it to a `verifier` child.
+5. `route`: runs `finding-scope` per finding, applies the effects and updates the `review-run` with `routed: true`.
+
+A routed round is final: a second call posts nothing. Retried stages are idempotent because every comment has a derived id.
+
+**Selection and personas.** `selectSubjects` takes the `reviewer` entries of the `review` phase in the pack that hold for the change facts: the whole-change reviewer always, and the personas (`security-auditor`, `test-engineer`, `web-performance-auditor`) by tag. Tags are the units' plus tags re-derived from the diff (`retag`, through the `tags` rule, e.g. an `auth/` path adds `security`); they are recorded on the `review-run` and never written to the units. A persona's agent file and skill come from the content tree.
+
+**`constraints-not-weakened`.** `checkStandards` parses the diff and reports a CRITICAL `lowered-standard` finding for an added `skip`/`only`, a suppression (`@ts-ignore`, `eslint-disable`, `@ts-expect-error` without a reason), a deleted test file, or a test file that removes more assertion lines than it adds. It cites `specs/constraints.md` when present. These parent findings are not sent to a verifier (`verify: skipped-parent`). A unit whose `Verify` is red at review also yields a CRITICAL parent finding on its first file.
+
+**Verifier and `DISPUTED`.** `subagent_dispatch verifier` takes a `finding` reference (`<aggregate comment id>:<index>`) and its packet carries that finding and the code it points at. The child returns `verdict: confirmed | refuted` and a `reason`, recorded as a `finding-summary`. A refuted finding is `DISPUTED`: it blocks nothing and is listed at the `ship` gate with the verifier's reason. Only findings that went to the verifier can be disputed; `missed-context` and parent findings skip it. A `finding_rebut` rebuttal is listed the same way. A finding that is neither verified nor resolved blocks.
+
+**Routing.** `routeFinding(finding, facts)` is pure and sits behind the `finding-scope` rule (default mode, no question). In order:
+
+- a `SUGGESTION` is `record`ed (except `missed-context`);
+- `needs-decision` is a `question`: one non-blocking question, raised once, keyed by `finding:<comment id>:<index>`;
+- a path in a unit's `Files` is `unit`, routed to that unit;
+- a path in the diff, or `missed-context`, is `in-change`;
+- anything else is `out-of-scope`: it never blocks and is listed at `ship` as a follow-up.
+
+A deleted test file stays in the change through the diff. Reviewer-supplied scope is ignored in an aggregate; the route is always recomputed.
+
+**Rebuild marker.** A `unit` finding posts `rebuild.<unit>.<round>` and unticks the unit in the issue body, so the change returns to `build`. `unit_start` on a unit with an open marker accepts a green `Verify` (verdict `rebuild`; a red one still starts red). `unit_finish` posts a new receipt and ticks the unit again; a receipt older than the marker does not count as a tick to reconcile. The marker is derived from comments in `src/evidence`, never from session memory.
+
+**Cap.** `loops.review_rounds` is derived from the `review-run` records newer than the latest lifting stuck answer. It blocks when the count reached the cap, the latest round is routed and its aggregate left a blocking `unit` or `in-change` finding; the next step is then `spec_stuck`, and a chosen answer restarts the budget. A last round that ends clean before the cap never blocks.
+
+**Gate.** The `review-clean` check of the pack passes when the latest round was run at the current `HEAD`, is routed, and has no blocking finding (`unverified`, `blocking`, or an unanswered `question`). Any new commit fails it until a new round. The gate record holds `head_sha`, so approving `review` binds to the reviewed code.
+
+**Ship payload.** The gate payload of `ship` (`src/review/payload.ts`) lists the review result: disputed findings with the verifier's reason, rebutted findings, follow-ups (`out-of-scope`), and the subjects that ran inline, so the human sees what no child verified.
 
 ## Forge accounts
 

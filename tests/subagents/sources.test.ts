@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { receiptComment } from "../../src/evidence/records.ts";
 import { buildPacket } from "../../src/subagents/packet.ts";
+import { writeIn } from "../helpers/repo.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
+import { aggregateComment } from "../../src/review/records.ts";
 import { collectSources, registerPacketSource, resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { resolveTarget } from "../../src/subagents/target.ts";
 import type { Role, ReviewSubject } from "../../src/subagents/roles.ts";
@@ -228,5 +230,64 @@ describe("manifest", () => {
 			throw new Error("boom");
 		});
 		await expect(sourcesOf(world, "reviewer", "U3", "unit")).rejects.toThrow(/brokenProvider.*boom/);
+	});
+});
+
+describe("Unit unticked", () => {
+	test("the implementer packet lists the aggregate finding routed to the unit", async () => {
+		const world = await makeWorld();
+		const routed = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "off by one at the cap", fix: "use >", scope: "out-of-scope" as const, from: ["r1:0"], needsDecision: false };
+		const other = { ...routed, location: "src/context.ts:1", evidence: "context bug", route: "unit" as const, routeUnit: "U1", verify: "required" as const };
+		const posted = world.post(BOT, aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [{ ...routed, route: "unit", routeUnit: "U3", verify: "required" }, other] }));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.id}`);
+		expect(found?.source.text).toContain("off by one at the cap");
+		expect(found?.source.text).not.toContain("context bug");
+		expect(found?.source.untrusted).toBe(true);
+		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `comment:${posted.id}`);
+		expect(u1?.source.text).toContain("context bug");
+	});
+});
+
+describe("verifier of an in-change finding", () => {
+	test("the packet holds the finding and the code, with no owning-unit error", async () => {
+		const world = await makeWorld();
+		const finding = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "e", fix: "f", scope: "in-change" as const };
+		const target = resolveTarget(world.ctx.state, "verifier");
+		if (!target.ok) throw new Error(target.message);
+		await writeIn(world.root, "src/free/clock.ts", "export const now = () => 0;\n");
+		const placed = await collectSources({ ...world.refreshed(), finding: { ...finding, location: "src/free/clock.ts:4" } }, target.target);
+		expect(placed.find((p) => p.source.id === "file:src/free/clock.ts")?.source.text).toContain("export const now");
+		expect(placed.some((p) => p.source.id.startsWith("comment:finding-"))).toBe(true);
+		expect(placed.some((p) => p.source.id.startsWith("receipt:"))).toBe(false);
+	});
+});
+
+describe("Persona file", () => {
+	const withPersona = async (name: string) => {
+		const world = await makeWorld();
+		await writeIn(world.tree, `agents/${name}.md`, `# ${name}\n`);
+		return world;
+	};
+
+	test("a persona subject lists its file", async () => {
+		const world = await withPersona("security-auditor");
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "persona:security-auditor"))).toContain("file:agents/security-auditor.md");
+	});
+
+	test("a change packet lists the code-reviewer file", async () => {
+		const world = await withPersona("code-reviewer");
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "change"))).toContain("file:agents/code-reviewer.md");
+	});
+
+	test("a missing persona file refuses and names the file", async () => {
+		const world = await makeWorld();
+		await expect(sourcesOf(world, "reviewer", undefined, "persona:security-auditor")).rejects.toThrow("persona file agents/security-auditor.md is missing from the content tree");
+	});
+
+	test("a round-1 reviewer packet holds no reviewer finding-summary", async () => {
+		const world = await withPersona("code-reviewer");
+		const summary = world.post(BOT, writeMarked("finding-summary", "finding-summary.change.review.1", { subject: "change", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "e", fix: "f", scope: "unit" }] }));
+		const got = ids(await sourcesOf(world, "reviewer", undefined, "change"));
+		expect(got).not.toContain(`comment:${summary.id}`);
 	});
 });

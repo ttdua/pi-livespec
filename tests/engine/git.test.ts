@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import type { ProjectConfig } from "../../src/config.ts";
-import { createGit, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
+import { createGit, diffFilesOf, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
 import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
@@ -286,3 +286,24 @@ function gitIn(cwd: string, ...args: string[]): string {
 function worktreeCount(root: string): number {
 	return gitIn(root, "worktree", "list").split("\n").filter(Boolean).length;
 }
+
+describe("diffNameStatus", () => {
+	test("reports modified, deleted and renamed files; diffFilesOf lists all four paths", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "mod.txt", "one\n");
+		await writeIn(root, "del.txt", "gone\n");
+		await writeIn(root, "old name.txt", "a rename needs enough content to be detected\nline 2\nline 3\n");
+		commitAll(root);
+		const g = createGit(root);
+		const base = await g.head();
+		await writeIn(root, "mod.txt", "two\n");
+		git(root, "rm", "-q", "del.txt");
+		git(root, "mv", "old name.txt", "new name.txt");
+		commitAll(root, "change");
+		const entries = await g.diffNameStatus(base, await g.head());
+		expect(entries).toContainEqual({ status: "M", path: "mod.txt" });
+		expect(entries).toContainEqual({ status: "D", path: "del.txt" });
+		expect(entries).toContainEqual({ status: "R", path: "new name.txt", oldPath: "old name.txt" });
+		expect(diffFilesOf(entries).sort()).toEqual(["del.txt", "mod.txt", "new name.txt", "old name.txt"]);
+	});
+});

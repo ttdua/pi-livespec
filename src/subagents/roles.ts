@@ -30,6 +30,7 @@ export type SubagentResult = {
 	evidence?: string;
 	commits?: string[];
 	findings?: Finding[];
+	verdict?: "confirmed" | "refuted";
 };
 
 /** The subset of JSON Schema the executor accepts. */
@@ -83,7 +84,11 @@ export function resultSchema(role: Role): JsonSchema {
 	if (role === "implementer") {
 		return object({ ...BASE_PROPERTIES, commits: STRING_LIST }, [...BASE_REQUIRED, "commits"]);
 	}
-	if (role === "reviewer" || role === "verifier") {
+	if (role === "verifier") {
+		const verdict: JsonSchema = { type: "string", enum: ["confirmed", "refuted"] };
+		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA }, verdict }, [...BASE_REQUIRED, "findings", "verdict"]);
+	}
+	if (role === "reviewer") {
 		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA } }, [...BASE_REQUIRED, "findings"]);
 	}
 	return object(BASE_PROPERTIES, BASE_REQUIRED);

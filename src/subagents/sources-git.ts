@@ -85,7 +85,7 @@ export const owningUnit: Provider = {
 	async run(cx) {
 		const path = cx.ctx.finding?.location.split(":")[0];
 		const owner = cx.ctx.state.change.units.find((u) => path !== undefined && u.files.some((f) => f === path || matchGlob(f, path)));
-		if (!owner) throw new Error(`no unit owns the finding's file ${path ?? "(no finding)"} (receipt:<unit>)`);
+		if (!owner) return [];
 		const receipts = cx.ctx.state.evidence.receipts[owner.id] ?? [];
 		const text = [unitText(cx, owner), ...receipts.map((r) => receiptText(owner.id, r))].join("\n\n");
 		return [placed({ id: `receipt:${owner.id}`, version: sha256(text), title: `Owning unit ${owner.id}`, text, untrusted: true })];

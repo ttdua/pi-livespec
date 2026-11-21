@@ -211,6 +211,20 @@ describe("unit_amend", () => {
 		expect(lockState(h).frozen).toEqual([]);
 	});
 
+	test("Simplify as a feature", async () => {
+		const h = await planned();
+		await expectRefusal(h, { add: true, replacement: unit(" Simplify ", "src/limits/simplify.ts", "s") }, "a simplify unit must be Kind: refactor");
+		await expectRefusal(h, { unit: "U1", replacement: unit("SIMPLIFY", "src/limits/counter.ts", "c") }, "Kind: refactor");
+		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U2"]);
+	});
+
+	test("Simplify as a refactor", async () => {
+		const h = await planned();
+		const out = await h.amend({ add: true, replacement: unit("simplify", "src/limits/simplify.ts", "s", { kind: "refactor" }) });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await units(h)).map((u) => u.title)).toContain("simplify");
+	});
+
 	test("in-session amendments get distinct subjects", async () => {
 		const h = await planned();
 		await h.amend({ add: true, replacement: unit("Burst", "src/limits/burst.ts", "b") });

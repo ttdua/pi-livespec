@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { type ReceiptData, type StartData, newEvidenceId, readReceipts, readStarts, receiptComment, startComment } from "../../src/evidence/records.ts";
+import { type ReceiptData, type StartData, asRebuildRecord, newEvidenceId, readReceipts, readStarts, receiptComment, startComment } from "../../src/evidence/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 
 const start: StartData = {
@@ -47,5 +47,11 @@ describe("evidence records", () => {
 		];
 		expect(readStarts(marked)).toEqual([{ ...start, id: "U1.a", commentId: "c1", index: 0 }]);
 		expect(readReceipts(marked)).toEqual([{ ...receipt, id: "U1.c", commentId: "c3", index: 2 }]);
+	});
+
+	test("rebuild reader rejects a malformed record", () => {
+		const ok: MarkedComment = { commentId: "c1", author: "bot", kind: "rebuild", id: "rebuild.U1.1", data: { unit: "U1", round: 1, finding: "c:0" } };
+		expect(asRebuildRecord(ok, 3)).toMatchObject({ unit: "U1", round: 1, index: 3 });
+		expect(asRebuildRecord({ ...ok, data: { unit: "U1", round: "1", finding: "c:0" } }, 0)).toBeUndefined();
 	});
 });

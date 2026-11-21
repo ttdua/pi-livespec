@@ -9,6 +9,7 @@ import { phaseLabel } from "../forge/labels.ts";
 import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { readRequests } from "../interaction/requests.ts";
+import { reviewRounds } from "../review/status.ts";
 import { findExecutor } from "../subagents/executor.ts";
 import { invalidRecords, pendingQuestion } from "../subagents/records.ts";
 import { invalidLanes, openLanes } from "../subagents/state.ts";
@@ -20,10 +21,10 @@ import { deriveIterations } from "./iterations.ts";
 import { deriveLocks } from "./locks.ts";
 import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 
-/** The pack's `loops.change_iterations` and `loops.unit_attempts`; a missing cap never blocks. */
-export type Caps = { iterations: number | undefined; unitAttempts: number | undefined };
+/** The pack's `loops.change_iterations`, `loops.unit_attempts` and `loops.review_rounds`; a missing cap never blocks. */
+export type Caps = { iterations: number | undefined; unitAttempts: number | undefined; reviewRounds: number | undefined };
 
-export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number } };
+export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number; reviewRounds?: number } };
 
 const PHASE_PREFIX = phaseLabel("");
 const BODY_SECTIONS = ["Proposal", "Design", "Units"] as const;
@@ -94,7 +95,7 @@ export function deriveCommentFacts(
 	const iterations = deriveIterations(marked, caps.iterations);
 	const evidence = deriveUnitEvidence(change, marked, caps.unitAttempts);
 	return {
-		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count },
+		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count, review_rounds: reviewRounds(marked, caps.reviewRounds).value },
 		skillNotes: idsOfKind(marked, "skill-note"),
 		incomplete: incompleteItems(marked),
 		evidence,
@@ -124,7 +125,7 @@ async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): 
 	const login = await currentLogin(d.forge);
 	const own = login === undefined ? { comments: [], warnings: [UNKNOWN_LOGIN_WARNING] } : filterMarked(read.comments, login);
 	return {
-		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts }),
+		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds }),
 		stale: read.stale || login === undefined,
 		warnings: [...own.warnings, ...invalidWarnings(own.comments)],
 	};

@@ -63,6 +63,9 @@ export type ChangeState = {
 	};
 };
 
+/** What one precedence rule of the next step decides. */
+export type Decision = { next: string; advance?: string; dispatch?: NextStep["dispatch"] };
+
 export type NextStep = {
 	phase: string | undefined;
 	required: string[];

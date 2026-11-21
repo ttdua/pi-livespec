@@ -10,11 +10,10 @@ import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
-import { phaseEntryStep } from "../subagents/phase-entries.ts";
+import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase-entries.ts";
+import { reviewStep } from "../review/next.ts";
 import { effectiveMode } from "./request-mode.ts";
-import type { ChangeState, CheckResult, NextStep, SectionName } from "./state-types.ts";
-
-type Decision = { next: string; advance?: string; dispatch?: NextStep["dispatch"] };
+import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
 
 type UnitPlan = { ready: Unit[]; waiting: { id: string; waitingOn: string[] }[] };
 
@@ -280,13 +279,19 @@ const receiptedUnit: Rule = ({ state, phase }) => {
 };
 
 /** Rule 13: in a `per: unit` phase, the next ready unit, or the waiting units; no decision once every unit is done. */
-const nextUnit: Rule = ({ units }) => {
+const nextUnit: Rule = ({ units, state }) => {
+	const rebuilds = state.evidence.rebuilds ?? {};
+	const rebuild = units.ready.find((u) => u.id in rebuilds);
+	if (rebuild) return { next: `Rebuild ${rebuild.id} — ${rebuild.title}: run unit_start ${rebuild.id}.` };
 	const ready = units.ready[0];
 	if (ready) return { next: `Build ${ready.id} — ${ready.title}.` };
 	if (units.waiting.length === 0) return undefined;
 	const waits = units.waiting.map((b) => `${b.id} waits on ${b.waitingOn.join(", ")}`).join("; ");
 	return { next: `No unit is ready: ${waits}.` };
 };
+
+/** Rule 14: in the review phase, the review steps before the gate (review-phase "Review next steps"). */
+const reviewPhase: Rule = ({ pack, state, phase }) => (reviewEntriesRunBySpecReview(phase.id) ? reviewStep(pack, state) : undefined);
 
 /** Appends the human's notes; `next` is wrapped as untrusted where it is shown, so they are not wrapped here. */
 function withNotes(text: string, notes: string): string {
@@ -341,6 +346,7 @@ const RULES: Rule[] = [
 	startedUnit,
 	receiptedUnit,
 	nextUnit,
+	reviewPhase,
 ];
 
 /** Rule 1, when no active phase resolves: no phase label, several, or one naming a phase the pack does not have. */

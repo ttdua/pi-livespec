@@ -5,7 +5,7 @@ import { buildPacket, changeName } from "../subagents/packet.ts";
 import { writePacket } from "../subagents/packet-store.ts";
 import { requireChange, requireSession, requireValidPack, requireWritable, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { packetContext, packetText } from "./subagent-request.ts";
+import { findingOf, packetContext, packetText } from "./subagent-request.ts";
 import { argsOf, checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_packet";
@@ -24,7 +24,9 @@ export async function runSubagentPacket(p: TargetParams, ctx: ToolCtx): Promise<
 	if (!change.ok) return refusal(TOOL, change.message);
 	const target = checkTarget(p, change.state);
 	if (typeof target === "string") return refusal(TOOL, target);
-	const pctx = packetContext({ session: s.session, pack: pack.pack, forge: writable.forge }, change.state, target.unit);
+	const found = findingOf(change.state, target);
+	if (typeof found === "string") return refusal(TOOL, found);
+	const pctx = packetContext({ session: s.session, pack: pack.pack, forge: writable.forge }, change.state, target.unit, found);
 	const built = await buildPacket(pctx, target.role, target.unit, target.subject);
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);

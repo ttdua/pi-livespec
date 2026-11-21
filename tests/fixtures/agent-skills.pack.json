@@ -66,6 +66,9 @@
 		},
 		"progress": {
 			"mode": "rule"
+		},
+		"finding-scope": {
+			"mode": "rule"
 		}
 	},
 	"init": {
@@ -249,9 +252,55 @@
 			},
 			"outputs": [],
 			"redirects": [],
-			"checks": [],
+			"checks": [
+				"review-clean"
+			],
 			"gate": "self",
-			"subagents": []
+			"subagents": [
+				{
+					"role": "reviewer",
+					"subject": "change",
+					"mode": "always",
+					"skills": [
+						"code-review-and-quality"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "persona:security-auditor",
+					"mode": "auto",
+					"when": [
+						"tags:security"
+					],
+					"skills": [
+						"security-and-hardening"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "persona:web-performance-auditor",
+					"mode": "auto",
+					"when": [
+						"tags:perf",
+						"tags:ui"
+					],
+					"skills": [
+						"performance-optimization"
+					]
+				},
+				{
+					"role": "reviewer",
+					"subject": "persona:test-engineer",
+					"mode": "auto",
+					"when": [
+						"units>=3"
+					]
+				},
+				{
+					"role": "verifier",
+					"mode": "always"
+				}
+			]
 		},
 		{
 			"id": "ship",

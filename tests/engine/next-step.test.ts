@@ -3,6 +3,7 @@ import { parseChange } from "../../src/core/change.ts";
 import type { IterationState } from "../../src/engine/iterations.ts";
 import type { GateResult, LockState } from "../../src/engine/locks.ts";
 import { nextStep, successorOf } from "../../src/engine/next-step.ts";
+import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../../src/subagents/phase-entries.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack, Phase } from "../../src/engine/pack-types.ts";
 import type { ChangeState, CheckResult } from "../../src/engine/state-types.ts";
@@ -14,10 +15,13 @@ import type { AppliedAnswer, PendingRequest } from "../../src/interaction/reques
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
+import { aggregate, run as reviewRun } from "../review/review-fixtures.ts";
 import { finding, implemented, mark, pad, reviewed } from "../subagents/helpers.ts";
 
 /** Fixture with Q1 answered: no open blocking question. */
 const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking)", "- [x] Q1 (blocking)");
+/** A routed, clean review round at the fixture HEAD: the review gate is next. */
+const CLEAN_ROUND = (): MarkedComment[] => [reviewRun({ head: "f".repeat(40), routed: true }), aggregate([], 1, "f".repeat(40))];
 /** Every unit done. */
 const ALL_DONE = NO_QUESTION.replace("- [ ] pending", "- [x] done");
 /** U1 and U3 pending and waiting on each other. */
@@ -222,9 +226,15 @@ describe("nextStep", () => {
 	});
 
 	test("self gate passes when checks pass", () => {
-		const step = nextStep(pack, state("review", NO_QUESTION));
+		const step = nextStep(pack, state("review", ALL_DONE, { marked: CLEAN_ROUND() }));
 		expect(step.next).toBe("Checks pass; the review gate can pass.");
 		expect(step.advance).toBeUndefined();
+	});
+
+	test("Review round before the gate", () => {
+		const step = nextStep(pack, state("review", ALL_DONE));
+		expect(step.next).toContain("Run spec_review.");
+		expect(step.next).not.toContain("gate");
 	});
 
 	test("completed build moves to review", () => {
@@ -450,19 +460,19 @@ describe("nextStep approvals, locks and stuck reports", () => {
 
 describe("fix round 1", () => {
 	test("approved self gate reports advance to ship", () => {
-		const step = nextStep(pack, state("review", NO_QUESTION, { lock: lockWith({ gates: { review: gateResult("approved") } }) }));
+		const step = nextStep(pack, state("review", ALL_DONE, { lock: lockWith({ gates: { review: gateResult("approved") } }), marked: CLEAN_ROUND() }));
 		expect(step.next).toBe("The review gate is approved: move to ship.");
 		expect(step.advance).toBe("ship");
 	});
 
 	test("self gate with changes requested asks to revise", () => {
-		const step = nextStep(pack, state("review", NO_QUESTION, { lock: lockWith({ gates: { review: gateResult("changes_requested") } }) }));
+		const step = nextStep(pack, state("review", ALL_DONE, { lock: lockWith({ gates: { review: gateResult("changes_requested") } }), marked: CLEAN_ROUND() }));
 		expect(step.next).toBe("The review gate requested changes: revise, then request the gate again.");
 		expect(step.advance).toBeUndefined();
 	});
 
 	test("superseded self gate approval does not advance", () => {
-		const step = nextStep(pack, state("review", NO_QUESTION, { lock: lockWith({ gates: { review: gateResult("approved", true) } }) }));
+		const step = nextStep(pack, state("review", ALL_DONE, { lock: lockWith({ gates: { review: gateResult("approved", true) } }), marked: CLEAN_ROUND() }));
 		expect(step.next).toBe("The review gate approval no longer matches the change: request the gate again.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -513,6 +523,11 @@ describe("unit evidence rules", () => {
 		expect(step.activeUnits).toEqual(["U1", "U3"]);
 	});
 
+	test("Rebuild names unit_start", () => {
+		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ rebuilds: { U3: { round: 1, finding: "c1:0" } } }) }));
+		expect(step.next).toBe("Rebuild U3 — Rate limit per IP: run unit_start U3.");
+	});
+
 	test("Receipted, not ticked", () => {
 		const step = nextStep(pack, state("build", NO_QUESTION, { evidence: evidence({ untickedReceipts: ["U3"] }) }));
 		expect(step.next).toBe("Run unit_finish U3 again to tick it.");
@@ -544,7 +559,7 @@ describe("unit evidence rules", () => {
 	test("Derived unit attempts", () => {
 		const prog = (n: number): MarkedComment => ({ commentId: `p${n}`, kind: "decision", id: "progress.U3", author: "bot", data: { point: "progress", outcome: "retry", attempt: n } });
 		const counter: MarkedComment = { commentId: "k", kind: "counter", id: "unit_attempts.U3", author: "bot", data: { value: 9 } };
-		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3 });
+		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
 		const s = state("build", NO_QUESTION, { counters: facts.counters, evidence: facts.evidence });
 		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
 	});
@@ -813,5 +828,15 @@ describe("phase-level subagent suggestions before the gate", () => {
 		expect(nextStep(pack, requested).dispatch).toBeUndefined();
 		const decided = state("define", NO_QUESTION, { lock: lockWith({ gates: { define: gateResult("changes_requested") } }) });
 		expect(nextStep(pack, decided).dispatch).toBeUndefined();
+	});
+});
+
+describe("No one-by-one suggestion in review", () => {
+	test("phaseEntryStep is undefined for the review phase", () => {
+		const reviewPhase = pack.phases.find((p) => p.id === "review") as Phase;
+		const s = state("review", ALL_DONE, { git: { branch: "livespec/x", head: "f".repeat(40), dirty: false, specsChanged: true } });
+		expect(phaseEntryStep(pack, s, reviewPhase)).toBeUndefined();
+		expect(reviewEntriesRunBySpecReview("review")).toBe(true);
+		expect(reviewEntriesRunBySpecReview("plan")).toBe(false);
 	});
 });

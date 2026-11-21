@@ -242,3 +242,14 @@ The `unit-classification` check SHALL report an error for a unit whose `Difficul
 #### Scenario: Human answer satisfies the check
 - **WHEN** U1's `difficulty` was answered by a human through a rule ask and `plan_units` wrote U1 with that outcome
 - **THEN** `unit-classification` reports no error for U1 and no `source: rule` `difficulty.U1` record exists for its digest
+
+### Requirement: Simplify unit kind
+`unit_amend` MUST refuse, sending no request, a new or replacement unit whose title is `simplify` (ignoring case) and whose `Kind` is not `refactor`, saying a simplify unit must be a refactor.
+
+#### Scenario: Simplify as a feature
+- **WHEN** `unit_amend --add` adds a unit titled `simplify` with no `Kind` line
+- **THEN** the tool refuses, says it must be `Kind: refactor`, and sends no request
+
+#### Scenario: Simplify as a refactor
+- **WHEN** `unit_amend --add` adds a unit titled `simplify` with `Kind: refactor` and a valid `Verify`
+- **THEN** the light gate request is sent

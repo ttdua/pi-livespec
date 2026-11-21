@@ -11,9 +11,9 @@ import type { EventsLike } from "../subagents/launch.ts";
 import { configuredPackages, excludedPackages } from "../subagents/isolation.ts";
 import { changeName } from "../subagents/packet.ts";
 import { entriesFor } from "../subagents/policy.ts";
-import type { Thinking } from "../subagents/records.ts";
-import type { SubagentEntry } from "../subagents/roles.ts";
-import { needsContextCount, nextAttempt, nextRound, type RecordDeps } from "../subagents/run-record.ts";
+import { aggregateFinding, type Thinking } from "../subagents/records.ts";
+import type { Finding, SubagentEntry } from "../subagents/roles.ts";
+import { needsContextCount, nextAttempt, nextRound, nextVerifyRound, type RecordDeps } from "../subagents/run-record.ts";
 import type { Packet, PacketContext } from "../subagents/source-types.ts";
 import { unitRoot } from "../subagents/state.ts";
 import { afterForgeWrite, type WriteContext } from "./guard.ts";
@@ -28,13 +28,20 @@ const LEVELS: readonly Thinking[] = ["low", "medium", "high"];
 const DEFAULT_DIFFICULTY: Thinking = "medium";
 
 /** The packet context of the session's current change; a unit in an open lane builds in its lane. */
-export function packetContext(w: WriteContext, state: ChangeState, unit: string | undefined): PacketContext {
+export function packetContext(w: WriteContext, state: ChangeState, unit: string | undefined, finding?: Finding): PacketContext {
 	const cwd = unit === undefined ? w.session.cwd : unitRoot(state, unit, w.session.cwd);
 	return {
 		session: { ...(w.session.activeTree === undefined ? {} : { activeTree: w.session.activeTree }) },
 		state, pack: w.pack, forge: w.forge, git: cwd === w.session.cwd ? w.session.git : createGit(cwd), root: w.session.cwd, cwd,
-		budgetTokens: w.session.config.user.packetBudgetTokens,
+		budgetTokens: w.session.config.user.packetBudgetTokens, ...(finding === undefined ? {} : { finding }),
 	};
+}
+
+/** The aggregate finding a verifier target names, `undefined` for other roles, or why no aggregate holds it. */
+export function findingOf(state: ChangeState, t: Target): Finding | undefined | string {
+	if (t.finding === undefined) return undefined;
+	const found = aggregateFinding(state.marked, t.finding);
+	return found === undefined ? `finding ${t.finding} names no aggregate finding.` : found.finding;
 }
 
 const isLevel = (v: string | undefined): v is Thinking => LEVELS.includes(v as Thinking);
@@ -65,7 +72,8 @@ export async function dispatchRequest(w: WriteContext, state: ChangeState, t: Ta
 		...(entry === undefined ? {} : { entry }), ...(lane === undefined ? {} : { lane }),
 		difficulty: difficultyOf(state, t.unit), failedAttempts: t.unit === undefined ? 0 : (state.evidence.attempts[t.unit] ?? 0),
 		exclusions: await exclusionsOf(w.session, deps),
-		attempt: nextAttempt(state.marked, t.role, t.unit), round: nextRound(state.marked, t.role, t.unit, t.subject), needsContext: needsContextCount(state.marked, t.unit, t.role),
+		attempt: nextAttempt(state.marked, t.role, t.unit), round: t.finding === undefined ? nextRound(state.marked, t.role, t.unit, t.subject) : nextVerifyRound(state.marked, t.finding),
+		...(t.finding === undefined ? {} : { finding: t.finding }), needsContext: needsContextCount(state.marked, t.unit, t.role),
 	};
 }
 

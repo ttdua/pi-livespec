@@ -15,7 +15,7 @@ import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base"];
+const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean"];
 const VALID_SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const EMPTY_SPEC = "# broken\n\n## Purpose\nNothing.\n\n## Requirements\n";
 
@@ -58,6 +58,17 @@ function git(cwd: string, ...args: string[]): string {
 describe("registerBuiltinChecks", () => {
 	test("registers the LS-02 checks and unit-classification", () => {
 		expect(checkNames().sort()).toEqual([...BUILTIN].sort());
+	});
+});
+
+describe("review-clean", () => {
+	test("is gate-only and refuses the review gate when no round reviewed HEAD", async () => {
+		expect(isGateOnly("review-clean")).toBe(true);
+		const fake = { head: async () => "d4", diff: async () => "" } as unknown as Git;
+		const state = stateFor("review");
+		expect(await runChecks(pack, state, { root: "/nowhere", git: fake })).toEqual([]);
+		const gated = await runChecks(pack, state, { root: "/nowhere", git: fake }, { gate: true, target: "review" });
+		expect(gated).toEqual([expect.objectContaining({ check: "review-clean", severity: "error" })]);
 	});
 });
 
