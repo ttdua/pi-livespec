@@ -22,11 +22,11 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 Output `issue#Durable docs` in `PhaseOutput`, the pack schema's `OUTPUTS` and `missingOutputSentence` (naming `docs_table`), with the presence rule (ship-phase "Durable docs output")
-- [ ] 3.2 `src/ship/durable-docs.ts`: the `durable-docs` rule and schema, `durableFacts`, the check (errors `error`, confirmation items `warning`), and the ship payload section "Needs your confirmation"
-- [ ] 3.3 `src/ship/context.ts`: the per-refresh `shipContext` memo (one fetch, change diff, durable facts); `CheckContext.ship` filled by the check runner; `card-input.ts` fills `ChangeState.ship.docsRowsNeeded`
-- [ ] 3.4 `src/ship/docs-table.ts` and tool `docs_table` (ship-phase "Durable docs table tool"); refuses in a child session
-- [ ] 3.5 Default pack and its fixture: `ship` output and check, `decisions.durable-docs` (flow-pack deltas)
+- [x] 3.1 Output `issue#Durable docs` in `PhaseOutput`, the pack schema's `OUTPUTS` and `missingOutputSentence` (naming `docs_table`), with the presence rule (ship-phase "Durable docs output")
+- [x] 3.2 `src/ship/durable-docs.ts`: the `durable-docs` rule and schema, `durableFacts`, the check (errors `error`, confirmation items `warning`), and the ship payload section "Needs your confirmation"
+- [x] 3.3 `src/ship/context.ts`: the per-refresh `shipContext` memo (one fetch, change diff, durable facts); `CheckContext.ship` filled by the check runner; `card-input.ts` fills `ChangeState.ship.docsRowsNeeded`
+- [x] 3.4 `src/ship/docs-table.ts` and tool `docs_table` (ship-phase "Durable docs table tool"); refuses in a child session
+- [x] 3.5 Default pack and its fixture: `ship` output and check, `decisions.durable-docs` (flow-pack deltas)
 
 ## 4. Pull request state and advance
 

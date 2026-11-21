@@ -35,7 +35,7 @@ The **reviewed SHA** SHALL be the `head_sha` of the valid approved `review` gate
 - **THEN** HEAD is not reviewed
 
 ### Requirement: Durable docs output
-The `ship` phase output `issue#Durable docs` SHALL be present when the `## Durable docs` table has at least one row, or when the `durable-docs` rule needs no row: the change diff changes nothing under `specs/`, declares no `new` capability, and changes no file under a capability's `paths`. While it is missing, the next step SHALL name `docs_table`.
+The `ship` phase output `issue#Durable docs` SHALL be present when the `## Durable docs` table has at least one row, or when the `durable-docs` rule needs no row: the change diff changes nothing under `specs/` other than files under `specs/decisions/`, declares no `new` capability, and changes no file under a capability's `paths`. While it is missing, the next step SHALL name `docs_table`.
 
 #### Scenario: Missing table
 - **WHEN** the change is in `ship`, the diff changes `specs/rate-limit/spec.md`, and the table has no row
