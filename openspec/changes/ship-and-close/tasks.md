@@ -74,8 +74,8 @@ Blocked by: 4, 7, 8
 
 Blocked by: 5, 6, 7
 
-- [ ] 10.1 `src/ship/close.ts`: marker kind `close-summary`, summary, initiative tick and close, issue close and events, each step idempotent (change-close "Close tool")
-- [ ] 10.2 `src/tools/change-close.ts` with `--abandon <reason>`; child-session refusal (change-close "Closed without merge")
+- [x] 10.1 `src/ship/close.ts`: marker kind `close-summary`, summary, initiative tick and close, issue close and events, each step idempotent (change-close "Close tool")
+- [x] 10.2 `src/tools/change-close.ts` with `--abandon <reason>`; child-session refusal (change-close "Closed without merge")
 
 ## 11. End-to-end flow and docs
 
