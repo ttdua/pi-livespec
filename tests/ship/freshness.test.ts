@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { gateDigest } from "../../src/engine/locks.ts";
-import type { Comment, Forge } from "../../src/forge/types.ts";
-import { humanThreadComments, shipStale } from "../../src/ship/freshness.ts";
+import type { Comment } from "../../src/forge/types.ts";
+import { shipStaleness, writerVoices } from "../../src/ship/freshness.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
 const comment = (id: string, createdAt: string, updatedAt = createdAt, author = "human", body = "hi"): Comment => ({ id, author, body, createdAt, updatedAt, version: "v" as Comment["version"] });
@@ -15,6 +15,8 @@ function shipState(digest = gateDigest(FIXTURE_BODY)) {
 		marked: [{ commentId: "q1", kind: "request", id: "r1", author: "me", data: { gate_digest: digest } }],
 	});
 }
+
+const shipStale = (...a: Parameters<typeof shipStaleness>): string | undefined => shipStaleness(...a)?.reason;
 
 describe("shipStale", () => {
 	test("the forge approval comment created before the gate comment is fresh", () => {
@@ -41,19 +43,19 @@ describe("shipStale", () => {
 	});
 });
 
-describe("humanThreadComments", () => {
-	test("own ship and stale comments after the gate comment do not count as new input", async () => {
-		const ship = comment("s1", "2026-01-05T00:00:00Z", "2026-01-05T00:00:00Z", "me", MARKED);
-		const stale = comment("s2", "2026-01-06T00:00:00Z", "2026-01-06T00:00:00Z", "me", MARKED);
-		const human = comment("h1", "2026-01-01T00:00:00Z");
-		const forge = { listComments: async () => [human, GATE, ship, stale] } as unknown as Forge;
-		const humans = await humanThreadComments(forge, 7, "me");
-		expect(humans.map((c) => c.id)).toEqual(["h1"]);
-		expect(shipStale(shipState(), GATE, humans)).toBeUndefined();
+describe("writerVoices", () => {
+	const perms: Record<string, string> = { alice: "write", bob: "read", boss: "admin" };
+	const permission = async (login: string): Promise<string> => perms[login] ?? "none";
+	test("own marked comments and authors without write access do not count", async () => {
+		const own = comment("s1", "2026-01-05T00:00:00Z", "2026-01-05T00:00:00Z", "me", MARKED);
+		const all = [comment("h1", "t", "t", "alice"), comment("h2", "t", "t", "bob"), comment("h3", "t", "t", "boss"), own];
+		expect((await writerVoices(all, "me", permission)).map((c) => c.id)).toEqual(["h1", "h3"]);
 	});
-	test("keeps own plain comments", async () => {
+	test("keeps own plain comments when the account can write", async () => {
 		const plain = comment("2", "t", "t", "me", "plain");
-		const forge = { listComments: async () => [plain] } as unknown as Forge;
-		expect((await humanThreadComments(forge, 7, "me")).map((c) => c.id)).toEqual(["2"]);
+		expect((await writerVoices([plain], "me", async () => "admin")).map((c) => c.id)).toEqual(["2"]);
+	});
+	test("a failed permission read rejects", async () => {
+		await expect(writerVoices([comment("h1", "t", "t", "alice")], "me", async () => { throw new Error("boom"); })).rejects.toThrow("boom");
 	});
 });

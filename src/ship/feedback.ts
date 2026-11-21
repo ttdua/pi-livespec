@@ -6,13 +6,13 @@ import type { Check, Comment, Forge, Review, ReviewComment } from "../forge/type
 import { untrusted } from "../hooks/phase-card.ts";
 import { prMarker } from "../review/effects.ts";
 import type { Finding } from "../subagents/roles.ts";
+import { writerLookup } from "./writers.ts";
 
 export type FeedbackItem = { key: string; finding: Finding };
 
 type FeedbackForge = Pick<Forge, "listComments" | "listReviews" | "listReviewComments" | "getChecks">;
 
 const FIX = "Address the pull request feedback.";
-const WRITERS = new Set(["write", "admin"]);
 /** The LS-08 review-comment marker without its key: `<!-- livespec:finding `. */
 const FINDING_MARKER = prMarker("").slice(0, -" -->".length);
 
@@ -41,17 +41,10 @@ function checkItem(pushedHead: string, c: Check): FeedbackItem {
 	return { key: `check:${pushedHead}:${c.name}`, finding: { severity: "CRITICAL", kind: "defect", location: `check:${c.name}`, evidence, fix: FIX, scope: "in-change" } };
 }
 
-/** `permission` once per author for this call; a failed read counts as no access (fail closed). */
+/** A failed permission read counts as no access (fail closed): the item is not ingested. */
 function writerCheck(permission: (login: string) => Promise<string>): (author: string) => Promise<boolean> {
-	const memo = new Map<string, Promise<boolean>>();
-	return (author) => {
-		let found = memo.get(author);
-		if (found === undefined) {
-			found = permission(author).then((p) => WRITERS.has(p), () => false);
-			memo.set(author, found);
-		}
-		return found;
-	};
+	const lookup = writerLookup(permission);
+	return (author) => lookup(author).catch(() => false);
 }
 
 async function humanWriters<T extends Voice>(items: T[], login: string, isWriter: (author: string) => Promise<boolean>): Promise<T[]> {

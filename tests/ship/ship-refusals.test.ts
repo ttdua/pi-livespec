@@ -38,9 +38,15 @@ describe("shipLocalRefusal", () => {
 });
 
 describe("staleShipId", () => {
-	test("a comment id holds the comment's id and updatedAt; a digest holds the digest", () => {
-		const comment = { id: "12", author: "a", body: "b", createdAt: "2026-01-01T00:00:01.000Z", updatedAt: "2026-01-01T00:00:02.000Z", version: "v" as PullRequest["version"] };
-		expect(staleShipId({ kind: "comment", reason: "r", comment })).toBe("stale.ship.12-2026-01-01T000002.000Z");
-		expect(staleShipId({ kind: "digest", reason: "r", digest: "ab" })).toBe("stale.ship.digest.ab");
+	const comment = { id: "12", author: "a", body: "b", createdAt: "2026-01-01T00:00:01.000Z", updatedAt: "2026-01-01T00:00:02.000Z", version: "v" as PullRequest["version"] };
+	test("a comment id holds the ship gate's comment, the comment's id and updatedAt; a digest holds the gate and the digest", () => {
+		expect(staleShipId({ kind: "comment", reason: "r", comment }, "g7")).toBe("stale.ship.g7.12-2026-01-01T000002.000Z");
+		expect(staleShipId({ kind: "digest", reason: "r", digest: "ab" }, "g7")).toBe("stale.ship.g7.digest.ab");
+	});
+	test("another ship gate comment gives another id", () => {
+		expect(staleShipId({ kind: "digest", reason: "r", digest: "ab" }, "g8")).not.toBe(staleShipId({ kind: "digest", reason: "r", digest: "ab" }, "g7"));
+	});
+	test("characters outside the marker id charset drop out of the gate id", () => {
+		expect(staleShipId({ kind: "digest", reason: "r", digest: "ab" }, "IC_k w/x:1")).toBe("stale.ship.ICkwx1.digest.ab");
 	});
 });

@@ -76,6 +76,13 @@ describe("shipStep", () => {
 		expect(shipStep(stateFor("ship", { pr: pr({ pushedHead: OLD }), lock, ship: ship({ needsShipGate: true, gatesAtHead: { review: true, ship: false } }) }), pack)).toEqual({ next: "Ready for the ship gate." });
 	});
 
+	test("re-confirmation shows the ship gate's own decision at HEAD", () => {
+		const need = ship({ needsShipGate: true, gatesAtHead: { review: true, ship: false } });
+		const at = (outcome: "changes_requested" | "dismissed") => stateFor("ship", { pr: pr({ pushedHead: OLD }), lock: { locked: undefined, frozen: [], staleUnits: [], gates: { ship: { ...approvedAt(HEAD), outcome, notes: "fix the docs" } } }, ship: need });
+		expect(shipStep(at("changes_requested"), pack)?.next).toBe("The ship gate requested changes: revise, then request the gate again. Notes: fix the docs");
+		expect(shipStep(at("dismissed"), pack)?.next).toBe("The ship gate was dismissed: ask the human how to proceed. Notes: fix the docs");
+	});
+
 	test("otherwise change_push", () => {
 		expect(shipStep(stateFor("ship", { pr: pr({ pushedHead: OLD }), ship: ship() }), pack)).toEqual({ next: "Run change_push to update #41." });
 		const lock = { locked: undefined, frozen: [], staleUnits: [], gates: { ship: approvedAt(HEAD) } };

@@ -59,8 +59,12 @@ export function pullRequestChoice(open: PullRequest[], o: { login: string; chang
 	return own === undefined ? { kind: "open" } : { kind: "adopt", pr: own };
 }
 
-/** `stale.ship.<comment id>-<updatedAt>` for a human comment, `stale.ship.digest.<gate digest>` for a body edit. */
-export function staleShipId(staleness: Exclude<ShipStaleness, { kind: "missing" }>): string {
-	if (staleness.kind === "digest") return `stale.ship.digest.${staleness.digest}`;
-	return `stale.ship.${staleness.comment.id}-${staleness.comment.updatedAt.replace(ID_UNSAFE, "")}`;
+/**
+ * `stale.ship.<ship gate comment>.<comment id>-<updatedAt>` for a human comment, `stale.ship.<ship gate comment>.digest.<gate digest>`
+ * for a body edit: a new ship approval has a new gate comment, so a repeated staleness is a new `stale` comment.
+ */
+export function staleShipId(staleness: Exclude<ShipStaleness, { kind: "missing" }>, gateCommentId: string): string {
+	const prefix = `stale.ship.${gateCommentId.replace(ID_UNSAFE, "")}`;
+	if (staleness.kind === "digest") return `${prefix}.digest.${staleness.digest}`;
+	return `${prefix}.${staleness.comment.id}-${staleness.comment.updatedAt.replace(ID_UNSAFE, "")}`;
 }

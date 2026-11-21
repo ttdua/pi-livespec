@@ -4,18 +4,25 @@
 import { gateDigest } from "../engine/locks.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { parseMarked } from "../forge/markers.ts";
-import type { Comment, Forge } from "../forge/types.ts";
+import type { Comment } from "../forge/types.ts";
+import { writerLookup } from "./writers.ts";
 
 const SHIP = "ship";
 
-/** The issue's comments minus the account's own marked ones (author is `login` and a marker parses). */
-export async function humanThreadComments(forge: Forge, issue: number, login: string): Promise<Comment[]> {
-	return humanVoices(await forge.listComments(issue), login);
-}
-
-/** `humanThreadComments` over comments already read. */
+/** The comments that are not the account's own marked ones (author is `login` and a marker parses). */
 export function humanVoices(comments: Comment[], login: string): Comment[] {
 	return comments.filter((c) => !(c.author === login && parseMarked(c.body) !== null));
+}
+
+/**
+ * The human voices that count for freshness: those of authors with `write`/`admin` permission. A failed permission
+ * read rejects (fail closed: the caller refuses rather than ship on an unknown voice).
+ */
+export async function writerVoices(comments: Comment[], login: string, permission: (login: string) => Promise<string>): Promise<Comment[]> {
+	const isWriter = writerLookup(permission);
+	const humans = humanVoices(comments, login);
+	const writers = await Promise.all(humans.map((c) => isWriter(c.author)));
+	return humans.filter((_, i) => writers[i]);
 }
 
 const time = (iso: string): number => new Date(iso).getTime();
@@ -44,7 +51,7 @@ function requestDigest(state: ChangeState, request: string): unknown {
 
 /**
  * The ship approval's staleness, or undefined when fresh. `gateComment` is the forge comment of the ship gate
- * (found by `GateResult.commentId`); `humans` is the output of `humanThreadComments`.
+ * (found by `GateResult.commentId`); `humans` is the output of `writerVoices`.
  */
 export function shipStaleness(state: ChangeState, gateComment: Comment | undefined, humans: Comment[]): ShipStaleness | undefined {
 	const gate = state.lock.gates[SHIP];
@@ -59,9 +66,4 @@ export function shipStaleness(state: ChangeState, gateComment: Comment | undefin
 	const current = gateDigest(state.change.lines.map((l) => l.text).join("\n"));
 	if (current !== digest) return { kind: "digest", reason: "the issue changed since the ship gate request", digest: current };
 	return undefined;
-}
-
-/** The reason the ship approval is stale, or undefined when fresh (see `shipStaleness`). */
-export function shipStale(state: ChangeState, gateComment: Comment | undefined, humans: Comment[]): string | undefined {
-	return shipStaleness(state, gateComment, humans)?.reason;
 }

@@ -2,6 +2,7 @@
 // (ship-phase "Ship next steps") and the close steps (change-close "Close next steps"). Pure: git facts come
 // from `state.ship`, filled at refresh.
 
+import { gateResultDecision } from "../engine/gate-decision.ts";
 import { validApproval } from "../engine/locks.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState, Decision } from "../engine/state-types.ts";
@@ -31,8 +32,18 @@ function shipApprovedAtHead(state: ChangeState): boolean {
 	return validApproval(gate) && gate?.headSha === state.git.head;
 }
 
+/** The ship gate decides the re-confirmation: its result when HEAD is covered, else the gate is ready again. */
+function reconfirmation(state: ChangeState, pack: Pack): Decision {
+	const phase = pack.phases.find((p) => p.id === SHIP_PHASE);
+	if (phase === undefined) return { next: `Ready for the ${SHIP_PHASE} gate.` };
+	// An approval of another HEAD counts as no approval for this purpose, so its decision is the gate's own sentence.
+	const result = state.lock.gates[SHIP_PHASE];
+	const stale = validApproval(result) && result?.headSha !== state.git.head;
+	return gateResultDecision(phase, CLOSE_PHASE, stale ? undefined : result, false);
+}
+
 /** Ship-phase "Ship next steps"; undefined when the gate decides (no `PR` line). */
-export function shipStep(state: ChangeState, _pack: Pack): Decision | undefined {
+export function shipStep(state: ChangeState, pack: Pack): Decision | undefined {
 	if (phaseOf(state) !== SHIP_PHASE) return undefined;
 	if (state.ship?.reviewed === false) return { next: "New commits after the reviewed SHA need review: move to review.", advance: REVIEW_PHASE };
 	const line = state.change.header.pr;
@@ -43,7 +54,7 @@ export function shipStep(state: ChangeState, _pack: Pack): Decision | undefined 
 	// Reached with a closed or merged pull request only once the issue is closed (the outcome rule fires before).
 	if (pr.state !== "open") return { next: `The pull request #${number} and the change issue are closed: nothing is left to do.` };
 	if (pr.pushedHead === state.git.head) return { next: `Wait for a human to merge #${number} on the forge.` };
-	if (state.ship?.needsShipGate === true && !shipApprovedAtHead(state)) return { next: `Ready for the ${SHIP_PHASE} gate.` };
+	if (state.ship?.needsShipGate === true && !shipApprovedAtHead(state)) return reconfirmation(state, pack);
 	return { next: `Run change_push to update #${number}.` };
 }
 

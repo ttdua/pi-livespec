@@ -9,14 +9,14 @@ import { integrationBranch } from "../engine/git.ts";
 import { validApproval } from "../engine/locks.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
-import type { PullRequest } from "../forge/types.ts";
+import type { Comment, PullRequest } from "../forge/types.ts";
 import { guardedPush } from "../guard/push.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { staleComment } from "../interaction/stale.ts";
 import { reviewPayload } from "../review/payload.ts";
 import { type ShipContext, shipContext } from "../ship/context.ts";
 import { durableDocsRule } from "../ship/durable-docs.ts";
-import { humanVoices, shipStaleness } from "../ship/freshness.ts";
+import { shipStaleness, writerVoices } from "../ship/freshness.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { pullRequestBody } from "../ship/pr-body.ts";
 import { isReviewed } from "../ship/reviewed.ts";
@@ -56,11 +56,18 @@ async function gitRefusal(s: Ship): Promise<string | undefined> {
 async function freshnessRefusal(s: Ship, login: string): Promise<ToolResult<undefined> | undefined> {
 	const n = s.state.issue.number;
 	const comments = await s.w.forge.listComments(n);
-	const gateComment = comments.find((c) => c.id === s.state.lock.gates[SHIP_PHASE]?.commentId);
-	const staleness = shipStaleness(s.state, gateComment, humanVoices(comments, login));
+	const gateCommentId = s.state.lock.gates[SHIP_PHASE]?.commentId;
+	const gateComment = comments.find((c) => c.id === gateCommentId);
+	let humans: Comment[];
+	try {
+		humans = await writerVoices(comments, login, (author) => s.w.forge.getPermission(author));
+	} catch (error) {
+		return refuse(`cannot read the permission of a commenter (${untrusted(messageOf(error))}), so freshness cannot be checked.`);
+	}
+	const staleness = shipStaleness(s.state, gateComment, humans);
 	if (staleness === undefined) return undefined;
 	if (staleness.kind === "missing") return refuse(`${staleness.reason}; request the ship gate again.`);
-	const id = staleShipId(staleness);
+	const id = staleShipId(staleness, gateCommentId ?? "");
 	if (!s.state.marked.some((m) => m.kind === "stale" && m.id === id)) {
 		await s.w.forge.createComment(n, staleComment(id, { reason: staleness.reason, phases: [SHIP_PHASE] }));
 		await afterForgeWrite(s.w.session, n);

@@ -60,5 +60,16 @@ describe("withRoutes", () => {
 
 it("a check location is kept as written", () => {
 	const f = finding({ severity: "CRITICAL", location: "check:ci/test" });
-	expect(mergeFindings({ parent: [f, f], reviews: [] }).map((m) => m.location)).toEqual(["check:ci/test"]);
+	expect(mergeFindings({ parent: [f], reviews: [] }).map((m) => m.location)).toEqual(["check:ci/test"]);
+});
+
+describe("mergeFindings parent items", () => {
+	it("keeps parent findings at one location as separate findings; a reviewer finding merges into the first", () => {
+		const same = { location: "pr#7", kind: "other" as const };
+		const merged = mergeFindings({
+			parent: [finding({ ...same, evidence: "a" }), finding({ ...same, evidence: "b" })],
+			reviews: [{ commentId: "c1", findings: [finding({ ...same, evidence: "r" })] }],
+		});
+		expect(merged.map((f) => [f.evidence, f.from])).toEqual([["a", ["parent", "c1:0"]], ["b", ["parent"]]]);
+	});
 });

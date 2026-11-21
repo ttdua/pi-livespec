@@ -25,7 +25,10 @@ export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: 
 	for (const { finding, from } of sources) {
 		const check = finding.location.startsWith("check:");
 		const { path, line } = check ? { path: finding.location, line: 0 } : normalizeLocation(finding.location);
-		const key = `${path}:${line}:${finding.kind}`;
+		// Each parent finding is its own item (a feedback round's comments share a location), so it never merges with another parent finding.
+		const base = `${path}:${line}:${finding.kind}`;
+		let key = base;
+		if (from === PARENT) for (let n = 1; merged.get(key)?.from.includes(PARENT) === true; n++) key = `${base}#${n}`;
 		const marked = finding.scope === "needs-decision";
 		const seen = merged.get(key);
 		if (seen === undefined) merged.set(key, { ...finding, location: check ? path : `${path}:${line}`, from: [from], needsDecision: marked });

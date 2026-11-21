@@ -135,6 +135,7 @@ describe("change_ship", () => {
 
 	test("Human comment after the ship gate", async () => {
 		const h = await shipReady();
+		await h.world.setPermission("alice", "write");
 		const id = await h.world.postComment(h.n, "alice", "wait, one more thing");
 		await h.session.comments?.invalidate(h.n);
 		const before = originRefs(h.origin);
@@ -144,13 +145,44 @@ describe("change_ship", () => {
 		await expectNothingShipped(h, before);
 		const stale = await ofKind(h, "stale");
 		expect(stale).toHaveLength(1);
-		expect(stale[0]?.id.startsWith(`stale.ship.${id}-`)).toBe(true);
+		expect(stale[0]?.id.startsWith(`stale.ship.`)).toBe(true);
+		expect(stale[0]?.id.includes(`.${id}-`)).toBe(true);
 		expect(stale[0]?.data).toMatchObject({ phases: ["ship"] });
 		expect(textOf(await h.call("spec_next"))).toContain("Ready for the ship gate");
 	});
 
+	test("a comment of an author with read access only does not make the ship stale", async () => {
+		const h = await shipReady();
+		await h.world.setPermission("alice", "read");
+		await h.world.postComment(h.n, "alice", "looks fine to me");
+		await h.session.comments?.invalidate(h.n);
+		const out = await h.call("change_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await ofKind(h, "stale")).toEqual([]);
+	});
+
+	test("a failed permission read refuses and ships nothing", async () => {
+		const h = await shipReady({
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop === "getPermission") return async () => { throw new Error("permission API down"); };
+						return Reflect.get(target, prop, receiver);
+					},
+				}),
+		});
+		await h.world.postComment(h.n, "alice", "wait");
+		await h.session.comments?.invalidate(h.n);
+		const before = originRefs(h.origin);
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("permission");
+		await expectNothingShipped(h, before);
+	});
+
 	test("stale, ship gate approved again, a new human comment: stale again with a new id", async () => {
 		const h = await shipReady();
+		await h.world.setPermission("alice", "write");
 		const first = await h.world.postComment(h.n, "alice", "one");
 		await h.session.comments?.invalidate(h.n);
 		await h.call("change_ship");
@@ -161,9 +193,24 @@ describe("change_ship", () => {
 		expect(out.isError).toBe(true);
 		const ids = (await ofKind(h, "stale")).map((m) => m.id);
 		expect(ids).toHaveLength(2);
-		expect(ids[0]?.startsWith(`stale.ship.${first}-`)).toBe(true);
-		expect(ids[1]?.startsWith(`stale.ship.${second}-`)).toBe(true);
+		expect(ids[0]?.includes(`.${first}-`)).toBe(true);
+		expect(ids[1]?.includes(`.${second}-`)).toBe(true);
 		expect(await openPulls(h)).toEqual([]);
+	});
+
+	test("a body edit after a new approval is stale again although the digest repeats", async () => {
+		const h = await shipReady();
+		const d1 = await h.world.bodyOf(h.n);
+		const d2 = d1.replace("Counter.", "Sliding counter.");
+		await h.world.editBodyBehindBack(h.n, d2);
+		await h.call("change_ship");
+		await h.world.editBodyBehindBack(h.n, d1);
+		await approveShip(h, "a2");
+		await h.world.editBodyBehindBack(h.n, d2);
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(await ofKind(h, "stale")).toHaveLength(2);
+		expect(textOf(await h.call("spec_next"))).toContain("Ready for the ship gate");
 	});
 
 	test("the gate digest changed: stale refusal", async () => {
@@ -174,7 +221,7 @@ describe("change_ship", () => {
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		await expectNothingShipped(h, before);
-		expect((await ofKind(h, "stale")).map((m) => m.id)).toEqual([`stale.ship.digest.${gateDigest(body)}`]);
+		expect((await ofKind(h, "stale")).map((m) => m.id)).toEqual([expect.stringMatching(new RegExp(`^stale\\.ship\\.[^.]+\\.digest\\.${gateDigest(body)}$`))]);
 	});
 
 	test("Forge approval then ship", async () => {
