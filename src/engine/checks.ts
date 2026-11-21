@@ -142,7 +142,7 @@ export async function runChecks(
 	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
 	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);
-	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(ctx.ship === undefined ? {} : { ship: ctx.ship }) };
+	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(state.phase.kind === "ok" ? { phase: state.phase.id } : {}), ...(ctx.ship === undefined ? {} : { ship: ctx.ship }) };
 	const results: CheckResult[] = [];
 	for (const name of names) results.push(...(await resultsOf(name, checkCtx, opts.gate === true)));
 	return results;

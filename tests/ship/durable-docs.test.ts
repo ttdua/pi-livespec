@@ -109,6 +109,11 @@ describe("durable-docs check and payload", () => {
 		expect(await durableDocsCheck(ctx())).toEqual([]);
 	});
 
+	test("in ship, a missing context is an error, not a pass", async () => {
+		const out = await durableDocsCheck({ root: "", change: {}, git: {}, marked: [], phase: "ship" } as never);
+		expect(out).toEqual([{ code: "durable-docs", severity: "error", message: expect.stringContaining("no ship context") }]);
+	});
+
 	test("a refused ship context is an error naming the cause", async () => {
 		const out = await durableDocsCheck({ root: "", change: {}, git: {}, marked: [], ship: { refused: "no integration branch" } } as never);
 		expect(out).toEqual([{ code: "durable-docs", severity: "error", message: expect.stringContaining("no integration branch") }]);

@@ -3,13 +3,15 @@
 import type { Result } from "../core/result.ts";
 import type { CheckFn } from "../engine/registry.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import { SHIP_PHASE } from "./phase.ts";
 import { DECISIONS, type DurableFacts, durableDocsRule } from "./durable-docs.ts";
 
 const NOT_NEEDED = "not needed";
 
-/** Errors as `error`, confirmation items as `warning`; nothing without a ship context (outside `ship`). */
-export const durableDocsCheck: CheckFn = async ({ ship }) => {
-	if (ship === undefined) return [];
+/** Errors as `error`, confirmation items as `warning`; nothing without a ship context outside `ship`. */
+export const durableDocsCheck: CheckFn = async ({ ship, phase }) => {
+	// In `ship` a missing context is a caller that did not build it: fail closed instead of passing vacuously.
+	if (ship === undefined) return phase === SHIP_PHASE ? [{ code: "durable-docs", severity: "error", message: "the durable docs cannot be checked: no ship context was built for this check run" }] : [];
 	if ("refused" in ship) return [{ code: "durable-docs", severity: "error", message: `the durable docs cannot be checked: ${ship.refused}` }];
 	const outcome = durableDocsRule(ship.facts);
 	const result = (severity: Result["severity"]) => (message: string): Result => ({ code: "durable-docs", severity, message });

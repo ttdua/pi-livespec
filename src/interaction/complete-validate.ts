@@ -41,7 +41,8 @@ async function stateNow(ctx: CompletionCtx, issue: Issue): Promise<ChangeState> 
 		warnings: git.warnings,
 		commandWarnings: [],
 	};
-	return { ...snapshot, checks: await runChecks(ctx.pack, snapshot, { root: ctx.root, git: ctx.git }) };
+	const ship = await ctx.shipFor?.(snapshot);
+	return { ...snapshot, checks: await runChecks(ctx.pack, snapshot, { root: ctx.root, git: ctx.git, ...(ship === undefined ? {} : { ship }) }) };
 }
 
 async function validateGate(ctx: CompletionCtx, req: RequestRecord, ans: Answered, issue: Issue): Promise<Verdict> {
