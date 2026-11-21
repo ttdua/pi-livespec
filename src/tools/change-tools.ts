@@ -1,6 +1,7 @@
 // Registers every change tool on pi.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerChangeClose } from "./change-close.ts";
 import { registerChangeNew } from "./change-new.ts";
 import { registerChangePush } from "./change-push.ts";
 import { registerChangeShip } from "./change-ship.ts";
@@ -53,4 +54,5 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerDocsTable(pi);
 	registerChangeShip(pi);
 	registerChangePush(pi);
+	registerChangeClose(pi);
 }

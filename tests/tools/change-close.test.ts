@@ -1,0 +1,140 @@
+import { afterEach, describe, expect, test } from "vitest";
+import { parseInitiative } from "../../src/core/initiative.ts";
+import { setSession } from "../../src/hooks/session-store.ts";
+import { asChild } from "../hooks/fake-pi.ts";
+import { BOT_LOGIN } from "../forge/world.ts";
+import { cleanupDirs, textOf, type ToolHarness } from "./helpers.ts";
+import { FORGE_CHAIN, marked, ofKind, shipReady } from "./ship-fixture.ts";
+
+afterEach(async () => {
+	setSession(undefined);
+	await cleanupDirs();
+});
+
+const initiativeBody = (n: number, others: string[] = []) =>
+	["Goal: cap", "Capabilities: [rate-limit]", "", "## Changes", `- [ ] #${n} per-ip-cap — Depends: —`, ...others, ""].join("\n");
+
+type Setup = { initiative?: boolean; others?: string[]; pr?: "open" | "merged" | "closed"; phase?: string };
+
+async function closeReady(o: Setup = {}): Promise<ToolHarness & { tracking?: number }> {
+	const h = await shipReady({ config: FORGE_CHAIN, noShipGate: true });
+	let tracking: number | undefined;
+	if (o.initiative) {
+		tracking = await h.world.seedIssue({ title: "initiative", body: initiativeBody(h.n, o.others), labels: [] });
+		await h.world.editBodyBehindBack(h.n, `Initiative: #${tracking}\n${await h.world.bodyOf(h.n)}`);
+	}
+	const pr = await h.world.seedPullRequest({ head: "livespec/per-ip-cap", ...(o.pr === "merged" || o.pr === undefined ? { state: "closed" as const, merged: true } : o.pr === "closed" ? { state: "closed" as const } : {}) });
+	await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace(/^Branch:/m, `PR: #${pr}\nBranch:`));
+	await h.world.dropLabel("livespec:phase/ship");
+	await h.world.forge.addLabels?.(h.n, [`livespec:phase/${o.phase ?? "close"}`]);
+	await h.session.comments?.invalidate(h.n);
+	await h.session.refresh();
+	return tracking === undefined ? h : { ...h, tracking };
+}
+
+const emits = (h: ToolHarness) => (h.pi.api.events.emit as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+const issueState = async (h: ToolHarness, n: number) => (await h.world.forge.getIssue(n)).state;
+
+describe("change_close", () => {
+	test("Close after merge", async () => {
+		const h = await closeReady();
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const summary = await ofKind(h, "close-summary");
+		expect(summary.map((m) => m.id)).toEqual([`close-summary.${h.n}`]);
+		expect(summary[0]?.data).toMatchObject({ units: ["U1 done"], reviewRounds: 0 });
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(emits(h)).toEqual([["livespec:change-closed", { change: h.n, pr: expect.any(Number) }]]);
+	});
+
+	test("Not merged", async () => {
+		const h = await closeReady({ pr: "open" });
+		const out = await h.call("change_close", {});
+		expect(out.isError).toBe(true);
+		expect(await issueState(h, h.n)).toBe("open");
+		expect(await ofKind(h, "close-summary")).toEqual([]);
+		expect(emits(h)).toEqual([]);
+	});
+
+	test("Last change of an initiative", async () => {
+		const h = await closeReady({ initiative: true });
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const t = h.tracking as number;
+		expect(parseInitiative(await h.world.bodyOf(t)).changes[0]?.checked).toBe(true);
+		expect(await issueState(h, t)).toBe("closed");
+		const ids = (await h.world.forge.listComments(t)).map((c) => c.body).join("\n");
+		expect(ids).toContain("close-summary.initiative");
+		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed", "livespec:initiative-closed"]);
+		expect(emits(h)[0]?.[1]).toMatchObject({ initiative: t });
+		expect(emits(h)[1]?.[1]).toEqual({ initiative: t, changes: [h.n] });
+	});
+
+	test("an initiative with another open entry stays open", async () => {
+		const h = await closeReady({ initiative: true, others: ["- [ ] #99 other — Depends: —"] });
+		await h.call("change_close", {});
+		const t = h.tracking as number;
+		expect(await issueState(h, t)).toBe("open");
+		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed"]);
+	});
+
+	test("Retry after a partial close", async () => {
+		const h = await closeReady({ initiative: true, others: ["- [ ] #99 other — Depends: —"] });
+		const t = h.tracking as number;
+		await h.world.editBodyBehindBack(t, (await h.world.bodyOf(t)).replace(`- [ ] #${h.n}`, `- [x] #${h.n}`));
+		await h.call("change_close", {});
+		const first = (await ofKind(h, "close-summary")).length;
+		const out = await h.call("change_close", {});
+		expect(out.isError).toBe(true);
+		expect(first).toBe(1);
+		expect(emits(h)).toHaveLength(1);
+	});
+
+	test("Retry after the initiative closed", async () => {
+		const h = await closeReady({ initiative: true });
+		const t = h.tracking as number;
+		await h.world.editBodyBehindBack(t, (await h.world.bodyOf(t)).replace(`- [ ] #${h.n}`, `- [x] #${h.n}`));
+		await h.world.postComment(t, BOT_LOGIN, (await import("../../src/forge/markers.ts")).writeMarked("close-summary", "close-summary.initiative", { pr: 1, units: [], durableDocs: [], reviewRounds: 0 }));
+		await h.world.forge.closeIssue(t);
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed", "livespec:initiative-closed"]);
+		expect((await h.world.forge.listComments(t)).filter((c) => c.body.includes("close-summary.initiative"))).toHaveLength(1);
+	});
+
+	test("Abandon", async () => {
+		const h = await closeReady({ initiative: true, pr: "closed", phase: "ship" });
+		const out = await h.call("change_close", { abandon: "superseded by #50" });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const summary = await ofKind(h, "close-summary");
+		expect(summary[0]?.data).toMatchObject({ abandoned: "superseded by #50" });
+		expect(parseInitiative(await h.world.bodyOf(h.tracking as number)).changes[0]?.checked).toBe(false);
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(emits(h)).toEqual([["livespec:change-closed", { change: h.n, pr: expect.any(Number), initiative: h.tracking, abandoned: true }]]);
+	});
+
+	test("an empty abandon reason refuses", async () => {
+		const h = await closeReady({ pr: "closed", phase: "ship" });
+		const out = await h.call("change_close", { abandon: "  " });
+		expect(out.isError).toBe(true);
+		expect(await issueState(h, h.n)).toBe("open");
+		expect((await marked(h)).some((m) => m.kind === "close-summary")).toBe(false);
+	});
+
+	test("abandon with an open pull request refuses", async () => {
+		const h = await closeReady({ pr: "open", phase: "ship" });
+		const out = await h.call("change_close", { abandon: "no" });
+		expect(out.isError).toBe(true);
+		expect(await issueState(h, h.n)).toBe("open");
+	});
+
+	test("a child session refuses", async () => {
+		const h = await closeReady();
+		const t = h.pi.tools.get("change_close");
+		const out = (await t?.execute("c", {}, undefined, undefined, asChild(h.ctx))) as { isError: boolean; content: { text: string }[] };
+		expect(out.isError).toBe(true);
+		expect(await issueState(h, h.n)).toBe("open");
+		expect(emits(h)).toEqual([]);
+	});
+});
