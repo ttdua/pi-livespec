@@ -4,6 +4,7 @@
 import { type Node, isMap, isScalar } from "yaml";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys, keyName } from "../decide/rules/schema-util.ts";
+import type { Pack } from "../engine/pack-types.ts";
 import type { LaneFacts, SpecChange } from "./lane-facts.ts";
 
 export type LaneConfig = { mode: "rule"; max_files: number; max_lines: number };
@@ -78,4 +79,17 @@ export const laneSchema: RuleSchema = {
 			if (!isPositiveInteger(value)) report(value ?? (pair.key as Node), `\`decisions.lane.${key}\` must be a positive integer`);
 		}
 	},
+	// An `extends` override may set one limit; the merged (or standalone) pack must have both.
+	complete(value) {
+		const raw = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+		return LIMITS.filter((l) => typeof raw[l] !== "number").map((l) => `\`decisions.lane.${l}\` is missing`);
+	},
 };
+
+/** The effective `lane` config of a valid pack, or why there is none (a standalone pack may omit or under-fill it). */
+export function laneConfigOf(pack: Pack): LaneConfig | { invalid: string } {
+	const value = pack.decisions.lane;
+	const missing = value === undefined ? ["`decisions.lane` is missing"] : (laneSchema.complete?.(value) ?? []);
+	if (missing.length > 0) return { invalid: `the flow pack has no complete \`decisions.lane\` config: ${missing.join("; ")}` };
+	return value as LaneConfig;
+}

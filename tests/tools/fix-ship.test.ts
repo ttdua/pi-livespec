@@ -62,6 +62,14 @@ describe("fix_ship", () => {
 		expect(pr.body).toContain(head.slice(0, 7));
 	});
 
+	test("forced reasons are wrapped as untrusted", async () => {
+		const h = await fixReady({ files: { "specs/forge-read/spec.md": SPEC } });
+		await writeIn(h.root, "specs/forge-read/spec.md", `${SPEC}\n### Requirement: Retry <b>budget</b>\nThe system SHALL retry.\n`);
+		commitAll(h.root, "Add a retry budget");
+		const text = await refusedUnchanged(h);
+		expect(text).toContain("<untrusted>specs/forge-read/spec.md adds requirements Retry &lt;b>budget&lt;/b></untrusted>");
+	});
+
 	test("Forced fix refused", async () => {
 		const h = await fixReady({ files: { "specs/forge-read/spec.md": SPEC } });
 		await writeIn(h.root, "specs/forge-read/spec.md", `${SPEC}\n### Requirement: Retry budget\nThe system SHALL retry.\n`);
@@ -145,6 +153,13 @@ describe("fix_ship", () => {
 		const out = await h.call("fix_ship");
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(await h.world.forge.listComments(n)).toEqual([]);
+	});
+
+	test("a standalone pack without a lane config refuses, never throws", async () => {
+		const h = await fixReady({ files: { ".pi/livespec/flow.yaml": "name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n" } });
+		const text = await refusedUnchanged(h, "decisions.lane");
+		expect(text).not.toMatch(/Cannot read properties/);
+		expect(await openPulls(h)).toHaveLength(0);
 	});
 
 	test("unknown integration branch refused", async () => {

@@ -4,8 +4,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
-import { integrationBranch } from "../engine/git.ts";
 import { CHANGE_BRANCH_PREFIX as CHANGE_PREFIX } from "../engine/resolve-change.ts";
+import { DIRTY_TREE_REFUSAL, fixBranchName, fixIntegration } from "../fix/branch.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { requireSession, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -13,7 +13,6 @@ import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "fix_start";
 const REMOTE = "origin";
-const FIX_PREFIX = "fix/";
 
 export type FixStartParams = { slug: string };
 export type FixStartDetails = { branch?: string };
@@ -29,11 +28,11 @@ export async function runFixStart(p: FixStartParams, ctx: ToolCtx): Promise<Tool
 	const current = await git.branch();
 	if (current.startsWith(CHANGE_PREFIX)) return refuse(`the current branch ${untrusted(current)} is a change branch; switch off it first.`);
 	if (typeof p.slug !== "string" || !isKebabName(p.slug)) return refuse("the slug is not kebab-case (lowercase words joined by single hyphens).");
-	const branch = `${FIX_PREFIX}${p.slug}`;
-	if (await git.isDirty()) return refuse("the working tree has uncommitted changes; commit or stash them, then rerun.");
+	const branch = fixBranchName(p.slug);
+	if (await git.isDirty()) return refuse(DIRTY_TREE_REFUSAL);
 	if (await git.branchExists(branch)) return refuse(`the local branch ${branch} already exists.`);
-	const integration = config.project ? await integrationBranch(config.project, git) : undefined;
-	if (integration === undefined) return refuse("the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml.");
+	const integration = await fixIntegration(config.project, git);
+	if (typeof integration !== "string") return refuse(integration.refused);
 	try {
 		await git.fetch(REMOTE, integration);
 		const sha = await git.revParse(`${REMOTE}/${integration}`);

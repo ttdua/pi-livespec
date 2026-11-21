@@ -5,14 +5,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
-import { integrationBranch } from "../engine/git.ts";
 import { CHANGE_BRANCH_PREFIX as CHANGE_PREFIX } from "../engine/resolve-change.ts";
-import { DIRTY_TREE_REFUSAL, fixRange, fixSlug } from "../fix/branch.ts";
+import { DIRTY_TREE_REFUSAL, fixIntegration, fixRange, fixSlug } from "../fix/branch.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { livespecBaseKey } from "./change-start.ts";
 import { afterForgeWrite, prepareWrite, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
+import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
 export type ChangeNewParams = { name: string; from_fix?: boolean };
 export type ChangeNewDetails = { number?: number; branch?: string };
@@ -52,8 +52,8 @@ async function fromFixRefusal(w: WriteContext, name: string): Promise<Moving | R
 	if (await git.isDirty()) return { refused: DIRTY_TREE_REFUSAL };
 	const target = `${CHANGE_PREFIX}${name}`;
 	if (await git.branchExists(target)) return { refused: `the local branch ${target} already exists.` };
-	const integration = config.project ? await integrationBranch(config.project, git) : undefined;
-	if (integration === undefined) return { refused: "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml." };
+	const integration = await fixIntegration(config.project, git);
+	if (typeof integration !== "string") return integration;
 	let found: Awaited<ReturnType<typeof fixRange>>;
 	try {
 		found = await fixRange(git, integration);
@@ -103,7 +103,10 @@ async function runChangeNewFromFix(w: WriteContext, name: string): Promise<ToolR
 	return toolResult(`Created change #${issue.number} ${name} in ${MOVED_PHASE} and moved ${m.branch} to ${branch}, keeping its commits (${m.subjects.length} commit subject(s) in the Proposal).`, { number: issue.number, branch });
 }
 
-export async function runChangeNew(p: ChangeNewParams): Promise<ToolResult<ChangeNewDetails>> {
+export async function runChangeNew(p: ChangeNewParams, ctx: ToolCtx): Promise<ToolResult<ChangeNewDetails>> {
+	// Moving a fix renames a branch, like fix_start and fix_ship: never from a child session.
+	const child = p.from_fix === true ? childRefusal("change_new", ctx) : undefined;
+	if (child) return { ...child, details: {} };
 	if (!isKebabName(p.name)) {
 		return toolResult(`The change name must be kebab-case (a-z, 0-9, single hyphens): got "${p.name}".`, {}, true);
 	}
@@ -139,6 +142,6 @@ export function registerChangeNew(pi: ExtensionAPI): void {
 			},
 			required: ["name"],
 		} as never,
-		execute: (_id, params) => runChangeNew(params as ChangeNewParams),
+		execute: (_id, params, _signal, _update, ctx) => runChangeNew(params as ChangeNewParams, ctx as ToolCtx),
 	});
 }

@@ -1,7 +1,8 @@
 import { LineCounter, isMap, parseDocument } from "yaml";
 import { describe, expect, test } from "vitest";
 import type { LaneFacts } from "../../src/fix/lane-facts.ts";
-import { type LaneConfig, laneRule, laneRuleFn, laneSchema } from "../../src/fix/lane.ts";
+import type { Pack } from "../../src/engine/pack-types.ts";
+import { type LaneConfig, laneConfigOf, laneRule, laneRuleFn, laneSchema } from "../../src/fix/lane.ts";
 
 const CONFIG: LaneConfig = { mode: "rule", max_files: 3, max_lines: 100 };
 
@@ -124,6 +125,22 @@ describe("laneRule", () => {
 	});
 });
 
+describe("laneConfigOf", () => {
+	const packWith = (decisions: Record<string, unknown>) => ({ decisions }) as unknown as Pack;
+
+	test("a complete config is returned as is", () => {
+		expect(laneConfigOf(packWith({ lane: CONFIG }))).toEqual(CONFIG);
+	});
+
+	test("a missing lane config is invalid", () => {
+		expect(laneConfigOf(packWith({}))).toEqual({ invalid: "the flow pack has no complete `decisions.lane` config: `decisions.lane` is missing" });
+	});
+
+	test("a config without limits is invalid", () => {
+		expect(laneConfigOf(packWith({ lane: { mode: "rule", max_files: 3 } }))).toEqual({ invalid: "the flow pack has no complete `decisions.lane` config: `decisions.lane.max_lines` is missing" });
+	});
+});
+
 describe("laneRuleFn", () => {
 	test("reason joins the reasons", () => {
 		const r = laneRuleFn(facts({ files: ["a", "b", "c", "d"], lines: 101 }), CONFIG);
@@ -171,6 +188,11 @@ describe("laneSchema", () => {
 
 	test("non-integer limit", () => {
 		expect(schemaErrors("mode: rule\nmax_lines: 1.5\n")[0]?.message).toContain("max_lines");
+	});
+
+	test("complete config: every missing limit is named", () => {
+		expect(laneSchema.complete?.({ mode: "rule" })).toEqual(["`decisions.lane.max_files` is missing", "`decisions.lane.max_lines` is missing"]);
+		expect(laneSchema.complete?.(CONFIG)).toEqual([]);
 	});
 
 	test("unknown key", () => {

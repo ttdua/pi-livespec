@@ -4,7 +4,8 @@ import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
-import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts";
+import { asChild } from "../hooks/fake-pi.ts";
+import { cleanupDirs, textOf, type ToolHarness, type ToolOut, toolHarness } from "./helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -184,6 +185,17 @@ describe("change_new from_fix", () => {
 		h.git("remote", "remove", "origin");
 		const out = await moveCall(h);
 		expect(out.isError).toBe(true);
+		await noIssue(h);
+		expect(h.git("branch", "--show-current")).toBe("fix/retry");
+	});
+
+	test("child session refused", async () => {
+		const h = await forcedFix();
+		const t = h.pi.tools.get("change_new");
+		const out = (await t?.execute("c", { name: "retry-budget", from_fix: true }, undefined, undefined, asChild(h.ctx))) as ToolOut;
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("change_new");
+		expect(out.details).toEqual({});
 		await noIssue(h);
 		expect(h.git("branch", "--show-current")).toBe("fix/retry");
 	});

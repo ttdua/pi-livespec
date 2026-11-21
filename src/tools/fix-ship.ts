@@ -7,12 +7,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import type { DecisionRecord } from "../decide/records.ts";
 import { decide } from "../decide/seam.ts";
-import { integrationBranch } from "../engine/git.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import { runVerify } from "../evidence/runner.ts";
 import { verifyEnv } from "../evidence/verify-env.ts";
-import { DIRTY_TREE_REFUSAL, fixRange as gitRange, fixSlug } from "../fix/branch.ts";
-import type { LaneOutcome } from "../fix/lane.ts";
+import { DIRTY_TREE_REFUSAL, fixIntegration, fixRange as gitRange, fixSlug } from "../fix/branch.ts";
+import { type LaneOutcome, laneConfigOf } from "../fix/lane.ts";
 import { laneFacts } from "../fix/lane-facts.ts";
 import { type FixTest, fixPullRequestBody } from "../fix/pr-body.ts";
 import type { PullRequest } from "../forge/types.ts";
@@ -50,8 +49,8 @@ async function fixRefusal(w: WriteContext): Promise<Fix | Refused> {
 /** Refusal 3: the fetch and merge base succeed, and at least one commit follows the merge base. */
 async function fixRange(f: Fix): Promise<Range | Refused> {
 	const { git, config } = f.w.session;
-	const integration = config.project ? await integrationBranch(config.project, git) : undefined;
-	if (integration === undefined) return { refused: "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml." };
+	const integration = await fixIntegration(config.project, git);
+	if (typeof integration !== "string") return integration;
 	try {
 		const { mergeBase: base, subjects } = await gitRange(git, integration);
 		if (subjects.length === 0) return { refused: `there is nothing to ship: ${f.branch} has no commit after the merge base with ${REMOTE}/${integration}; switch back to ${integration}.` };
@@ -63,17 +62,19 @@ async function fixRange(f: Fix): Promise<Range | Refused> {
 
 /** Refusal 4: the `lane` decision; a forced fix lists every reason. The record goes only into the pull request body. */
 async function laneDecision(f: Fix, range: Range): Promise<DecisionRecord | Refused> {
+	const config = laneConfigOf(f.w.pack);
+	if ("invalid" in config) return { refused: `${config.invalid}; set it in .pi/livespec/flow.yaml.` };
 	let facts: Awaited<ReturnType<typeof laneFacts>>;
 	try {
 		facts = await laneFacts(f.w.session.git, f.w.session.cwd, range.base);
 	} catch (error) {
 		return { refused: `the lane facts could not be built: ${untrusted(messageOf(error))}.` };
 	}
-	const decided = await decide("lane", facts, { config: f.w.pack.decisions.lane, subject: f.slug });
+	const decided = await decide("lane", facts, { config, subject: f.slug });
 	if (decided.status !== "decided") return { refused: "the lane rule asked a question; it must decide on its own." };
 	const outcome = decided.outcome as LaneOutcome;
 	if (outcome.lane === "forced") {
-		const reasons = outcome.reasons.map((r) => `- ${r}`).join("\n");
+		const reasons = outcome.reasons.map((r) => `- ${untrusted(r)}`).join("\n");
 		return { refused: `the fix is too large for the small-fix lane:\n${reasons}\nMove it into a change with change_new <name> --from-fix.` };
 	}
 	return { point: "lane", subject: f.slug, source: decided.source, outcome, reason: decided.reason, facts: decided.facts };

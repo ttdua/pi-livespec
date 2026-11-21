@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import "../decide/builtin.ts";
 import "./checks.ts";
 import "../evidence/red-on-base.ts";
+import { ruleFor } from "../decide/registry.ts";
 import { type Document, LineCounter, type Node, isAlias, isMap, isScalar, parseDocument, visit } from "yaml";
 import { type Merged, type Origin, type ParsedPack, mergePack, standalonePack } from "./pack-merge.ts";
 import { validatePackDocument } from "./pack-schema.ts";
@@ -99,6 +100,9 @@ function semanticErrors({ pack, origins }: Merged, file: string): PackError[] {
 		for (const req of phase.requires) {
 			if (!ids.has(req)) errors.push(errorAt(origin, file, `phases.${phase.id}.requires`, `phase \`${phase.id}\` requires unknown phase \`${req}\``));
 		}
+	}
+	for (const [point, value] of Object.entries(pack.decisions)) {
+		for (const message of ruleFor(point)?.schema.complete?.(value) ?? []) errors.push(errorAt(origins.get(`decisions.${point}`), file, `decisions.${point}`, message));
 	}
 	const cycle = findCycle(graph);
 	if (cycle) {

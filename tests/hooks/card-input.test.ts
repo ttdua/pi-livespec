@@ -105,6 +105,28 @@ describe("buildCardInput on a fix branch", () => {
 		expect(renderCard(card)).not.toMatch(/subagent/);
 	});
 
+	test("a standalone pack without a lane config shows an error line", async () => {
+		const h = await onFix({ files: { ".pi/livespec/flow.yaml": "name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n" } });
+		await h.session.refresh();
+		const card = fixInput(h);
+		expect(card.error).toContain("decisions.lane");
+		expect(card.outcome).toBeUndefined();
+		const text = renderCard(card);
+		expect(text).toContain("decisions.lane");
+		expect(text).not.toMatch(/Cannot read properties/);
+	});
+
+	test("a new origin/<integration> tip at the same HEAD recomputes the card", async () => {
+		const h = await onFix();
+		await h.session.refresh();
+		expect(fixInput(h).outcome?.lane).toBe("small");
+		// The fix is merged upstream: origin/main now contains HEAD, and HEAD is unchanged.
+		h.git("push", "-q", "origin", "HEAD:refs/heads/main");
+		h.git("fetch", "-q", "origin", "main");
+		await h.session.refresh();
+		expect(fixInput(h)).toEqual(expect.objectContaining({ slug: "typo", empty: true }));
+	});
+
 	test("refresh twice fetches once", async () => {
 		const h = await onFix();
 		await h.session.refresh();

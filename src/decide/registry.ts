@@ -18,6 +18,8 @@ export type RuleResult =
 export type RuleSchema = {
 	validate(node: Node | null, report: (n: Node, msg: string) => void): void;
 	merge?(base: unknown, over: unknown): unknown;
+	/** Errors of the effective (merged) config: keys an override may omit but the final pack must have. */
+	complete?(value: unknown): string[];
 };
 
 export type RuleFn = (facts: unknown, config: unknown) => RuleResult;

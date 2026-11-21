@@ -253,6 +253,19 @@ describe("override limits", () => {
 		expect(okPack(r).name).toBe("mine");
 	});
 
+	test("a standalone pack with an incomplete lane config is an error", async () => {
+		const r = await load("name: mine\nversion: 1\ncontent: c\ndecisions:\n  lane: { mode: rule }\nphases:\n  - id: one\n");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.map((e) => e.message).join("\n")).toMatch(/max_files[\s\S]*max_lines/);
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 5, col: 3, path: "decisions.lane" });
+	});
+
+	test("a standalone pack without a lane config validates", async () => {
+		const r = await load("name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n");
+		expect(okPack(r).decisions.lane).toBeUndefined();
+	});
+
 	test("an unresolved alias in an override returns an error and does not reject", async () => {
 		const r = await load("extends: agent-skills\nphases: *missing\n");
 		expect(r.ok).toBe(false);
