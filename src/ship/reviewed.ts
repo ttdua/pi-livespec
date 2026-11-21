@@ -7,7 +7,7 @@ import { validApproval } from "../engine/locks.ts";
 export type ReviewedResult = { ok: true } | { ok: false; reason: string };
 
 /** The `head_sha` of the valid approved `review` gate result; no comparison with HEAD. */
-export function reviewedHead(state: ChangeState): string | undefined {
+export function reviewedHead(state: Pick<ChangeState, "lock">): string | undefined {
 	const gate = state.lock.gates.review;
 	return validApproval(gate) ? gate?.headSha : undefined;
 }

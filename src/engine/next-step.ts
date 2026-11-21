@@ -5,8 +5,9 @@
 import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
-import { type GateResult, validApproval } from "./locks.ts";
+import { approvedAtHead, type GateResult, validApproval } from "./locks.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
+import { closeStep, prOutcomeStep, shipStep } from "../ship/ship-steps.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
@@ -213,10 +214,12 @@ const missingOutput: Rule = ({ state, phase }) => {
 	return undefined;
 };
 
-/** Checks the valid approved gate result of `phase` waived; a superseded or unapproved result waives nothing. */
+/**
+ * Checks the valid approved gate result of `phase` waived; a superseded or unapproved result waives nothing, nor
+ * does a head-bound approval HEAD moved past.
+ */
 function waivedChecks(state: ChangeState, phase: Phase): Set<string> {
-	const result = state.lock.gates[phase.id];
-	return new Set(validApproval(result) ? (result?.waivers ?? []) : []);
+	return new Set(approvedAtHead(state, phase.id) ? (state.lock.gates[phase.id]?.waivers ?? []) : []);
 }
 
 /**
@@ -295,6 +298,13 @@ const nextUnit: Rule = ({ units, state }) => {
 /** Rule 14: in the review phase, the review steps before the gate (review-phase "Review next steps"). */
 const reviewPhase: Rule = ({ pack, state, phase }) => (reviewEntriesRunBySpecReview(phase.id) ? reviewStep(pack, state) : undefined);
 
+/** Rule 2 (change-close "Pull request outcome"): a merged or closed pull request, before every rule but label repair. */
+const prOutcome: Rule = ({ pack, state }) => prOutcomeStep(state, pack);
+
+/** Rule 16: the ship steps (ship-phase "Ship next steps") and the close steps (change-close "Close next steps"). */
+const shipPhase: Rule = ({ pack, state }) => shipStep(state, pack);
+const closePhase: Rule = ({ pack, state }) => closeStep(state, pack);
+
 /** Appends the human's notes; `next` is wrapped as untrusted where it is shown, so they are not wrapped here. */
 function withNotes(text: string, notes: string): string {
 	return notes === "" ? text : `${text} Notes: ${notes}`;
@@ -308,15 +318,18 @@ function gateReady(phase: Phase): string {
 /**
  * A `self` or `human` gate, from the valid gate result of the phase (design D2): a superseded latest
  * result never falls back to an older one, and only an approved valid result advances, never at `ship`.
+ * `atHead` is false for an approval of a head-bound gate HEAD moved past, which counts as superseded.
  */
-function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined): Decision {
+function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined, atHead: boolean): Decision {
 	const id = phase.id;
-	if (validApproval(result)) {
-		if (id === SHIP_PHASE) return { next: "The ship gate is approved: the change is ready to ship." };
+	if (atHead) {
+		if (id === SHIP_PHASE) return { next: "The ship gate is approved: run change_ship." };
 		return { next: `The ${id} gate is approved: move to ${successor}.`, advance: successor };
 	}
 	if (result === undefined) return { next: gateReady(phase) };
-	if (result.superseded) return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
+	if (result.superseded || validApproval(result)) {
+		return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
+	}
 	if (result.outcome === "changes_requested") return { next: withNotes(`The ${id} gate requested changes: revise, then request the gate again.`, result.notes) };
 	return { next: withNotes(`The ${id} gate was dismissed: ask the human how to proceed.`, result.notes) };
 }
@@ -328,11 +341,12 @@ function gateResultDecision(phase: Phase, successor: string, result: GateResult 
 function gate({ pack, state, phase }: RuleInput): Decision {
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
-	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id]);
+	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id));
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 
 const RULES: Rule[] = [
+	prOutcome,
 	notStarted,
 	openStuck,
 	openRequest,
@@ -349,6 +363,8 @@ const RULES: Rule[] = [
 	receiptedUnit,
 	nextUnit,
 	reviewPhase,
+	shipPhase,
+	closePhase,
 ];
 
 /** Rule 1, when no active phase resolves: no phase label, several, or one naming a phase the pack does not have. */

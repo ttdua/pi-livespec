@@ -12,7 +12,7 @@ import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
-import { shipFacts, shipFor } from "../ship/context.ts";
+import { shipFor, shipStateFor } from "../ship/context.ts";
 import { latestLaneClose } from "../subagents/state.ts";
 import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
@@ -108,7 +108,8 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
 	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
-	return { ...snapshot, ...(ship === undefined ? {} : { ship: shipFacts(ship) }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	const shipState = await shipStateFor(session, snapshot, ship);
+	return { ...snapshot, ...(shipState === undefined ? {} : { ship: shipState }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {

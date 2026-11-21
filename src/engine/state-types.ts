@@ -35,10 +35,20 @@ export type ChangeState = {
 	/** `specsChanged` is undefined without `Base`, else whether `git diff <Base>..HEAD -- specs/` is non-empty. */
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
 	checks: CheckResult[];
-	/** Git-dependent ship facts, filled at refresh in `src/hooks/card-input.ts` (`nextStep` does no git work). */
 	/** The pull request the `PR:` line names; absent without one, or when it cannot be read. */
 	pr?: { number: number; state: "open" | "closed"; merged: boolean; mergedAt?: string; pushedHead?: string };
-	ship?: { docsRowsNeeded?: boolean; durableFacts?: DurableFacts };
+	/**
+	 * Git-dependent ship facts, filled at refresh in `src/hooks/card-input.ts` (`nextStep` does no git work).
+	 * `reviewed`: HEAD is reviewed against the review gate's SHA; `needsShipGate`: `change_push` would need a ship
+	 * gate at HEAD; `gatesAtHead`: per head-bound gate, false when its approval no longer holds at HEAD.
+	 */
+	ship?: {
+		docsRowsNeeded?: boolean;
+		durableFacts?: DurableFacts;
+		reviewed?: boolean;
+		needsShipGate?: boolean;
+		gatesAtHead?: { review: boolean; ship: boolean };
+	};
 	stale: boolean;
 	readOnly: boolean;
 	warnings: string[];

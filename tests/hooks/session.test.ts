@@ -304,7 +304,8 @@ describe("derived advance with a pull request", () => {
 		const body = allDone(resumeBody(h.head)).replace(/^PR: .*$/m, `PR: #${pr}`);
 		await h.world.seedIssue({ title: "per-ip-cap", body, labels: BUILD_LABELS });
 		await h.start();
-		expect(spy).toHaveBeenCalledWith(expect.anything(), expect.any(Number), "review", expect.anything(), { merged: true });
+		// Precedence 2: a merged pull request moves the change to close from any phase before it.
+		expect(spy).toHaveBeenCalledWith(expect.anything(), expect.any(Number), "close", expect.anything(), { merged: true });
 		spy.mockRestore();
 	});
 

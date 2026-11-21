@@ -58,6 +58,18 @@ export function validApproval(r: Pick<GateResult, "outcome" | "superseded"> | un
 	return r !== undefined && (r.outcome === "approved" || r.outcome === "approved_with_notes") && !r.superseded;
 }
 
+/** Phases whose approval is bound to the HEAD it saw (design D3, "Head-bound gates"). */
+const HEAD_BOUND = new Set(["review", "ship"]);
+
+/**
+ * Whether the valid gate result of `phase` approves at the current HEAD: `validApproval`, and in `review` and
+ * `ship` HEAD is still reviewed against the gate's `head_sha` (`state.ship.gatesAtHead`, read at refresh).
+ */
+export function approvedAtHead(state: { lock: LockState; ship?: { gatesAtHead?: { review: boolean; ship: boolean } } }, phase: string): boolean {
+	if (!validApproval(state.lock.gates[phase])) return false;
+	return !HEAD_BOUND.has(phase) || state.ship?.gatesAtHead?.[phase as "review" | "ship"] !== false;
+}
+
 // --- parsing own marked comments into facts ----------------------------------
 
 function stringRecord(v: unknown): Record<string, string> | undefined {
