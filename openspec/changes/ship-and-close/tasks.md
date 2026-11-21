@@ -39,9 +39,9 @@ Blocked by: 2
 
 Blocked by: 3, 4
 
-- [ ] 5.1 `shipContext` gains `reviewed`, `needsShipGate` and `gatesAtHead` (recomputed every refresh); `card-input.ts` fills the optional `ChangeState.ship` fields
-- [ ] 5.2 Head-bound gates: in `review` and `ship`, an approved gate result whose `headSha` HEAD is not reviewed against counts as superseded, for the sentence and the waivers (flow-engine "Next step precedence")
-- [ ] 5.3 `src/ship/ship-steps.ts`: the pull request outcome rule (precedence 2), the ship steps (with the gate decision when re-confirmation is needed) and the close steps; wire them into `RULES`; the approved ship gate sentence says "run `change_ship`" (flow-engine, phase-gates, ship-phase "Ship next steps", change-close "Pull request outcome", "Close next steps")
+- [x] 5.1 `shipContext` gains `reviewed`, `needsShipGate` and `gatesAtHead` (recomputed every refresh); `card-input.ts` fills the optional `ChangeState.ship` fields
+- [x] 5.2 Head-bound gates: in `review` and `ship`, an approved gate result whose `headSha` HEAD is not reviewed against counts as superseded, for the sentence and the waivers (flow-engine "Next step precedence")
+- [x] 5.3 `src/ship/ship-steps.ts`: the pull request outcome rule (precedence 2), the ship steps (with the gate decision when re-confirmation is needed) and the close steps; wire them into `RULES`; the approved ship gate sentence says "run `change_ship`" (flow-engine, phase-gates, ship-phase "Ship next steps", change-close "Pull request outcome", "Close next steps")
 
 ## 6. Ship tool
 
