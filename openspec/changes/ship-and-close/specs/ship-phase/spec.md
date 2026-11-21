@@ -90,7 +90,7 @@ The check `durable-docs` of the `ship` phase SHALL report each error with severi
 - the change is in `ship`, the tree is clean, the current branch is the issue's `Branch` line, and the issue has no `PR` line;
 - the ship gate has an approved result not listed by a newer `stale` comment, and HEAD is reviewed against its `head_sha`;
 - HEAD is reviewed (see "Reviewed HEAD");
-- no human comment on the change issue was created or edited after the valid ship gate result was written, and the issue's gate digest equals the one the ship gate request recorded;
+- no human comment (a human voice as pull-request-feedback "Human voices" defines it: not own, by a `write` or `admin` author) on the change issue was created or edited after the valid ship gate result was written, and the issue's gate digest equals the one the ship gate request recorded;
 - every file of the change diff is in some unit's `Files` (exact or glob) or under `specs/`;
 - no open pull request has the change branch as head, other than one the current account opened whose body holds `Refs #<change>`.
 
