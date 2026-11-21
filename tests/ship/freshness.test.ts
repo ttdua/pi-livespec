@@ -29,6 +29,12 @@ describe("shipStale", () => {
 	test("a different issue digest is stale", () => {
 		expect(shipStale(shipState("0".repeat(64)), GATE, [])).toContain("changed");
 	});
+	test("an in-session approval reads the digest from the answer record", () => {
+		const gate = { outcome: "approved" as const, superseded: false, at: "", waivers: [], notes: "", request: "r1", commentId: "g1" };
+		const answer = { commentId: "a9", kind: "answer", id: "r1", author: "me", data: { request: { gate_digest: gateDigest(FIXTURE_BODY) } } };
+		const state = stateFor("ship", { lock: { locked: undefined, frozen: [], staleUnits: [], gates: { ship: gate } }, marked: [answer] });
+		expect(shipStale(state, GATE, [])).toBeUndefined();
+	});
 	test("a missing gate comment or request record names the ship gate", () => {
 		expect(shipStale(shipState(), undefined, [])).toContain("ship gate");
 		expect(shipStale(stateFor("ship"), GATE, [])).toContain("ship gate");

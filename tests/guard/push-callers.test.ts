@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { GitError } from "../../src/engine/git.ts";
@@ -25,7 +25,9 @@ describe("command-guards", () => {
 		const sources = sourcesUnder(TOOLS_DIR);
 		expect(sources.length).toBeGreaterThan(0);
 		const importing = sources.filter((path) => /guard\/push(\.ts)?["']/.test(readFileSync(path, "utf8")));
-		expect(importing).toEqual([]);
+		const allowed = new Set(["change-ship.ts", "change-push.ts"]);
+		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
+		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
 	});
 });
 
