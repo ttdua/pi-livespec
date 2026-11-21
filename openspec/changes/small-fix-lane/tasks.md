@@ -20,7 +20,7 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 `src/tools/fix-start.ts`, registered in `src/tools/change-tools.ts` with the tool-name lists in `tests/extension.test.ts` and `tests/tools/register.test.ts`: refusals then fetch, `switchCreate fix/<slug>` at `origin/<integration>`; never pushes; tests in `tests/tools/fix-start.test.ts` (small-fix-lane "Fix start tool")
+- [x] 3.1 `src/tools/fix-start.ts`, registered in `src/tools/change-tools.ts` with the tool-name lists in `tests/extension.test.ts` and `tests/tools/register.test.ts`: refusals then fetch, `switchCreate fix/<slug>` at `origin/<integration>`; never pushes; tests in `tests/tools/fix-start.test.ts` (small-fix-lane "Fix start tool")
 
 ## 4. Fix ship
 
