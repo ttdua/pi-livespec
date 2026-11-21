@@ -35,8 +35,8 @@ Blocked by: 2, 3
 
 Blocked by: 2
 
-- [ ] 5.1 `from_fix` parameter of `change_new` in `src/tools/change-new.ts`: refusals, issue in `define` with `Branch`, `Base` and seeded Proposal, then `renameBranch` and `livespecBase` config; failure messages name the issue and the remaining step (small-fix-lane "Move a fix into a change"; change-tools "Change new tool")
-- [ ] 5.2 Tests in `tests/tools/change-new.test.ts`, including the Done-when path: a fix adding a requirement is refused by `fix_ship`, then `change_new --from-fix` keeps HEAD and the card resolves the change in `define`
+- [x] 5.1 `from_fix` parameter of `change_new` in `src/tools/change-new.ts`: refusals, issue in `define` with `Branch`, `Base` and seeded Proposal, then `renameBranch` and `livespecBase` config; failure messages name the issue and the remaining step (small-fix-lane "Move a fix into a change"; change-tools "Change new tool")
+- [x] 5.2 Tests in `tests/tools/change-new.test.ts`, including the Done-when path: a fix adding a requirement is refused by `fix_ship`, then `change_new --from-fix` keeps HEAD and the card resolves the change in `define`
 
 ## 6. Fix card
 
