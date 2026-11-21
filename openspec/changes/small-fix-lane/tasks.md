@@ -42,9 +42,9 @@ Blocked by: 2
 
 Blocked by: 2
 
-- [ ] 6.1 `fixCardInput` in `src/hooks/card-input.ts`: `{ kind: "fix", slug, outcome | error | empty }` on a fix branch before `resolveChange`; `src/hooks/phase-card.ts` renders it with exactly one next step and no subagent step (small-fix-lane "Fix card"; context-injection "Resume at session start"; subagent-policy "Small-fix lane")
-- [ ] 6.2 `spec_status`, `spec_next` and `/livespec next` return the fix step on a fix branch through the same builder (change-tools "Status and next tools")
-- [ ] 6.3 Tests in `tests/hooks/card-input.test.ts`, `tests/hooks/phase-card.test.ts`, `tests/hooks/session.test.ts` (fix branch at session start) and the `spec_next` tool test
+- [x] 6.1 `fixCardInput` in `src/hooks/card-input.ts`: `{ kind: "fix", slug, outcome | error | empty }` on a fix branch before `resolveChange`; `src/hooks/phase-card.ts` renders it with exactly one next step and no subagent step (small-fix-lane "Fix card"; context-injection "Resume at session start"; subagent-policy "Small-fix lane")
+- [x] 6.2 `spec_status`, `spec_next` and `/livespec next` return the fix step on a fix branch through the same builder (change-tools "Status and next tools")
+- [x] 6.3 Tests in `tests/hooks/card-input.test.ts`, `tests/hooks/phase-card.test.ts`, `tests/hooks/session.test.ts` (fix branch at session start) and the `spec_next` tool test
 
 ## 7. Bare work
 
