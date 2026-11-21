@@ -262,6 +262,37 @@ describe("change_push", () => {
 		expect(await ofKind(h, "ship")).toHaveLength(1);
 	});
 
+	test("push done but its ship record missing: change_push posts the record instead of reporting nothing to push", async () => {
+		let failing = true;
+		const h = await shipReady({
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop === "createComment" && failing) {
+							return async (n: number, body: string) => {
+								if (body.includes("livespec:ship")) {
+									failing = false;
+									throw new Error("comment failed");
+								}
+								return target.createComment(n, body);
+							};
+						}
+						return Reflect.get(target, prop, receiver);
+					},
+				}),
+		});
+		expect((await h.call("change_ship")).isError).toBe(true);
+		expect(await ofKind(h, "ship")).toEqual([]);
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const before = originRefs(h.origin);
+		const { out, text } = await push(h);
+		expect(out.isError, text).toBeFalsy();
+		expect(text).toContain("recorded");
+		expect(originRefs(h.origin)).toBe(before);
+		expect((await ofKind(h, "ship")).map((m) => m.id)).toEqual([expect.stringContaining(head(h))]);
+	});
+
 	test("Child pushes", async () => {
 		const h = await shipped();
 		await fix(h);

@@ -15,6 +15,7 @@ import { durableDocsRule } from "../ship/durable-docs.ts";
 import { pollFeedback } from "../ship/feedback-poll.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { cleanBranchRefusal, filesRefusal, shipPhaseRefusal } from "../ship/ship-refusals.ts";
+import { latestShipRecord } from "../ship/records.ts";
 import { postShipRecord } from "../ship/ship-writes.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -91,6 +92,16 @@ async function publish(w: WriteContext, state: ChangeState, context: ShipContext
 	return toolResult(withStep(session, `Pushed ${branch} at ${head.slice(0, 7)} to pull request #${pr} and recorded the ship record on #${n}.`), undefined);
 }
 
+/** The branch is already pushed at HEAD but its `ship` record is missing (a push whose record write failed): post the record. */
+async function recordOnly(w: WriteContext, state: ChangeState, context: ShipContext, pr: number): Promise<ToolResult<undefined>> {
+	const n = state.issue.number;
+	const { branch, head } = state.git;
+	const record = await postShipRecord(w.forge, n, { pr, pushedHead: head, confirmed: durableDocsRule(context.facts).confirm }, `${branch} is at ${head.slice(0, 7)} on ${REMOTE}`, `run ${TOOL} again to record it`);
+	await afterForgeWrite(w.session, n);
+	if (!record.ok) return toolResult(`${TOOL} failed: ${record.message}`, undefined, true);
+	return toolResult(withStep(w.session, `${branch} was already pushed at ${head.slice(0, 7)}; recorded the ship record on #${n}.`), undefined);
+}
+
 /** Every refusal in order, then the nothing-to-push report and the publish. */
 async function push(deps: { poll: ShipPoll }): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
@@ -112,6 +123,7 @@ async function push(deps: { poll: ShipPoll }): Promise<ToolResult<undefined>> {
 	if ("refused" in context) return refuse(context.refused);
 	const git = await gitRefusal(w.session, state, context, open.pushedHead);
 	if (git !== undefined) return refuse(git);
+	if (open.pushedHead === state.git.head && latestShipRecord(state.marked)?.pushedHead !== state.git.head) return recordOnly(w, state, context, open.pr.number);
 	if (open.pushedHead === state.git.head) return toolResult(withStep(w.session, `There is nothing to push: ${state.git.branch} is already at ${state.git.head.slice(0, 7)} on ${REMOTE}.`), undefined);
 	return publish(w, state, context, open.pr.number);
 }
