@@ -244,7 +244,7 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
 	try {
-		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack);
+		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack, { merged: card.state.pr?.merged === true });
 		if (r.status === "refused") session.record("advance", r.reason);
 		return r.status === "moved";
 	} catch (error) {

@@ -40,6 +40,9 @@ function deps(forge: Forge = world.forge, isReadOnly = () => false): SnapshotDep
 	return { forge, isReadOnly, git: createGit(root), comments: new CommentsCache({ dir: join(dir, "comments") }), caps: { iterations: 5, unitAttempts: 3 } };
 }
 
+/** The fixture names `PR: #41`, which these tests do not seed: its unreadable-pull-request warning is not under test. */
+const withoutPrWarning = (warnings: string[]): string[] => warnings.filter((w) => !w.includes("pull request #41"));
+
 const U2_BLOCK = "### U2 — Header parsing\nCovers: request-context/Requirement: Client IP\nDifficulty: low\nTags: []\nFiles: src/headers.ts\nDone means:\n- [hdr] the forwarded header is parsed\nScenarios:\n- [hdr] test/headers.test.ts › parses header\nDepends: U1\nVerify: `npm test -- headers`\n- [ ] pending\n\n";
 
 function withBase(body: string, sha: string | undefined): string {
@@ -89,7 +92,7 @@ describe("readChangeSnapshot", () => {
 		const state = await readChangeSnapshot({ ...deps(fresh, () => fresh.isReadOnly()), comments }, n);
 		expect(state.stale).toBe(true);
 		expect(state.counters).toEqual({ change_iterations: 0, review_rounds: 0 });
-		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("login is unknown")]);
 	});
 
 	test("account switch then unreachable whoami does not reuse the previous login", async () => {
@@ -114,7 +117,7 @@ describe("readChangeSnapshot", () => {
 		expect(state.counters).toEqual({ change_iterations: 0, review_rounds: 0 });
 		expect(state.incomplete).toEqual([]);
 		expect(state.stale).toBe(true);
-		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("login is unknown")]);
 	});
 
 	test("issue state is read from the forge", async () => {
@@ -154,7 +157,7 @@ describe("readChangeSnapshot", () => {
 		expect(state.incomplete).toEqual([]);
 		expect(state.skillNotes).toEqual(["build.debugging-and-error-recovery"]);
 		expect(state.counters).toEqual({ discovered_deps: 2, change_iterations: 0, review_rounds: 0 });
-		expect(state.warnings).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
 	});
 
 	test("specsChanged reflects the diff from Base", async () => {
@@ -172,14 +175,14 @@ describe("readChangeSnapshot", () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, undefined), labels: BUILD_LABELS });
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.git.specsChanged).toBeUndefined();
-		expect(state.warnings).toEqual([]);
+		expect(withoutPrWarning(state.warnings)).toEqual([]);
 	});
 
 	test("unknown Base leaves specsChanged undefined with a warning", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: FIXTURE_BODY, labels: BUILD_LABELS });
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.git.specsChanged).toBeUndefined();
-		expect(state.warnings).toEqual([expect.stringContaining("0123456789abcdef0123456789abcdef01234567")]);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("0123456789abcdef0123456789abcdef01234567")]);
 	});
 
 	test("sections are absent when empty or undeclared", async () => {
@@ -266,5 +269,56 @@ describe("readChangeSnapshot", () => {
 			});
 			expect((await readChangeSnapshot(deps(forge), n)).issue.url).toBe("https://forge/o/r/issues/1");
 		});
+	});
+});
+
+describe("pull request state", () => {
+	const withPr = (value: string) => withBase(FIXTURE_BODY, base).replace(/^PR: .*$/m, `PR: ${value}`);
+	const BRANCH_REF = "refs/remotes/origin/livespec/per-ip-cap";
+
+	test("Pull request state", async () => {
+		execFileSync("git", ["update-ref", BRANCH_REF, base], { cwd: root });
+		const pr = await world.seedPullRequest({ head: "livespec/per-ip-cap", merged: true, state: "closed" });
+		const n = await world.seedIssue({ title: "x", body: withPr(`#${pr}`), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.pr).toMatchObject({ number: pr, state: "closed", merged: true, pushedHead: base });
+		expect(state.warnings).toEqual([]);
+	});
+
+	test("Unreadable pull request", async () => {
+		const n = await world.seedIssue({ title: "x", body: withPr("#41"), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.pr).toBeUndefined();
+		expect(state.warnings.some((w) => w.includes("#41"))).toBe(true);
+	});
+
+	test("invalid PR value warns without a read", async () => {
+		const n = await world.seedIssue({ title: "x", body: withPr("soon"), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.pr).toBeUndefined();
+		expect(state.warnings.some((w) => w.includes("soon"))).toBe(true);
+	});
+
+	test("read-only mode skips the read and warns", async () => {
+		const pr = await world.seedPullRequest({ head: "livespec/per-ip-cap" });
+		const n = await world.seedIssue({ title: "x", body: withPr(`#${pr}`), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(world.forge, () => true), n);
+		expect(state.pr).toBeUndefined();
+		expect(state.warnings.some((w) => w.includes(`#${pr}`))).toBe(true);
+	});
+
+	test("no remote ref leaves pushedHead undefined and keeps merged", async () => {
+		const pr = await world.seedPullRequest({ head: "livespec/per-ip-cap", merged: true, state: "closed" });
+		const n = await world.seedIssue({ title: "x", body: withPr(`#${pr}`), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.pr?.merged).toBe(true);
+		expect(state.pr?.pushedHead).toBeUndefined();
+	});
+
+	test("no PR line leaves pr absent without a warning", async () => {
+		const n = await world.seedIssue({ title: "x", body: withBase(FIXTURE_BODY, base).replace(/^PR: .*\n/m, ""), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.pr).toBeUndefined();
+		expect(state.warnings).toEqual([]);
 	});
 });

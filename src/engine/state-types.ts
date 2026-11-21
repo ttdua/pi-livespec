@@ -36,6 +36,8 @@ export type ChangeState = {
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
 	checks: CheckResult[];
 	/** Git-dependent ship facts, filled at refresh in `src/hooks/card-input.ts` (`nextStep` does no git work). */
+	/** The pull request the `PR:` line names; absent without one, or when it cannot be read. */
+	pr?: { number: number; state: "open" | "closed"; merged: boolean; mergedAt?: string; pushedHead?: string };
 	ship?: { docsRowsNeeded?: boolean; durableFacts?: DurableFacts };
 	stale: boolean;
 	readOnly: boolean;

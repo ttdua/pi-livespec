@@ -294,3 +294,27 @@ describe("session_start in a child session", () => {
 		expect(getSession()?.forge).toBeUndefined();
 	});
 });
+
+describe("derived advance with a pull request", () => {
+	test("passes merged: true when the pull request is merged", async () => {
+		const advance = await import("../../src/engine/advance.ts");
+		const spy = vi.spyOn(advance, "advancePhase");
+		const h = await harness({ branch: CHANGE_BRANCH });
+		const pr = await h.world.seedPullRequest({ head: CHANGE_BRANCH, merged: true, state: "closed" });
+		const body = allDone(resumeBody(h.head)).replace(/^PR: .*$/m, `PR: #${pr}`);
+		await h.world.seedIssue({ title: "per-ip-cap", body, labels: BUILD_LABELS });
+		await h.start();
+		expect(spy).toHaveBeenCalledWith(expect.anything(), expect.any(Number), "review", expect.anything(), { merged: true });
+		spy.mockRestore();
+	});
+
+	test("passes merged: false without a pull request", async () => {
+		const advance = await import("../../src/engine/advance.ts");
+		const spy = vi.spyOn(advance, "advancePhase");
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: allDone(resumeBody(h.head)), labels: BUILD_LABELS });
+		await h.start();
+		expect(spy).toHaveBeenCalledWith(expect.anything(), expect.any(Number), "review", expect.anything(), { merged: false });
+		spy.mockRestore();
+	});
+});
