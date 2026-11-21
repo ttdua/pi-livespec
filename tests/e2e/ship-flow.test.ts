@@ -3,13 +3,13 @@
 
 import { afterEach, expect, test } from "vitest";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { aggregateComment, reviewRunComment, type ReviewRunData } from "../../src/review/records.ts";
+import { aggregates, latestRun, type ReviewRunData } from "../../src/review/records.ts";
+import { registerSpecReview } from "../../src/tools/spec-review.ts";
 import { pollFeedback } from "../../src/ship/feedback-poll.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
-import { agg } from "../review/review-fixtures.ts";
 import { cleanupDirs, originRefs, textOf, type ToolHarness } from "../tools/helpers.ts";
-import { approveShip, branchOf, gateComment, ofKind, openPulls, shipReady } from "../tools/ship-fixture.ts";
+import { approveShip, branchOf, gateComment, marked, ofKind, openPulls, shipReady } from "../tools/ship-fixture.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -50,6 +50,21 @@ test("ship, failing check on the same pull request, reviewed fix push, merge and
 	expect(run.source).toBe("pull-request");
 	expect(run.parentFindings).toEqual([expect.objectContaining({ location: "check:ci/test", scope: "in-change" })]);
 
+	// spec_review routes the feedback round itself: no reviewer or executor, the parent finding is verified as skipped.
+	registerSpecReview(h.pi.api as never, { home: () => h.home });
+	for (let i = 0; i < 4 && !(latestRun(await marked(h))?.routed); i++) {
+		const out = await h.call("spec_review", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+	}
+	const own = await marked(h);
+	expect(latestRun(own)).toMatchObject({ round: run.round, routed: true, source: "pull-request" });
+	expect(aggregates(own).at(-1)?.data.findings).toEqual([expect.objectContaining({ location: "check:ci/test", route: "in-change", verify: "skipped-parent" })]);
+	expect(await h.world.forge.listReviewComments(pr)).toEqual([]);
+	const card = h.session.card;
+	if (card.kind !== "change") throw new Error("no change card");
+	expect(card.step.next).toContain("unit_amend --add");
+	expect(card.step.next).toContain("ci/test");
+
 	// A new non-merge commit is unreviewed: both tools refuse.
 	const unreviewed = await commitFix(h);
 	await h.session.refresh();
@@ -59,11 +74,6 @@ test("ship, failing check on the same pull request, reviewed fix push, merge and
 	expect(refusedPush.isError).toBe(true);
 	expect(textOf(refusedPush)).toContain("Nothing was pushed");
 	expect(await openPulls(h)).toHaveLength(1);
-
-	// spec_review's aggregate and routing: an in-change finding at the check location.
-	const finding = agg({ ...run.parentFindings[0], route: "in-change", routeUnit: undefined, verify: "skipped-parent", from: ["parent:0"] });
-	await h.world.postComment(h.n, BOT_LOGIN, aggregateComment({ round: run.round, head: run.head, reviews: [], findings: [finding] }));
-	await h.world.postComment(h.n, BOT_LOGIN, reviewRunComment({ ...run, routed: true }));
 
 	// The fix is reviewed at the new HEAD; change_push updates the same branch, no second pull request.
 	await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", `self-${unreviewed.slice(0, 7)}`, unreviewed));
