@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { fixMergeBase, fixSlug } from "../../src/fix/branch.ts";
+import { fixMergeBase, fixRange, fixSlug } from "../../src/fix/branch.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { fixture, sh, upstreamCommit } from "../ship/repo.ts";
 
@@ -38,5 +38,22 @@ describe("fixMergeBase", () => {
 		const f = await fixture();
 		sh(f.work, "remote", "remove", "origin");
 		await expect(fixMergeBase(f.git, "main")).rejects.toThrow();
+	});
+});
+
+describe("fixRange", () => {
+	test("returns the merge base and the subjects after it, oldest first", async () => {
+		const f = await fixture();
+		const base = sh(f.work, "rev-parse", "HEAD");
+		await writeIn(f.work, "a.ts", "a\n");
+		commitAll(f.work, "first");
+		await writeIn(f.work, "b.ts", "b\n");
+		commitAll(f.work, "second");
+		expect(await fixRange(f.git, "main")).toEqual({ mergeBase: base, subjects: ["first", "second"] });
+	});
+
+	test("throws when the fetch fails", async () => {
+		const f = await fixture();
+		await expect(fixRange(f.git, "nope")).rejects.toThrow();
 	});
 });

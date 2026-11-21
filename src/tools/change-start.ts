@@ -12,6 +12,7 @@ import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { setHeaderLine } from "../core/sections.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
+import { CHANGE_BRANCH_PREFIX } from "../engine/resolve-change.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Issue } from "../forge/types.ts";
@@ -23,7 +24,6 @@ export type ChangeStartParams = { issue: number };
 /** Set in full on success; empty on a refusal or failure. */
 export type ChangeStartDetails = { branch?: string; base?: string; reconciled?: boolean };
 
-const BRANCH_PREFIX = "livespec/";
 const REMOTE = "origin";
 const BRANCH_KEY = "Branch";
 const BASE_KEY = "Base";
@@ -73,7 +73,7 @@ async function validateStart(w: WriteContext, n: number): Promise<StartPlan> {
 	const bad = issueRefusal(issue);
 	if (bad) return { kind: "refused", message: bad };
 	if (await git.isDirty()) return { kind: "refused", message: "The working tree has uncommitted changes; commit or stash them, then rerun change_start." };
-	const branch = `${BRANCH_PREFIX}${issue.title}`;
+	const branch = `${CHANGE_BRANCH_PREFIX}${issue.title}`;
 	const start = { issue, branch };
 	if (await git.branchExists(branch)) {
 		const base = await git.configGet(livespecBaseKey(branch));

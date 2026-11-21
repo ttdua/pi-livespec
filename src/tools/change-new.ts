@@ -6,7 +6,8 @@ import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
 import { integrationBranch } from "../engine/git.ts";
-import { fixMergeBase, fixSlug } from "../fix/branch.ts";
+import { CHANGE_BRANCH_PREFIX as CHANGE_PREFIX } from "../engine/resolve-change.ts";
+import { DIRTY_TREE_REFUSAL, fixRange, fixSlug } from "../fix/branch.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { livespecBaseKey } from "./change-start.ts";
@@ -18,7 +19,6 @@ export type ChangeNewDetails = { number?: number; branch?: string };
 
 const FIRST_PHASE = "shape";
 const MOVED_PHASE = "define";
-const CHANGE_PREFIX = "livespec/";
 
 export const CHANGE_BODY_TEMPLATE = [
 	"Depends: —",
@@ -49,22 +49,20 @@ async function fromFixRefusal(w: WriteContext, name: string): Promise<Moving | R
 	const branch = await git.branch();
 	const slug = fixSlug(branch);
 	if (slug === undefined) return { refused: `the current branch ${untrusted(branch)} is not a fix branch fix/<slug>; --from-fix moves a fix into a change.` };
-	if (await git.isDirty()) return { refused: "the working tree has uncommitted changes; commit or stash them, then rerun." };
+	if (await git.isDirty()) return { refused: DIRTY_TREE_REFUSAL };
 	const target = `${CHANGE_PREFIX}${name}`;
 	if (await git.branchExists(target)) return { refused: `the local branch ${target} already exists.` };
 	const integration = config.project ? await integrationBranch(config.project, git) : undefined;
 	if (integration === undefined) return { refused: "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml." };
-	let base: string;
-	let subjects: string[];
+	let found: Awaited<ReturnType<typeof fixRange>>;
 	try {
-		base = await fixMergeBase(git, integration);
-		subjects = await git.subjects(base, "HEAD");
+		found = await fixRange(git, integration);
 	} catch (error) {
 		return { refused: `git failed while finding the merge base with origin/${integration}: ${untrusted(messageOf(error))}.` };
 	}
 	const open = await w.forge.listPullRequests({ state: "open", head: branch });
 	if (open.length > 0) return { refused: `pull request ${open.map((pr) => `#${pr.number}`).join(", ")} from ${branch} is open; close it first.` };
-	return { slug, branch, base, subjects };
+	return { slug, branch, base: found.mergeBase, subjects: found.subjects };
 }
 
 /** The change issue of a moved fix: the template with `Branch`, `Base` and the commit subjects as Proposal. */
@@ -102,7 +100,7 @@ async function runChangeNewFromFix(w: WriteContext, name: string): Promise<ToolR
 	await afterForgeWrite(w.session, issue.number);
 	if (failure !== undefined) return toolResult(`change_new failed: ${failure}`, { number: issue.number }, true);
 	const branch = `${CHANGE_PREFIX}${name}`;
-	return toolResult(`Created change #${issue.number} ${name} in ${MOVED_PHASE} and moved ${m.branch} to ${branch}, keeping its ${m.subjects.length} commit(s).`, { number: issue.number, branch });
+	return toolResult(`Created change #${issue.number} ${name} in ${MOVED_PHASE} and moved ${m.branch} to ${branch}, keeping its commits (${m.subjects.length} commit subject(s) in the Proposal).`, { number: issue.number, branch });
 }
 
 export async function runChangeNew(p: ChangeNewParams): Promise<ToolResult<ChangeNewDetails>> {

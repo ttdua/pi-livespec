@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -179,5 +181,36 @@ describe("change_new from_fix", () => {
 		const out = await h.call("change_new", { name: "Bad Name", from_fix: true });
 		expect(out.isError).toBe(true);
 		await noIssue(h);
+	});
+});
+
+describe("change_new from_fix failure after the issue exists", () => {
+	test("a failed rename names the issue and the remaining commands", async () => {
+		const h = await forcedFix();
+		const base = h.git("merge-base", "HEAD", "origin/main");
+		mkdirSync(join(h.root, ".git/refs/heads/livespec"), { recursive: true });
+		writeFileSync(join(h.root, ".git/refs/heads/livespec/retry-budget.lock"), "");
+		const out = await moveCall(h);
+		expect(out.isError).toBe(true);
+		const [issue] = await h.world.forge.searchIssues({ state: "all" });
+		expect(issue?.title).toBe("retry-budget");
+		expect(textOf(out)).toContain(`#${issue?.number}`);
+		expect(textOf(out)).toContain("git branch -m fix/retry livespec/retry-budget");
+		expect(textOf(out)).toContain(`git config branch.livespec/retry-budget.livespecBase ${base}`);
+		expect(h.git("branch", "--show-current")).toBe("fix/retry");
+	});
+
+	test("a failed config write names the issue and the config command", async () => {
+		const h = await forcedFix();
+		const base = h.git("merge-base", "HEAD", "origin/main");
+		const git = h.session.git;
+		Object.assign(h.session, { git: { ...git, configSet: async () => { throw new Error("config locked"); } } });
+		const out = await moveCall(h);
+		expect(out.isError).toBe(true);
+		const [issue] = await h.world.forge.searchIssues({ state: "all" });
+		expect(textOf(out)).toContain(`#${issue?.number}`);
+		expect(textOf(out)).toContain(`git config branch.livespec/retry-budget.livespecBase ${base}`);
+		expect(textOf(out)).not.toContain("git branch -m");
+		expect(h.git("branch", "--show-current")).toBe("livespec/retry-budget");
 	});
 });

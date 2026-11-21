@@ -45,6 +45,7 @@
 | `capOf` | modified (exported) | `capOf(path: string): string \| undefined` from `src/core/capabilities-diff.ts` | no |
 | `fixSlug` | new | `fixSlug(branch: string): string \| undefined` in `src/fix/branch.ts` | no |
 | `fixMergeBase` | new | `fixMergeBase(git: Git, integration: string): Promise<string>` (throws `GitError` when the fetch or ref fails) | no |
+| `fixRange` | new (internal, added in Task 5 review) | `fixRange(git: Git, integration: string): Promise<{ mergeBase: string; subjects: string[] }>` in `src/fix/branch.ts` (throws like `fixMergeBase`), plus `DIRTY_TREE_REFUSAL`; shared by `fix_ship` and `change_new --from-fix` instead of duplicating merge base + subjects | no |
 | `LaneFacts` | new | `{ files: string[]; lines: number; spec_changes: SpecChange[]; created_capabilities: string[]; governance: string[]; capability_code: { capability: string; files: string[]; spec_changed: boolean }[] }`; `SpecChange = { capability: string; added_requirements: string[]; removed_requirements: string[]; scenarios: { requirement: string; added: string[]; removed: string[] }[] }` (snake_case: written verbatim into the decision block's `facts`) | no |
 | `laneFacts` | new | `laneFacts(git: Git, root: string, mergeBase: string): Promise<LaneFacts>` in `src/fix/lane-facts.ts` | no |
 | `LaneConfig` | new | `{ mode: "rule"; max_files: number; max_lines: number }` | yes (pack key `decisions.lane`) |

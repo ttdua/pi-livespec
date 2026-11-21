@@ -11,7 +11,7 @@ import { integrationBranch } from "../engine/git.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import { runVerify } from "../evidence/runner.ts";
 import { verifyEnv } from "../evidence/verify-env.ts";
-import { fixMergeBase, fixSlug } from "../fix/branch.ts";
+import { DIRTY_TREE_REFUSAL, fixRange as gitRange, fixSlug } from "../fix/branch.ts";
 import type { LaneOutcome } from "../fix/lane.ts";
 import { laneFacts } from "../fix/lane-facts.ts";
 import { type FixTest, fixPullRequestBody } from "../fix/pr-body.ts";
@@ -43,7 +43,7 @@ async function fixRefusal(w: WriteContext): Promise<Fix | Refused> {
 	const branch = await w.session.git.branch();
 	const slug = fixSlug(branch);
 	if (slug === undefined) return { refused: `the current branch ${untrusted(branch)} is not a fix branch fix/<slug>; start one with fix_start.` };
-	if (await w.session.git.isDirty()) return { refused: "the working tree has uncommitted changes; commit or stash them, then rerun." };
+	if (await w.session.git.isDirty()) return { refused: DIRTY_TREE_REFUSAL };
 	return { w, slug, branch };
 }
 
@@ -53,8 +53,7 @@ async function fixRange(f: Fix): Promise<Range | Refused> {
 	const integration = config.project ? await integrationBranch(config.project, git) : undefined;
 	if (integration === undefined) return { refused: "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml." };
 	try {
-		const base = await fixMergeBase(git, integration);
-		const subjects = await git.subjects(base, "HEAD");
+		const { mergeBase: base, subjects } = await gitRange(git, integration);
 		if (subjects.length === 0) return { refused: `there is nothing to ship: ${f.branch} has no commit after the merge base with ${REMOTE}/${integration}; switch back to ${integration}.` };
 		return { integration, base, subjects };
 	} catch (error) {

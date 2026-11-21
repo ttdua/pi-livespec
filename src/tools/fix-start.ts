@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { integrationBranch } from "../engine/git.ts";
+import { CHANGE_BRANCH_PREFIX as CHANGE_PREFIX } from "../engine/resolve-change.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { requireSession, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -13,7 +14,6 @@ import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 const TOOL = "fix_start";
 const REMOTE = "origin";
 const FIX_PREFIX = "fix/";
-const CHANGE_PREFIX = "livespec/";
 
 export type FixStartParams = { slug: string };
 export type FixStartDetails = { branch?: string };

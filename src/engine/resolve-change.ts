@@ -16,7 +16,7 @@ export type ResolvedChange =
 	| { kind: "error"; message: string };
 
 export const OPEN_CHANGES_CAP = 10;
-const CHANGE_BRANCH_PREFIX = "livespec/";
+export const CHANGE_BRANCH_PREFIX = "livespec/";
 
 function toOpenChange(issue: Issue): OpenChange {
 	const phase = phaseFromLabels(issue.labels);
