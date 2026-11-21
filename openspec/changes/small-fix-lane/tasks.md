@@ -50,9 +50,9 @@ Blocked by: 2
 
 Blocked by: 1, 2
 
-- [ ] 7.1 `src/guard/bare-work.ts`: `isBareWork` (branch, inside project, not `specs/` or `.pi/livespec/`, tracked) and `appendBareWork` (once per path per date, serialized, never throws) (command-guards "Bare work")
-- [ ] 7.2 `src/hooks/guard.ts`: call it from `checkPath` for `write`/`edit`, keep the warning by `toolCallId`, and a `tool_result` handler that appends it; skipped in child sessions and uninitialized projects
-- [ ] 7.3 Tests in `tests/hooks/guard.test.ts`: edit on main logged, once per day, not bare work on fix/change branches, under `specs/`, or for untracked files; log failure still allows the call and says the work was not logged; child session gets no log and no warning
+- [x] 7.1 `src/guard/bare-work.ts`: `isBareWork` (branch, inside project, not `specs/` or `.pi/livespec/`, tracked) and `appendBareWork` (once per path per date, serialized, never throws) (command-guards "Bare work")
+- [x] 7.2 `src/hooks/guard.ts`: call it from `checkPath` for `write`/`edit`, keep the warning by `toolCallId`, and a `tool_result` handler that appends it; skipped in child sessions and uninitialized projects
+- [x] 7.3 Tests in `tests/hooks/guard.test.ts`: edit on main logged, once per day, not bare work on fix/change branches, under `specs/`, or for untracked files; log failure still allows the call and says the work was not logged; child session gets no log and no warning
 
 ## 8. Docs and end-to-end check
 
