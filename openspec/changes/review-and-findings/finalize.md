@@ -16,7 +16,7 @@
 - **Branch**: `ls-08`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: `pending (filled in after gh pr create)`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/31`
 
 Deviations from the canonical flow:
 - `git pull` was skipped in step 3, because `ls-08` had no upstream before this push.
@@ -34,7 +34,7 @@ Deviations from the canonical flow:
 
 ## PR comment
 
-- **PR comment status**: `pending`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/31#issuecomment-7058013278)
 
 ---
 
