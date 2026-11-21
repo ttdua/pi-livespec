@@ -73,7 +73,7 @@ export class GiteaWorld implements ContractWorld {
 	}
 
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
-		this.fake.seedReview(pr, { author: review.author, event: REVIEW_EVENTS[review.state], body: review.body });
+		this.fake.seedReview(pr, { author: review.author, event: review.pending === true ? "PENDING" : REVIEW_EVENTS[review.state], body: review.body });
 	}
 
 	async seedStatus(ref: string, status: SeedStatus): Promise<void> {

@@ -147,7 +147,7 @@ export class GitHubWorld implements ContractWorld {
 
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
 		this.store.update((d) => {
-			d.pulls[String(pr)].reviews.push({ id: d.nextCommentId++, author: review.author, state: REVIEW_STATES[review.state], body: review.body, submittedAt: tick(d) });
+			d.pulls[String(pr)].reviews.push({ id: d.nextCommentId++, author: review.author, state: review.pending === true ? "PENDING" : REVIEW_STATES[review.state], body: review.body, submittedAt: review.pending === true ? "" : tick(d) });
 		});
 	}
 

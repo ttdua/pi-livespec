@@ -477,8 +477,15 @@ describe("gitea adapter", () => {
 
 		const REVIEW = { id: 7, state: "COMMENT", body: "", user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" };
 		const REVIEW_COMMENT = { id: 9, path: "a.ts", position: 1, body: "x", user: { login: "a" }, updated_at: "2026-01-01T00:00:00Z" };
-		it.each(["id", "submitted_at"])("listReviews rejects a review without %s", async (key) => {
-			await expect(forgeWith(reply([without(REVIEW, key)])).listReviews(1)).rejects.toMatchObject(bad("listReviews"));
+		it("listReviews rejects a review without id", async () => {
+			await expect(forgeWith(reply([without(REVIEW, "id")])).listReviews(1)).rejects.toMatchObject(bad("listReviews"));
+		});
+
+		it("a pending review has no submitted_at and is skipped by listReviews and listReviewComments", async () => {
+			const pending = { ...without(REVIEW, "submitted_at"), id: 8, state: "PENDING" };
+			expect((await forgeWith(reply([pending, REVIEW])).listReviews(1)).map((r) => r.id)).toEqual(["7"]);
+			const respond = (seen: Seen) => new Response(JSON.stringify(seen.path.includes("/reviews/8/") ? [REVIEW_COMMENT] : seen.path.endsWith("/comments") ? [] : [pending]), { status: 200 });
+			expect(await forgeWith(respond).listReviewComments(1)).toEqual([]);
 		});
 
 		it.each(["id", "updated_at"])("listReviewComments rejects a review comment without %s", async (key) => {

@@ -36,6 +36,8 @@ export interface SeedReview {
 	author: string;
 	state: ReviewState;
 	body: string;
+	/** An unsubmitted draft of its author: the forge lists it but it has no submission time. */
+	pending?: boolean;
 }
 
 export interface SeedStatus {

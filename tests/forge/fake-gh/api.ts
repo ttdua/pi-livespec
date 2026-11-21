@@ -258,7 +258,7 @@ function createReviewComment(data: FakeGhData, n: string, req: ApiRequest, actor
 }
 
 function reviewJson(review: ReviewRec): unknown {
-	return { id: review.id, user: userJson(review.author), state: review.state, body: review.body, submitted_at: review.submittedAt };
+	return { id: review.id, user: userJson(review.author), state: review.state, body: review.body, ...(review.submittedAt === "" ? {} : { submitted_at: review.submittedAt }) };
 }
 
 function reviewCommentJson(comment: ReviewCommentRec): unknown {

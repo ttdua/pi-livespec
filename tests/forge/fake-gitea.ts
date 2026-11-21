@@ -12,7 +12,7 @@ export const FAKE_TOKEN = "fake-gitea-token";
 
 type Permission = "none" | "read" | "write" | "admin";
 type StatusState = "success" | "failure" | "pending";
-type ReviewEvent = "APPROVED" | "REQUEST_CHANGES" | "COMMENT";
+type ReviewEvent = "APPROVED" | "REQUEST_CHANGES" | "COMMENT" | "PENDING";
 
 interface IssueRec {
 	number: number;
@@ -548,7 +548,7 @@ export class FakeGitea {
 			body: r.body,
 			user: { login: r.author },
 			comments_count: r.comments.length,
-			submitted_at: r.submittedAt,
+			...(r.event === "PENDING" ? {} : { submitted_at: r.submittedAt }),
 			updated_at: r.updatedAt,
 		};
 	}

@@ -162,6 +162,7 @@ export class MemoryWorld implements ContractWorld {
 	}
 
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
+		if (review.pending === true) return;
 		this.state.pull(pr).reviews.push({ ...review, id: this.state.nextId(), updatedAt: this.state.tick() });
 	}
 

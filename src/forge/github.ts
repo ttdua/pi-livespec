@@ -171,6 +171,9 @@ interface JsonPull {
 	user: JsonUser | null;
 	updated_at: string;
 }
+/** The state of a review its author has not submitted yet. */
+const PENDING = "PENDING";
+
 interface JsonReview {
 	id: number;
 	user: JsonUser | null;
@@ -353,7 +356,7 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async listReviews(pr: number): Promise<Review[]> {
 		const raw = await this.api<JsonReview[]>("listReviews", `${this.base}/pulls/${pr}/reviews?per_page=100`, { paginate: true });
-		return raw.map((r) => ({
+		return raw.filter((r) => r.state !== PENDING).map((r) => ({
 			id: String(r.id),
 			author: r.user?.login ?? "",
 			state: toReviewState(r.state),

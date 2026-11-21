@@ -148,7 +148,7 @@ export function isReviewDto(value: unknown): value is ReviewDto {
 		isObject(value) &&
 		required(value.id, "number") &&
 		required(value.state, "string") &&
-		requiredText(value.submitted_at) &&
+		optional(value.submitted_at, "string") &&
 		optional(value.updated_at, "string") &&
 		optional(value.body, "string") &&
 		hasLogin(value.user)

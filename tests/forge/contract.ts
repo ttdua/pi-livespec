@@ -409,6 +409,18 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect(reviews).toContainEqual(expect.objectContaining({ author: "carol", state: "changes_requested", body: "fix it" }));
 			});
 
+			it("a pending review is not listed, nor are its comments", async () => {
+				const w = await world();
+				const n = await w.seedPullRequest({ head: "feat/pend" });
+				await w.seedReview(n, { author: "carol", state: "commented", body: "draft", pending: true });
+				await w.seedReview(n, { author: "carol", state: "commented", body: "sent" });
+
+				const reviews = await w.forge.listReviews(n);
+
+				expect(reviews.map((r) => r.body)).toEqual(["sent"]);
+				expect(await w.forge.listReviewComments(n)).toEqual([]);
+			});
+
 			it("listReviews returns a distinct id and an updatedAt per review", async () => {
 				const w = await world();
 				const n = await w.seedPullRequest({ head: "feat/ri" });
