@@ -2,6 +2,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerChangeNew } from "./change-new.ts";
+import { registerChangePush } from "./change-push.ts";
 import { registerChangeShip } from "./change-ship.ts";
 import { registerChangeStart } from "./change-start.ts";
 import { registerDocsTable } from "./docs-table.ts";
@@ -51,4 +52,5 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerLaneMerge(pi);
 	registerDocsTable(pi);
 	registerChangeShip(pi);
+	registerChangePush(pi);
 }

@@ -4,21 +4,43 @@
 import type { ChangeState } from "../engine/state-types.ts";
 import type { PullRequest } from "../forge/types.ts";
 import type { ShipStaleness } from "./freshness.ts";
+import { filesOutsideUnits } from "./diff.ts";
 import { SHIP_PHASE } from "./phase.ts";
 
 /** Marker ids allow only `[A-Za-z0-9._-]`, so the timestamp drops its colons. */
 const ID_UNSAFE = /[^A-Za-z0-9.-]/g;
 
-/** Phase, clean tree, current branch = `Branch` line and no `PR` line; undefined when all hold. */
-export function shipLocalRefusal(state: ChangeState): string | undefined {
+/** The change is in `ship`; undefined when it is. */
+export function shipPhaseRefusal(state: ChangeState, tool: string): string | undefined {
 	const phase = state.phase.kind === "ok" ? state.phase.id : undefined;
-	if (phase !== SHIP_PHASE) return `the change is in ${phase ?? "no phase"}; change_ship runs in ${SHIP_PHASE}.`;
-	const { branch, pr } = state.change.header;
-	if (pr !== undefined) return `the issue already records PR: ${pr}; update that pull request with change_push.`;
+	if (phase === SHIP_PHASE) return undefined;
+	const unreviewed = phase === "review" ? ` HEAD ${state.git.head.slice(0, 7)} is not covered by a passed review gate: run the review gate first.` : "";
+	return `the change is in ${phase ?? "no phase"}; ${tool} runs in ${SHIP_PHASE}.${unreviewed}`;
+}
+
+/** Clean tree and current branch = the issue's `Branch` line; undefined when both hold. */
+export function cleanBranchRefusal(state: ChangeState): string | undefined {
+	const { branch } = state.change.header;
 	if (state.git.dirty) return "the working tree is not clean: commit or stash the changes first.";
 	if (branch === undefined) return "the issue has no Branch line: run change_start first.";
 	if (branch !== state.git.branch) return `the current branch is ${state.git.branch}, but the issue's Branch line is ${branch}: switch to ${branch} first.`;
 	return undefined;
+}
+
+/** Every file of the change diff is in some unit's `Files` or under `specs/`; undefined when so. */
+export function filesRefusal(files: string[], units: ChangeState["change"]["units"]): string | undefined {
+	const outside = filesOutsideUnits(files, units);
+	if (outside.length === 0) return undefined;
+	return `the change diff touches files no unit lists and not under specs/: ${outside.join(", ")}; add them to a unit's Files with unit_amend.`;
+}
+
+/** Phase, no `PR` line, clean tree, current branch = `Branch` line; undefined when all hold. */
+export function shipLocalRefusal(state: ChangeState): string | undefined {
+	const phase = shipPhaseRefusal(state, "change_ship");
+	if (phase !== undefined) return phase;
+	const { pr } = state.change.header;
+	if (pr !== undefined) return `the issue already records PR: ${pr}; update that pull request with change_push.`;
+	return cleanBranchRefusal(state);
 }
 
 export type PullRequestChoice = { kind: "open" } | { kind: "adopt"; pr: PullRequest } | { kind: "refused"; reason: string };

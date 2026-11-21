@@ -154,6 +154,13 @@ export class MemoryWorld implements ContractWorld {
 		pull.rev += 1;
 	}
 
+	async closePullRequestBehindBack(n: number, merged = false): Promise<void> {
+		const pull = this.state.pull(n);
+		pull.state = "closed";
+		pull.merged = merged;
+		pull.rev += 1;
+	}
+
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
 		this.state.pull(pr).reviews.push({ ...review, id: this.state.nextId(), updatedAt: this.state.tick() });
 	}

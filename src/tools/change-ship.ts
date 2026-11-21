@@ -15,13 +15,12 @@ import { untrusted } from "../hooks/phase-card.ts";
 import { staleComment } from "../interaction/stale.ts";
 import { reviewPayload } from "../review/payload.ts";
 import { type ShipContext, shipContext } from "../ship/context.ts";
-import { filesOutsideUnits } from "../ship/diff.ts";
 import { durableDocsRule } from "../ship/durable-docs.ts";
 import { humanVoices, shipStaleness } from "../ship/freshness.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { pullRequestBody } from "../ship/pr-body.ts";
 import { isReviewed } from "../ship/reviewed.ts";
-import { pullRequestChoice, shipLocalRefusal, staleShipId } from "../ship/ship-refusals.ts";
+import { filesRefusal, pullRequestChoice, shipLocalRefusal, staleShipId } from "../ship/ship-refusals.ts";
 import { postShipRecord, writePrLine } from "../ship/ship-writes.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -50,9 +49,7 @@ async function gitRefusal(s: Ship): Promise<string | undefined> {
 	const gate = await shipGateRefusal(s);
 	if (gate !== undefined) return gate;
 	if (!s.context.reviewed.ok) return `HEAD is not reviewed: ${s.context.reviewed.reason}.`;
-	const outside = filesOutsideUnits(s.context.diff.files, s.state.change.units);
-	if (outside.length > 0) return `the change diff touches files no unit lists and not under specs/: ${outside.join(", ")}; add them to a unit's Files with unit_amend.`;
-	return undefined;
+	return filesRefusal(s.context.diff.files, s.state.change.units);
 }
 
 /** A stale ship approval posts its `stale` comment (once per id) and returns the refusal; undefined when fresh. */
