@@ -57,6 +57,7 @@ interface PullRecord {
 	base: string;
 	title: string;
 	body: string;
+	author: string;
 	files: string[];
 	reviews: Review[];
 	reviewComments: ReviewComment[];
@@ -138,6 +139,7 @@ export class MemoryWorld implements ContractWorld {
 			base: pr.base ?? "main",
 			title: pr.title ?? `pull ${number}`,
 			body: pr.body ?? "",
+			author: pr.author ?? OTHER_LOGIN,
 			files: pr.files ?? [],
 			reviews: [],
 			reviewComments: [],
@@ -152,8 +154,16 @@ export class MemoryWorld implements ContractWorld {
 		pull.rev += 1;
 	}
 
+	async closePullRequestBehindBack(n: number, merged = false): Promise<void> {
+		const pull = this.state.pull(n);
+		pull.state = "closed";
+		pull.merged = merged;
+		pull.rev += 1;
+	}
+
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
-		this.state.pull(pr).reviews.push({ ...review });
+		if (review.pending === true) return;
+		this.state.pull(pr).reviews.push({ ...review, id: this.state.nextId(), updatedAt: this.state.tick() });
 	}
 
 	async seedStatus(ref: string, status: SeedStatus): Promise<void> {
@@ -164,6 +174,18 @@ export class MemoryWorld implements ContractWorld {
 
 	async reviewCommentsOf(pr: number): Promise<ReviewComment[]> {
 		return this.state.pull(pr).reviewComments.map((c) => ({ ...c }));
+	}
+
+	/** A review comment by a human `author` (no forge call creates one for another account). */
+	async seedReviewComment(pr: number, c: { author: string; path: string; line: number; body: string }): Promise<void> {
+		this.state.pull(pr).reviewComments.push({ ...c, id: this.state.nextId(), updatedAt: this.state.tick() });
+	}
+
+	async editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void> {
+		const comment = this.state.pull(pr).reviewComments.find((c) => c.id === id);
+		if (!comment) throw new Error(`no review comment ${id} on pull ${pr}`);
+		comment.body = body;
+		comment.updatedAt = this.state.tick();
 	}
 
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {
@@ -193,6 +215,11 @@ class MemoryState {
 	nextNumber = 1;
 	private nextCommentId = 1;
 	private clock = 0;
+
+	/** Shared id space for comments, reviews and review comments, as on the forges. */
+	nextId(): string {
+		return String(this.nextCommentId++);
+	}
 
 	tick(): string {
 		this.clock += 1;
@@ -225,11 +252,9 @@ class MemoryState {
 
 	/** Like GitHub and Gitea, a new comment bumps the issue's `updated_at`, so its version changes. */
 	addComment(n: number, author: string, body: string): CommentRecord {
-		const issue = this.issue(n);
-		this.touch(issue);
-		const now = issue.updatedAt;
+		const now = this.touchThread(n);
 		const record: CommentRecord = {
-			id: String(this.nextCommentId++),
+			id: this.nextId(),
 			issue: n,
 			author,
 			body,
@@ -239,6 +264,14 @@ class MemoryState {
 		};
 		this.comments.set(record.id, record);
 		return record;
+	}
+
+	/** A pull request's conversation is its issue thread, as on GitHub and Gitea; numbers are shared. */
+	touchThread(n: number): string {
+		if (this.pulls.has(n)) return this.tick();
+		const issue = this.issue(n);
+		this.touch(issue);
+		return issue.updatedAt;
 	}
 
 	ensureLabel(name: string): void {
@@ -348,7 +381,7 @@ class MemoryForge implements Forge {
 
 	async listComments(n: number): Promise<Comment[]> {
 		this.guard("listComments");
-		this.s.issue(n);
+		if (!this.s.pulls.has(n)) this.s.issue(n);
 		return [...this.s.comments.values()].filter((c) => c.issue === n).map(commentView);
 	}
 
@@ -406,7 +439,7 @@ class MemoryForge implements Forge {
 	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
 		this.guard("createPullRequest");
 		const number = this.s.nextNumber++;
-		const record: PullRecord = { number, state: "open", merged: false, ...p, files: [], reviews: [], reviewComments: [], rev: 1 };
+		const record: PullRecord = { number, state: "open", merged: false, ...p, author: BOT_LOGIN, files: [], reviews: [], reviewComments: [], rev: 1 };
 		this.s.pulls.set(number, record);
 		return this.pullView(record);
 	}
@@ -431,7 +464,7 @@ class MemoryForge implements Forge {
 
 	async createReviewComment(pr: number, c: { path: string; line: number; body: string }): Promise<void> {
 		this.guard("createReviewComment");
-		this.s.pull(pr).reviewComments.push({ ...c, author: BOT_LOGIN });
+		this.s.pull(pr).reviewComments.push({ ...c, id: this.s.nextId(), author: BOT_LOGIN, updatedAt: this.s.tick() });
 	}
 
 	async getChecks(ref: string): Promise<CheckSummary> {
@@ -455,6 +488,7 @@ class MemoryForge implements Forge {
 			base: p.base,
 			title: p.title,
 			body: p.body,
+			author: p.author,
 			version,
 		};
 	}

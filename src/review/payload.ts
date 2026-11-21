@@ -6,11 +6,11 @@ import type { ChangeState } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { type AggregateFinding, current, type FindingSummaryData, rebuttedKeys, findingKey } from "../subagents/records.ts";
+import { SHIP_PHASE } from "../ship/phase.ts";
 import { INLINE_SOURCE } from "../subagents/run-record.ts";
 import { aggregateOf, latestRun, type ReviewRunData, verifierRecord } from "./records.ts";
 import { findingState } from "./status.ts";
 
-const SHIP_PHASE = "ship";
 
 const describe = (f: AggregateFinding): string => `${f.severity} ${f.kind} at ${untrusted(f.location)}: ${untrusted(f.evidence)}`;
 

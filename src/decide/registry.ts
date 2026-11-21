@@ -7,6 +7,7 @@ import { registerSubagentsSchema } from "../subagents/policy.ts";
 import { progressRule, progressSchema } from "../evidence/progress-rule.ts";
 import { difficultyRule, difficultySchema } from "./rules/difficulty.ts";
 import { findingScopeRule, findingScopeSchema } from "../review/route.ts";
+import { durableDocsRuleFn, durableDocsSchema } from "../ship/durable-docs.ts";
 import { tagsRule, tagsSchema } from "./rules/tags.ts";
 
 export type RuleResult =
@@ -86,6 +87,7 @@ export function registerBuiltinRules(): void {
 	registerRule("difficulty", difficultySchema, difficultyRule);
 	registerRule("progress", progressSchema, progressRule);
 	registerRule("finding-scope", findingScopeSchema, findingScopeRule);
+	registerRule("durable-docs", durableDocsSchema, durableDocsRuleFn);
 	registerSubagentsSchema();
 }
 

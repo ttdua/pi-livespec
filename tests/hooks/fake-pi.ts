@@ -59,6 +59,8 @@ export class FakePi {
 		registerEntryRenderer: (customType: string, renderer: (entry: unknown, options: unknown, theme: unknown) => unknown) => {
 			this.entryRenderers.set(customType, renderer);
 		},
+		/** Spies only: tests assert on emitted events; nothing is delivered. */
+		events: { emit: vi.fn(), on: vi.fn() },
 	};
 
 	/**

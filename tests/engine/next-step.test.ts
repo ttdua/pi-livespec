@@ -146,6 +146,18 @@ describe("nextStep", () => {
 		expect(nextStep(pack, state("plan", NO_QUESTION, { sections })).next).toBe("Write Units with plan_units.");
 	});
 
+	test("Missing table", () => {
+		const empty = NO_QUESTION.replace(/^\|.*\n/gm, "");
+		const step = nextStep(pack, state("ship", empty, { ship: { docsRowsNeeded: true } }));
+		expect(step.next).toBe("Write the Durable docs table with docs_table.");
+		expect(nextStep(pack, state("ship", empty)).next).toBe("Write the Durable docs table with docs_table.");
+	});
+
+	test("no rows needed and no rows: no missing output", () => {
+		const step = nextStep(pack, state("ship", NO_QUESTION.replace(/^\|.*\n/gm, ""), { ship: { docsRowsNeeded: false } }));
+		expect(step.next).not.toContain("docs_table");
+	});
+
 	test("specs-diff output missing in define", () => {
 		const git = { branch: "livespec/per-ip-cap", head: "f".repeat(40), dirty: false, specsChanged: false };
 		expect(nextStep(pack, state("define", NO_QUESTION, { git })).next).toBe("Edit specs/ for the declared capabilities.");
@@ -183,14 +195,14 @@ describe("nextStep", () => {
 
 	test("last phase with a human gate has no further phase", () => {
 		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "close" ? { ...p, gate: "human" as const } : p)) };
-		const step = nextStep(custom, state("close", ALL_DONE));
+		const step = nextStep(custom, state("close", ALL_DONE, { issue: { ...stateFor("close").issue, state: "closed" } }));
 		expect(step.next).toBe("The flow has no further phase.");
 		expect(step.advance).toBeUndefined();
 	});
 
 	test("last phase with a self gate has no further phase", () => {
 		const custom = { ...pack, phases: pack.phases.map((p) => (p.id === "close" ? { ...p, gate: "self" as const } : p)) };
-		const step = nextStep(custom, state("close", ALL_DONE));
+		const step = nextStep(custom, state("close", ALL_DONE, { issue: { ...stateFor("close").issue, state: "closed" } }));
 		expect(step.next).toBe("The flow has no further phase.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -244,7 +256,7 @@ describe("nextStep", () => {
 	});
 
 	test("Last phase", () => {
-		const step = nextStep(pack, state("close", ALL_DONE));
+		const step = nextStep(pack, state("close", ALL_DONE, { issue: { ...stateFor("close").issue, state: "closed" } }));
 		expect(step.next).toBe("The flow has no further phase.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -320,7 +332,7 @@ function staleComment(id: string, units: string[]): MarkedComment {
 	return { commentId: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
 }
 
-const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes });
+const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes, commentId: "c1" });
 
 describe("nextStep approvals, locks and stuck reports", () => {
 	test("Pending gate request", () => {
@@ -357,8 +369,8 @@ describe("nextStep approvals, locks and stuck reports", () => {
 	});
 
 	test("Ship approved", () => {
-		const step = nextStep(pack, state("ship", ALL_DONE, { lock: lockWith({ gates: { ship: gateResult("approved") } }) }));
-		expect(step.next).toBe("The ship gate is approved: the change is ready to ship.");
+		const step = nextStep(pack, state("ship", ALL_DONE.replace(/^PR: .*\n/m, ""), { lock: lockWith({ gates: { ship: gateResult("approved") } }) }));
+		expect(step.next).toBe("The ship gate is approved: run change_ship.");
 		expect(step.advance).toBeUndefined();
 	});
 
@@ -838,5 +850,152 @@ describe("No one-by-one suggestion in review", () => {
 		expect(phaseEntryStep(pack, s, reviewPhase)).toBeUndefined();
 		expect(reviewEntriesRunBySpecReview("review")).toBe(true);
 		expect(reviewEntriesRunBySpecReview("plan")).toBe(false);
+	});
+});
+
+// --- ship and close next steps, head-bound gates (design D3, D10) -------------
+
+const atHead = (outcome: GateResult["outcome"], headSha: string, waivers: string[] = []): GateResult => ({ ...gateResult(outcome, false, waivers), headSha });
+const NO_PR = ALL_DONE.replace(/^PR: .*\n/m, "");
+const OLD = "c".repeat(40);
+type Pr = NonNullable<ChangeState["pr"]>;
+const pr41 = (over: Partial<Pr> = {}): Pr => ({ number: 41, state: "open", merged: false, ...over });
+const shipFacts = (over: NonNullable<ChangeState["ship"]> = {}): NonNullable<ChangeState["ship"]> => ({
+	docsRowsNeeded: false,
+	reviewed: true,
+	needsShipGate: false,
+	gatesAtHead: { review: true, ship: true },
+	...over,
+});
+const DURABLE_FAIL: CheckResult = { check: "durable-docs", code: "durable-docs", severity: "error", message: "specs/x.md is marked updated but the change diff does not touch it" };
+
+describe("head-bound gates", () => {
+	test("Review approval at an older HEAD", () => {
+		const step = nextStep(pack, state("review", ALL_DONE, { lock: lockWith({ gates: { review: atHead("approved", OLD) } }), marked: CLEAN_ROUND(), ship: { gatesAtHead: { review: false, ship: true } } }));
+		expect(step.next).toBe("The review gate approval no longer matches the change: request the gate again.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("Clean merge keeps the approval", () => {
+		const step = nextStep(pack, state("review", ALL_DONE, { lock: lockWith({ gates: { review: atHead("approved", OLD) } }), marked: CLEAN_ROUND(), ship: { gatesAtHead: { review: true, ship: true } } }));
+		expect(step.next).toBe("The review gate is approved: move to ship.");
+		expect(step.advance).toBe("ship");
+	});
+
+	test("a ship gate approved at an older HEAD is superseded and its waivers no longer apply", () => {
+		const sizeLimits: CheckResult = { check: "size-limits", code: "size-limits", severity: "error", message: "U3 touches too many files" };
+		const s = state("ship", NO_PR, { checks: [sizeLimits], lock: lockWith({ gates: { ship: atHead("approved", OLD, ["size-limits"]) } }), ship: shipFacts({ gatesAtHead: { review: true, ship: false } }) });
+		expect(nextStep(pack, s).next).toBe("Fix size-limits: U3 touches too many files.");
+		const clean = state("ship", NO_PR, { lock: lockWith({ gates: { ship: atHead("approved", OLD) } }), ship: shipFacts({ gatesAtHead: { review: true, ship: false } }) });
+		expect(nextStep(pack, clean).next).toBe("The ship gate approval no longer matches the change: request the gate again.");
+	});
+});
+
+describe("pull request outcome", () => {
+	test("Merge seen before checks", () => {
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: pr41({ state: "closed", merged: true }), checks: [DURABLE_FAIL], ship: shipFacts() }));
+		expect(step.next).toBe("The pull request #41 is merged: move to close.");
+		expect(step.advance).toBe("close");
+	});
+
+	test("Merge seen in review", () => {
+		const step = nextStep(pack, state("review", ALL_DONE, { pr: pr41({ state: "closed", merged: true }) }));
+		expect(step.advance).toBe("close");
+	});
+
+	test("Merged during a fix round", () => {
+		const step = nextStep(pack, state("build", NO_QUESTION, { pr: pr41({ state: "closed", merged: true }) }));
+		expect(step.next).toBe("The pull request #41 is merged: move to close.");
+		expect(step.advance).toBe("close");
+	});
+
+	test("Human merged", () => {
+		const merged = pr41({ state: "closed", merged: true, mergedAt: "2026-11-20T10:00:00Z" });
+		expect(nextStep(pack, state("ship", ALL_DONE, { pr: merged, ship: shipFacts() })).advance).toBe("close");
+		const closing = nextStep(pack, state("close", ALL_DONE, { pr: merged }));
+		expect(closing.next).toBe("Run change_close.");
+		expect(closing.advance).toBeUndefined();
+	});
+
+	test("Review Focus 1: a squash merge moves to close from the forge state alone", () => {
+		const squashed = pr41({ state: "closed", merged: true, pushedHead: "e".repeat(40) });
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: squashed, ship: shipFacts({ reviewed: true }) }));
+		expect(step.advance).toBe("close");
+	});
+
+	test("Pull request closed unmerged", () => {
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: pr41({ state: "closed" }), ship: shipFacts() }));
+		expect(step.next).toBe("The pull request #41 was closed without merge: reopen it on the forge, or abandon the change with change_close --abandon <reason>.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("Abandoned change has nothing left to do", () => {
+		const issue = { number: 7, title: "per-ip-cap", labels: ["livespec", "livespec:phase/ship"], state: "closed" as const };
+		const step = nextStep(pack, state("ship", ALL_DONE, { issue, pr: pr41({ state: "closed" }), ship: shipFacts() }));
+		expect(step.next).not.toContain("reopen");
+		expect(step.next).not.toContain("--abandon");
+		expect(step.next).toBe("The pull request #41 and the change issue are closed: nothing is left to do.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("an unreadable pull request in ship: the warning is shown and no outcome rule fires", () => {
+		const warnings = ["pull request #41 cannot be read: boom"];
+		const step = nextStep(pack, state("ship", ALL_DONE, { warnings, ship: shipFacts() }));
+		expect(step.advance).toBeUndefined();
+		expect(step.next).not.toContain("change_ship");
+		expect(step.next).not.toContain("merged");
+		expect(step.next).toContain("#41");
+	});
+});
+
+describe("ship next steps", () => {
+	test("Waiting for merge", () => {
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: pr41({ pushedHead: HEAD }), ship: shipFacts() }));
+		expect(step.next).toBe("Wait for a human to merge #41 on the forge.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("Unreviewed commits go back to review", () => {
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: pr41({ pushedHead: OLD }), ship: shipFacts({ reviewed: false }) }));
+		expect(step.next).toBe("New commits after the reviewed SHA need review: move to review.");
+		expect(step.advance).toBe("review");
+	});
+
+	test("Fix needs the ship gate again", () => {
+		const s = state("ship", ALL_DONE, { pr: pr41({ pushedHead: OLD }), lock: lockWith({ gates: { ship: atHead("approved", OLD) } }), ship: shipFacts({ needsShipGate: true, gatesAtHead: { review: true, ship: false } }) });
+		const step = nextStep(pack, s);
+		expect(step.next).toBe("Ready for the ship gate.");
+		expect(step.next).not.toContain("change_push");
+	});
+
+	test("Reviewed fix ready to push", () => {
+		const step = nextStep(pack, state("ship", ALL_DONE, { pr: pr41({ pushedHead: OLD }), ship: shipFacts() }));
+		expect(step.next).toBe("Run change_push to update #41.");
+	});
+
+	test("a ship gate approved at HEAD lets the re-confirmed fix be pushed", () => {
+		const s = state("ship", ALL_DONE, { pr: pr41({ pushedHead: OLD }), lock: lockWith({ gates: { ship: atHead("approved", HEAD) } }), ship: shipFacts({ needsShipGate: true }) });
+		expect(nextStep(pack, s).next).toBe("Run change_push to update #41.");
+	});
+
+	test("Ship approved (flow-engine): no PR line runs change_ship", () => {
+		const step = nextStep(pack, state("ship", NO_PR, { lock: lockWith({ gates: { ship: atHead("approved", HEAD) } }), ship: shipFacts() }));
+		expect(step.next).toBe("The ship gate is approved: run change_ship.");
+		expect(step.advance).toBeUndefined();
+	});
+
+	test("Waived ship gate stays in ship", () => {
+		const sizeLimits: CheckResult = { check: "size-limits", code: "size-limits", severity: "error", message: "U3 touches too many files" };
+		const step = nextStep(pack, state("ship", NO_PR, { checks: [sizeLimits], lock: lockWith({ gates: { ship: atHead("approved", HEAD, ["size-limits"]) } }), ship: shipFacts() }));
+		expect(step.next).toBe("The ship gate is approved: run change_ship.");
+		expect(step.advance).toBeUndefined();
+	});
+});
+
+describe("close next steps", () => {
+	test("Close pending", () => {
+		const step = nextStep(pack, state("close", ALL_DONE, { pr: pr41({ state: "closed", merged: true }) }));
+		expect(step.next).toBe("Run change_close.");
+		expect(step.advance).toBeUndefined();
 	});
 });

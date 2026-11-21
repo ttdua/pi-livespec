@@ -2,11 +2,13 @@
 
 import type { Session } from "../hooks/session.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { pollFeedback } from "../ship/feedback-poll.ts";
 import { formatOpenChanges, formatStep } from "../tools/format-step.ts";
 import { readCurrentChange } from "../tools/read-change.ts";
 
 export async function runNextCommand(session: Session): Promise<string> {
 	await pollApprovals(session);
+	await pollFeedback(session);
 	const current = await readCurrentChange(session);
 	if (current.kind === "change") return formatStep(current.step, current.state);
 	if (current.kind === "list") return formatOpenChanges(current.open);

@@ -24,7 +24,7 @@ import { applyRoutes, QuestionNotSent, type RouteEffects } from "./effects.ts";
 import { fanOut } from "./fanout.ts";
 import { aggregateComment, aggregateOf, latestRun, reviewRunComment } from "./records.ts";
 import { completedReview, type NextStage, roundNumber } from "./round.ts";
-import { normalizeLocation, type RouteResult } from "./route.ts";
+import { CHECK_PREFIX, normalizeLocation, type RouteResult } from "./route.ts";
 import { selectSubjects } from "./select.ts";
 import { startInputs } from "./start.ts";
 
@@ -139,7 +139,7 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 		const r = completedReview(c.state.marked, s, run.head);
 		return r === undefined ? [] : [{ commentId: r.commentId, findings: r.data.findings }];
 	});
-	const merged = mergeFindings({ parent: run.parentFindings, reviews });
+	const merged = mergeFindings({ parent: run.parentFindings, reviews }, { keepParents: run.source === "pull-request" });
 	const base = baseOf(c.state);
 	let diffFiles: string[];
 	try {
@@ -151,7 +151,9 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 	const subject = `review-${run.round}`;
 	const routes: RouteResult[] = [];
 	for (const finding of merged) {
-		const facts = { finding, path: normalizeLocation(finding.location).path, units, diffFiles, needsDecision: finding.needsDecision };
+		const check = finding.location.startsWith(CHECK_PREFIX);
+		const path = check ? finding.location : normalizeLocation(finding.location).path;
+		const facts = { finding, path, units, diffFiles, needsDecision: finding.needsDecision, check };
 		const decided = await decide("finding-scope", facts, { config: c.w.pack.decisions["finding-scope"], subject });
 		if (decided.status !== "decided") throw new Error("the finding-scope rule never asks");
 		routes.push(decided.outcome as RouteResult);
@@ -188,7 +190,7 @@ async function routeStage(c: StageCtx): Promise<StageReport> {
 			ask: (text) => askQuestion(c, text),
 			reask: (id) => reaskQuestion(c, id),
 			afterWrite: () => afterForgeWrite(c.w.session, issue),
-		}, c.state, aggregate);
+		}, c.state, aggregate, { postReviewComments: run.source !== "pull-request" });
 	} catch (error) {
 		if (!(error instanceof QuestionNotSent)) throw error;
 		const done = error.effects.posted.length === 0 ? "" : ` Applied: ${error.effects.posted.join(", ")}.`;

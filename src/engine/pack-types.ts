@@ -3,6 +3,7 @@ export type PhaseOutput =
 	| "issue#Proposal"
 	| "issue#Design"
 	| "issue#Units"
+	| "issue#Durable docs"
 	| "specs-diff";
 
 export type Phase = {

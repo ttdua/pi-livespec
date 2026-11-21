@@ -11,7 +11,10 @@ import { registerCheck } from "../../src/engine/registry.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
-import { CHANGE_BRANCH } from "../hooks/helpers.ts";
+import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
+import { replaceSection } from "../../src/core/sections.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
+import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
 
@@ -187,5 +190,50 @@ describe("gates and decisions", () => {
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
 		expect(card(h).state.lock.staleUnits).toEqual([]);
 		expect(card(h).step.next).not.toContain("unit_amend");
+	});
+});
+
+// --- the ship gate's next step (phase-gates "Ship approved", "Waived ship gate stays in ship") ---------
+
+/** A change in `ship` with every unit done, a Durable docs table that covers the committed spec, and no `PR` line. */
+async function shipChange(flow?: string): Promise<{ h: ToolHarness; n: number }> {
+	const files: Record<string, string> = flow === undefined ? {} : { ".pi/livespec/flow.yaml": flow };
+	const h = await toolHarness({ branch: CHANGE_BRANCH, files, ui: { hasUI: true, select: shipSelect } });
+	const base = h.git("rev-parse", "HEAD");
+	await writeIn(h.root, "specs/rate-limit/spec.md", SPEC);
+	commitAll(h.root, "spec");
+	const body = replaceSection(allDone(resumeBody(base)), "Durable docs", "| File | Status |\n|---|---|\n| specs/rate-limit/spec.md | updated |").replace(/^PR: .*\n/m, "");
+	const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/ship"] });
+	// The review gate passed at HEAD, so the ship steps do not send the change back to review.
+	const review = { phase: "review", outcome: "approved", notes: "", by: "livespec", at: "2026-11-15T10:00:00.000Z", adapter: "livespec", head_sha: h.git("rev-parse", "HEAD"), waivers: [] };
+	await h.world.postComment(n, BOT_LOGIN, writeMarked("gate", "review.self-1", review));
+	await h.session.refresh();
+	return { h, n };
+}
+
+/** The in-session human waives when a waive option is offered, else approves. */
+const shipSelect: SelectFn = async (title, options) => {
+	if (title === "Add notes?") return "No notes";
+	return options.find((o) => o === "waive" || o.endsWith("[waive]")) ?? options.find((o) => o === "approve");
+};
+
+describe("ship gate next step", () => {
+	test("Ship approved", async () => {
+		const { h, n } = await shipChange();
+		const out = await h.call("spec_gate", { target: "ship" });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
+		expect(card(h).step.next).toBe("The ship gate is approved: run change_ship.");
+		expect(card(h).step.advance).toBeUndefined();
+	});
+
+	test("Waived ship gate stays in ship", async () => {
+		registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
+		const { h, n } = await shipChange("extends: agent-skills\nphases:\n  - id: ship\n    checks: [durable-docs, size-limits]\n");
+		const out = await h.call("spec_gate", { target: "ship" });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
+		expect(card(h).state.lock.gates.ship?.waivers).toEqual(["size-limits"]);
+		expect(card(h).step.next).toBe("The ship gate is approved: run change_ship.");
 	});
 });

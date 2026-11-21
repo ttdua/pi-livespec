@@ -5,6 +5,7 @@
 import { phaseLabel } from "../forge/labels.ts";
 import type { Forge } from "../forge/types.ts";
 import type { Pack } from "./pack-types.ts";
+import { successorOf } from "./next-step.ts";
 import { phaseFromLabels } from "./snapshot.ts";
 
 export type AdvanceResult = { status: "moved"; from: string } | { status: "unchanged" } | { status: "refused"; reason: string };
@@ -31,6 +32,9 @@ function isAllowedMove(pack: Pack, from: string, to: string): boolean {
 	return target !== undefined && (target.requires.includes(from) || earlierPhases(pack, from).has(to));
 }
 
+/** `merged`: the change's pull request is merged, which allows the jump to the last phase. */
+export type MoveOptions = { merged?: boolean };
+
 type Plan =
 	| { kind: "unchanged" }
 	| { kind: "move"; from: string }
@@ -38,12 +42,12 @@ type Plan =
 	| { kind: "refuse"; reason: string };
 
 /** Classifies the current phase labels against the target (pure). */
-export function planMove(pack: Pack, labels: string[], to: string): Plan {
+export function planMove(pack: Pack, labels: string[], to: string, opts: MoveOptions = {}): Plan {
 	if (!pack.phases.some((p) => p.id === to)) return { kind: "refuse", reason: `${to} is not a phase of the flow pack` };
 	const phase = phaseFromLabels(labels);
 	if (phase.kind === "ok") {
 		if (phase.id === to) return { kind: "unchanged" };
-		if (!isAllowedMove(pack, phase.id, to)) {
+		if (!isAllowedMove(pack, phase.id, to) && !(opts.merged === true && successorOf(pack, to) === undefined)) {
 			return { kind: "refuse", reason: `cannot move from ${phase.id} to ${to}: ${to} does not follow ${phase.id} and is not an earlier phase` };
 		}
 		return { kind: "move", from: phase.id };
@@ -55,9 +59,9 @@ export function planMove(pack: Pack, labels: string[], to: string): Plan {
 	return { kind: "refuse", reason: `cannot move to ${to}: the issue has phase labels (${found}); ${REPAIR_HINT}` };
 }
 
-export async function advancePhase(forge: Forge, n: number, to: string, pack: Pack): Promise<AdvanceResult> {
+export async function advancePhase(forge: Forge, n: number, to: string, pack: Pack, opts: MoveOptions = {}): Promise<AdvanceResult> {
 	const issue = await forge.getIssue(n);
-	const plan = planMove(pack, issue.labels, to);
+	const plan = planMove(pack, issue.labels, to, opts);
 	switch (plan.kind) {
 		case "unchanged":
 			return { status: "unchanged" };

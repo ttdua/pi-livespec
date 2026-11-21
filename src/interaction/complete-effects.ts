@@ -5,10 +5,11 @@
 import { parseChange } from "../core/change.ts";
 import type { Git } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
-import type { PhaseState } from "../engine/state-types.ts";
+import type { ChangeState, PhaseState } from "../engine/state-types.ts";
 import { phaseFromLabels } from "../engine/snapshot.ts";
 import { type MarkedComment, parseMarked } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import type { ShipContext, ShipInput } from "../ship/context.ts";
 import type { AnswerData } from "./requests.ts";
 
 /** What completion needs; `root` is the repository root the checks read specs from. */
@@ -19,6 +20,8 @@ export type CompletionCtx = {
 	issue: number;
 	marked: MarkedComment[];
 	root: string;
+	/** The ship context for a change state (`shipFor`): built in `ship` only. Without it, validation passes no ship context. */
+	shipFor?: (state: ShipInput & Pick<ChangeState, "phase">) => Promise<ShipContext | { refused: string } | undefined>;
 	agentSkills?: string;
 	now: () => Date;
 };

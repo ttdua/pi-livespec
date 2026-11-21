@@ -5,7 +5,10 @@
 import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
-import { type GateResult, validApproval } from "./locks.ts";
+import { gateResultDecision } from "./gate-decision.ts";
+import { approvedAtHead } from "./locks.ts";
+import { SHIP_PHASE } from "../ship/phase.ts";
+import { closeStep, prOutcomeStep, shipStep } from "../ship/ship-steps.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
 import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
@@ -38,7 +41,7 @@ type RuleInput = {
 
 type Rule = (i: RuleInput) => Decision | undefined;
 
-const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> = {
+const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff" | "issue#Durable docs">, SectionName> = {
 	"issue#Capabilities": "Capabilities",
 	"issue#Proposal": "Proposal",
 	"issue#Design": "Design",
@@ -46,8 +49,8 @@ const OUTPUT_SECTIONS: Record<Exclude<PhaseOutput, "specs-diff">, SectionName> =
 };
 
 const UNITS_SENTENCE = "Write Units with plan_units.";
+const DOCS_TABLE_SENTENCE = "Write the Durable docs table with docs_table.";
 const SPECS_DIFF_SENTENCE = "Edit specs/ for the declared capabilities.";
-const SHIP_PHASE = "ship";
 const STUCK_SUBJECT = "stuck:";
 const FORGE_ADAPTER: AdapterName = "forge";
 const ADAPTER_PLACE: Record<AdapterName, string> = { forge: "on the forge", "in-session": "in session" };
@@ -187,6 +190,7 @@ const blockingQuestion: Rule = ({ blockingQuestions }) => {
 
 function missingOutputSentence(output: PhaseOutput, state: ChangeState): string | undefined {
 	if (output === "specs-diff") return state.git.specsChanged === true ? undefined : SPECS_DIFF_SENTENCE;
+	if (output === "issue#Durable docs") return state.ship?.docsRowsNeeded === false || state.change.durableDocs.length > 0 ? undefined : DOCS_TABLE_SENTENCE;
 	const section = OUTPUT_SECTIONS[output];
 	if (state.sections[section]) return undefined;
 	return section === "Units" ? UNITS_SENTENCE : `Write ${section} with spec_write.`;
@@ -211,10 +215,12 @@ const missingOutput: Rule = ({ state, phase }) => {
 	return undefined;
 };
 
-/** Checks the valid approved gate result of `phase` waived; a superseded or unapproved result waives nothing. */
+/**
+ * Checks the valid approved gate result of `phase` waived; a superseded or unapproved result waives nothing, nor
+ * does a head-bound approval HEAD moved past.
+ */
 function waivedChecks(state: ChangeState, phase: Phase): Set<string> {
-	const result = state.lock.gates[phase.id];
-	return new Set(validApproval(result) ? (result?.waivers ?? []) : []);
+	return new Set(approvedAtHead(state, phase.id) ? (state.lock.gates[phase.id]?.waivers ?? []) : []);
 }
 
 /**
@@ -293,31 +299,12 @@ const nextUnit: Rule = ({ units, state }) => {
 /** Rule 14: in the review phase, the review steps before the gate (review-phase "Review next steps"). */
 const reviewPhase: Rule = ({ pack, state, phase }) => (reviewEntriesRunBySpecReview(phase.id) ? reviewStep(pack, state) : undefined);
 
-/** Appends the human's notes; `next` is wrapped as untrusted where it is shown, so they are not wrapped here. */
-function withNotes(text: string, notes: string): string {
-	return notes === "" ? text : `${text} Notes: ${notes}`;
-}
+/** Rule 2 (change-close "Pull request outcome"): a merged or closed pull request, before every rule but label repair. */
+const prOutcome: Rule = ({ pack, state }) => prOutcomeStep(state, pack);
 
-/** The sentence of a `self` or `human` gate with no gate result yet. */
-function gateReady(phase: Phase): string {
-	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
-}
-
-/**
- * A `self` or `human` gate, from the valid gate result of the phase (design D2): a superseded latest
- * result never falls back to an older one, and only an approved valid result advances, never at `ship`.
- */
-function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined): Decision {
-	const id = phase.id;
-	if (validApproval(result)) {
-		if (id === SHIP_PHASE) return { next: "The ship gate is approved: the change is ready to ship." };
-		return { next: `The ${id} gate is approved: move to ${successor}.`, advance: successor };
-	}
-	if (result === undefined) return { next: gateReady(phase) };
-	if (result.superseded) return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
-	if (result.outcome === "changes_requested") return { next: withNotes(`The ${id} gate requested changes: revise, then request the gate again.`, result.notes) };
-	return { next: withNotes(`The ${id} gate was dismissed: ask the human how to proceed.`, result.notes) };
-}
+/** Rule 16: the ship steps (ship-phase "Ship next steps") and the close steps (change-close "Close next steps"). */
+const shipPhase: Rule = ({ pack, state }) => shipStep(state, pack);
+const closePhase: Rule = ({ pack, state }) => closeStep(state, pack);
 
 /**
  * Rule 11, the fallback. The last phase has no further phase whatever its gate; otherwise the gate
@@ -326,11 +313,12 @@ function gateResultDecision(phase: Phase, successor: string, result: GateResult 
 function gate({ pack, state, phase }: RuleInput): Decision {
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
-	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id]);
+	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id));
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 
 const RULES: Rule[] = [
+	prOutcome,
 	notStarted,
 	openStuck,
 	openRequest,
@@ -347,6 +335,8 @@ const RULES: Rule[] = [
 	receiptedUnit,
 	nextUnit,
 	reviewPhase,
+	shipPhase,
+	closePhase,
 ];
 
 /** Rule 1, when no active phase resolves: no phase label, several, or one naming a phase the pack does not have. */

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
+import { replaceSection } from "../../src/core/sections.ts";
 import { decisionComment } from "../../src/decide/records.ts";
 import { registerGate, resetGatesForTests } from "../../src/engine/gates.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
@@ -37,6 +38,15 @@ const labels = (phase: string) => ["livespec", `livespec:phase/${phase}`];
 type Opts = { config?: string; ui?: FakeUI; files?: Record<string, string>; forge?: (world: MemoryWorld) => Forge; edit?: (b: string) => string };
 type Gate = ToolHarness & { n: number };
 
+/** Every unit done and a Durable docs table that covers the spec file the fixture commits. */
+const shipReady = (body: string): string => replaceSection(noPr(body), "Durable docs", "| File | Status |\n|---|---|\n| specs/rate-limit/spec.md | updated |");
+/** Every unit done and no `PR` line: the ship gate decides the next step. */
+const noPr = (body: string): string => allDone(body).replace(/^PR: .*\n/m, "");
+
+/** In `ship`, the review gate passed at HEAD, so the ship steps do not send the change back to review. */
+const reviewedAtHead = (head: string): string =>
+	writeMarked("gate", "review.self-1", { phase: "review", outcome: "approved", notes: "", by: "livespec", at: AT, adapter: "livespec", head_sha: head, waivers: [] });
+
 /**
  * A change on its branch whose `Base` is the commit before a valid spec commit, so every define
  * check passes and the tree is clean. The harness registers `spec_gate` with the change tools.
@@ -54,6 +64,7 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 	commitAll(h.root, "spec");
 	const body = (o.edit ?? ((b: string) => b))(resumeBody(base));
 	const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: labels(phase) });
+	if (phase === "ship") await h.world.postComment(n, BOT_LOGIN, reviewedAtHead(h.git("rev-parse", "HEAD")));
 	await h.session.refresh();
 	return { ...h, n };
 }
@@ -75,6 +86,11 @@ async function marked(h: Gate): Promise<MarkedComment[]> {
 
 async function ofKind(h: Gate, kind: string): Promise<MarkedComment[]> {
 	return (await marked(h)).filter((m) => m.kind === kind);
+}
+
+/** The `ship` gate comments, without the review gate `change("ship")` seeds. */
+async function shipGates(h: Gate): Promise<MarkedComment[]> {
+	return (await ofKind(h, "gate")).filter((m) => gateData(m).phase === "ship");
 }
 
 async function phaseLabels(h: Gate): Promise<string[]> {
@@ -336,13 +352,21 @@ describe("spec_gate", () => {
 		expect(await ofKind(h, "gate")).toHaveLength(1);
 	});
 
+	test("ship gate is refused naming durable-docs when the ship context cannot be built", async () => {
+		const h = await change("ship", { ui: human("approve"), edit: shipReady, config: "# no integrationBranch\n" });
+		const out = await h.call("spec_gate", { target: "ship" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("durable-docs");
+		expect(await shipGates(h)).toEqual([]);
+	});
+
 	test("Ship approved", async () => {
-		const h = await change("ship", { ui: human("approve"), edit: allDone });
+		const h = await change("ship", { ui: human("approve"), edit: shipReady });
 		const out = await h.call("spec_gate", { target: "ship" });
 		expect(out.isError).toBe(false);
-		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "ship", outcome: "approved" });
+		expect(gateData((await shipGates(h))[0])).toMatchObject({ phase: "ship", outcome: "approved" });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
-		expect(textOf(out)).toContain("The ship gate is approved: the change is ready to ship.");
+		expect(textOf(out)).toContain("The ship gate is approved: run change_ship.");
 	});
 
 	test("Changes requested", async () => {
@@ -406,12 +430,12 @@ describe("spec_gate", () => {
 	test("Waived ship gate stays in ship", async () => {
 		registerSizeLimits();
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: ship\n    checks: [size-limits]\n" };
-		const h = await change("ship", { ui: human("waive"), edit: allDone, files: flow });
+		const h = await change("ship", { ui: human("waive"), edit: noPr, files: flow });
 		const out = await h.call("spec_gate", { target: "ship" });
 		expect(out.isError).toBe(false);
-		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "ship", outcome: "approved", waivers: ["size-limits"] });
+		expect(gateData((await shipGates(h))[0])).toMatchObject({ phase: "ship", outcome: "approved", waivers: ["size-limits"] });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
-		expect(card(h).step.next).toContain("ready to ship");
+		expect(card(h).step.next).toBe("The ship gate is approved: run change_ship.");
 	});
 
 	test("Dirty tree when the answer is read", async () => {

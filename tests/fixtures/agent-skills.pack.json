@@ -69,6 +69,9 @@
 		},
 		"finding-scope": {
 			"mode": "rule"
+		},
+		"durable-docs": {
+			"mode": "rule"
 		}
 	},
 	"init": {
@@ -316,9 +319,13 @@
 					"documentation-and-adrs"
 				]
 			},
-			"outputs": [],
+			"outputs": [
+				"issue#Durable docs"
+			],
 			"redirects": [],
-			"checks": [],
+			"checks": [
+				"durable-docs"
+			],
 			"gate": "human",
 			"subagents": []
 		},

@@ -470,9 +470,36 @@ describe("gitea adapter", () => {
 
 		it("reviews and review comments reject entries without their required fields", async () => {
 			await expect(forgeWith(reply([{}])).listReviews(1)).rejects.toMatchObject(bad("listReviews"));
-			const review = { id: 7, state: "COMMENT", body: "", user: { login: "a" } };
+			const review = { id: 7, state: "COMMENT", body: "", user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" };
 			const respond = (seen: Seen) => new Response(JSON.stringify(seen.path.endsWith("/comments") ? [{}] : [review]), { status: 200 });
 			await expect(forgeWith(respond).listReviewComments(1)).rejects.toMatchObject(bad("listReviewComments"));
+		});
+
+		const REVIEW = { id: 7, state: "COMMENT", body: "", user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" };
+		const REVIEW_COMMENT = { id: 9, path: "a.ts", position: 1, body: "x", user: { login: "a" }, updated_at: "2026-01-01T00:00:00Z" };
+		it("listReviews rejects a review without id", async () => {
+			await expect(forgeWith(reply([without(REVIEW, "id")])).listReviews(1)).rejects.toMatchObject(bad("listReviews"));
+		});
+
+		it("a pending review has no submitted_at and is skipped by listReviews and listReviewComments", async () => {
+			const pending = { ...without(REVIEW, "submitted_at"), id: 8, state: "PENDING" };
+			expect((await forgeWith(reply([pending, REVIEW])).listReviews(1)).map((r) => r.id)).toEqual(["7"]);
+			const respond = (seen: Seen) => new Response(JSON.stringify(seen.path.includes("/reviews/8/") ? [REVIEW_COMMENT] : seen.path.endsWith("/comments") ? [] : [pending]), { status: 200 });
+			expect(await forgeWith(respond).listReviewComments(1)).toEqual([]);
+		});
+
+		it.each(["id", "updated_at"])("listReviewComments rejects a review comment without %s", async (key) => {
+			const respond = (seen: Seen) => new Response(JSON.stringify(seen.path.endsWith("/comments") ? [without(REVIEW_COMMENT, key)] : [REVIEW]), { status: 200 });
+			await expect(forgeWith(respond).listReviewComments(1)).rejects.toMatchObject(bad("listReviewComments"));
+		});
+
+		it("a review's updatedAt is its updated_at, else its submitted_at", async () => {
+			const edited = { ...REVIEW, updated_at: "2026-02-01T00:00:00Z" };
+			const reviews = await forgeWith(reply([REVIEW, edited])).listReviews(1);
+			expect(reviews.map((r) => [r.id, r.updatedAt])).toEqual([
+				["7", "2026-01-01T00:00:00Z"],
+				["7", "2026-02-01T00:00:00Z"],
+			]);
 		});
 
 		it("an invalid fresh read during a body write sends no PATCH", async () => {

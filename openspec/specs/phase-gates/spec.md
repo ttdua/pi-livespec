@@ -80,7 +80,7 @@ Later specs SHALL be able to add payload for a phase through `registerGatePayloa
 
 #### Scenario: Waived ship gate stays in ship
 - **WHEN** a test registers waivable check `size-limits` for `ship`, it fails, and the human chooses `waive` at the ship gate
-- **THEN** the gate is approved with `size-limits` under `waivers`, the change stays in `ship`, and the next step says the change is ready to ship
+- **THEN** the gate is approved with `size-limits` under `waivers`, the change stays in `ship`, and the next step says to run `change_ship`
 
 #### Scenario: Approve without waiving
 - **WHEN** a waivable check fails and a writer comments `/livespec approve`
@@ -144,7 +144,7 @@ On `approved` or `approved_with_notes`, a phase gate SHALL move the change to th
 
 #### Scenario: Ship approved
 - **WHEN** the ship gate is approved
-- **THEN** the gate comment is written, the change stays in `ship`, and the next step says the change is ready to ship
+- **THEN** the gate comment is written, the change stays in `ship`, and the next step says to run `change_ship`
 
 #### Scenario: Changes requested
 - **WHEN** the define gate gets `changes_requested` with notes

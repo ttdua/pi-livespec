@@ -143,3 +143,30 @@ describe("advancePhase", () => {
 		expect(result).toHaveProperty("reason", expect.stringContaining("keep exactly one livespec:phase/* label"));
 	});
 });
+
+describe("advancePhase merged", () => {
+	test("Merged pull request moves to close", async () => {
+		const n = await issueWith("review");
+		expect(await advancePhase(world.forge, n, "close", pack, { merged: true })).toEqual({ status: "moved", from: "review" });
+		expect(await labels(n)).toEqual(["livespec", "livespec:phase/close"]);
+	});
+
+	test("merged jump works from the earliest phase", async () => {
+		const n = await issueWith("define");
+		expect(await advancePhase(world.forge, n, "close", pack, { merged: true })).toEqual({ status: "moved", from: "define" });
+	});
+
+	test("Close without merge refused", async () => {
+		const n = await issueWith("review");
+		const { forge, writes } = spy();
+		const result = await advancePhase(forge, n, "close", pack);
+		expect(result.status).toBe("refused");
+		expect(writes).toEqual([]);
+		expect(await advancePhase(forge, n, "close", pack, { merged: false })).toHaveProperty("status", "refused");
+	});
+
+	test("merged flag does not open other jumps", async () => {
+		const n = await issueWith("define");
+		expect(await advancePhase(world.forge, n, "build", pack, { merged: true })).toHaveProperty("status", "refused");
+	});
+});

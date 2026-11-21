@@ -130,7 +130,7 @@ function scriptedForge(world: World): Forge {
 		searchIssues: async (q) => [...world.issues.values()].filter((i) => q.state === undefined || q.state === "all" || i.state === q.state),
 		listComments: async (n) => [...(world.comments.get(n) ?? [])],
 		findOpenPullRequest: async () => null,
-		getPullRequest: async (n) => ({ number: n, state: "open", merged: false, head: "h", base: "b", title: "the pr", body: "pr body", version: "p1" as Version }),
+		getPullRequest: async (n) => ({ number: n, state: "open", merged: false, head: "h", base: "b", title: "the pr", body: "pr body", author: HUMAN, version: "p1" as Version }),
 		listPullRequests: async (q) => world.pulls.filter((p) => q.state === "all" || p.state === q.state),
 		listReviewComments: async () => [...world.reviewComments],
 		listReviews: async () => [],

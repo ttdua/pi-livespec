@@ -8,7 +8,7 @@ export const FIXTURE_BODY = readFileSync(new URL("../fixtures/change-body.md", i
 /** A hand-built ChangeState with everything present and passing; override what a test needs. */
 export function stateFor(phase: string, overrides: Partial<ChangeState> = {}, body = FIXTURE_BODY): ChangeState {
 	return {
-		issue: { number: 7, title: "per-ip-cap", labels: ["livespec", `livespec:phase/${phase}`] },
+		issue: { number: 7, title: "per-ip-cap", labels: ["livespec", `livespec:phase/${phase}`], state: "open" },
 		phase: { kind: "ok", id: phase },
 		change: parseChange(body),
 		sections: { Capabilities: true, Proposal: true, Design: true, Units: true },

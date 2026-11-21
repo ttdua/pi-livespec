@@ -79,6 +79,13 @@ describe("review steps", () => {
 		expect(step.next).toContain("src/util/clock.ts");
 	});
 
+	test("Failing check finding", () => {
+		const finding = agg({ route: "in-change", routeUnit: undefined, verify: "skipped-parent", severity: "CRITICAL", location: "check:ci/test" });
+		const step = at([routed({ source: "pull-request", selected: [] }), aggregate([finding], 1, H)]);
+		expect(step.next).toContain("unit_amend --add");
+		expect(step.next).toContain("ci/test");
+	});
+
 	test("Cap reached: spec_stuck comes before the return to build", () => {
 		const marked = [aggregate([], 1), aggregate([], 2), routed({ round: 3 }), aggregate([agg()], 3, H)];
 		const step = at(marked, {}, OPEN);

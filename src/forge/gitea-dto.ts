@@ -40,8 +40,12 @@ export interface ReviewDto {
 	state?: string;
 	body?: string;
 	user?: UserDto;
+	submitted_at?: string;
+	updated_at?: string;
 }
 export interface ReviewCommentDto {
+	id?: number;
+	updated_at?: string;
 	path?: string;
 	line?: number;
 	position?: number;
@@ -140,12 +144,22 @@ export function isCommentDto(value: unknown): value is CommentDto {
 }
 
 export function isReviewDto(value: unknown): value is ReviewDto {
-	return isObject(value) && required(value.id, "number") && required(value.state, "string") && optional(value.body, "string") && hasLogin(value.user);
+	return (
+		isObject(value) &&
+		required(value.id, "number") &&
+		required(value.state, "string") &&
+		optional(value.submitted_at, "string") &&
+		optional(value.updated_at, "string") &&
+		optional(value.body, "string") &&
+		hasLogin(value.user)
+	);
 }
 
 export function isReviewCommentDto(value: unknown): value is ReviewCommentDto {
 	return (
 		isObject(value) &&
+		required(value.id, "number") &&
+		requiredText(value.updated_at) &&
 		required(value.path, "string") &&
 		required(value.body, "string") &&
 		optional(value.line, "number") &&

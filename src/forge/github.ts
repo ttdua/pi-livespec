@@ -168,14 +168,23 @@ interface JsonPull {
 	base: { ref: string };
 	title: string;
 	body: string | null;
+	user: JsonUser | null;
 	updated_at: string;
 }
+/** The state of a review its author has not submitted yet. */
+const PENDING = "PENDING";
+
 interface JsonReview {
+	id: number;
 	user: JsonUser | null;
 	state: string;
 	body: string | null;
+	/** Absent on a pending review. */
+	submitted_at?: string | null;
 }
 interface JsonReviewComment {
+	id: number;
+	updated_at: string;
 	path: string;
 	line: number | null;
 	body: string;
@@ -347,7 +356,13 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async listReviews(pr: number): Promise<Review[]> {
 		const raw = await this.api<JsonReview[]>("listReviews", `${this.base}/pulls/${pr}/reviews?per_page=100`, { paginate: true });
-		return raw.map((r) => ({ author: r.user?.login ?? "", state: toReviewState(r.state), body: r.body ?? "" }));
+		return raw.filter((r) => r.state !== PENDING).map((r) => ({
+			id: String(r.id),
+			author: r.user?.login ?? "",
+			state: toReviewState(r.state),
+			body: r.body ?? "",
+			updatedAt: r.submitted_at ?? "",
+		}));
 	}
 
 	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
@@ -366,7 +381,14 @@ export class GitHubForge implements Forge, LabelRepo {
 
 	async listReviewComments(pr: number): Promise<ReviewComment[]> {
 		const raw = await this.api<JsonReviewComment[]>("listReviewComments", `${this.base}/pulls/${pr}/comments?per_page=100`, { paginate: true });
-		return raw.map((c) => ({ path: c.path, line: c.line ?? 0, body: c.body, author: c.user?.login ?? "" }));
+		return raw.map((c) => ({
+			id: String(c.id),
+			path: c.path,
+			line: c.line ?? 0,
+			body: c.body,
+			author: c.user?.login ?? "",
+			updatedAt: c.updated_at,
+		}));
 	}
 
 	async createReviewComment(pr: number, c: { path: string; line: number; body: string }): Promise<void> {
@@ -422,6 +444,7 @@ export class GitHubForge implements Forge, LabelRepo {
 			base: raw.base.ref,
 			title: raw.title,
 			body,
+			author: raw.user?.login ?? "",
 			version: bodyVersion(raw.updated_at, body, "gh"),
 		};
 		if (raw.merged_at) pull.mergedAt = raw.merged_at;

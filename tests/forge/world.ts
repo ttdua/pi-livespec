@@ -22,6 +22,8 @@ export interface SeedIssue {
 
 export interface SeedPullRequest {
 	head: string;
+	/** Defaults to `OTHER_LOGIN`. */
+	author?: string;
 	base?: string;
 	title?: string;
 	body?: string;
@@ -34,6 +36,8 @@ export interface SeedReview {
 	author: string;
 	state: ReviewState;
 	body: string;
+	/** An unsubmitted draft of its author: the forge lists it but it has no submission time. */
+	pending?: boolean;
 }
 
 export interface SeedStatus {
@@ -78,7 +82,9 @@ export interface ContractWorld {
 	/** Commit status (or check run) on `ref`. */
 	seedStatus(ref: string, status: SeedStatus): Promise<void>;
 	/** Review comments as the forge stores them, for asserting `createReviewComment`. */
-	reviewCommentsOf(pr: number): Promise<ReviewComment[]>;
+	reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]>;
+	/** Replaces a review comment body as its author would, which moves its `updatedAt`. */
+	editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void>;
 
 	/** Sets the repository permission the forge reports for `login`. */
 	setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void>;

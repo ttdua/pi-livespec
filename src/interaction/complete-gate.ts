@@ -10,6 +10,7 @@ import type { AdapterName, Answered, GateSnapshot, RequestRecord } from "./appro
 import { type ApplyFn, phasesAfter, postOnce, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 import { type AnswerData, snapshotOf } from "./requests.ts";
+import { staleComment } from "./stale.ts";
 import { WAIVE } from "./waive-rule.ts";
 
 const PLAN = "plan";
@@ -55,8 +56,7 @@ function gateSnapshotOf(request: RequestRecord): GateSnapshot {
 async function writeStale(run: Run, request: RequestRecord, target: string): Promise<void> {
 	const phases = phasesAfter(run.ctx.pack, target);
 	if (phases.length === 0) return;
-	const data = { reason: `${request.subject} changes requested`, phases, units: [], after_plan: false };
-	await postOnce(run, "stale", request.id, writeMarked("stale", request.id, data));
+	await postOnce(run, "stale", request.id, staleComment(request.id, { reason: `${request.subject} changes requested`, phases }));
 }
 
 async function lockedDigests(run: Run): Promise<Record<string, string>> {

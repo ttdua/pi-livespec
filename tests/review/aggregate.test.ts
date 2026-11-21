@@ -57,3 +57,26 @@ describe("withRoutes", () => {
 		expect(routed[1]).not.toHaveProperty("routeUnit");
 	});
 });
+
+it("a check location is kept as written", () => {
+	const f = finding({ severity: "CRITICAL", location: "check:ci/test" });
+	expect(mergeFindings({ parent: [f, f], reviews: [] }).map((m) => m.location)).toEqual(["check:ci/test"]);
+});
+
+describe("mergeFindings parent items", () => {
+	it("in a pull request round keeps parent findings at one location as separate findings; a reviewer finding merges into the first", () => {
+		const same = { location: "pr#7", kind: "other" as const };
+		const merged = mergeFindings({
+			parent: [finding({ ...same, evidence: "a" }), finding({ ...same, evidence: "b" })],
+			reviews: [{ commentId: "c1", findings: [finding({ ...same, evidence: "r" })] }],
+		}, { keepParents: true });
+		expect(merged.map((f) => [f.evidence, f.from])).toEqual([["a", ["parent", "c1:0"]], ["b", ["parent"]]]);
+	});
+
+	it("in a normal round parent findings at one location merge", () => {
+		const same = { location: "pr#7", kind: "other" as const };
+		const merged = mergeFindings({ parent: [finding({ ...same, evidence: "a" }), finding({ ...same, evidence: "b" })], reviews: [] });
+		expect(merged.map((f) => f.evidence)).toEqual(["a"]);
+		expect(merged[0]?.from).toEqual(["parent", "parent"]);
+	});
+});

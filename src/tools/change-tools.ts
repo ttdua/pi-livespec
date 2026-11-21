@@ -1,8 +1,12 @@
 // Registers every change tool on pi.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerChangeClose } from "./change-close.ts";
 import { registerChangeNew } from "./change-new.ts";
+import { registerChangePush } from "./change-push.ts";
+import { registerChangeShip } from "./change-ship.ts";
 import { registerChangeStart } from "./change-start.ts";
+import { registerDocsTable } from "./docs-table.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
 import { registerForgeRead } from "./forge-read.ts";
 import { registerLaneMerge } from "./lane-merge.ts";
@@ -47,4 +51,8 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerForgeRead(pi);
 	registerLaneOpen(pi);
 	registerLaneMerge(pi);
+	registerDocsTable(pi);
+	registerChangeShip(pi);
+	registerChangePush(pi);
+	registerChangeClose(pi);
 }

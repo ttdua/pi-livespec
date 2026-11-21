@@ -16,7 +16,7 @@ import { contentPaths } from "../content/paths.ts";
 import { workInProgress } from "../content/wip.ts";
 import { advancePhase } from "../engine/advance.ts";
 import { CommentsCache } from "../engine/comments-cache.ts";
-import { defaultGitExec } from "../engine/git-exec.ts";
+import { defaultGitExec, type GitExec } from "../engine/git-exec.ts";
 import { createGit, type Git } from "../engine/git.ts";
 import { clearGateMemo } from "../engine/registry.ts";
 import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
@@ -33,6 +33,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
@@ -105,15 +106,22 @@ export class Session {
 	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
+	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
+	feedbackPollInFlight?: Promise<FeedbackPollResult>;
 	private first = true;
 	private link?: SessionLink;
 	/** Every token the forge adapter can send, as the `RedactingForge` uses them; set by `connect`. */
 	private tokens: string[] = [];
 	private readonly shutdown = new AbortController();
 
+	/**
+	 * @param exec the runner `git` was built with; tools that run git outside `Git` (the guarded push)
+	 * use it so tests can record and fake every git call of the session.
+	 */
 	constructor(
 		readonly cwd: string,
 		readonly git: Git,
+		readonly exec: GitExec = defaultGitExec,
 	) {
 		this.card = { first: true, constraintsTemplate: false, unnotedSkills: [], kind: "forge-unavailable", message: NOT_CONNECTED };
 	}
@@ -239,7 +247,7 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
 	try {
-		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack);
+		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack, { merged: card.state.pr?.merged === true });
 		if (r.status === "refused") session.record("advance", r.reason);
 		return r.status === "moved";
 	} catch (error) {
@@ -525,6 +533,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);
+	await pollFeedback(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
 	kickOffUpgrade(session, content, ctx);

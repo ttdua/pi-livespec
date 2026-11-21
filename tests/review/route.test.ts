@@ -20,6 +20,7 @@ const facts = (over: Partial<RouteFacts> = {}): RouteFacts => ({
 	],
 	diffFiles: ["src/limit.ts"],
 	needsDecision: false,
+	check: false,
 	...over,
 });
 
@@ -75,5 +76,18 @@ describe("normalizeLocation", () => {
 	});
 	test("keeps the line of path:line", () => {
 		expect(normalizeLocation("src/a.ts:12")).toEqual({ path: "src/a.ts", line: 12 });
+	});
+});
+
+describe("routeFinding check findings", () => {
+	test("Failing check: a check location is in the change", () => {
+		const f = finding({ severity: "CRITICAL", location: "check:ci/test", scope: "unit" });
+		expect(routeFinding(f, facts({ path: "check:ci/test", check: true, units: [], diffFiles: [] }))).toEqual({ route: "in-change" });
+	});
+	test("a check finding marked needs-decision is still a question", () => {
+		expect(routeFinding(finding({ location: "check:ci/test" }), facts({ path: "check:ci/test", check: true, needsDecision: true }))).toEqual({ route: "question" });
+	});
+	test("a check location survives normalization unchanged", () => {
+		expect(normalizeLocation("check:ci/test")).toEqual({ path: "check:ci/test", line: 1 });
 	});
 });

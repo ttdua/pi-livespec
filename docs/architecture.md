@@ -289,6 +289,48 @@ A deleted test file stays in the change through the diff. Reviewer-supplied scop
 
 **Ship payload.** The gate payload of `ship` (`src/review/payload.ts`) lists the review result: disputed findings with the verifier's reason, rebutted findings, follow-ups (`out-of-scope`), and the subjects that ran inline, so the human sees what no child verified.
 
+## Ship
+
+The `ship` phase publishes the reviewed code as one pull request. The code lives in `src/ship/`; the tools are `docs_table`, `change_ship` and `change_push`.
+
+**Reviewed SHA.** The `head_sha` of the latest valid approved `review` gate. `change_ship` and `change_push` refuse unless `HEAD` equals it. The only exception is the clean-merge exception: every first-parent commit after the reviewed SHA must be a merge of the integration branch whose tree equals a fresh `git merge-tree` of its parents (no conflicts resolved by hand, no later edit). It needs git ≥ 2.38; older git falls back to strict equality with the reviewed SHA. Any other new commit sends the change back to `review`.
+
+**Head-bound gates.** Both gate results carry `head_sha`. An approval at an older `HEAD` is not reused, except through the clean-merge exception. A fix that touches `specs/constraints.md` or `specs/decisions/` needs the `ship` gate again before it is pushed.
+
+**`docs_table`** writes the `## Durable docs` table of the issue body. An `updated` row must name a file in the change diff, a `not needed` row needs a reason, and hard-rule rows (a new capability, a constraints change) cannot be waived. Missing or inconsistent rows block the `ship` gate.
+
+**`change_ship`** refuses, pushing and opening nothing, unless: the change is in `ship`, the tree is clean, the current branch is the issue's `Branch` line and the issue has no `PR` line; the ship gate has an approved result not listed by a newer `stale` comment and `HEAD` is reviewed against it; no human comment on the issue changed after the gate result and the gate digest still matches; every changed file is in some unit's `Files` or under `specs/`; and no other open pull request has the branch as head. When freshness is the only reason, it writes a `stale` comment for `ship` and does nothing else. It pushes through `guardedPush` (the only `git push`, refspec taken from the issue), opens one pull request (or adopts the account's own open one with `Refs #<issue>`) and records `PR: #<n>` plus a `ship` record. The body says `Refs #<issue>`; closing keywords are never written (a phrase from the Proposal is rewritten to `Refs #<n>`), so the forge cannot close the issue on merge. A retry after a partial ship resumes from the recorded state.
+
+**`change_push`** first polls the pull request feedback and refuses when the poll fails or ingests new feedback. It then refuses, pushing nothing, unless: the change is in `ship`, the `PR` line names an open unmerged pull request, the tree is clean, the branch is the issue's `Branch` line, the pushed head exists, `HEAD` is reviewed, every changed file is in some unit's `Files` or under `specs/`, `HEAD` descends from the pushed head, and the `durable-docs` check reports no error. When any commit since the pushed head changes a file under `specs/`, or the check has a confirmation item the latest `ship` record lacks, it also needs an approved ship gate at `HEAD` (re-confirmation). It never opens a second pull request and says so when `HEAD` equals the pushed head.
+
+## Pull request feedback
+
+While a change is in `ship` with an open pull request, `pollFeedback` (`src/ship/feedback-poll.ts`) runs at `session_start`, on `/livespec next` and inside `change_push`. It is single-flight per session and never throws; failures go to the session error list.
+
+**Mapping.** Human items become findings of a `review-run` with `source: pull-request`:
+
+- a located review comment → `WARNING` `defect`, `in-change`, at `path:line`;
+- a conversation comment or a review body → `WARNING` with scope `needs-decision`, at `pr#<n>`;
+- a failing CI check on the pushed head → `CRITICAL` `defect`, `in-change`, at `check:<name>`.
+
+Own comments (the current login with a livespec marker) are skipped. Comments from authors without write permission are ignored. The forge account may be shared, so the marker, not the login, decides.
+
+**Ingest once.** Each item has a key: `comment:<id>@<updatedAt>`, `review-comment:<id>@<updatedAt>`, `review:<id>@<updatedAt>`, `check:<pushedHead>:<name>`. A round records its `feedbackKeys` and later polls skip them; an edited comment is a new version and comes back. A round posts the `review-run`, a `stale` comment for `review` and `ship`, then moves the change to `review`; an interrupted round is finished by the next poll, not duplicated.
+
+**Routing.** `spec_review` aggregates and routes a feedback round like any other round (no reviewers run) and counts it toward `loops.review_rounds`. The fix stays on the same pull request; the review gate must pass again at the new `HEAD` before `change_push`.
+
+**Re-confirmation.** `change_push` is allowed only when the review gate is approved at `HEAD` (or the clean-merge exception holds). It also needs the `ship` gate at `HEAD` when any commit since the pushed head changes `specs/`, or when `durable-docs` has a new confirmation item the latest `ship` record does not list. While that is missing, the next step is the ship gate's own decision (ask for it, show requested changes, or ask the human after a dismissal).
+
+## Close
+
+A human merges the pull request; livespec never merges. A merged pull request is detected in any phase at refresh (the next step is `change_close`, also when it merged during a fix round). The next step after a merge is the advance to `close`; `advance` refuses to move without a merge. Only then is the next step `change_close`.
+
+**`change_close`** requires a merged pull request. In order, it posts the `close-summary` record, ticks the entry in its initiative (closing the initiative with its own summary when the last entry is done), closes the issue (it stays open until then) and emits the events. Every write is idempotent, so a retry after a partial close or after the initiative closed finishes the rest. It refuses an initiative that does not list the change.
+
+**Abandon.** A pull request closed unmerged keeps the change in its current phase, with an abandon step: `change_close` with `abandon: "<reason>"` closes the issue recording that reason, and an abandoned change has nothing left to do.
+
+**Events.** `livespec:change-closed` (`{ change, pr }`, plus `initiative` whenever the issue has an `Initiative` line, and `abandoned: true` on the abandon path) and `livespec:initiative-closed` (`{ initiative, changes }`) are emitted in-process on the pi event bus, once per close. Nothing is written to the forge for them.
+
 ## Forge accounts
 
 The forge account is chosen **per clone**, never globally. The choice lives in the clone's local git config (`livespec.account` and `livespec.accountRemote`, written with `--local`), so all worktrees of a clone share it and the machine-wide `gh` or `tea` default is ignored.

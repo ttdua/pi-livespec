@@ -19,6 +19,10 @@ export type ReviewRunData = {
 	parentFindings: Finding[];
 	routed: boolean;
 	prComments?: string[];
+	/** `pull-request` for a feedback round: nothing selected, aggregated and routed at its own `head`. */
+	source?: "pull-request";
+	/** Keys of the pull request feedback this round ingested. */
+	feedbackKeys?: string[];
 };
 
 /** The parent writes the aggregate itself: no child, packet or launch facts. */
@@ -31,7 +35,8 @@ function isRunData(d: unknown): d is ReviewRunData {
 	return (
 		isObj(d) && typeof d.round === "number" && Number.isInteger(d.round) && typeof d.head === "string" && isStrList(d.selected) &&
 		isStrList(d.tags) && isObj(d.verify) && Array.isArray(d.parentFindings) && d.parentFindings.every(isFindingData) && typeof d.routed === "boolean" &&
-		(d.prComments === undefined || isStrList(d.prComments))
+		(d.prComments === undefined || isStrList(d.prComments)) && (d.source === undefined || d.source === "pull-request") &&
+		(d.feedbackKeys === undefined || isStrList(d.feedbackKeys))
 	);
 }
 

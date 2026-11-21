@@ -3,8 +3,10 @@
 
 import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
+import type { DurableFacts } from "../ship/durable-docs.ts";
 import type { UnitEvidence } from "../evidence/unit-state.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import type { IssueState } from "../forge/types.ts";
 import type { AdapterName } from "../interaction/approver.ts";
 import type { RequestsState } from "../interaction/requests.ts";
 import type { ReviewSubject, Role } from "../subagents/roles.ts";
@@ -21,7 +23,7 @@ export type SectionName = "Capabilities" | "Proposal" | "Design" | "Units";
 export type PhaseState = { kind: "ok"; id: string } | { kind: "missing" } | { kind: "ambiguous"; ids: string[] };
 
 export type ChangeState = {
-	issue: { number: number; title: string; labels: string[]; url?: string };
+	issue: { number: number; title: string; labels: string[]; state: IssueState; url?: string };
 	phase: PhaseState;
 	change: Change;
 	sections: Record<SectionName, boolean>;
@@ -33,6 +35,20 @@ export type ChangeState = {
 	/** `specsChanged` is undefined without `Base`, else whether `git diff <Base>..HEAD -- specs/` is non-empty. */
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
 	checks: CheckResult[];
+	/** The pull request the `PR:` line names; absent without one, or when it cannot be read. */
+	pr?: { number: number; state: "open" | "closed"; merged: boolean; mergedAt?: string; pushedHead?: string };
+	/**
+	 * Git-dependent ship facts, filled at refresh in `src/hooks/card-input.ts` (`nextStep` does no git work).
+	 * `reviewed`: HEAD is reviewed against the review gate's SHA; `needsShipGate`: `change_push` would need a ship
+	 * gate at HEAD; `gatesAtHead`: per head-bound gate, false when its approval no longer holds at HEAD.
+	 */
+	ship?: {
+		docsRowsNeeded?: boolean;
+		durableFacts?: DurableFacts;
+		reviewed?: boolean;
+		needsShipGate?: boolean;
+		gatesAtHead?: { review: boolean; ship: boolean };
+	};
 	stale: boolean;
 	readOnly: boolean;
 	warnings: string[];

@@ -8,6 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { unitDigest } from "../core/digest.ts";
 import { runChecks } from "../engine/checks.ts";
+import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
@@ -122,7 +123,8 @@ async function askHuman(w: WriteContext, state: ChangeState, target: string, pla
 
 /** Runs the gate-only checks of `target` before the refusals, so they see the fresh results. */
 async function withGateChecks(w: WriteContext, state: ChangeState, target: string): Promise<ChangeState> {
-	const checks = await runChecks(w.pack, state, { root: w.session.cwd, git: w.session.git }, { gate: true, target });
+	const ship = await shipFor(w.session, state);
+	const checks = await runChecks(w.pack, state, { root: w.session.cwd, git: w.session.git, ...(ship === undefined ? {} : { ship }) }, { gate: true, target });
 	return { ...state, checks };
 }
 

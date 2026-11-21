@@ -8,6 +8,7 @@ import { isOffline } from "../forge/errors.ts";
 import { phaseLabel } from "../forge/labels.ts";
 import { filterMarked, type MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import { readPullRequest } from "../ship/pull-request.ts";
 import { readRequests } from "../interaction/requests.ts";
 import { reviewRounds } from "../review/status.ts";
 import { findExecutor } from "../subagents/executor.ts";
@@ -154,8 +155,9 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 	const change = parseChange(issue.body);
 	const comments = await readCommentFacts(d, issue, change);
 	const git = await readGitFacts(d.git, change.header.base);
+	const pull = await readPullRequest(d.forge, d.git, change.header, change.header.branch, d.isReadOnly());
 	return {
-		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], ...(issue.url === undefined ? {} : { url: issue.url }) },
+		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], state: issue.state, ...(issue.url === undefined ? {} : { url: issue.url }) },
 		phase: phaseFromLabels(issue.labels),
 		change,
 		sections: sectionPresence(issue.body, change),
@@ -163,9 +165,10 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		skillNotes: comments.skillNotes,
 		incomplete: comments.incomplete,
 		git: git.git,
+		...(pull.pr === undefined ? {} : { pr: pull.pr }),
 		stale: issue.stale === true || comments.stale,
 		readOnly: d.isReadOnly(),
-		warnings: [...comments.warnings, ...git.warnings],
+		warnings: [...comments.warnings, ...git.warnings, ...pull.warnings],
 		marked: comments.marked,
 		requests: comments.requests,
 		lock: comments.lock,

@@ -175,6 +175,14 @@ describe("completion engine", () => {
 		expect((await stateOf(f)).step.next).toContain("request the gate again");
 	});
 
+	test("a ship answer is validated with the ship context: a refused context supersedes it", async () => {
+		const f = await fixture("ship");
+		const record = await prepare(f, "gate", "gate:ship", gateSnapshot("ship"));
+		const polled = await forgeAnswer(f, record, "/livespec approve");
+		const out = await completeAnswer({ ...(await ctxOf(f)), shipFor: async () => ({ refused: "no integration branch" }) }, record, polled);
+		expect(out.status).toBe("superseded");
+	});
+
 	test("Issue edited before the answer", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));

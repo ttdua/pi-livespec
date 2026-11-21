@@ -31,6 +31,19 @@ export interface Git {
 	mergeAbort(): Promise<void>;
 	/** `git merge-base --is-ancestor <a> <b>`. */
 	isAncestor(a: string, b: string): Promise<boolean>;
+	/** `git merge-base <a> <b>`: the best common ancestor. */
+	mergeBase(a: string, b: string): Promise<string>;
+	/**
+	 * `git merge-tree --write-tree <a> <b>`: the tree a merge would write, without touching the work tree.
+	 * `conflict` when the merge would conflict; `unsupported` when git predates `--write-tree` (2.38).
+	 */
+	mergeTree(a: string, b: string): Promise<{ tree: string } | "conflict" | "unsupported">;
+	/** `git rev-parse <commit>^{tree}`. */
+	treeOf(commit: string): Promise<string>;
+	/** `git rev-parse --verify -q refs/remotes/<name>`; undefined when the ref is absent. */
+	remoteRef(name: string): Promise<string | undefined>;
+	/** `git rev-list --first-parent --reverse <range>`, oldest first. */
+	firstParentList(range: string): Promise<string[]>;
 	/** `git worktree add --detach <dir> <sha>`. */
 	worktreeAdd(dir: string, sha: string): Promise<void>;
 	/** `git worktree add -b <branch> <dir> <at>`. */
@@ -146,6 +159,22 @@ async function text(run: Run, args: string[]): Promise<string> {
  */
 const END_OF_OPTIONS = "--end-of-options";
 
+/** `merge-tree --write-tree` exits 1 both on a conflict and on an unknown ref; only a conflict prints a tree. */
+const EXIT_MERGE_CONFLICT = 1;
+const TREE_LINE = /^[0-9a-f]{40,64}$/;
+/** git before 2.38 rejects `--write-tree` with this usage error. */
+const UNKNOWN_OPTION = /unknown option/i;
+
+async function mergeTree(root: string, exec: GitExec, a: string, b: string): Promise<{ tree: string } | "conflict" | "unsupported"> {
+	const args = ["merge-tree", "--write-tree", END_OF_OPTIONS, a, b];
+	const result = await exec(args, { cwd: root });
+	const tree = lines(result.stdout)[0] ?? "";
+	if (result.code === 0 && TREE_LINE.test(tree)) return { tree };
+	if (result.code === EXIT_MERGE_CONFLICT && TREE_LINE.test(tree)) return "conflict";
+	if (UNKNOWN_OPTION.test(result.stderr)) return "unsupported";
+	throw new GitError(args, result.code, result.stderr || (result.spawnError ?? ""));
+}
+
 export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 	const run = runner(root, exec);
 	return {
@@ -193,6 +222,11 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			await run(["merge", "--abort"]);
 		},
 		isAncestor: async (a, b) => (await run(["merge-base", "--is-ancestor", END_OF_OPTIONS, a, b], EXIT_NOT_ANCESTOR)) !== undefined,
+		mergeBase: (a, b) => text(run, ["merge-base", END_OF_OPTIONS, a, b]),
+		mergeTree: (a, b) => mergeTree(root, exec, a, b),
+		treeOf: (commit) => text(run, ["rev-parse", "--verify", END_OF_OPTIONS, `${commit}^{tree}`]),
+		remoteRef: async (name) => (await run(["rev-parse", "--verify", "-q", END_OF_OPTIONS, `refs/remotes/${name}`], EXIT_NOT_FOUND))?.trim(),
+		firstParentList: async (range) => lines(await run(["rev-list", "--first-parent", "--reverse", END_OF_OPTIONS, range])),
 		worktreeAdd: async (dir, sha) => {
 			await run(["worktree", "add", "--quiet", "--detach", END_OF_OPTIONS, dir, sha]);
 		},

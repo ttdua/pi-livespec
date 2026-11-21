@@ -36,6 +36,10 @@ beforeEach(() => {
 });
 
 describe("pack schema", () => {
+	test("Durable docs output accepted", () => {
+		expect(validate(pack("    outputs: [issue#Durable docs]\n"))).toEqual([]);
+	});
+
 	test("a valid pack has no errors", () => {
 		expect(validate(pack("    checks: [known]\n    gate: self\n    outputs: [specs-diff]\n"))).toEqual([]);
 	});

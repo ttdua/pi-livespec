@@ -73,15 +73,19 @@ export class GiteaWorld implements ContractWorld {
 	}
 
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
-		this.fake.seedReview(pr, { author: review.author, event: REVIEW_EVENTS[review.state], body: review.body });
+		this.fake.seedReview(pr, { author: review.author, event: review.pending === true ? "PENDING" : REVIEW_EVENTS[review.state], body: review.body });
 	}
 
 	async seedStatus(ref: string, status: SeedStatus): Promise<void> {
 		this.fake.seedStatus(ref, { context: status.name, status: status.state, url: status.url });
 	}
 
-	async reviewCommentsOf(pr: number): Promise<ReviewComment[]> {
+	async reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]> {
 		return this.fake.reviewComments(pr);
+	}
+
+	async editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void> {
+		this.fake.editReviewComment(pr, Number(id), body);
 	}
 
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {

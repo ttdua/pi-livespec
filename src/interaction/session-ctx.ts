@@ -7,6 +7,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
+import { shipFor } from "../ship/context.ts";
 import type { CompletionCtx } from "./complete-effects.ts";
 
 /** The agent-skills commit: the basename of the active content tree, when one is active. */
@@ -15,8 +16,9 @@ export function agentSkillsOf(session: Pick<Session, "activeTree">): string | un
 }
 
 /** The completion context for `issue` from the session's git, cwd and active content tree. */
-export function sessionCompletionCtx(session: Pick<Session, "git" | "cwd" | "activeTree">, forge: Forge, pack: Pack, issue: number, marked: MarkedComment[]): CompletionCtx {
+export function sessionCompletionCtx(session: Session, forge: Forge, pack: Pack, issue: number, marked: MarkedComment[]): CompletionCtx {
 	const ctx: CompletionCtx = { forge, git: session.git, pack, issue, marked, root: session.cwd, now: () => new Date() };
+	ctx.shipFor = (state) => shipFor(session, state);
 	const skills = agentSkillsOf(session);
 	if (skills !== undefined) ctx.agentSkills = skills;
 	return ctx;

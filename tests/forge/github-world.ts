@@ -124,7 +124,7 @@ export class GitHubWorld implements ContractWorld {
 				base: pr.base ?? "main",
 				title: pr.title ?? `pull ${number}`,
 				body: pr.body ?? "",
-				author: OTHER_LOGIN,
+				author: pr.author ?? OTHER_LOGIN,
 				files: pr.files ?? [],
 				reviews: [],
 				reviewComments: [],
@@ -147,7 +147,16 @@ export class GitHubWorld implements ContractWorld {
 
 	async seedReview(pr: number, review: SeedReview): Promise<void> {
 		this.store.update((d) => {
-			d.pulls[String(pr)].reviews.push({ author: review.author, state: REVIEW_STATES[review.state], body: review.body });
+			d.pulls[String(pr)].reviews.push({ id: d.nextCommentId++, author: review.author, state: review.pending === true ? "PENDING" : REVIEW_STATES[review.state], body: review.body, submittedAt: review.pending === true ? "" : tick(d) });
+		});
+	}
+
+	async editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void> {
+		this.store.update((d) => {
+			const comment = d.pulls[String(pr)].reviewComments.find((c) => String(c.id) === id);
+			if (!comment) throw new Error(`no review comment ${id} on pull ${pr}`);
+			comment.body = body;
+			comment.updatedAt = tick(d);
 		});
 	}
 
@@ -160,7 +169,7 @@ export class GitHubWorld implements ContractWorld {
 		});
 	}
 
-	async reviewCommentsOf(pr: number): Promise<ReviewComment[]> {
+	async reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]> {
 		return this.store.read().pulls[String(pr)].reviewComments;
 	}
 

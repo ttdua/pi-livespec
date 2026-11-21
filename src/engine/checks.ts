@@ -3,6 +3,7 @@
 
 import { registerRedOnBase } from "../evidence/red-on-base.ts";
 import { registerReviewPayload } from "../review/payload.ts";
+import { registerDurableDocs } from "../ship/durable-register.ts";
 import { registerReviewClean } from "../review/status.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,6 +14,7 @@ import type { Result } from "../core/result.ts";
 import { parseSpec } from "../core/spec.ts";
 import { validateSpec } from "../core/validate-spec.ts";
 import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts";
+import type { ShipContext } from "../ship/context.ts";
 import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { resolveGateTarget } from "./gates.ts";
@@ -84,6 +86,7 @@ export function registerBuiltinChecks(): void {
 	registerRedOnBase();
 	registerReviewClean();
 	registerReviewPayload();
+	registerDurableDocs();
 }
 
 registerBuiltinChecks();
@@ -135,11 +138,11 @@ const tag = (name: string, produced: Result[]): CheckResult[] => produced.map((r
 export async function runChecks(
 	pack: Pack,
 	state: Omit<ChangeState, "checks">,
-	ctx: { root: string; git: Git },
+	ctx: { root: string; git: Git; ship?: ShipContext | { refused: string } },
 	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
 	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);
-	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked };
+	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(state.phase.kind === "ok" ? { phase: state.phase.id } : {}), ...(ctx.ship === undefined ? {} : { ship: ctx.ship }) };
 	const results: CheckResult[] = [];
 	for (const name of names) results.push(...(await resultsOf(name, checkCtx, opts.gate === true)));
 	return results;
