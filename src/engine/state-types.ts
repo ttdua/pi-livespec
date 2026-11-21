@@ -5,6 +5,7 @@ import type { Change, Question } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
 import type { UnitEvidence } from "../evidence/unit-state.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import type { IssueState } from "../forge/types.ts";
 import type { AdapterName } from "../interaction/approver.ts";
 import type { RequestsState } from "../interaction/requests.ts";
 import type { ReviewSubject, Role } from "../subagents/roles.ts";
@@ -21,7 +22,7 @@ export type SectionName = "Capabilities" | "Proposal" | "Design" | "Units";
 export type PhaseState = { kind: "ok"; id: string } | { kind: "missing" } | { kind: "ambiguous"; ids: string[] };
 
 export type ChangeState = {
-	issue: { number: number; title: string; labels: string[]; url?: string };
+	issue: { number: number; title: string; labels: string[]; state: IssueState; url?: string };
 	phase: PhaseState;
 	change: Change;
 	sections: Record<SectionName, boolean>;

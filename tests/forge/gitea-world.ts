@@ -80,8 +80,12 @@ export class GiteaWorld implements ContractWorld {
 		this.fake.seedStatus(ref, { context: status.name, status: status.state, url: status.url });
 	}
 
-	async reviewCommentsOf(pr: number): Promise<ReviewComment[]> {
+	async reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]> {
 		return this.fake.reviewComments(pr);
+	}
+
+	async editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void> {
+		this.fake.editReviewComment(pr, Number(id), body);
 	}
 
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {

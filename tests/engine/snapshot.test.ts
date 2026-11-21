@@ -117,6 +117,13 @@ describe("readChangeSnapshot", () => {
 		expect(state.warnings).toEqual([expect.stringContaining("login is unknown")]);
 	});
 
+	test("issue state is read from the forge", async () => {
+		const open = await world.seedIssue({ body: FIXTURE_BODY, labels: BUILD_LABELS });
+		const closed = await world.seedIssue({ body: FIXTURE_BODY, labels: BUILD_LABELS, state: "closed" });
+		expect((await readChangeSnapshot(deps(), open)).issue.state).toBe("open");
+		expect((await readChangeSnapshot(deps(), closed)).issue.state).toBe("closed");
+	});
+
 	test("Ambiguous phase", async () => {
 		const labels = ["livespec", "livespec:phase/define", "livespec:phase/plan"];
 		const n = await world.seedIssue({ title: "per-ip-cap", body: FIXTURE_BODY, labels });

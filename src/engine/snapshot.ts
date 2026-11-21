@@ -155,7 +155,7 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 	const comments = await readCommentFacts(d, issue, change);
 	const git = await readGitFacts(d.git, change.header.base);
 	return {
-		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], ...(issue.url === undefined ? {} : { url: issue.url }) },
+		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], state: issue.state, ...(issue.url === undefined ? {} : { url: issue.url }) },
 		phase: phaseFromLabels(issue.labels),
 		change,
 		sections: sectionPresence(issue.body, change),

@@ -16,7 +16,7 @@ import { contentPaths } from "../content/paths.ts";
 import { workInProgress } from "../content/wip.ts";
 import { advancePhase } from "../engine/advance.ts";
 import { CommentsCache } from "../engine/comments-cache.ts";
-import { defaultGitExec } from "../engine/git-exec.ts";
+import { defaultGitExec, type GitExec } from "../engine/git-exec.ts";
 import { createGit, type Git } from "../engine/git.ts";
 import { clearGateMemo } from "../engine/registry.ts";
 import { DEFAULT_PACK_FILE, loadPack } from "../engine/pack-load.ts";
@@ -111,9 +111,14 @@ export class Session {
 	private tokens: string[] = [];
 	private readonly shutdown = new AbortController();
 
+	/**
+	 * @param exec the runner `git` was built with; tools that run git outside `Git` (the guarded push)
+	 * use it so tests can record and fake every git call of the session.
+	 */
 	constructor(
 		readonly cwd: string,
 		readonly git: Git,
+		readonly exec: GitExec = defaultGitExec,
 	) {
 		this.card = { first: true, constraintsTemplate: false, unnotedSkills: [], kind: "forge-unavailable", message: NOT_CONNECTED };
 	}

@@ -202,7 +202,14 @@ export class GiteaForge implements Forge, LabelRepo {
 
 	async listReviews(pr: number): Promise<Review[]> {
 		const items = await this.http.list("listReviews", `${this.repoPath}/pulls/${pr}/reviews`, isReviewDto);
-		return items.map((r) => ({ author: String(r.user?.login ?? ""), state: toReviewState(r.state), body: String(r.body ?? "") }));
+		return items.map((r) => ({
+			id: String(r.id),
+			author: String(r.user?.login ?? ""),
+			state: toReviewState(r.state),
+			body: String(r.body ?? ""),
+			// `updated_at` moves on a body edit; servers that omit it only have `submitted_at`.
+			updatedAt: String(r.updated_at || r.submitted_at),
+		}));
 	}
 
 	async createPullRequest(p: { head: string; base: string; title: string; body: string }): Promise<PullRequest> {
@@ -231,7 +238,14 @@ export class GiteaForge implements Forge, LabelRepo {
 			// Not paginated by Gitea: one GET returns them all.
 			const items = await this.http.getArray("listReviewComments", `${this.repoPath}/pulls/${pr}/reviews/${review.id}/comments`, isReviewCommentDto);
 			for (const c of items) {
-				result.push({ path: String(c.path), line: Number(c.line ?? c.position ?? 0), body: String(c.body), author: String(c.user?.login ?? "") });
+				result.push({
+					id: String(c.id),
+					path: String(c.path),
+					line: Number(c.line ?? c.position ?? 0),
+					body: String(c.body),
+					author: String(c.user?.login ?? ""),
+					updatedAt: String(c.updated_at),
+				});
 			}
 		}
 		return result;
@@ -398,6 +412,7 @@ function toPull(json: PullDto): PullRequest {
 		base: String(json.base?.ref ?? ""),
 		title: String(json.title ?? ""),
 		body,
+		author: String(json.user?.login ?? ""),
 		version: toVersion(json, body),
 	};
 }

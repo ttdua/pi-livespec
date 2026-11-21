@@ -2,7 +2,16 @@
 // Stricter than GitHub in one place: adding an unknown label to an issue
 // answers 422 (GitHub would create it), so adapters must create labels.
 
-import { type CommentRec, type FakeGhData, type IssueRec, type PermissionLevel, type PullRec, tick } from "./state.ts";
+import {
+	type CommentRec,
+	type FakeGhData,
+	type IssueRec,
+	type PermissionLevel,
+	type PullRec,
+	type ReviewCommentRec,
+	type ReviewRec,
+	tick,
+} from "./state.ts";
 
 // No parameter properties: node runs this file by stripping types only.
 export class HttpError extends Error {
@@ -236,9 +245,24 @@ function patchPull(data: FakeGhData, n: string, req: ApiRequest): unknown {
 function createReviewComment(data: FakeGhData, n: string, req: ApiRequest, actor: string): unknown {
 	const pull = findPull(data, n);
 	if (typeof req.body.commit_id !== "string") unprocessable("commit_id is missing");
-	const comment = { path: text(req.body.path), line: Number(req.body.line), body: text(req.body.body), author: actor };
+	const comment: ReviewCommentRec = {
+		id: data.nextCommentId++,
+		path: text(req.body.path),
+		line: Number(req.body.line),
+		body: text(req.body.body),
+		author: actor,
+		updatedAt: tick(data),
+	};
 	pull.reviewComments.push(comment);
-	return { ...comment, user: userJson(comment.author) };
+	return reviewCommentJson(comment);
+}
+
+function reviewJson(review: ReviewRec): unknown {
+	return { id: review.id, user: userJson(review.author), state: review.state, body: review.body, submitted_at: review.submittedAt };
+}
+
+function reviewCommentJson(comment: ReviewCommentRec): unknown {
+	return { id: comment.id, path: comment.path, line: comment.line, body: comment.body, user: userJson(comment.author), updated_at: comment.updatedAt };
 }
 
 /** Statuses seeded as plain commit statuses: the legacy API. */
@@ -288,12 +312,12 @@ function routes(data: FakeGhData, actor: string): [string, RegExp, Handler][] {
 		[
 			"GET",
 			/^pulls\/(\d+)\/reviews$/,
-			(m) => findPull(data, m[1]).reviews.map((r) => ({ user: userJson(r.author), state: r.state, body: r.body })),
+			(m) => findPull(data, m[1]).reviews.map(reviewJson),
 		],
 		[
 			"GET",
 			/^pulls\/(\d+)\/comments$/,
-			(m) => findPull(data, m[1]).reviewComments.map((c) => ({ ...c, user: userJson(c.author) })),
+			(m) => findPull(data, m[1]).reviewComments.map(reviewCommentJson),
 		],
 		["POST", /^pulls\/(\d+)\/comments$/, (m, req) => createReviewComment(data, m[1], req, actor)],
 		["GET", /^commits\/(.+)\/check-runs$/, (m) => checkRuns(data, decodeURIComponent(m[1]))],

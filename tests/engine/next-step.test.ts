@@ -320,7 +320,7 @@ function staleComment(id: string, units: string[]): MarkedComment {
 	return { commentId: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
 }
 
-const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes });
+const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes, commentId: "c1" });
 
 describe("nextStep approvals, locks and stuck reports", () => {
 	test("Pending gate request", () => {

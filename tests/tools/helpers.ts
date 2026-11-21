@@ -116,7 +116,7 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 		gitCalls.push(args);
 		return defaultGitExec(args, opts);
 	};
-	const session = new Session(root, createGit(root, recording));
+	const session = new Session(root, createGit(root, recording), recording);
 	session.config = await loadConfig(root, home);
 	session.pack = await loadPack(root);
 	session.forge = forge;

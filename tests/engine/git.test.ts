@@ -187,6 +187,37 @@ describe("merge", () => {
 		expect(await git.isAncestor(head, "HEAD")).toBe(true);
 	});
 
+	test("mergeBase names the fork point", async () => {
+		const { root, git, side } = await divergent(false);
+		const fork = gitIn(root, "rev-parse", "HEAD~1");
+		expect(await git.mergeBase("HEAD", side)).toBe(fork);
+	});
+
+	test("mergeTree of a clean merge equals the tree of the --no-ff merge commit", async () => {
+		const { git, side } = await divergent(false);
+		const predicted = await git.mergeTree("HEAD", side);
+		expect(await git.merge("side")).toBe("ok");
+		expect(predicted).toEqual({ tree: await git.treeOf("HEAD") });
+	});
+
+	test("mergeTree of conflicting edits is conflict and leaves the work tree alone", async () => {
+		const { git, side } = await divergent(true);
+		expect(await git.mergeTree("HEAD", side)).toBe("conflict");
+		expect(await git.isDirty()).toBe(false);
+	});
+
+	test("mergeTree is unsupported when git does not know --write-tree", async () => {
+		const { root } = await committedRepo();
+		const old: GitExec = async (args, opts) =>
+			args[0] === "merge-tree" ? { stdout: "", stderr: "error: unknown option `write-tree'\nusage: git merge-tree <base-tree> <branch1> <branch2>\n", code: 129 } : defaultGitExec(args, opts);
+		expect(await createGit(root, old).mergeTree("HEAD", "HEAD")).toBe("unsupported");
+	});
+
+	test("mergeTree throws GitError on any other failure", async () => {
+		const { git } = await committedRepo();
+		await expect(git.mergeTree("HEAD", "0".repeat(40))).rejects.toBeInstanceOf(GitError);
+	});
+
 	test("isAncestor", async () => {
 		const { git, side } = await divergent(false);
 		const head = await git.head();
@@ -256,6 +287,37 @@ describe("verify additions", () => {
 		expect(await git.parents(a)).toEqual([base]);
 		const merge = execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit-tree", "HEAD^{tree}", "-p", a, "-p", base, "-m", "m"], { cwd: root, encoding: "utf8" }).trim();
 		expect(await git.parents(merge)).toEqual([a, base]);
+	});
+
+	test("treeOf names the tree of a commit", async () => {
+		const { root, git } = await committedRepo();
+		expect(await git.treeOf("HEAD")).toBe(gitIn(root, "rev-parse", "HEAD^{tree}"));
+	});
+
+	test("remoteRef resolves a remote-tracking ref, undefined when it is absent", async () => {
+		const root = await cloneWithOriginHead();
+		expect(await createGit(root).remoteRef("origin/main")).toBe(gitIn(root, "rev-parse", "origin/main"));
+		expect(await createGit(root).remoteRef("origin/x")).toBeUndefined();
+	});
+
+	test("firstParentList lists only the branch's first-parent commits after merging main", async () => {
+		const { root, git } = await committedRepo();
+		const main = currentBranch(root);
+		const base = await git.head();
+		gitIn(root, "switch", "-q", "-c", "feature");
+		await writeIn(root, "f.txt", "f\n");
+		commitAll(root, "feature work");
+		const own = await git.head();
+		gitIn(root, "switch", "-q", main);
+		await writeIn(root, "m.txt", "m\n");
+		commitAll(root, "main work");
+		const onMain = await git.head();
+		gitIn(root, "switch", "-q", "feature");
+		expect(await git.merge(main)).toBe("ok");
+		const merge = await git.head();
+		const listed = await git.firstParentList(`${base}..HEAD`);
+		expect(listed).toEqual([own, merge]);
+		expect(listed).not.toContain(onMain);
 	});
 
 	test("isIgnored follows .gitignore", async () => {

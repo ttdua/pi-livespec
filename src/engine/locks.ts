@@ -12,9 +12,19 @@ import type { Outcome } from "../interaction/approver.ts";
  * The valid gate result of a phase: its latest own gate comment newer than the latest `stale` listing it.
  * A superseded latest result is kept as-is (so callers can say "request again") and never replaced by an
  * older result; use `validApproval` to ask whether it approves. `notes` is the human's text (forge text: wrap
- * it as untrusted where it is shown on its own).
+ * it as untrusted where it is shown on its own). `request` is the answered request's id (absent for a self
+ * gate), `headSha` the HEAD the gate saw, and `commentId` the forge comment of the `gate` marker.
  */
-export type GateResult = { outcome: Outcome; superseded: boolean; at: string; waivers: string[]; notes: string };
+export type GateResult = {
+	outcome: Outcome;
+	superseded: boolean;
+	at: string;
+	waivers: string[];
+	notes: string;
+	request?: string;
+	headSha?: string;
+	commentId: string;
+};
 
 export type LockState = {
 	locked: Record<string, string> | undefined;
@@ -23,13 +33,13 @@ export type LockState = {
 	gates: Record<string, GateResult | undefined>;
 };
 
-type GateData = GateResult & { name: string; locked?: Record<string, string> };
+type GateData = Omit<GateResult, "commentId"> & { name: string; locked?: Record<string, string> };
 type AmendData = { action: "edit" | "add" | "drop"; unit: string; digest?: string; approved: boolean };
 type StaleData = { phases: string[]; units: string[] };
 
 /** One own marked comment this module reads, at its position in comment order. */
 type Fact =
-	| { kind: "gate"; at: number; data: GateData }
+	| { kind: "gate"; at: number; commentId: string; data: GateData }
 	| { kind: "amendment"; at: number; data: AmendData }
 	| { kind: "stale"; at: number; data: StaleData };
 
@@ -62,6 +72,8 @@ function gateData(d: unknown): GateData | undefined {
 	const waivers = isStringList(d.waivers) ? [...d.waivers] : [];
 	const notes = typeof d.notes === "string" ? d.notes : "";
 	const data: GateData = { name, outcome: d.outcome as Outcome, superseded: d.superseded === true, at: typeof d.at === "string" ? d.at : "", waivers, notes };
+	if (typeof d.request === "string") data.request = d.request;
+	if (typeof d.head_sha === "string") data.headSha = d.head_sha;
 	const locked = stringRecord(d.locked);
 	if (locked) data.locked = locked;
 	return data;
@@ -85,7 +97,7 @@ function readFacts(marked: MarkedComment[]): Fact[] {
 	marked.forEach((m, at) => {
 		if (m.kind === "gate") {
 			const data = gateData(m.data);
-			if (data) facts.push({ kind: "gate", at, data });
+			if (data) facts.push({ kind: "gate", at, commentId: m.commentId, data });
 		} else if (m.kind === "amendment") {
 			const data = amendData(m.data);
 			if (data) facts.push({ kind: "amendment", at, data });
@@ -156,8 +168,8 @@ function validGatesOf(facts: Fact[]): Record<string, GateResult | undefined> {
 	const stales = stalesOf(facts);
 	for (const g of gatesOf(facts)) {
 		if (stales.some((s) => s.at > g.at && s.data.phases.includes(g.data.name))) continue;
-		const { outcome, superseded, at, waivers, notes } = g.data;
-		results[g.data.name] = { outcome, superseded, at, waivers, notes };
+		const { name, locked: _locked, ...result } = g.data;
+		results[name] = { ...result, commentId: g.commentId };
 	}
 	return results;
 }

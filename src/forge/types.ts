@@ -53,22 +53,32 @@ export interface PullRequest {
 	base: string;
 	title: string;
 	body: string;
+	/** Login of the account that opened the pull request. */
+	author: string;
 	version: Version;
 }
 
 export type ReviewState = "approved" | "changes_requested" | "commented";
 
 export interface Review {
+	/** Forge id of the review, as a string. */
+	id: string;
 	author: string;
 	state: ReviewState;
 	body: string;
+	/** When the review was last changed (GitHub: `submitted_at`). */
+	updatedAt: string;
 }
 
 export interface ReviewComment {
+	/** Forge id of the inline comment, as a string. */
+	id: string;
 	path: string;
 	line: number;
 	body: string;
 	author: string;
+	/** Moves on every edit of the comment. */
+	updatedAt: string;
 }
 
 export type CheckState = "success" | "failure" | "pending" | "none";

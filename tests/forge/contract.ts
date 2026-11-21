@@ -322,7 +322,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				const got = await w.forge.getPullRequest(created.number);
 				expectVersion(got);
-				expect(got).toMatchObject({ head: "feat/a", base: "main", merged: false });
+				expect(got).toMatchObject({ head: "feat/a", base: "main", merged: false, author: BOT_LOGIN });
 
 				const result = await w.forge.updatePullRequest(created.number, { title: "Add A2", body: "new body" }, got.version);
 				expect(result.status).toBe("written");
@@ -382,6 +382,12 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect((await w.forge.getPullRequest(n)).body).toBe("edited elsewhere");
 			});
 
+			it("getPullRequest returns the opener as author", async () => {
+				const w = await world();
+				const n = await w.seedPullRequest({ head: "feat/o" });
+				expect((await w.forge.getPullRequest(n)).author).toBe(OTHER_LOGIN);
+			});
+
 			it("getPullRequestFiles lists changed paths", async () => {
 				const w = await world();
 				const n = await w.seedPullRequest({ head: "feat/f", files: ["a.ts", "dir/b.md"] });
@@ -399,8 +405,38 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				const reviews = await w.forge.listReviews(n);
 
 				expect(reviews).toHaveLength(2);
-				expect(reviews).toContainEqual({ author: OTHER_LOGIN, state: "approved", body: "lgtm" });
-				expect(reviews).toContainEqual({ author: "carol", state: "changes_requested", body: "fix it" });
+				expect(reviews).toContainEqual(expect.objectContaining({ author: OTHER_LOGIN, state: "approved", body: "lgtm" }));
+				expect(reviews).toContainEqual(expect.objectContaining({ author: "carol", state: "changes_requested", body: "fix it" }));
+			});
+
+			it("listReviews returns a distinct id and an updatedAt per review", async () => {
+				const w = await world();
+				const n = await w.seedPullRequest({ head: "feat/ri" });
+				await w.seedReview(n, { author: OTHER_LOGIN, state: "commented", body: "a" });
+				await w.seedReview(n, { author: OTHER_LOGIN, state: "commented", body: "b" });
+
+				const reviews = await w.forge.listReviews(n);
+
+				for (const r of reviews) {
+					expect(r.id).toMatch(/.+/);
+					expect(r.updatedAt).toMatch(/.+/);
+				}
+				expect(new Set(reviews.map((r) => r.id)).size).toBe(2);
+			});
+
+			it("listReviewComments returns an id and an updatedAt that an edit changes", async () => {
+				const w = await world();
+				const n = await w.seedPullRequest({ head: "feat/rc", files: ["src/x.ts"] });
+				await w.forge.createReviewComment(n, { path: "src/x.ts", line: 3, body: "first" });
+				const [before] = await w.forge.listReviewComments(n);
+				expect(before.id).toMatch(/.+/);
+				expect(before.updatedAt).toMatch(/.+/);
+
+				await w.editReviewCommentBehindBack(n, before.id, "edited");
+
+				const [after] = await w.forge.listReviewComments(n);
+				expect(after).toMatchObject({ id: before.id, body: "edited" });
+				expect(after.updatedAt).not.toBe(before.updatedAt);
 			});
 
 			it("createReviewComment is listed with path and line", async () => {

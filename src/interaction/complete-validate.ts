@@ -30,7 +30,7 @@ async function stateNow(ctx: CompletionCtx, issue: Issue): Promise<ChangeState> 
 	const facts = deriveCommentFacts(ctx.marked, change, { iterations: ctx.pack.loops.change_iterations, unitAttempts: ctx.pack.loops.unit_attempts, reviewRounds: ctx.pack.loops.review_rounds });
 	const git = await readGitFacts(ctx.git, change.header.base);
 	const snapshot: Omit<ChangeState, "checks"> = {
-		issue: { number: issue.number, title: issue.title, labels: [...issue.labels] },
+		issue: { number: issue.number, title: issue.title, labels: [...issue.labels], state: issue.state },
 		phase: phaseFromLabels(issue.labels),
 		change,
 		sections: sectionPresence(issue.body, change),

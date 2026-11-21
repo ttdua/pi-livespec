@@ -90,7 +90,7 @@ describe("manifest", () => {
 
 	test("review comments on the unit files are sources once a pull request exists", async () => {
 		const world = await makeWorld();
-		world.reviewComments.push({ path: "src/middleware/ratelimit.ts", line: 3, body: "use a constant", author: HUMAN }, { path: "README.md", line: 1, body: "unrelated", author: HUMAN });
+		world.reviewComments.push({ path: "src/middleware/ratelimit.ts", line: 3, body: "use a constant", author: HUMAN, id: "rc1", updatedAt: "t" }, { path: "README.md", line: 1, body: "unrelated", author: HUMAN, id: "rc2", updatedAt: "t" });
 		const placed = await sourcesOf(world, "implementer", "U3");
 		const review = placed.filter((p) => p.source.id.startsWith("review:"));
 		expect(review).toHaveLength(1);
@@ -113,7 +113,7 @@ describe("manifest", () => {
 
 	test("scout finds a closed pull request by paths only, and states the search scope", async () => {
 		const world = await makeWorld();
-		const pr = (number: number) => ({ number, state: "closed" as const, merged: true, mergedAt: `2026-01-${String(number).padStart(2, "0")}`, head: "h", base: "b", title: `pr ${number}`, body: "b", version: "p" as never });
+		const pr = (number: number) => ({ number, state: "closed" as const, merged: true, mergedAt: `2026-01-${String(number).padStart(2, "0")}`, head: "h", base: "b", title: `pr ${number}`, body: "b", author: "h", version: "p" as never });
 		world.pulls.push(pr(50), pr(51));
 		world.prFiles.set(50, ["src/limits/window.ts"]);
 		world.prFiles.set(51, ["README.md"]);
@@ -127,7 +127,7 @@ describe("manifest", () => {
 
 	test("scout reads the 30 highest-numbered closed pull requests, merged or not", async () => {
 		const world = await makeWorld();
-		const closed = (number: number, merged: boolean) => ({ number, state: "closed" as const, merged, ...(merged ? { mergedAt: "2026-03-01" } : {}), head: "h", base: "b", title: `pr ${number}`, body: "b", version: "p" as never });
+		const closed = (number: number, merged: boolean) => ({ number, state: "closed" as const, merged, ...(merged ? { mergedAt: "2026-03-01" } : {}), head: "h", base: "b", title: `pr ${number}`, body: "b", author: "h", version: "p" as never });
 		world.pulls.push(closed(5, true));
 		for (let n = 101; n <= 130; n++) world.pulls.push(closed(n, false));
 		for (const p of world.pulls) world.prFiles.set(p.number, ["src/limits/x.ts"]);

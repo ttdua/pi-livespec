@@ -26,17 +26,21 @@ export interface CommentRec {
 }
 
 export interface ReviewRec {
+	id: number;
 	author: string;
 	/** Review state as the GitHub API spells it, e.g. `APPROVED`. */
 	state: string;
 	body: string;
+	submittedAt: string;
 }
 
 export interface ReviewCommentRec {
+	id: number;
 	path: string;
 	line: number;
 	body: string;
 	author: string;
+	updatedAt: string;
 }
 
 export interface PullRec {

@@ -137,19 +137,29 @@ describe("forge_read provenance", () => {
 		void n;
 	});
 
-	test("the content hash changes with the same item and ignores key order", async () => {
-		const { h } = await harness();
+	test("the content hash is stable for the same item, ignores key order and changes with the content", async () => {
+		let reorder = false;
+		const h = await toolHarness({
+			branch: CHANGE_BRANCH,
+			// The same reviews, with their keys in reverse order once `reorder` is set.
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get: (target, prop, receiver) => {
+						if (prop !== "listReviews") return Reflect.get(target, prop, receiver);
+						return async (n: number) => (await target.listReviews(n)).map((r) => (reorder ? Object.fromEntries(Object.entries(r).reverse()) : r));
+					},
+				}) as Forge,
+		});
+		registerForgeRead(h.pi.api as never);
 		const pr = await h.world.seedPullRequest({ head: "feat" });
 		await h.world.seedReview(pr, { author: "alice", state: "approved", body: "ok" });
-		const version = async () => /version ([0-9a-f]{64})/.exec(text(await read(h, { target: "reviews", number: pr })))?.[1];
-		const before = await version();
-		await h.world.seedReview(pr, { body: "ok", state: "approved", author: "alice" });
-		const reordered = text(await read(h, { target: "reviews", number: pr })).match(/version ([0-9a-f]{64})/g);
-		expect(reordered?.[0]).toBe(reordered?.[1]);
-		expect(reordered?.[0]).toBe(`version ${before}`);
+		const version = async (n: number) => /version ([0-9a-f]{64})/.exec(text(await read(h, { target: "reviews", number: n })))?.[1];
+		const before = await version(pr);
+		expect(await version(pr)).toBe(before);
+		reorder = true;
+		expect(await version(pr)).toBe(before);
 		const other = await h.world.seedPullRequest({ head: "feat2" });
 		await h.world.seedReview(other, { author: "alice", state: "approved", body: "changed" });
-		const changed = /version ([0-9a-f]{64})/.exec(text(await read(h, { target: "reviews", number: other })))?.[1];
-		expect(changed).not.toBe(before);
+		expect(await version(other)).not.toBe(before);
 	});
 });

@@ -35,6 +35,7 @@ interface PullRec {
 	body: string;
 	files: string[];
 	reviews: ReviewRec[];
+	author: string;
 	updatedAt: string;
 	cv: number;
 }
@@ -44,7 +45,18 @@ interface ReviewRec {
 	author: string;
 	event: ReviewEvent;
 	body: string;
-	comments: { path: string; position: number; body: string; author: string }[];
+	submittedAt: string;
+	updatedAt: string;
+	comments: ReviewCommentRec[];
+}
+
+interface ReviewCommentRec {
+	id: number;
+	path: string;
+	position: number;
+	body: string;
+	author: string;
+	updatedAt: string;
 }
 
 interface CommentRec {
@@ -221,7 +233,7 @@ export class FakeGitea {
 		for (const issue of this.issues.values()) issue.labels = issue.labels.filter((l) => l !== name);
 	}
 
-	seedPull(p: { head: string; base?: string; title?: string; body?: string; state?: "open" | "closed"; merged?: boolean; files?: string[] }): number {
+	seedPull(p: { head: string; author?: string; base?: string; title?: string; body?: string; state?: "open" | "closed"; merged?: boolean; files?: string[] }): number {
 		const number = this.nextNumber++;
 		this.pulls.set(number, {
 			number,
@@ -233,6 +245,7 @@ export class FakeGitea {
 			body: p.body ?? "",
 			files: p.files ?? [],
 			reviews: [],
+			author: p.author ?? "mallory",
 			updatedAt: this.tick(),
 			cv: 1,
 		});
@@ -251,8 +264,16 @@ export class FakeGitea {
 	}
 
 	seedReview(n: number, r: { author: string; event: ReviewEvent; body: string; comments?: { path: string; line: number; body: string }[] }): void {
-		const inline = (r.comments ?? []).map((c) => ({ path: c.path, position: c.line, body: c.body, author: r.author }));
+		const inline = (r.comments ?? []).map((c) => this.reviewComment(c.path, c.line, c.body, r.author));
 		this.addReview(this.pull(n), r.author, r.event, r.body, inline);
+	}
+
+	/** Edits an inline review comment as its author would: its `updated_at` moves. */
+	editReviewComment(n: number, id: number, body: string): void {
+		const comment = this.pull(n).reviews.flatMap((r) => r.comments).find((c) => c.id === id);
+		if (!comment) throw new Error(`fake gitea: no review comment ${id} on pull ${n}`);
+		comment.body = body;
+		comment.updatedAt = this.tick();
 	}
 
 	reviewComments(n: number): { path: string; line: number; body: string; author: string }[] {
@@ -337,7 +358,11 @@ export class FakeGitea {
 
 		this.route("GET", `${r}/pulls`, (c) => ok(this.pageOf(this.searchPulls(c.query), c.query).map((p) => this.pullJson(p))));
 		this.route("POST", `${r}/pulls`, (c) =>
-			created(this.pullJson(this.pull(this.seedPull({ head: String(c.body.head), base: String(c.body.base), title: String(c.body.title), body: String(c.body.body ?? "") })))),
+			created(
+				this.pullJson(
+					this.pull(this.seedPull({ head: String(c.body.head), author: c.account.login, base: String(c.body.base), title: String(c.body.title), body: String(c.body.body ?? "") })),
+				),
+			),
 		);
 		this.route("GET", `${r}/pulls/${id}`, (c) => this.withPull(c, (p) => ok(this.pullJson(p))));
 		this.route("PATCH", `${r}/pulls/${id}`, (c) => this.withPull(c, (p) => this.patchPull(p, c.body)));
@@ -348,7 +373,9 @@ export class FakeGitea {
 		this.route("GET", `${r}/pulls/${id}/reviews/${id}/comments`, (c) =>
 			this.withPull(c, (p) => {
 				const review = p.reviews.find((x) => x.id === Number(c.groups[1]));
-				return review ? ok(review.comments.map((x) => ({ path: x.path, position: x.position, body: x.body, user: { login: x.author } }))) : notFound("review");
+				return review
+					? ok(review.comments.map((x) => ({ id: x.id, path: x.path, position: x.position, body: x.body, user: { login: x.author }, updated_at: x.updatedAt })))
+					: notFound("review");
 			}),
 		);
 
@@ -453,17 +480,19 @@ export class FakeGitea {
 
 	private postReview(pull: PullRec, b: Record<string, unknown>): Reply {
 		const event = (b.event as ReviewEvent | undefined) ?? "COMMENT";
-		const inline = ((b.comments as Record<string, unknown>[] | undefined) ?? []).map((c) => ({
-			path: String(c.path),
-			position: Number(c.new_position),
-			body: String(c.body),
-			author: BOT_LOGIN,
-		}));
+		const inline = ((b.comments as Record<string, unknown>[] | undefined) ?? []).map((c) =>
+			this.reviewComment(String(c.path), Number(c.new_position), String(c.body), BOT_LOGIN),
+		);
 		return ok(this.reviewJson(this.addReview(pull, BOT_LOGIN, event, String(b.body ?? ""), inline)));
 	}
 
+	private reviewComment(path: string, position: number, body: string, author: string): ReviewCommentRec {
+		return { id: this.nextId++, path, position, body, author, updatedAt: this.tick() };
+	}
+
 	private addReview(pull: PullRec, author: string, event: ReviewEvent, body: string, comments: ReviewRec["comments"]): ReviewRec {
-		const review = { id: this.nextId++, author, event, body, comments };
+		const now = this.tick();
+		const review = { id: this.nextId++, author, event, body, submittedAt: now, updatedAt: now, comments };
 		pull.reviews.push(review);
 		return review;
 	}
@@ -502,6 +531,7 @@ export class FakeGitea {
 			base: { ref: p.base },
 			title: p.title,
 			body: p.body,
+			user: { login: p.author },
 			updated_at: p.updatedAt,
 			...(this.withContentVersion ? { content_version: p.cv } : {}),
 		};
@@ -512,7 +542,15 @@ export class FakeGitea {
 	}
 
 	private reviewJson(r: ReviewRec): Record<string, unknown> {
-		return { id: r.id, state: r.event, body: r.body, user: { login: r.author }, comments_count: r.comments.length };
+		return {
+			id: r.id,
+			state: r.event,
+			body: r.body,
+			user: { login: r.author },
+			comments_count: r.comments.length,
+			submitted_at: r.submittedAt,
+			updated_at: r.updatedAt,
+		};
 	}
 
 	// ---- helpers ----
