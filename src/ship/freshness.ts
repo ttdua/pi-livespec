@@ -15,16 +15,18 @@ export async function humanThreadComments(forge: Forge, issue: number, login: st
 
 const time = (iso: string): number => new Date(iso).getTime();
 
-/** The reason the ship approval is stale, or undefined when fresh. `comments` are the human comments (and may hold the gate comment). */
-export function shipStale(state: ChangeState, comments: Comment[]): string | undefined {
+/**
+ * The reason the ship approval is stale, or undefined when fresh. `gateComment` is the forge comment of the ship gate
+ * (found by `GateResult.commentId`); `humans` is the output of `humanThreadComments`.
+ */
+export function shipStale(state: ChangeState, gateComment: Comment | undefined, humans: Comment[]): string | undefined {
 	const gate = state.lock.gates[SHIP];
 	if (gate === undefined) return "the ship gate has no approval";
-	const gateComment = comments.find((c) => c.id === gate.commentId);
 	const request = gate.request === undefined ? undefined : state.marked.find((m) => m.kind === "request" && m.id === gate.request);
 	const digest = (request?.data as { gate_digest?: unknown } | null | undefined)?.gate_digest;
 	if (gateComment === undefined || typeof digest !== "string") return "the ship gate's comment or request record is missing, so freshness cannot be checked";
 	const since = time(gateComment.createdAt);
-	const newer = comments.find((c) => c.id !== gate.commentId && (time(c.createdAt) > since || time(c.updatedAt) > since));
+	const newer = humans.find((c) => time(c.createdAt) > since || time(c.updatedAt) > since);
 	if (newer !== undefined) return `a human comment (${newer.id}) was added or edited after the ship gate`;
 	const body = state.change.lines.map((l) => l.text).join("\n");
 	if (gateDigest(body) !== digest) return "the issue changed since the ship gate request";

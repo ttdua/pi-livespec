@@ -17,11 +17,11 @@ function firstParagraph(text: string | undefined): string {
 export function pullRequestBody(state: ChangeState, review: string): { title: string; body: string } {
 	const body = state.change.lines.map((l) => l.text).join("\n");
 	const units = state.change.units.map((u) => `- [${u.done ? "x" : " "}] ${u.id} — ${u.title}`);
-	const parts = [neutralizeClosing(firstParagraph(sectionText(body, "Proposal")))];
+	const parts = [firstParagraph(sectionText(body, "Proposal"))];
 	if (units.length > 0) parts.push(["## Units", ...units].join("\n"));
 	const docs = sectionText(body, "Durable docs");
 	if (docs !== undefined && docs !== "") parts.push(["## Durable docs", docs].join("\n"));
 	if (review.trim() !== "") parts.push(["## Review", review.trim()].join("\n"));
 	parts.push(`Refs #${state.issue.number}`);
-	return { title: state.issue.title, body: parts.filter((p) => p !== "").join("\n\n") };
+	return { title: state.issue.title, body: neutralizeClosing(parts.filter((p) => p !== "").join("\n\n")) };
 }

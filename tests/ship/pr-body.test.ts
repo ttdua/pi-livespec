@@ -34,4 +34,28 @@ describe("pullRequestBody", () => {
 		expect(body).toContain("First.");
 		expect(body).not.toContain("Second.");
 	});
+
+	test.each([
+		["fixes #1, #2", "Refs #1, #2"],
+		["closes #1 and resolves #2", "Refs #1 and Refs #2"],
+		["fixes owner/repo#1, owner/repo#2", "Refs owner/repo#1, owner/repo#2"],
+	])("comma-separated or repeated closing refs %s", (input, expected) => {
+		const text = FIXTURE_BODY.replace("Limit each client IP.", input);
+		const { body } = pullRequestBody(stateFor("ship", { change: parseChange(text) }, text), "");
+		expect(body).toContain(expected);
+	});
+
+	test("closing keywords in the review text and Durable docs are rewritten too", () => {
+		const text = FIXTURE_BODY.replace("| specs/product.md | not needed — <reason> |", "| specs/product.md | updated, closes #9 |");
+		const { body } = pullRequestBody(stateFor("ship", { change: parseChange(text) }, text), "Fixed #8 in round 2.");
+		expect(body).not.toMatch(/\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b\s*:?\s*#/i);
+		expect(body).toContain("Refs #8");
+		expect(body).toContain("Refs #9");
+	});
+
+	test("a bare owner/repo# without a number is left alone", () => {
+		const text = FIXTURE_BODY.replace("Limit each client IP.", "fixes owner/repo# later");
+		const { body } = pullRequestBody(stateFor("ship", { change: parseChange(text) }, text), "");
+		expect(body).toContain("fixes owner/repo# later");
+	});
 });

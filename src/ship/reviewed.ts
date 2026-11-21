@@ -44,5 +44,6 @@ export async function isReviewed(git: Git, reviewed: string | undefined, head: s
 		if (!step.ok) return { ok: false, reason: `${step.reason} (reviewed ${reviewed.slice(0, 7)}, HEAD ${head.slice(0, 7)})` };
 		prev = commit;
 	}
+	if (prev !== head) return { ok: false, reason: `HEAD ${head.slice(0, 7)} is not a descendant of the reviewed ${reviewed.slice(0, 7)}` };
 	return { ok: true };
 }

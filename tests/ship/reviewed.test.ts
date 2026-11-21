@@ -120,3 +120,14 @@ describe("isReviewed", () => {
 		expect(!r.ok && r.reason).toContain("review gate");
 	});
 });
+
+describe("isReviewed after a reset", () => {
+	test("HEAD reset to an ancestor of the reviewed SHA is not reviewed", async () => {
+		const f = await fixture();
+		const earlier = await head(f);
+		const c3 = await reviewedAt(f);
+		sh(f.work, "reset", "-q", "--hard", earlier);
+		const r = await isReviewed(f.git, c3, await head(f), await tip(f));
+		expect(r.ok).toBe(false);
+	});
+});
