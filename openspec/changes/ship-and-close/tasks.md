@@ -60,8 +60,8 @@ Blocked by: 6
 
 Blocked by: 1
 
-- [ ] 8.1 `ReviewRunData` gains `source` and `feedbackKeys`; `round.ts` never replaces a `pull-request` run on a new HEAD and runs its later stages at its head; `effects.ts` skips pull request comments for it (review-phase "Review tool", finding-routing "Pull request review comments")
-- [ ] 8.2 `routeFinding` routes a `check:<name>` location `in-change`; `review/next.ts` names the failing check (finding-routing "Finding scope rule", review-phase "Review next steps")
+- [x] 8.1 `ReviewRunData` gains `source` and `feedbackKeys`; `round.ts` never replaces a `pull-request` run on a new HEAD and runs its later stages at its head; `effects.ts` skips pull request comments for it (review-phase "Review tool", finding-routing "Pull request review comments")
+- [x] 8.2 `routeFinding` routes a `check:<name>` location `in-change`; `review/next.ts` names the failing check (finding-routing "Finding scope rule", review-phase "Review next steps")
 
 ## 9. Feedback mapping and poll
 
