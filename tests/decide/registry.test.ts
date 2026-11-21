@@ -30,9 +30,14 @@ describe("decisions schema", () => {
 	});
 
 	test("Unknown point", () => {
-		const errors = validate("  lane: { mode: rule }\n");
+		const errors = validate("  nope: { mode: rule }\n");
 		expect(at(errors)).toEqual([{ file: "flow.yaml", line: 6, col: 3 }]);
-		expect(errors[0]?.message).toBe("no rule is registered for decision point `lane`");
+		expect(errors[0]?.message).toBe("no rule is registered for decision point `nope`");
+	});
+
+	test("lane is a registered point", () => {
+		expect(validate("  lane: { mode: rule, max_files: 3, max_lines: 100 }\n")).toEqual([]);
+		expect(ruleFor("lane")).toBeDefined();
 	});
 
 	test("missing mode is an error", () => {

@@ -96,6 +96,6 @@ describe("decide", () => {
 	});
 
 	test("unregistered point throws", async () => {
-		await expect(decide("lane", {}, { config: {}, subject: "x" })).rejects.toThrow(/lane/);
+		await expect(decide("nope", {}, { config: {}, subject: "x" })).rejects.toThrow(/nope/);
 	});
 });
