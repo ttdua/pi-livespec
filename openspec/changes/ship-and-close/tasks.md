@@ -47,8 +47,8 @@ Blocked by: 3, 4
 
 Blocked by: 5
 
-- [ ] 6.1 `src/tools/change-ship.ts`: refusals, the stale write, adoption, `guardedPush`, `createPullRequest`, `PR:` write and `ship` record, all under the evidence lock (ship-phase "Ship tool")
-- [ ] 6.2 Register it; child-session refusal; update `src/guard/push.ts`'s comment and `tests/guard/push-callers.test.ts` (command-guards "Guarded push")
+- [x] 6.1 `src/tools/change-ship.ts`: refusals, the stale write, adoption, `guardedPush`, `createPullRequest`, `PR:` write and `ship` record, all under the evidence lock (ship-phase "Ship tool")
+- [x] 6.2 Register it; child-session refusal; update `src/guard/push.ts`'s comment and `tests/guard/push-callers.test.ts` (command-guards "Guarded push")
 
 ## 7. Push tool
 
