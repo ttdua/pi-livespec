@@ -13,12 +13,11 @@ import { latestRun, reviewRunComment } from "../review/records.ts";
 import { roundNumber } from "../review/round.ts";
 import { afterForgeWrite } from "../tools/guard.ts";
 import { collectFeedback, type FeedbackItem } from "./feedback.ts";
-import { SHIP_PHASE } from "./phase.ts";
+import { SHIP_PHASE, REVIEW_PHASE } from "./phase.ts";
 
 export type FeedbackPollResult = { ingested: number } | { failed: string } | { skipped: true };
 
 const STEP = "feedback-poll";
-const REVIEW_PHASE = "review";
 const SKIPPED: FeedbackPollResult = { skipped: true };
 
 type Target = { session: Session; forge: CachedForge; pack: Pack; state: ChangeState; pr: number; pushedHead: string };

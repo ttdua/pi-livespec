@@ -6,10 +6,8 @@ import { gateResultDecision } from "../engine/gate-decision.ts";
 import { validApproval } from "../engine/locks.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState, Decision } from "../engine/state-types.ts";
-import { SHIP_PHASE } from "./phase.ts";
+import { SHIP_PHASE, REVIEW_PHASE, CLOSE_PHASE } from "./phase.ts";
 
-const CLOSE_PHASE = "close";
-const REVIEW_PHASE = "review";
 
 const phaseOf = (state: ChangeState): string | undefined => (state.phase.kind === "ok" ? state.phase.id : undefined);
 const hasSuccessor = (pack: Pack, phase: string): boolean => pack.phases.some((p) => p.requires.includes(phase));

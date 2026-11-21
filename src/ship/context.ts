@@ -11,7 +11,7 @@ import { validApproval } from "../engine/locks.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Session } from "../hooks/session.ts";
 import { type ChangeDiff, changeDiff } from "./diff.ts";
-import { SHIP_PHASE } from "./phase.ts";
+import { SHIP_PHASE, REVIEW_PHASE } from "./phase.ts";
 import { type DurableFacts, durableDocsRule, durableFacts } from "./durable-docs.ts";
 import { latestShipRecord } from "./records.ts";
 import { isReviewed, type ReviewedResult, reviewedHead } from "./reviewed.ts";
@@ -35,7 +35,6 @@ type GatesAtHead = ShipContext["gatesAtHead"];
 const memo = new WeakMap<Session, { key: string; value: Fetched }>();
 const SPECS_DIR = "specs";
 const SPECS_PATH = "specs/";
-const REVIEW_PHASE = "review";
 
 async function fetchOnce(session: Session, state: Pick<ChangeState, "git" | "change">): Promise<Fetched | { refused: string }> {
 	const project = session.config.project;

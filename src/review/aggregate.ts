@@ -2,7 +2,7 @@
 
 import type { AggregateFinding } from "../subagents/records.ts";
 import type { Finding } from "../subagents/roles.ts";
-import { normalizeLocation, type Route } from "./route.ts";
+import { CHECK_PREFIX, normalizeLocation, type Route } from "./route.ts";
 
 export type MergedFinding = Finding & { from: string[]; needsDecision: boolean };
 
@@ -23,7 +23,7 @@ export function mergeFindings(input: { parent: Finding[]; reviews: { commentId: 
 	];
 	const merged = new Map<string, MergedFinding>();
 	for (const { finding, from } of sources) {
-		const check = finding.location.startsWith("check:");
+		const check = finding.location.startsWith(CHECK_PREFIX);
 		const { path, line } = check ? { path: finding.location, line: 0 } : normalizeLocation(finding.location);
 		// Each parent finding is its own item (a feedback round's comments share a location), so it never merges with another parent finding.
 		const base = `${path}:${line}:${finding.kind}`;

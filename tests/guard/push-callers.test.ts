@@ -10,7 +10,7 @@ import { afterEach } from "vitest";
 
 afterEach(cleanupDirs);
 
-const TOOLS_DIR = new URL("../../src/tools/", import.meta.url).pathname;
+const SRC_DIR = new URL("../../src/", import.meta.url).pathname;
 
 function sourcesUnder(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -21,13 +21,14 @@ function sourcesUnder(dir: string): string[] {
 }
 
 describe("command-guards", () => {
-	test("No tool calls the push path", () => {
-		const sources = sourcesUnder(TOOLS_DIR);
+	test("Only change_ship and change_push call the push path", () => {
+		const sources = sourcesUnder(SRC_DIR);
 		expect(sources.length).toBeGreaterThan(0);
-		const importing = sources.filter((path) => /guard\/push(\.ts)?["']/.test(readFileSync(path, "utf8")));
+		const importing = sources.filter((path) => !path.endsWith("/guard/push.ts") && /guard\/push(\.ts)?["']|from "\.\/push(\.ts)?"/.test(readFileSync(path, "utf8")));
 		const allowed = new Set(["change-ship.ts", "change-push.ts"]);
 		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
 		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
+		expect(importing.every((path) => path.includes("/src/tools/"))).toBe(true);
 	});
 });
 

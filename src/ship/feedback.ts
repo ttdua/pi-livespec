@@ -5,6 +5,7 @@ import { parseMarked } from "../forge/markers.ts";
 import type { Check, Comment, Forge, Review, ReviewComment } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { prMarker } from "../review/effects.ts";
+import { CHECK_PREFIX } from "../review/route.ts";
 import type { Finding } from "../subagents/roles.ts";
 import { writerLookup } from "./writers.ts";
 
@@ -49,7 +50,7 @@ const reviewItem = (pr: number, max: number, r: Review): FeedbackItem => ({ key:
 
 function checkItem(pushedHead: string, c: Check): FeedbackItem {
 	const evidence = `${untrusted(c.name)} failed${c.url === undefined ? "" : ` (${untrusted(c.url)})`}`;
-	return { key: `check:${pushedHead}:${c.name}`, finding: { severity: "CRITICAL", kind: "defect", location: `check:${c.name}`, evidence, fix: FIX, scope: "in-change" } };
+	return { key: `check:${pushedHead}:${c.name}`, finding: { severity: "CRITICAL", kind: "defect", location: `${CHECK_PREFIX}${c.name}`, evidence, fix: FIX, scope: "in-change" } };
 }
 
 /** A failed permission read counts as no access (fail closed): the item is not ingested. */

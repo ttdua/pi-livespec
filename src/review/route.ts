@@ -6,6 +6,9 @@ import type { RuleResult, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
 import type { Finding } from "../subagents/roles.ts";
 
+/** The location prefix of a finding about a CI check, not a file. */
+export const CHECK_PREFIX = "check:";
+
 export type Route = "unit" | "in-change" | "out-of-scope" | "question" | "record";
 
 export type RouteFacts = {

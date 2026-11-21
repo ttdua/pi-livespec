@@ -24,7 +24,7 @@ import { applyRoutes, QuestionNotSent, type RouteEffects } from "./effects.ts";
 import { fanOut } from "./fanout.ts";
 import { aggregateComment, aggregateOf, latestRun, reviewRunComment } from "./records.ts";
 import { completedReview, type NextStage, roundNumber } from "./round.ts";
-import { normalizeLocation, type RouteResult } from "./route.ts";
+import { CHECK_PREFIX, normalizeLocation, type RouteResult } from "./route.ts";
 import { selectSubjects } from "./select.ts";
 import { startInputs } from "./start.ts";
 
@@ -40,7 +40,6 @@ export type StageCtx = {
 };
 
 const REVIEW = "review";
-const CHECK_PREFIX = "check:";
 const COMPLETED = new Set(["DONE", "DONE_WITH_CONCERNS"]);
 
 async function post(c: StageCtx, body: string): Promise<void> {

@@ -4,10 +4,10 @@ import { messageOf } from "../core/messages.ts";
 import { setHeaderLine } from "../core/sections.ts";
 import type { Forge } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import { writeBodyWithRetry } from "./versioned-write.ts";
 import { type ShipRecord, shipComment } from "./records.ts";
 
 const PR_KEY = "PR";
-const RETRIES = 1;
 
 export type WriteOutcome = { ok: true } | { ok: false; message: string };
 
@@ -15,11 +15,8 @@ export type WriteOutcome = { ok: true } | { ok: false; message: string };
 export async function writePrLine(forge: Pick<Forge, "getIssue" | "updateIssueBody">, issue: number, pr: number): Promise<WriteOutcome> {
 	const rerun = `the pull request #${pr} is open; run change_ship again to record it.`;
 	try {
-		for (let attempt = 0; attempt <= RETRIES; attempt++) {
-			const current = await forge.getIssue(issue);
-			const written = await forge.updateIssueBody(issue, setHeaderLine(current.body, PR_KEY, `#${pr}`), current.version);
-			if (written.status === "written") return { ok: true };
-		}
+		const written = await writeBodyWithRetry(forge, issue, (body) => setHeaderLine(body, PR_KEY, `#${pr}`));
+		if (written.status !== "conflict") return { ok: true };
 		return { ok: false, message: `the issue #${issue} kept changing while PR: #${pr} was written; ${rerun}` };
 	} catch (error) {
 		return { ok: false, message: `writing PR: #${pr} to #${issue} failed (${untrusted(messageOf(error))}); ${rerun}` };

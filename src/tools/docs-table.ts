@@ -3,14 +3,15 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import { shipContext } from "../ship/context.ts";
+import { REVIEW_PHASE, SHIP_PHASE } from "../ship/phase.ts";
+import { writeBodyWithRetry } from "../ship/versioned-write.ts";
 import { applyDocsTable, type DocsRow, docsRowsRefusal } from "../ship/docs-table.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "docs_table";
-const PHASES = ["review", "ship"];
-const RETRIES = 1;
+const PHASES = [REVIEW_PHASE, SHIP_PHASE];
 
 export type DocsTableParams = { rows: DocsRow[] };
 
@@ -18,12 +19,8 @@ const refuse = (message: string): ToolResult<undefined> => toolResult(`${TOOL} r
 
 /** A versioned body write; one retry after re-reading when the issue changed. */
 async function writeTable(w: WriteContext, n: number, rows: DocsRow[]): Promise<{ ok: true } | { ok: false; message: string }> {
-	for (let attempt = 0; attempt <= RETRIES; attempt++) {
-		const issue = await w.forge.getIssue(n);
-		const result = await w.forge.updateIssueBody(n, applyDocsTable(issue.body, rows), issue.version);
-		if (result.status === "written") return { ok: true };
-	}
-	return { ok: false, message: `the issue #${n} kept changing while the table was written; call ${TOOL} again.` };
+	const written = await writeBodyWithRetry(w.forge, n, (body) => applyDocsTable(body, rows));
+	return written.status === "conflict" ? { ok: false, message: `the issue #${n} kept changing while the table was written; call ${TOOL} again.` } : { ok: true };
 }
 
 async function setTable(p: DocsTableParams): Promise<ToolResult<undefined>> {

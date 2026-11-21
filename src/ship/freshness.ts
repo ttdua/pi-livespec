@@ -5,9 +5,9 @@ import { gateDigest } from "../engine/locks.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { parseMarked } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
+import { SHIP_PHASE } from "./phase.ts";
 import { writerLookup } from "./writers.ts";
 
-const SHIP = "ship";
 
 /** The comments that are not the account's own marked ones (author is `login` and a marker parses). */
 export function humanVoices(comments: Comment[], login: string): Comment[] {
@@ -54,7 +54,7 @@ function requestDigest(state: ChangeState, request: string): unknown {
  * (found by `GateResult.commentId`); `humans` is the output of `writerVoices`.
  */
 export function shipStaleness(state: ChangeState, gateComment: Comment | undefined, humans: Comment[]): ShipStaleness | undefined {
-	const gate = state.lock.gates[SHIP];
+	const gate = state.lock.gates[SHIP_PHASE];
 	if (gate === undefined) return { kind: "missing", reason: "the ship gate has no approval" };
 	const digest = gate.request === undefined ? undefined : requestDigest(state, gate.request);
 	if (gateComment === undefined || typeof digest !== "string") {

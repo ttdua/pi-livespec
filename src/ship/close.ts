@@ -8,13 +8,13 @@ import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, readMarkedComments, registerKind, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
 import { reviewRounds } from "../review/status.ts";
+import { CLOSE_PHASE } from "./phase.ts";
+import { writeBodyWithRetry } from "./versioned-write.ts";
 
 export const CLOSE_SUMMARY_KIND = "close-summary";
 registerKind(CLOSE_SUMMARY_KIND);
 
 export const INITIATIVE_SUMMARY_ID = "close-summary.initiative";
-const CLOSE_PHASE = "close";
-const RETRIES = 1;
 
 export type CloseSummary = { pr: number; mergedAt?: string; units: string[]; durableDocs: string[]; reviewRounds: number; abandoned?: string };
 
@@ -72,15 +72,13 @@ export async function initiativeRefusal(forge: Forge, tracking: number, change: 
 
 /** Ticks `change` in the tracking issue's `## Changes` list when unchecked (versioned write, one retry). */
 async function tickEntry(forge: Forge, tracking: number, change: number): Promise<string> {
-	for (let attempt = 0; attempt <= RETRIES; attempt++) {
-		const issue = await forge.getIssue(tracking);
-		const entry = parseInitiative(issue.body).changes.find((c) => c.number === change);
+	const written = await writeBodyWithRetry(forge, tracking, (body) => {
+		const entry = parseInitiative(body).changes.find((c) => c.number === change);
 		if (!entry) throw new Error(`the Initiative line names initiative #${tracking}, which does not list change #${change}`);
-		if (entry.checked) return issue.body;
-		const written = await forge.updateIssueBody(tracking, tickChange(issue.body, change), issue.version);
-		if (written.status === "written") return tickChange(issue.body, change);
-	}
-	throw new Error(`initiative #${tracking} kept changing while the change was ticked; call change_close again`);
+		return entry.checked ? undefined : tickChange(body, change);
+	});
+	if (written.status === "conflict") throw new Error(`initiative #${tracking} kept changing while the change was ticked; call change_close again`);
+	return written.body;
 }
 
 /** Ticks the entry; closes the tracking issue (after its own summary) once every entry is checked. Returns the initiative-closed event data when its summary exists. */
