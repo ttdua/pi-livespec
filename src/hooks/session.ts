@@ -33,6 +33,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount } from "./card-input.ts";
 import { type CardInput, renderCard, untrusted } from "./phase-card.ts";
@@ -105,6 +106,8 @@ export class Session {
 	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
+	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
+	feedbackPollInFlight?: Promise<FeedbackPollResult>;
 	private first = true;
 	private link?: SessionLink;
 	/** Every token the forge adapter can send, as the `RedactingForge` uses them; set by `connect`. */
@@ -530,6 +533,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);
+	await pollFeedback(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
 	kickOffUpgrade(session, content, ctx);

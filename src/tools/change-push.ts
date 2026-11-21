@@ -12,6 +12,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Session } from "../hooks/session.ts";
 import { type ShipContext, shipContext } from "../ship/context.ts";
 import { durableDocsRule } from "../ship/durable-docs.ts";
+import { pollFeedback } from "../ship/feedback-poll.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { cleanBranchRefusal, filesRefusal, shipPhaseRefusal } from "../ship/ship-refusals.ts";
 import { postShipRecord } from "../ship/ship-writes.ts";
@@ -23,7 +24,7 @@ import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 const TOOL = "change_push";
 const REMOTE = "origin";
 
-/** Polls the pull request's feedback (Task 9); `skipped` when there is nothing to poll. */
+/** Polls the pull request's feedback (`pollFeedback`); `skipped` when there is nothing to poll. */
 export type ShipPoll = (session: Session) => Promise<{ ingested: number } | { failed: string } | { skipped: true }>;
 
 const refuse = (message: string): ToolResult<undefined> => toolResult(`${TOOL} refused: ${message} Nothing was pushed.`, undefined, true);
@@ -129,6 +130,6 @@ export function registerChangePush(pi: ExtensionAPI): void {
 			"Push reviewed fix commits to the open pull request's branch and record the new pushed head. Polls pull request feedback first; refuses (pushing nothing) on new feedback or any unmet condition, and names the ship gate when the fix needs it again.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: {} } as never,
-		execute: (_id, params, _signal, _update, ctx) => runChangePush(params as Record<string, never>, { poll: async () => ({ skipped: true }) }, ctx as ToolCtx),
+		execute: (_id, params, _signal, _update, ctx) => runChangePush(params as Record<string, never>, { poll: pollFeedback }, ctx as ToolCtx),
 	});
 }

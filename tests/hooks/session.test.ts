@@ -8,6 +8,9 @@ import { gitStatus } from "../helpers/repo.ts";
 import { asChild } from "./fake-pi.ts";
 import { allDone, BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, contextCall, harness, type Msg, resumeBody, TREE_SHA } from "./helpers.ts";
 import { writeIn } from "../helpers/repo.ts";
+import { execFileSync } from "node:child_process";
+import type { Forge } from "../../src/forge/types.ts";
+import type { MemoryWorld } from "../forge/memory-forge.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -317,5 +320,42 @@ describe("derived advance with a pull request", () => {
 		await h.start();
 		expect(spy).toHaveBeenCalledWith(expect.anything(), expect.any(Number), "review", expect.anything(), { merged: false });
 		spy.mockRestore();
+	});
+});
+
+describe("pull request feedback poll at session start", () => {
+	test("runs after the approval poll", async () => {
+		const poll = await import("../../src/interaction/poll.ts");
+		const feedback = await import("../../src/ship/feedback-poll.ts");
+		const order: string[] = [];
+		const a = vi.spyOn(poll, "pollApprovals").mockImplementation(async () => void order.push("approvals"));
+		const f = vi.spyOn(feedback, "pollFeedback").mockImplementation(async () => (order.push("feedback"), { skipped: true }));
+		const h = await harness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.start();
+		expect(order).toEqual(["approvals", "feedback"]);
+		a.mockRestore();
+		f.mockRestore();
+	});
+
+	test("Poll fails at session start: recorded, the session starts and the card is shown", async () => {
+		const failing = (world: MemoryWorld): Forge =>
+			new Proxy(world.forge, {
+				get(target, prop, receiver) {
+					const value = Reflect.get(target, prop, receiver);
+					if (prop !== "listReviewComments" || typeof value !== "function") return value;
+					return () => Promise.reject(new Error("review comments unavailable"));
+				},
+			});
+		const h = await harness({ branch: CHANGE_BRANCH, forge: failing });
+		const pr = await h.world.seedPullRequest({ head: CHANGE_BRANCH });
+		const body = allDone(resumeBody(h.head)).replace(/^PR: .*$/m, `PR: #${pr}`);
+		await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/ship"] });
+		execFileSync("git", ["update-ref", `refs/remotes/origin/${CHANGE_BRANCH}`, "HEAD"], { cwd: h.root });
+		await expect(h.start()).resolves.toBeUndefined();
+		expect(getSession()?.errors.join("\n")).toContain("review comments unavailable");
+		const [resume] = resumeMessages(h.pi.entries);
+		expect(resume?.content).toContain("· ship");
+		expect(await cardText(h.pi, h.ctx)).toContain("· ship");
 	});
 });

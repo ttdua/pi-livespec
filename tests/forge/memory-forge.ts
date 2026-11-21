@@ -246,9 +246,7 @@ class MemoryState {
 
 	/** Like GitHub and Gitea, a new comment bumps the issue's `updated_at`, so its version changes. */
 	addComment(n: number, author: string, body: string): CommentRecord {
-		const issue = this.issue(n);
-		this.touch(issue);
-		const now = issue.updatedAt;
+		const now = this.touchThread(n);
 		const record: CommentRecord = {
 			id: this.nextId(),
 			issue: n,
@@ -260,6 +258,14 @@ class MemoryState {
 		};
 		this.comments.set(record.id, record);
 		return record;
+	}
+
+	/** A pull request's conversation is its issue thread, as on GitHub and Gitea; numbers are shared. */
+	touchThread(n: number): string {
+		if (this.pulls.has(n)) return this.tick();
+		const issue = this.issue(n);
+		this.touch(issue);
+		return issue.updatedAt;
 	}
 
 	ensureLabel(name: string): void {
@@ -369,7 +375,7 @@ class MemoryForge implements Forge {
 
 	async listComments(n: number): Promise<Comment[]> {
 		this.guard("listComments");
-		this.s.issue(n);
+		if (!this.s.pulls.has(n)) this.s.issue(n);
 		return [...this.s.comments.values()].filter((c) => c.issue === n).map(commentView);
 	}
 
