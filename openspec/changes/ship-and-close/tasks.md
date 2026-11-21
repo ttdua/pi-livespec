@@ -32,8 +32,8 @@ Blocked by: 2
 
 Blocked by: 2
 
-- [ ] 4.1 Snapshot `pr` from `PR:` and `pushedHead` from `refs/remotes/origin/<branch>`; unreadable pull request → absent plus warning (flow-engine "Change state from issue and git")
-- [ ] 4.2 `planMove` / `advancePhase` `merged` option; the session's derived advance passes `state.pr.merged` (flow-engine "Advance phase")
+- [x] 4.1 Snapshot `pr` from `PR:` and `pushedHead` from `refs/remotes/origin/<branch>`; unreadable pull request → absent plus warning (flow-engine "Change state from issue and git")
+- [x] 4.2 `planMove` / `advancePhase` `merged` option; the session's derived advance passes `state.pr.merged` (flow-engine "Advance phase")
 
 ## 5. Next steps for ship and close
 
