@@ -26,7 +26,7 @@ async function commitFix(h: ToolHarness): Promise<string> {
 	return h.git("rev-parse", "HEAD");
 }
 
-test("ship, failing check on the same pull request, reviewed fix push, merge and close", async () => {
+test("ship, failing check routed on the same pull request, push after a review gate at the new HEAD, merge and close", async () => {
 	// Review gate approved at HEAD; docs table, then the ship gate.
 	const h = await shipReady({ noShipGate: true });
 	expect(textOf(await h.call("docs_table", { rows: [{ file: "specs/glossary.md", status: "not needed", reason: "no new term" }] }))).not.toContain("refus");
@@ -65,16 +65,22 @@ test("ship, failing check on the same pull request, reviewed fix push, merge and
 	expect(card.step.next).toContain("unit_amend --add");
 	expect(card.step.next).toContain("ci/test");
 
-	// A new non-merge commit is unreviewed: both tools refuse.
+	// A new non-merge commit is unreviewed. The change is already in review here (the feedback round moved it), and a
+	// new HEAD never leaves a change in ship: the refresh moves it back, so the user sees the phase refusal. The
+	// "New commits after the reviewed SHA need review" next step and the short-SHA refusal are covered by
+	// tests/ship/ship-steps.test.ts and tests/tools/change-push.test.ts "Unreviewed commits refused".
 	const unreviewed = await commitFix(h);
-	await h.session.refresh();
-	const refusedShip = await h.call("change_ship");
-	expect(refusedShip.isError).toBe(true);
-	const refusedPush = await h.call("change_push");
-	expect(refusedPush.isError).toBe(true);
-	expect(textOf(refusedPush)).toContain("Nothing was pushed");
+	const originBefore = originRefs(h.origin);
+	for (const tool of ["change_ship", "change_push"]) {
+		const refused = await h.call(tool);
+		expect(refused.isError, tool).toBe(true);
+		expect(textOf(refused), tool).toContain("the change is in review");
+	}
+	expect(originRefs(h.origin)).toBe(originBefore);
 	expect(await openPulls(h)).toHaveLength(1);
 
+	// KNOWN SHORTCUT: the review gate at the fix HEAD is posted by hand (no executor in tests, so no real review round
+	// or gate approval runs here), and the ship label is restored by hand. change_push below is driven for real.
 	// The fix is reviewed at the new HEAD; change_push updates the same branch, no second pull request.
 	await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", `self-${unreviewed.slice(0, 7)}`, unreviewed));
 	await h.world.forge.removeLabels(h.n, ["livespec:phase/review"]);
