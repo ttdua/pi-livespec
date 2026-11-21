@@ -54,7 +54,7 @@ Blocked by: 5
 
 Blocked by: 6
 
-- [ ] 7.1 `src/tools/change-push.ts` with an injected `ShipPoll` (no-op until group 9): refusals, re-confirmation, `guardedPush`, `ship` record (ship-phase "Push tool"); child-session refusal
+- [x] 7.1 `src/tools/change-push.ts` with an injected `ShipPoll` (no-op until group 9): refusals, re-confirmation, `guardedPush`, `ship` record (ship-phase "Push tool"); child-session refusal
 
 ## 8. Review changes for feedback rounds
 
