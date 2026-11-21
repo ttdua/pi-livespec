@@ -10,11 +10,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `src/fix/branch.ts`: `fixSlug(branch)` (kebab-case `fix/<slug>` or undefined) and `fixMergeBase(git, integration)` (fetch, then merge base with `origin/<integration>`) (small-fix-lane "Fix branch")
-- [ ] 2.2 `src/fix/lane-facts.ts`: `laneFacts` from numstat, `showFile` at the merge base and HEAD with `parseSpec`, created capability directories, governance paths and capability code (design D2)
-- [ ] 2.3 `src/fix/lane.ts`: the pure `lane` rule, `laneSchema` (`mode`, positive integer `max_files`/`max_lines`), `laneRuleFn`; registered in `registerBuiltinRules` (small-fix-lane "Lane rule", "Declared no behavior change"); tests in `tests/fix/lane.test.ts`, one per scenario
-- [ ] 2.4 Change the unknown-point example in `tests/decide/registry.test.ts` from `lane` to `nope` (decision-seam "Rule registry and pack config")
-- [ ] 2.5 Default pack `decisions.lane: { mode: rule, max_files: 3, max_lines: 100 }` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`; project-override merge and invalid-limit tests (flow-pack "Default flow pack"; small-fix-lane "Project override", "Invalid limit")
+- [x] 2.1 `src/fix/branch.ts`: `fixSlug(branch)` (kebab-case `fix/<slug>` or undefined) and `fixMergeBase(git, integration)` (fetch, then merge base with `origin/<integration>`) (small-fix-lane "Fix branch")
+- [x] 2.2 `src/fix/lane-facts.ts`: `laneFacts` from numstat, `showFile` at the merge base and HEAD with `parseSpec`, created capability directories, governance paths and capability code (design D2)
+- [x] 2.3 `src/fix/lane.ts`: the pure `lane` rule, `laneSchema` (`mode`, positive integer `max_files`/`max_lines`), `laneRuleFn`; registered in `registerBuiltinRules` (small-fix-lane "Lane rule", "Declared no behavior change"); tests in `tests/fix/lane.test.ts`, one per scenario
+- [x] 2.4 Change the unknown-point example in `tests/decide/registry.test.ts` from `lane` to `nope` (decision-seam "Rule registry and pack config")
+- [x] 2.5 Default pack `decisions.lane: { mode: rule, max_files: 3, max_lines: 100 }` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json`; project-override merge and invalid-limit tests (flow-pack "Default flow pack"; small-fix-lane "Project override", "Invalid limit")
 
 ## 3. Fix start
 
