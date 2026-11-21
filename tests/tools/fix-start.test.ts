@@ -19,6 +19,7 @@ describe("fix_start", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(h.git("branch", "--show-current")).toBe("fix/typo-in-readme");
 		expect(h.git("rev-parse", "HEAD")).toBe(h.head);
+		expect(out.details).toEqual({ branch: "fix/typo-in-readme" });
 		expect(textOf(out)).toBe(`Started fix/typo-in-readme at origin/main ${h.head}. No issue was created and nothing was pushed.`);
 		expect(await h.world.forge.searchIssues({})).toEqual([]);
 		expect(originRefs(h.origin)).toBe(before);
@@ -64,6 +65,16 @@ describe("fix_start", () => {
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("integration branch is unknown");
 		expect(hasRef(h.git, "fix/typo")).toBe(false);
+	});
+
+	test("Fetch fails", async () => {
+		const h = await toolHarness();
+		h.git("remote", "set-url", "origin", `${h.origin}-missing`);
+		const out = await h.call("fix_start", { slug: "typo" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("fix_start refused: git failed:");
+		expect(hasRef(h.git, "fix/typo")).toBe(false);
+		expect(h.git("branch", "--show-current")).toBe("main");
 	});
 
 	test("Child session", async () => {

@@ -16,13 +16,13 @@ const FIX_PREFIX = "fix/";
 const CHANGE_PREFIX = "livespec/";
 
 export type FixStartParams = { slug: string };
-export type FixStartDetails = undefined;
+export type FixStartDetails = { branch?: string };
 
-const refuse = (message: string): ToolResult<FixStartDetails> => toolResult(`${TOOL} refused: ${message} Nothing was created.`, undefined, true);
+const refuse = (message: string): ToolResult<FixStartDetails> => toolResult(`${TOOL} refused: ${message} Nothing was created.`, {}, true);
 
 export async function runFixStart(p: FixStartParams, ctx: ToolCtx): Promise<ToolResult<FixStartDetails>> {
 	const child = childRefusal(TOOL, ctx);
-	if (child) return child;
+	if (child) return { ...child, details: {} };
 	const s = requireSession();
 	if (!s.ok) return refuse(s.message);
 	const { git, config } = s.session;
@@ -38,7 +38,7 @@ export async function runFixStart(p: FixStartParams, ctx: ToolCtx): Promise<Tool
 		await git.fetch(REMOTE, integration);
 		const sha = await git.revParse(`${REMOTE}/${integration}`);
 		await git.switchCreate(branch, sha);
-		return toolResult(`Started ${branch} at ${REMOTE}/${integration} ${sha}. No issue was created and nothing was pushed.`, undefined);
+		return toolResult(`Started ${branch} at ${REMOTE}/${integration} ${sha}. No issue was created and nothing was pushed.`, { branch });
 	} catch (error) {
 		return refuse(`git failed: ${untrusted(messageOf(error))}.`);
 	}
