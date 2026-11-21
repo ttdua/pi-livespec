@@ -4,7 +4,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
-import { closeInitiative, closeRefusal, type CloseEvents, initiativeNumber, postChangeSummary, summaryData } from "../ship/close.ts";
+import { closeInitiative, closeRefusal, type CloseEvents, initiativeNumber, initiativeRefusal, postChangeSummary, summaryData } from "../ship/close.ts";
+import type { Session } from "../hooks/session.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
@@ -28,13 +29,17 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	const n = state.issue.number;
 	const data = summaryData(state, state.pr, abandon);
 	const initiative = initiativeNumber(state.change.header);
+	if (abandon === undefined && initiative !== undefined) {
+		const missing = await initiativeRefusal(w.forge, initiative, n).catch((error: unknown) => `initiative #${initiative} cannot be read (${messageOf(error)}).`);
+		if (missing !== undefined) return refuse(missing);
+	}
 	let initiativeClosed: CloseEvents["initiativeClosed"];
 	try {
 		await postChangeSummary(w.forge, state, data);
 		initiativeClosed = abandon === undefined && initiative !== undefined ? await closeInitiative(w.forge, initiative, n, data) : undefined;
 		await w.forge.closeIssue(n);
 	} catch (error) {
-		await refreshQuietly(w.session, n);
+		await refreshQuietly(w.session, n); // the failure reported is the write error; a refresh problem here adds nothing
 		return toolResult(`${TOOL} failed: ${messageOf(error)}. Steps already done are kept; run ${TOOL} again.`, undefined, true);
 	}
 	// The issue is closed: from here every failure is reported, never an error result, and the events always go first.
@@ -59,7 +64,7 @@ function emitQuietly(pi: Emitter, events: CloseEvents): string | undefined {
 	return errors.length === 0 ? undefined : errors.join("; ");
 }
 
-async function refreshQuietly(session: Parameters<typeof afterForgeWrite>[0], n: number): Promise<string | undefined> {
+async function refreshQuietly(session: Session, n: number): Promise<string | undefined> {
 	try {
 		await afterForgeWrite(session, n);
 		return undefined;

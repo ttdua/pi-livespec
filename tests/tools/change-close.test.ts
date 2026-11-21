@@ -133,6 +133,9 @@ describe("change_close", () => {
 		await h.world.editBodyBehindBack(t, (await h.world.bodyOf(t)).replace(`#${h.n} per`, "#98 per"));
 		const out = await h.call("change_close", {});
 		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("refused");
+		expect(textOf(out)).toContain("Nothing was written");
+		expect(await ofKind(h, "close-summary")).toEqual([]);
 		expect(textOf(out)).toContain(`initiative #${t}`);
 		expect(textOf(out)).toContain(`#${h.n}`);
 		expect(await issueState(h, h.n)).toBe("open");

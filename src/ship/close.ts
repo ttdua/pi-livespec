@@ -63,12 +63,19 @@ export async function postChangeSummary(forge: Forge, state: ChangeState, data: 
 	await forge.createComment(state.issue.number, summaryComment(id, data));
 }
 
+/** The refusal when the tracking issue does not list the change (read-only; run before any write), else undefined. */
+export async function initiativeRefusal(forge: Forge, tracking: number, change: number): Promise<string | undefined> {
+	const issue = await forge.getIssue(tracking);
+	if (parseInitiative(issue.body).changes.some((c) => c.number === change)) return undefined;
+	return `the Initiative line names initiative #${tracking}, which does not list change #${change}; fix the Initiative line or the initiative.`;
+}
+
 /** Ticks `change` in the tracking issue's `## Changes` list when unchecked (versioned write, one retry). */
 async function tickEntry(forge: Forge, tracking: number, change: number): Promise<string> {
 	for (let attempt = 0; attempt <= RETRIES; attempt++) {
 		const issue = await forge.getIssue(tracking);
 		const entry = parseInitiative(issue.body).changes.find((c) => c.number === change);
-		if (!entry) throw new Error(`the Initiative line names initiative #${tracking}, which does not list change #${change}; fix the Initiative line or the initiative`);
+		if (!entry) throw new Error(`the Initiative line names initiative #${tracking}, which does not list change #${change}`);
 		if (entry.checked) return issue.body;
 		const written = await forge.updateIssueBody(tracking, tickChange(issue.body, change), issue.version);
 		if (written.status === "written") return tickChange(issue.body, change);
