@@ -2,11 +2,11 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `id` and `updatedAt` to `ReviewComment` and `Review`, and `author` to `PullRequest`, in `src/forge/types.ts`; map them in `src/forge/github.ts` and `src/forge/gitea.ts`; extend `tests/forge/contract.ts`, the memory forge, `tests/forge/fake-gh/` and `tests/forge/fake-gitea.ts`
-- [ ] 1.2 Add `mergeBase`, `mergeTree` (`git merge-tree --write-tree`: tree, `conflict` or `unsupported`), `treeOf`, `remoteRef` and `firstParentList` to `Git` in `src/engine/git.ts`, with tests on a real temporary repo
-- [ ] 1.3 Add `headSha`, `request` and `commentId` to `GateResult` in `src/engine/locks.ts`, read from the `gate` comment, and `state` to `ChangeState.issue` (defaulted in `tests/helpers/change-state.ts`)
-- [ ] 1.4 Add `exec: GitExec` to `Session` (the exec `createGit` receives) and pass the harness's recording exec in `tests/tools/helpers.ts`; add an `events` spy to `tests/hooks/fake-pi.ts`
-- [ ] 1.5 Extract `staleComment(id, { reason, phases })` to `src/interaction/stale.ts` and refactor `complete-gate.ts` onto it (no behavior change)
+- [x] 1.1 Add `id` and `updatedAt` to `ReviewComment` and `Review`, and `author` to `PullRequest`, in `src/forge/types.ts`; map them in `src/forge/github.ts` and `src/forge/gitea.ts`; extend `tests/forge/contract.ts`, the memory forge, `tests/forge/fake-gh/` and `tests/forge/fake-gitea.ts`
+- [x] 1.2 Add `mergeBase`, `mergeTree` (`git merge-tree --write-tree`: tree, `conflict` or `unsupported`), `treeOf`, `remoteRef` and `firstParentList` to `Git` in `src/engine/git.ts`, with tests on a real temporary repo
+- [x] 1.3 Add `headSha`, `request` and `commentId` to `GateResult` in `src/engine/locks.ts`, read from the `gate` comment, and `state` to `ChangeState.issue` (defaulted in `tests/helpers/change-state.ts`)
+- [x] 1.4 Add `exec: GitExec` to `Session` (the exec `createGit` receives) and pass the harness's recording exec in `tests/tools/helpers.ts`; add an `events` spy to `tests/hooks/fake-pi.ts`
+- [x] 1.5 Extract `staleComment(id, { reason, phases })` to `src/interaction/stale.ts` and refactor `complete-gate.ts` onto it (no behavior change)
 
 ## 2. Ship core (pure)
 
