@@ -22,7 +22,7 @@
 
 ## Commits
 
-- **Range**: `0849377..<receipt commit>` (implementation through `d52f5a5`; this receipt is the last commit)
+- **Range**: `0849377..0f216d5` (implementation through `d52f5a5`, then this receipt)
 - **Count**: `43`
 
 ---
