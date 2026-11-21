@@ -104,7 +104,7 @@ describe("change_push", () => {
 		expect(out.isError).toBe(true);
 		expect(text).toContain("ship gate");
 		expect(originRefs(h.origin)).toBe(before);
-		expect(textOf(await h.call("spec_next"))).toContain("ship");
+		expect(textOf(await h.call("spec_next"))).toContain("Ready for the ship gate");
 	});
 
 	test("Fix touching specs pushes once the ship gate is approved at HEAD", async () => {
@@ -135,11 +135,15 @@ describe("change_push", () => {
 	});
 
 	test("no pushed head refuses", async () => {
-		const h = await shipReady({ body: (b) => b.replace("Depends: —", "Depends: —\nPR: #99") });
-		await h.world.seedPullRequest({ head: branchOf(h), author: BOT_LOGIN, body: `Refs #${h.n}` });
+		const h = await shipReady();
+		const pr = await h.world.seedPullRequest({ head: branchOf(h), author: BOT_LOGIN, body: `Refs #${h.n}` });
+		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Depends: —", `Depends: —\nPR: #${pr}`));
+		await h.session.refresh();
 		const before = originRefs(h.origin);
-		const { out } = await push(h);
+		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
+		expect(text).toContain("pushed head");
+		expect(text).toContain("Branch");
 		expect(originRefs(h.origin)).toBe(before);
 	});
 
@@ -171,16 +175,19 @@ describe("change_push", () => {
 		expect(originRefs(h.origin)).toBe(before);
 	});
 
-	test("merged or closed pull request refuses", async () => {
+	test.each([
+		["closed", false, "is closed, not open"],
+		["merged", true, "the change is in close"],
+	])("a %s pull request refuses", async (_name, merged, message) => {
 		const h = await shipped();
 		await fix(h);
 		const [pr] = await h.world.forge.listPullRequests({ state: "open" });
-		await h.world.closePullRequestBehindBack(pr?.number ?? 0);
+		await h.world.closePullRequestBehindBack(pr?.number ?? 0, merged);
 		await h.session.refresh();
 		const before = originRefs(h.origin);
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
-		expect(text).toMatch(/open|closed|merged/);
+		expect(text).toContain(message);
 		expect(originRefs(h.origin)).toBe(before);
 	});
 
@@ -190,7 +197,22 @@ describe("change_push", () => {
 		const before = originRefs(h.origin);
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
-		expect(text).toContain("durable-docs");
+		expect(text).toContain("durable-docs reports");
+		expect(text).toContain("decision file");
+		expect(originRefs(h.origin)).toBe(before);
+	});
+
+	test("a new confirmation item needs the ship gate", async () => {
+		const h = await shipReady({ files: { "specs/rate/spec.md": "---\npaths:\n  - src/other.ts\n---\n# rate Specification\n\n## Purpose\nRate.\n" }, body: (b) => b.replace("Files: src/limit.ts", "Files: src/*.ts") });
+		const out = await h.call("change_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await ofKind(h, "ship"))[0]?.data).toMatchObject({ confirmed: [] });
+		await fix(h, "src/other.ts");
+		const before = originRefs(h.origin);
+		const { out: pushOut, text } = await push(h);
+		expect(pushOut.isError).toBe(true);
+		expect(text).toContain("ship gate");
+		expect(text).toContain("confirmation items");
 		expect(originRefs(h.origin)).toBe(before);
 	});
 

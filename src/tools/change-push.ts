@@ -15,7 +15,7 @@ import { durableDocsRule } from "../ship/durable-docs.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { cleanBranchRefusal, filesRefusal, shipPhaseRefusal } from "../ship/ship-refusals.ts";
 import { postShipRecord } from "../ship/ship-writes.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
@@ -42,12 +42,11 @@ async function pollRefusal(poll: ShipPoll, session: Session): Promise<string | u
 }
 
 /** The open, unmerged pull request the `PR` line names, with the pushed head; or the refusal. */
-function openPull(state: ChangeState): { pr: NonNullable<ChangeState["pr"]>; pushedHead: string } | string {
+function openPull(state: ChangeState): { pr: NonNullable<ChangeState["pr"]> } | string {
 	const { pr } = state;
 	if (pr === undefined) return "the issue has no readable PR line: run change_ship first.";
 	if (pr.state !== "open" || pr.merged) return `pull request #${pr.number} is ${pr.merged ? "merged" : "closed"}, not open.`;
-	if (pr.pushedHead === undefined) return `the pushed head of ${state.git.branch} is unknown: origin/${state.git.branch} does not exist; fetch it or run change_ship.`;
-	return { pr, pushedHead: pr.pushedHead };
+	return { pr };
 }
 
 /** The ship gate is required when `needsShipGate` and no approved ship gate was given at HEAD. */
@@ -63,7 +62,12 @@ async function gitRefusal(session: Session, state: ChangeState, context: ShipCon
 	if (!context.reviewed.ok) return `HEAD is not reviewed: ${context.reviewed.reason}.`;
 	const files = filesRefusal(context.diff.files, state.change.units);
 	if (files !== undefined) return files;
-	const descends = await session.git.isAncestor(pushedHead, state.git.head).catch(() => false);
+	let descends: boolean;
+	try {
+		descends = await session.git.isAncestor(pushedHead, state.git.head);
+	} catch (error) {
+		return `cannot check whether HEAD descends from the pushed head ${pushedHead.slice(0, 7)}: ${untrusted(messageOf(error))}.`;
+	}
 	if (!descends) return `the pushed head ${pushedHead.slice(0, 7)} is not an ancestor of HEAD ${state.git.head.slice(0, 7)}: ${REMOTE}/${state.git.branch} diverged from this branch; reconcile it before pushing.`;
 	const errors = durableDocsRule(context.facts).errors;
 	if (errors.length > 0) return `durable-docs reports: ${errors.join("; ")}.`;
@@ -71,7 +75,8 @@ async function gitRefusal(session: Session, state: ChangeState, context: ShipCon
 }
 
 /** Push → `ship` record. */
-async function publish(session: Session, state: ChangeState, context: ShipContext, pr: number): Promise<ToolResult<undefined>> {
+async function publish(w: WriteContext, state: ChangeState, context: ShipContext, pr: number): Promise<ToolResult<undefined>> {
+	const { session, forge } = w;
 	const n = state.issue.number;
 	const { branch, head } = state.git;
 	try {
@@ -79,9 +84,7 @@ async function publish(session: Session, state: ChangeState, context: ShipContex
 	} catch (error) {
 		return refuse(`pushing ${branch} failed: ${untrusted(messageOf(error))}.`);
 	}
-	const forge = session.forge;
-	if (forge === undefined) return toolResult(withStep(session, `Pushed ${branch} at ${head.slice(0, 7)}, but there is no forge to post the ship record.`), undefined, true);
-	const record = await postShipRecord(forge, n, { pr, pushedHead: head, confirmed: durableDocsRule(context.facts).confirm });
+	const record = await postShipRecord(forge, n, { pr, pushedHead: head, confirmed: durableDocsRule(context.facts).confirm }, `${branch} was pushed at ${head.slice(0, 7)}`, `run ${TOOL} again to record it`);
 	await afterForgeWrite(session, n);
 	if (!record.ok) return toolResult(`${TOOL} failed: ${record.message}`, undefined, true);
 	return toolResult(withStep(session, `Pushed ${branch} at ${head.slice(0, 7)} to pull request #${pr} and recorded the ship record on #${n}.`), undefined);
@@ -98,16 +101,18 @@ async function push(deps: { poll: ShipPoll }): Promise<ToolResult<undefined>> {
 	const { state } = change;
 	const early = shipPhaseRefusal(state, TOOL);
 	if (early !== undefined) return refuse(early);
-	const open = openPull(state);
-	if (typeof open === "string") return refuse(open);
+	const pull = openPull(state);
+	if (typeof pull === "string") return refuse(pull);
 	const local = cleanBranchRefusal(state);
 	if (local !== undefined) return refuse(local);
+	if (pull.pr.pushedHead === undefined) return refuse(`the pushed head of ${state.git.branch} is unknown: origin/${state.git.branch} does not exist; fetch it, or check the Branch line.`);
+	const open = { pr: pull.pr, pushedHead: pull.pr.pushedHead };
 	const context = await shipContext(w.session, state);
 	if ("refused" in context) return refuse(context.refused);
 	const git = await gitRefusal(w.session, state, context, open.pushedHead);
 	if (git !== undefined) return refuse(git);
 	if (open.pushedHead === state.git.head) return toolResult(withStep(w.session, `There is nothing to push: ${state.git.branch} is already at ${state.git.head.slice(0, 7)} on ${REMOTE}.`), undefined);
-	return publish(w.session, state, context, open.pr.number);
+	return publish(w, state, context, open.pr.number);
 }
 
 export function runChangePush(_params: Record<string, never>, deps: { poll: ShipPoll }, ctx?: ToolCtx): Promise<ToolResult<undefined>> {

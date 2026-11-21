@@ -43,7 +43,7 @@ const BODY = [
 	"",
 ].join("\n");
 
-export type Opts = { branch?: string; config?: string; ui?: FakeUI; forge?: (world: MemoryWorld) => Forge; body?: (b: string) => string; noShipGate?: boolean };
+export type Opts = { branch?: string; config?: string; ui?: FakeUI; forge?: (world: MemoryWorld) => Forge; body?: (b: string) => string; noShipGate?: boolean; files?: Record<string, string> };
 
 export const gateComment = (phase: string, id: string, head: string, extra: Record<string, unknown> = {}): string =>
 	writeMarked("gate", `${phase}.${id}`, { phase, outcome: "approved", notes: "", by: "alice", at: AT, adapter: "forge", head_sha: head, waivers: [], ...extra });
@@ -64,7 +64,7 @@ export async function approveShip(h: ToolHarness, id: string, head = h.git("rev-
  */
 export async function shipReady(o: Opts = {}): Promise<ToolHarness> {
 	const branch = o.branch ?? "livespec/per-ip-cap";
-	const base = await toolHarness({ branch, ...(o.ui ? { ui: o.ui } : {}), ...(o.config ? { config: o.config } : {}), ...(o.forge ? { forge: o.forge } : {}) });
+	const base = await toolHarness({ branch, ...(o.ui ? { ui: o.ui } : {}), ...(o.config ? { config: o.config } : {}), ...(o.forge ? { forge: o.forge } : {}), ...(o.files ? { files: o.files } : {}) });
 	await writeIn(base.root, "src/limit.ts", "export const cap = 100;\n");
 	commitAll(base.root, "limit");
 	const head = base.git("rev-parse", "HEAD");

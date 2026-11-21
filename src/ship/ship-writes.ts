@@ -27,11 +27,11 @@ export async function writePrLine(forge: Pick<Forge, "getIssue" | "updateIssueBo
 }
 
 /** Posts the own `ship` record; a failure is reported, since the `PR:` line is already written. */
-export async function postShipRecord(forge: Pick<Forge, "createComment">, issue: number, record: ShipRecord): Promise<WriteOutcome> {
+export async function postShipRecord(forge: Pick<Forge, "createComment">, issue: number, record: ShipRecord, done = `PR: #${record.pr} is recorded`, next = "change_push records the next pushed head"): Promise<WriteOutcome> {
 	try {
 		await forge.createComment(issue, shipComment(record));
 		return { ok: true };
 	} catch (error) {
-		return { ok: false, message: `PR: #${record.pr} is recorded, but posting the ship record failed (${untrusted(messageOf(error))}); change_push records the next pushed head.` };
+		return { ok: false, message: `${done}, but posting the ship record failed (${untrusted(messageOf(error))}); ${next}.` };
 	}
 }

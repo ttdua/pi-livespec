@@ -14,7 +14,7 @@ const ID_UNSAFE = /[^A-Za-z0-9.-]/g;
 export function shipPhaseRefusal(state: ChangeState, tool: string): string | undefined {
 	const phase = state.phase.kind === "ok" ? state.phase.id : undefined;
 	if (phase === SHIP_PHASE) return undefined;
-	const unreviewed = phase === "review" ? ` HEAD ${state.git.head.slice(0, 7)} is not covered by a passed review gate: run the review gate first.` : "";
+	const unreviewed = phase === "review" && state.ship?.gatesAtHead?.review === false ? ` HEAD ${state.git.head.slice(0, 7)} is not covered by a passed review gate: run the review gate first.` : "";
 	return `the change is in ${phase ?? "no phase"}; ${tool} runs in ${SHIP_PHASE}.${unreviewed}`;
 }
 
