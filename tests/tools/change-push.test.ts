@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { pollFeedback } from "../../src/ship/feedback-poll.ts";
 import { runChangePush, type ShipPoll } from "../../src/tools/change-push.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { asChild } from "../hooks/fake-pi.ts";
@@ -94,6 +95,41 @@ describe("change_push", () => {
 		expect(out.isError).toBe(true);
 		expect(text).toContain("forge offline");
 		expect(originRefs(h.origin)).toBe(before);
+	});
+
+	test("a refused move to review in the poll refuses the push", async () => {
+		const h = await shipped();
+		await fix(h);
+		await h.world.setPermission("alice", "write");
+		const pr = h.session.card.kind === "change" ? h.session.card.state.pr?.number : undefined;
+		if (pr === undefined) throw new Error("no pull request");
+		await h.world.postComment(pr, "alice", "please rename");
+		const before = originRefs(h.origin);
+		// The real poll; a second phase label appears after the session refreshed, so its move to review is refused.
+		const { out, text } = await push(h, async (s) => {
+			await h.world.forge.addLabels(h.n, ["livespec:phase/build"]);
+			return pollFeedback(s);
+		});
+		expect(out.isError).toBe(true);
+		expect(text).toContain("polling the pull request feedback failed");
+		expect(text).toContain("cannot move to review");
+		expect(originRefs(h.origin)).toBe(before);
+	});
+
+	test("the registered change_push polls pull request feedback by default", async () => {
+		const h = await shipped();
+		await fix(h);
+		await h.world.setPermission("alice", "write");
+		const pr = h.session.card.kind === "change" ? h.session.card.state.pr?.number : undefined;
+		if (pr === undefined) throw new Error("no pull request");
+		await h.world.postComment(pr, "alice", "please rename the cap");
+		const before = originRefs(h.origin);
+		const out = await h.call("change_push");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("new pull request feedback arrived");
+		expect(originRefs(h.origin)).toBe(before);
+		const runs = await ofKind(h, "review-run");
+		expect(runs.map((m) => (m.data as { source?: string }).source)).toContain("pull-request");
 	});
 
 	test("Fix touches constraints", async () => {

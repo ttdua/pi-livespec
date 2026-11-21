@@ -155,6 +155,27 @@ describe("pollFeedback rounds", () => {
 		expect(await labels(h)).toContain("livespec:phase/review");
 	});
 
+	test("a refused move fails the poll and is recorded", async () => {
+		const h = await shipped();
+		await h.world.postComment(h.pr, "alice", "please rename");
+		// A second phase label behind the session's back: the move to review is refused.
+		await h.world.forge.addLabels(h.n, ["livespec:phase/build"]);
+		const result = await pollFeedback(h.session);
+		expect(result).toEqual({ failed: expect.stringContaining("cannot move to review") });
+		expect(h.session.errors.join("\n")).toContain("cannot move to review");
+	});
+
+	test("a refused move in the interrupted-round recovery fails the poll", async () => {
+		const h = await shipped();
+		const head = h.git("rev-parse", "HEAD");
+		const fb = { round: 1, head, selected: [], tags: [], verify: {}, parentFindings: [], routed: false, source: "pull-request" as const, feedbackKeys: ["comment:9@t"] };
+		await h.world.postComment(h.n, BOT_LOGIN, reviewRunComment(fb));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		await h.world.forge.addLabels(h.n, ["livespec:phase/build"]);
+		expect(await pollFeedback(h.session)).toEqual({ failed: expect.stringContaining("cannot move to review") });
+	});
+
 	test("Counts toward the cap: the round is posted and counts as the third", async () => {
 		const h = await shipped({ files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nloops: { review_rounds: 3 }\n" } });
 		const head = h.git("rev-parse", "HEAD");

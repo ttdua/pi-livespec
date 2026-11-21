@@ -37,7 +37,7 @@ const commentItem = (pr: number, c: Comment): FeedbackItem => ({ key: `comment:$
 const reviewItem = (pr: number, r: Review): FeedbackItem => ({ key: `review:${r.id}@${r.updatedAt}`, finding: decisionFinding(pr, r) });
 
 function checkItem(pushedHead: string, c: Check): FeedbackItem {
-	const evidence = `${c.name} failed${c.url === undefined ? "" : ` (${c.url})`}`;
+	const evidence = `${untrusted(c.name)} failed${c.url === undefined ? "" : ` (${untrusted(c.url)})`}`;
 	return { key: `check:${pushedHead}:${c.name}`, finding: { severity: "CRITICAL", kind: "defect", location: `check:${c.name}`, evidence, fix: FIX, scope: "in-change" } };
 }
 

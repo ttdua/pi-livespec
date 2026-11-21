@@ -55,25 +55,28 @@ function ingestedKeys(marked: MarkedComment[]): Set<string> {
 
 const staleId = (round: number): string => `stale.feedback.${round}`;
 
-/** The stale comment for review and ship (once per round), then the move to review. Idempotent, so a retry resumes. */
-async function staleAndMove(t: Target, marked: MarkedComment[], round: number, count: number): Promise<void> {
+/**
+ * The stale comment for review and ship (once per round), then the move to review. Idempotent, so a retry resumes.
+ * Returns the recorded reason when the move is refused, so the round stays unfinished and `change_push` refuses.
+ */
+async function staleAndMove(t: Target, marked: MarkedComment[], round: number, count: number): Promise<string | undefined> {
 	const n = t.state.issue.number;
 	if (!marked.some((m) => m.kind === "stale" && m.id === staleId(round))) {
 		const reason = `pull request #${t.pr} has ${count} new feedback item(s), ingested as review round ${round}`;
 		await t.forge.createComment(n, staleComment(staleId(round), { reason, phases: [REVIEW_PHASE, SHIP_PHASE] }));
 	}
 	const moved = await advancePhase(t.forge, n, REVIEW_PHASE, t.pack);
-	if (moved.status === "refused") t.session.record(STEP, moved.reason);
+	return moved.status === "refused" ? t.session.record(STEP, moved.reason) : undefined;
 }
 
 /** Posts the feedback round's `review-run`, then the stale comment and the move to review. */
-async function postRound(t: Target, marked: MarkedComment[], items: FeedbackItem[]): Promise<void> {
+async function postRound(t: Target, marked: MarkedComment[], items: FeedbackItem[]): Promise<string | undefined> {
 	const round = roundNumber(marked);
 	const head = t.state.git.head;
 	const parentFindings = items.map((i) => i.finding);
 	const feedbackKeys = items.map((i) => i.key);
 	await t.forge.createComment(t.state.issue.number, reviewRunComment({ round, head, selected: [], tags: [], verify: {}, parentFindings, routed: false, source: "pull-request", feedbackKeys }));
-	await staleAndMove(t, marked, round, items.length);
+	return staleAndMove(t, marked, round, items.length);
 }
 
 async function pollChange(t: Target): Promise<FeedbackPollResult> {
@@ -82,16 +85,16 @@ async function pollChange(t: Target): Promise<FeedbackPollResult> {
 	const marked = filterMarked(await t.forge.listComments(t.state.issue.number), login).comments;
 	const interrupted = interruptedRound(marked);
 	if (interrupted !== undefined) {
-		await staleAndMove(t, marked, interrupted, latestRun(marked)?.feedbackKeys?.length ?? 0);
+		const refused = await staleAndMove(t, marked, interrupted, latestRun(marked)?.feedbackKeys?.length ?? 0);
 		await afterForgeWrite(t.session, t.state.issue.number);
-		return { ingested: 0 };
+		return refused === undefined ? { ingested: 0 } : { failed: refused };
 	}
 	if (unrouted(marked)) return SKIPPED;
 	const items = await collectFeedback(t.forge, t.pr, t.pushedHead, login, ingestedKeys(marked), (author) => t.forge.getPermission(author));
 	if (items.length === 0) return { ingested: 0 };
-	await postRound(t, marked, items);
+	const refused = await postRound(t, marked, items);
 	await afterForgeWrite(t.session, t.state.issue.number);
-	return { ingested: items.length };
+	return refused === undefined ? { ingested: items.length } : { failed: refused };
 }
 
 async function pollOnce(session: Session): Promise<FeedbackPollResult> {
