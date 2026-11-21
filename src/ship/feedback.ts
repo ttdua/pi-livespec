@@ -23,18 +23,29 @@ export function isOwn(item: Voice, login: string): boolean {
 	return item.author === login && (parseMarked(item.body) !== null || item.body.includes(FINDING_MARKER));
 }
 
-const evidenceOf = (v: Voice): string => `${untrusted(v.body)} (by ${untrusted(v.author)})`;
+/** One review-run comment holds every item; its forge limit is 65 536 characters, so the texts share this budget. */
+const TEXT_BUDGET = 40_000;
+const MAX_TEXT = 4000;
+const MIN_TEXT = 200;
 
-function reviewCommentItem(c: ReviewComment): FeedbackItem {
-	const location = `${c.path}:${c.line}`;
-	return { key: `review-comment:${c.id}@${c.updatedAt}`, finding: { severity: "WARNING", kind: "defect", location, evidence: evidenceOf(c), fix: FIX, scope: "in-change" } };
+/** Each text is cut so its escaped form fits `max` characters, with a pointer to the pull request, which keeps the whole text. */
+function evidenceOf(v: Voice, pr: number, max: number): string {
+	let keep = Math.min(v.body.length, max);
+	while (keep < v.body.length && untrusted(v.body.slice(0, keep)).length > max) keep = Math.floor(keep * 0.8);
+	const body = keep < v.body.length ? `${v.body.slice(0, keep)}… (truncated; see pr#${pr})` : v.body;
+	return `${untrusted(body)} (by ${untrusted(v.author)})`;
 }
 
-const decisionFinding = (pr: number, v: Voice): Finding => ({ severity: "WARNING", kind: "other", location: `pr#${pr}`, evidence: evidenceOf(v), fix: FIX, scope: "needs-decision" });
+function reviewCommentItem(pr: number, max: number, c: ReviewComment): FeedbackItem {
+	const location = `${c.path}:${c.line}`;
+	return { key: `review-comment:${c.id}@${c.updatedAt}`, finding: { severity: "WARNING", kind: "defect", location, evidence: evidenceOf(c, pr, max), fix: FIX, scope: "in-change" } };
+}
 
-const commentItem = (pr: number, c: Comment): FeedbackItem => ({ key: `comment:${c.id}@${c.updatedAt}`, finding: decisionFinding(pr, c) });
+const decisionFinding = (pr: number, max: number, v: Voice): Finding => ({ severity: "WARNING", kind: "other", location: `pr#${pr}`, evidence: evidenceOf(v, pr, max), fix: FIX, scope: "needs-decision" });
 
-const reviewItem = (pr: number, r: Review): FeedbackItem => ({ key: `review:${r.id}@${r.updatedAt}`, finding: decisionFinding(pr, r) });
+const commentItem = (pr: number, max: number, c: Comment): FeedbackItem => ({ key: `comment:${c.id}@${c.updatedAt}`, finding: decisionFinding(pr, max, c) });
+
+const reviewItem = (pr: number, max: number, r: Review): FeedbackItem => ({ key: `review:${r.id}@${r.updatedAt}`, finding: decisionFinding(pr, max, r) });
 
 function checkItem(pushedHead: string, c: Check): FeedbackItem {
 	const evidence = `${untrusted(c.name)} failed${c.url === undefined ? "" : ` (${untrusted(c.url)})`}`;
@@ -77,10 +88,12 @@ export async function collectFeedback(
 	const isWriter = writerCheck(permission);
 	const located = reviewComments.filter((c) => c.path !== "" && Number.isInteger(c.line) && c.line > 0);
 	const withBody = reviews.filter((r) => r.state !== "approved" && r.body.trim() !== "");
+	const [byComment, byConversation, byReview] = [await humanWriters(located, login, isWriter), await humanWriters(comments, login, isWriter), await humanWriters(withBody, login, isWriter)];
+	const max = Math.min(MAX_TEXT, Math.max(MIN_TEXT, Math.floor(TEXT_BUDGET / Math.max(1, byComment.length + byConversation.length + byReview.length))));
 	const items = [
-		...(await humanWriters(located, login, isWriter)).map(reviewCommentItem),
-		...(await humanWriters(comments, login, isWriter)).map((c) => commentItem(pr, c)),
-		...(await humanWriters(withBody, login, isWriter)).map((r) => reviewItem(pr, r)),
+		...byComment.map((c) => reviewCommentItem(pr, max, c)),
+		...byConversation.map((c) => commentItem(pr, max, c)),
+		...byReview.map((r) => reviewItem(pr, max, r)),
 		...failingChecks(checks.checks).map((c) => checkItem(pushedHead, c)),
 	];
 	return items.filter((i) => !ingested.has(i.key));

@@ -133,3 +133,24 @@ describe("collectFeedback keys (Review Focus 3)", () => {
 		expect(item?.finding.evidence).not.toContain("</untrusted>x");
 	});
 });
+
+describe("collectFeedback text limits", () => {
+	test("a 100 000-character comment is cut with a pointer to the pull request", async () => {
+		const items = await collect(world({ comments: [comment("1", "alice", "x".repeat(100_000))] }));
+		const evidence = items[0]?.finding.evidence ?? "";
+		expect(evidence.length).toBeLessThan(4200);
+		expect(evidence).toContain(`… (truncated; see pr#${PR})`);
+	});
+
+	test("many long items together stay far below the forge comment limit, even with characters that are escaped", async () => {
+		const comments = Array.from({ length: 30 }, (_, i) => comment(String(i), "alice", "&".repeat(100_000)));
+		const items = await collect(world({ comments }));
+		expect(items).toHaveLength(30);
+		expect(items.reduce((sum, i) => sum + i.finding.evidence.length, 0)).toBeLessThan(50_000);
+	});
+
+	test("a short comment is kept whole", async () => {
+		const items = await collect(world({ comments: [comment("1", "alice", "small")] }));
+		expect(items[0]?.finding.evidence).not.toContain("truncated");
+	});
+});
