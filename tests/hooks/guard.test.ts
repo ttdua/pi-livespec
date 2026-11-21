@@ -1,4 +1,4 @@
-import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import extension from "../../src/extension.ts";
@@ -165,5 +165,93 @@ describe("command-guards in a child session", () => {
 		const out = await pi.fire("tool_call", { type: "tool_call", toolName: "bash", toolCallId: "c1", input: { command: "git push" } }, child);
 		expect((out as Block)?.block).toBe(true);
 		expect((out as { reason: string }).reason).toMatch(/^livespec guard:/);
+	});
+});
+
+describe("command-guards bare work", () => {
+	const APP = "src/app.ts";
+	const LINE = "2026-11-22 — src/app.ts — edit outside a change or fix branch\n";
+	const LOG = (h: ToolHarness) => join(h.root, "specs/bare-work.md");
+
+	async function bare(ctxOf: (c: ReturnType<typeof fakeCtx>) => ReturnType<typeof fakeCtx> = (c) => c) {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date(2026, 10, 22, 23, 30));
+		const h = await toolHarness({ files: { [APP]: "x\n" } });
+		const pi = new FakePi();
+		extension(pi.api as never);
+		const ctx = ctxOf(h.ctx);
+		let id = 0;
+		/** One edit: tool_call, then (when allowed) tool_result; returns the appended text, if any. */
+		const edit = async (path = APP) => {
+			const toolCallId = `b${++id}`;
+			const out = (await pi.fire("tool_call", { type: "tool_call", toolName: "edit", toolCallId, input: { path } }, ctx)) as Block;
+			const res = (await pi.fire("tool_result", { type: "tool_result", toolName: "edit", toolCallId, input: {}, content: [{ type: "text", text: "ok" }], isError: false }, ctx)) as { content: { text: string }[] } | undefined;
+			return { out, extra: res?.content.slice(1).map((c) => c.text).join("\n"), toolCallId };
+		};
+		return { h, pi, ctx, edit };
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	test("Edit on main is logged", async () => {
+		const { h, edit } = await bare();
+		const { out, extra } = await edit();
+		expect(out).toBeUndefined();
+		expect(extra?.startsWith("livespec guard:")).toBe(true);
+		expect(extra).toContain("logged as bare work in specs/bare-work.md");
+		expect(readFileSync(LOG(h), "utf8")).toBe(LINE);
+	});
+
+	test("Logged once per day", async () => {
+		const { h, edit } = await bare();
+		await edit();
+		const second = await edit();
+		expect(second.out).toBeUndefined();
+		expect(readFileSync(LOG(h), "utf8")).toBe(LINE);
+	});
+
+	test("Not bare work", async () => {
+		const { h, edit } = await bare();
+		const { out, extra } = await edit("src/new.ts");
+		expect(out).toBeUndefined();
+		expect(extra).toBeUndefined();
+		expect(existsSync(LOG(h))).toBe(false);
+	});
+
+	test("Log failure allows the edit", async () => {
+		const { h, edit } = await bare();
+		writeFileSync(join(h.root, "specs"), "not a directory");
+		const { out, extra } = await edit();
+		expect(out).toBeUndefined();
+		expect(extra).toMatch(/^livespec guard: src\/app\.ts was edited outside a change or fix branch, but the work was not logged in specs\/bare-work\.md \(.+\)\.$/);
+	});
+
+	test("a tracked-check error allows the edit with a not-logged warning", async () => {
+		const { h, edit } = await bare();
+		vi.spyOn(h.session.git, "isTracked").mockRejectedValue(new Error("git down"));
+		const { out, extra } = await edit();
+		expect(out).toBeUndefined();
+		expect(extra).toContain("was not logged in specs/bare-work.md (git down)");
+	});
+
+	test("a child session logs nothing and warns nothing", async () => {
+		const { h, edit } = await bare(asChild);
+		const { out, extra } = await edit();
+		expect(out).toBeUndefined();
+		expect(extra).toBeUndefined();
+		expect(existsSync(LOG(h))).toBe(false);
+	});
+
+	test("tool_execution_end drops the warning of a call a later handler blocked", async () => {
+		const { pi, ctx } = await bare();
+		pi.api.on("tool_call", () => ({ block: true, reason: "later" }));
+		const input = { path: APP };
+		const call = (await pi.fire("tool_call", { type: "tool_call", toolName: "edit", toolCallId: "z1", input }, ctx)) as Block;
+		expect(call?.block).toBe(true);
+		await pi.fire("tool_execution_end", { type: "tool_execution_end", toolCallId: "z1", toolName: "edit", result: {}, isError: true }, ctx);
+		const res = await pi.fire("tool_result", { type: "tool_result", toolName: "edit", toolCallId: "z1", input, content: [{ type: "text", text: "ok" }], isError: false }, ctx);
+		expect(res).toBeUndefined();
 	});
 });
