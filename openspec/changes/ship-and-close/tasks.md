@@ -12,11 +12,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `src/ship/diff.ts`: the change diff and `filesOutsideUnits` (ship-phase "Change diff at ship"; the Files part of "Ship tool")
-- [ ] 2.2 `src/ship/reviewed.ts`: `reviewedHead(state)` and `isReviewed` over the first-parent chain with the clean-merge exception (ship-phase "Reviewed HEAD")
-- [ ] 2.3 `src/ship/records.ts`: marker kind `ship` and `latestShipRecord`
-- [ ] 2.4 `src/ship/pr-body.ts`: title and body with `Refs #<change>` and the closing-keyword rewrite
-- [ ] 2.5 `src/ship/freshness.ts`: `humanThreadComments` with timestamps and the ship freshness check (ship-phase "Ship tool" freshness bullet)
+- [x] 2.1 `src/ship/diff.ts`: the change diff and `filesOutsideUnits` (ship-phase "Change diff at ship"; the Files part of "Ship tool")
+- [x] 2.2 `src/ship/reviewed.ts`: `reviewedHead(state)` and `isReviewed` over the first-parent chain with the clean-merge exception (ship-phase "Reviewed HEAD")
+- [x] 2.3 `src/ship/records.ts`: marker kind `ship` and `latestShipRecord`
+- [x] 2.4 `src/ship/pr-body.ts`: title and body with `Refs #<change>` and the closing-keyword rewrite
+- [x] 2.5 `src/ship/freshness.ts`: `humanThreadComments` with timestamps and the ship freshness check (ship-phase "Ship tool" freshness bullet)
 
 ## 3. Durable docs
 

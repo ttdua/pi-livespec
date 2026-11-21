@@ -47,7 +47,7 @@
 | `Session.exec` | new | `exec: GitExec`, the exec `createGit` receives; `guardedPush` uses it | no |
 | `staleComment` | new | `(id: string, data: { reason: string; phases: string[]; units?: string[] }) => string` in `src/interaction/stale.ts` | no |
 | `humanThreadComments` | new | `(forge: Forge, issue: number, login: string) => Promise<Comment[]>` in `src/ship/freshness.ts` (own = author is login and `parseMarked` finds a marker) | no |
-| `shipStale` | new | `(state: ChangeState, comments: Comment[]) => string \| undefined` (the reason, or undefined when fresh) | no |
+| `shipStale` | new | `(state: ChangeState, gateComment: Comment \| undefined, humans: Comment[]) => string \| undefined` (the reason, or undefined when fresh); the caller finds the ship gate comment by `GateResult.commentId` in `listComments` and passes `humanThreadComments` output. Changed in apply (internal): the one-list form could not tell the own gate comment from own ship/stale comments | no |
 | `ShipContext` | new | `{ diff: ChangeDiff; integrationTip: string; facts: DurableFacts; reviewed: { ok: true } \| { ok: false; reason: string }; gatesAtHead: { review: boolean; ship: boolean }; needsShipGate: boolean }` | no |
 | `approvedAtHead` | new | `(state: ChangeState, phase: string) => boolean` in `src/engine/locks.ts`: `validApproval` and, for `review`/`ship`, `state.ship?.gatesAtHead?.[phase] !== false` | no |
 | `shipContext` | new | `(session: Session, state: ChangeState) => Promise<ShipContext \| { refused: string }>` in `src/ship/context.ts`; fetch and change diff memoized by HEAD, the rest recomputed per call | no |
@@ -64,7 +64,7 @@
 | `isReviewed` | new | `(git: Git, reviewed: string \| undefined, head: string, integrationTip: string) => Promise<{ ok: true } \| { ok: false; reason: string }>` in `src/ship/reviewed.ts` | no |
 | `ship` marker | new | kind `ship`, id `ship.<pr>.<pushedHead>`, data `{ pr: number; pushedHead: string; confirmed: string[] }` | no |
 | `latestShipRecord` | new | `(marked: MarkedComment[]) => ShipRecord \| undefined` in `src/ship/records.ts` | no |
-| `pullRequestBody` | new | `(state: ChangeState, review: string) => { title: string; body: string }` in `src/ship/pr-body.ts`; closing keywords regex `/\b(close[sd]?\|fix(e[sd])?\|resolve[sd]?)\b(\s*:?\s*)((?:[\w.-]+\/[\w.-]+)?#\d+)/gi` → `Refs $3` | no |
+| `pullRequestBody` | new | `(state: ChangeState, review: string) => { title: string; body: string }` in `src/ship/pr-body.ts`; closing keywords regex closing keywords followed by `#n` or `owner/repo#n` (also comma/`and` lists) anywhere in the composed body → `Refs …` (apply: the plan's `$3` named the wrong group) | no |
 | `PhaseOutput` | modified | adds `"issue#Durable docs"`; pack `OUTPUTS` likewise | yes (pack) |
 | `decisions.durable-docs` | new | pack config `{ mode: rule }`; point `durable-docs`, never asks | yes (pack key) |
 | `DurableFacts` | new | `{ files: string[]; added: string[]; capabilities: { new: string[]; modified: string[] }; specs: { capability: string; paths: string[] }[]; rows: { file: string; status: string }[] }` | no |
