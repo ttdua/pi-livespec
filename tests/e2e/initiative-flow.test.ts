@@ -98,6 +98,8 @@ async function plannedChange(pick: { current: string }, count: number): Promise<
 
 describe("initiatives and discovered dependencies", () => {
 	test("plan over the limits needs a split or a waiver", async () => {
+		// An approval cannot be given while a waivable check fails; the completion-superseded path is covered by
+		// tests/interaction/complete.test.ts and tests/tools/spec-gate.test.ts "Over the unit limit".
 		// Nine units exceed max_units 8: the human is not offered approve, and the gate does not pass.
 		const pick = { current: "approve" };
 		const h = await plannedChange(pick, 9);
@@ -170,7 +172,7 @@ describe("initiatives and discovered dependencies", () => {
 
 	test("parked change with two lanes resumes with no lost work", async () => {
 		// U1 done, U4 started in the change worktree, U2 and U3 started in worktree lanes; no prerequisite yet.
-		const h = await parkHarness({ choice: null, seedPrereq: false, ui: human({ current: "A" }), files: { "specs/rate-limit/spec.md": SPEC } });
+		const h = await parkHarness({ choice: null, seedPrereq: false, ui: human({ current: "A" }), extraFiles: { "specs/rate-limit/spec.md": SPEC } });
 		h.session.activeTree = makeTree([...DEFAULT_SKILLS]);
 
 		// U3's implementer, run inline, reports a missing prerequisite; the result names new_dependency.
@@ -215,6 +217,7 @@ describe("initiatives and discovered dependencies", () => {
 		expect(h.git("show", "HEAD:src/u2.ts")).toBe("u2 partial");
 		expect(h.git("show", "HEAD:src/u3.ts")).toBe("u3 edit");
 		expect((await h.world.forge.getIssue(h.n)).labels).not.toContain("livespec:parked");
+		await h.session.refresh();
 		expect(card(h).state.parkedCore).toBeUndefined();
 	});
 

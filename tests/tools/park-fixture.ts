@@ -56,12 +56,12 @@ export type ParkHarnessOptions = {
 	seedPrereq?: boolean;
 	ui?: FakeUI;
 	/** Committed files beside the unit scripts. */
-	files?: Record<string, string>;
+	extraFiles?: Record<string, string>;
 };
 
 /** The fixture: U1 done, U4 started in the change worktree, U2 and U3 started in worktree lanes. */
 export async function parkHarness(o: ParkHarnessOptions = {}): Promise<ParkHarness> {
-	const h = await unitHarness({ units: UNITS, scripts: { ...SCRIPTS, ...o.files }, config: "integrationBranch: main\n", ...(o.ui ? { ui: o.ui } : {}) });
+	const h = await unitHarness({ units: UNITS, scripts: { ...SCRIPTS, ...o.extraFiles }, config: "integrationBranch: main\n", ...(o.ui ? { ui: o.ui } : {}) });
 	const prereq = o.seedPrereq === false ? 0 : await h.world.seedIssue({ title: "token-store", labels: ["livespec", "livespec:phase/shape"] });
 	if (prereq !== 0) await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Depends: —", `Depends: #${prereq}`));
 	await h.session.refresh();
