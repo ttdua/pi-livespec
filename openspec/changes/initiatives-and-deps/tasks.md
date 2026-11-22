@@ -57,9 +57,9 @@ Blocked by: 1, 3, 5
 
 Blocked by: 1, 4, 6
 
-- [ ] 7.1 `src/initiatives/sync.ts`: fetch and merge with abort on conflict, the new `Base` and `livespecBase`, the `regression` record from every done unit's `Verify` (`runVerify`), and the stale units from red results plus the requirements changed in `specs/` between bases. When past `build`, a stale listing later phases and a label move to `build` (design D12)
-- [ ] 7.2 `src/tools/change-sync.ts` (registered as in 5.2) and the `integrationAhead` refresh fact; the `sync` rule in `nextStep`, after `receiptedUnit` (`src/engine/next-step.ts`)
-- [ ] 7.3 Tests in `tests/tools/change-sync.test.ts` and `tests/engine/next-step.test.ts` against a real origin (change-initiatives "Sync with the integration branch": all scenarios; flow-engine "Sync before the next unit")
+- [x] 7.1 `src/initiatives/sync.ts`: fetch and merge with abort on conflict, the new `Base` and `livespecBase`, the `regression` record from every done unit's `Verify` (`runVerify`), and the stale units from red results plus the requirements changed in `specs/` between bases. When past `build`, a stale listing later phases and a label move to `build` (design D12)
+- [x] 7.2 `src/tools/change-sync.ts` (registered as in 5.2) and the `integrationAhead` refresh fact; the `sync` rule in `nextStep`, after `receiptedUnit` (`src/engine/next-step.ts`)
+- [x] 7.3 Tests in `tests/tools/change-sync.test.ts` and `tests/engine/next-step.test.ts` against a real origin (change-initiatives "Sync with the integration branch": all scenarios; flow-engine "Sync before the next unit")
 
 ## 8. New dependency gate, options and counter
 
