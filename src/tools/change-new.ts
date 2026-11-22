@@ -6,7 +6,7 @@ import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
 import { CHANGE_BRANCH_PREFIX as CHANGE_PREFIX } from "../engine/resolve-change.ts";
-import { DIRTY_TREE_REFUSAL, fixIntegration, fixRange, fixSlug } from "../fix/branch.ts";
+import { DIRTY_TREE_REFUSAL, fixEmptyReason, fixIntegration, fixRange, fixSlug } from "../fix/branch.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { livespecBaseKey } from "./change-start.ts";
@@ -60,6 +60,7 @@ async function fromFixRefusal(w: WriteContext, name: string): Promise<Moving | R
 	} catch (error) {
 		return { refused: `git failed while finding the merge base with origin/${integration}: ${untrusted(messageOf(error))}.` };
 	}
+	if (found.empty) return { refused: `there is nothing to move: ${fixEmptyReason(branch, integration)}; switch back to ${integration}.` };
 	const open = await w.forge.listPullRequests({ state: "open", head: branch });
 	if (open.length > 0) return { refused: `pull request ${open.map((pr) => `#${pr.number}`).join(", ")} from ${branch} is open; close it first.` };
 	return { slug, branch, base: found.mergeBase, subjects: found.subjects };

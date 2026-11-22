@@ -5,7 +5,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { OTHER_LOGIN } from "../forge/world.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
-import { cleanupDirs, originRefs, textOf, type ToolHarness, type ToolHarnessOptions, toolHarness } from "./helpers.ts";
+import { cleanupDirs, originRefs, squashOntoMain, textOf, type ToolHarness, type ToolHarnessOptions, toolHarness } from "./helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -133,6 +133,18 @@ describe("fix_ship", () => {
 		expect(pulls[0]?.body).toContain(head.slice(0, 7));
 		expect(pulls[0]?.body).toContain("- Tidy the README");
 		expect(originRefs(h.origin)).toContain(`${head} refs/heads/fix/typo`);
+	});
+
+	test("Squash-merged fix not shipped", async () => {
+		const h = await fixReady();
+		squashOntoMain(h, "fix/typo");
+		h.git("switch", "-q", "main");
+		await writeIn(h.root, "later.md", "later\n");
+		commitAll(h.root, "Later work");
+		h.git("push", "-q", "origin", "main");
+		h.git("switch", "-q", "fix/typo");
+		await refusedUnchanged(h, "nothing to ship");
+		expect(await openPulls(h)).toHaveLength(0);
 	});
 
 	test("Nothing to ship", async () => {

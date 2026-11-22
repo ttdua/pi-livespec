@@ -3,7 +3,7 @@ import { writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH } from "./helpers.ts";
-import { cleanupDirs, type ToolHarness, toolHarness } from "../tools/helpers.ts";
+import { cleanupDirs, squashOntoMain, type ToolHarness, toolHarness } from "../tools/helpers.ts";
 import { renderCard } from "../../src/hooks/phase-card.ts";
 import { requireChange } from "../../src/tools/guard.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
@@ -93,6 +93,17 @@ describe("buildCardInput on a fix branch", () => {
 		await h.session.refresh();
 		expect(fixInput(h)).toEqual(expect.objectContaining({ slug: "typo", empty: true }));
 		expect(fixInput(h).outcome).toBeUndefined();
+	});
+
+	test("Squash-merged fix card", async () => {
+		const h = await onFix();
+		squashOntoMain(h, "fix/typo");
+		await h.session.refresh();
+		expect(fixInput(h)).toEqual(expect.objectContaining({ slug: "typo", empty: true }));
+		const text = renderCard(fixInput(h));
+		expect(text).toContain("Nothing to ship on fix/typo");
+		expect(text).not.toContain("fix_ship");
+		expect(text).not.toContain("change_new");
 	});
 
 	test("facts failure (no origin) becomes an error, never a throw", async () => {

@@ -133,8 +133,8 @@ export async function buildCardInput(d: { session: Session; first: boolean }): P
 
 /** The facts of the committed fix diff and the `lane` rule outcome; throws on any git failure. */
 async function buildFixCard(session: Session, config: LaneConfig, slug: string, integration: string): Promise<FixCard> {
-	const { mergeBase, subjects } = await fixRange(session.git, integration);
-	if (subjects.length === 0) return { slug, empty: true };
+	const { mergeBase, empty } = await fixRange(session.git, integration);
+	if (empty) return { slug, empty: true };
 	const facts = await laneFacts(session.git, session.cwd, mergeBase);
 	return { slug, outcome: laneRule(facts, config) };
 }

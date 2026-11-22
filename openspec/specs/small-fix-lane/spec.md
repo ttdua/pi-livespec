@@ -9,6 +9,8 @@ Defines the small-fix lane: fix branches with no issue, `fix_start`, the `lane` 
 ### Requirement: Fix branch
 A fix branch SHALL be a local branch named `fix/<slug>` where `<slug>` is a kebab-case name. The system MUST identify a fix only by its checked-out branch name; it SHALL store no issue, git config key or marked comment for a fix. The merge base of HEAD and `origin/<integration branch>`, fetched first, SHALL be the start of the fix diff. A fix has no fallback base: when the fetch or the merge base fails, every fix tool MUST refuse and say so.
 
+A fix SHALL be empty when no commit follows the merge base, or when merging HEAD into `origin/<integration branch>` would leave that branch's tree unchanged, whatever merge method landed the content and whatever commits followed it. A merge that would conflict MUST NOT make a fix empty. When git cannot compute the merge without the work tree (git older than 2.38), a fix whose HEAD tree equals the `origin/<integration branch>` tree SHALL be empty. The fix card, `fix_ship` and `change_new --from-fix` MUST use this one definition.
+
 #### Scenario: Hand-made fix branch
 - **WHEN** a human creates `fix/typo` with `git switch -c` and checks it out
 - **THEN** the phase card and `fix_ship` treat it as a fix branch
@@ -16,6 +18,18 @@ A fix branch SHALL be a local branch named `fix/<slug>` where `<slug>` is a keba
 #### Scenario: Not a fix branch
 - **WHEN** the checked-out branch is `fix/Typo_1` or `fixes/typo`
 - **THEN** it is not a fix branch
+
+#### Scenario: Squash-merged fix is empty
+- **WHEN** `fix/typo` has one commit, the same change was squash-committed onto `origin/main`, and another commit followed it on `origin/main`
+- **THEN** `fix/typo` is empty
+
+#### Scenario: Rebase-merged fix is empty
+- **WHEN** `fix/retry` has two commits and both were rebased onto `origin/main` as new commits
+- **THEN** `fix/retry` is empty
+
+#### Scenario: Conflicting fix is not empty
+- **WHEN** `fix/typo` changes a line of `README.md` that `origin/main` changed differently after the merge base
+- **THEN** `fix/typo` is not empty
 
 ### Requirement: Fix start tool
 `fix_start <slug>` SHALL fetch the integration branch from `origin`, create the local branch `fix/<slug>` at the fetched head, and switch to it. It MUST NOT create an issue, push, or suggest a subagent. It MUST refuse, changing nothing, when the slug is not kebab-case, the working tree is dirty, `fix/<slug>` already exists, the integration branch is unknown, the current branch is a `livespec/*` change branch, or it runs in a child session.
@@ -93,7 +107,7 @@ When the fix diff changes a non-spec file matched by a living spec's `paths` and
 `fix_ship` SHALL take no parameters and run under the evidence lock. It MUST refuse, pushing and opening nothing, in this order:
 1. the current branch is not a fix branch, the call is in a child session, or the forge is read-only;
 2. the working tree is dirty;
-3. the fetch or the merge base fails, or there is no commit between the merge base and HEAD;
+3. the fetch or the merge base fails: the message says so; or the fix is empty (see "Fix branch"): the message says there is nothing to ship;
 4. the `lane` outcome is `forced`: the message lists every reason and names `change_new <name> --from-fix`;
 5. config `testCommand` is not set;
 6. `testCommand`, run at the project root through the guard with the `verify.timeout` limit, does not exit 0: the message holds the exit and a redacted output tail;
@@ -118,8 +132,12 @@ It SHALL then push with `guardedPush` to `origin` with refspec `HEAD:refs/heads/
 - **THEN** `fix_ship` refuses and says to set `testCommand` in `.pi/livespec/config.yaml`
 
 #### Scenario: Nothing to ship
-- **WHEN** `fix_ship` runs on `fix/typo` with no commit after the merge base, for example after its pull request was merged
+- **WHEN** `fix_ship` runs on `fix/typo` with no commit after the merge base
 - **THEN** it refuses, says there is nothing to ship, and nothing is pushed
+
+#### Scenario: Squash-merged fix not shipped
+- **WHEN** `fix_ship` runs on `fix/typo` after its change was squash-committed onto `origin/main`
+- **THEN** it refuses, says there is nothing to ship, nothing is pushed, and no pull request is opened
 
 #### Scenario: Foreign pull request
 - **WHEN** pull request 13 with head `fix/typo` is open and was opened by another login
@@ -145,7 +163,7 @@ The fix pull request body SHALL contain, in order: the subjects of the commits s
 - **THEN** the body says `Refs #40`
 
 ### Requirement: Fix card
-On a fix branch the phase card SHALL show the fix slug, the lane outcome of the committed fix diff with its reasons, and exactly one next step: `fix_ship` when the outcome is `small`, `change_new <name> --from-fix` when it is `forced`, or, when no commit follows the merge base, that there is nothing to ship and to switch back to the integration branch. It MUST NOT name `subagent_dispatch` or `subagent_packet`. When the facts cannot be built, the card SHALL say why and still name no subagent.
+On a fix branch the phase card SHALL show the fix slug, the lane outcome of the committed fix diff with its reasons, and exactly one next step: `fix_ship` when the outcome is `small`, `change_new <name> --from-fix` when it is `forced`, or, when the fix is empty (see "Fix branch"), that there is nothing to ship and to switch back to the integration branch. It MUST NOT name `subagent_dispatch` or `subagent_packet`. When the facts cannot be built, the card SHALL say why and still name no subagent.
 
 #### Scenario: Small fix card
 - **WHEN** the card is built on `fix/typo` with outcome `small`
@@ -157,14 +175,18 @@ On a fix branch the phase card SHALL show the fix slug, the lane outcome of the 
 
 #### Scenario: Empty fix card
 - **WHEN** the card is built on `fix/typo` with no commit after the merge base
-- **THEN** its next step says there is nothing to ship and does not name `fix_ship`
+- **THEN** its next step says there is nothing to ship and names neither `fix_ship` nor `change_new`
+
+#### Scenario: Squash-merged fix card
+- **WHEN** the card is built on `fix/typo` after its change was squash-committed onto `origin/main`
+- **THEN** its next step says there is nothing to ship and names neither `fix_ship` nor `change_new`
 
 #### Scenario: No dispatch
 - **WHEN** the card is built on any fix branch
 - **THEN** no next step names `subagent_dispatch`
 
 ### Requirement: Move a fix into a change
-`change_new` with `name` and `from_fix: true` (written `change_new <name> --from-fix`) SHALL, on a fix branch with a clean tree and no open pull request from it, create the change issue with the template of change-tools "Change new tool", labels `livespec` and `livespec:phase/define`, `Branch: livespec/<name>`, `Base: <merge base>` and a Proposal listing the fix's commit subjects; then rename the branch to `livespec/<name>` keeping every commit, and set `branch.livespec/<name>.livespecBase` to the merge base. It MUST refuse, changing nothing, when not on a fix branch, when the tree is dirty, when the fetch or the merge base fails, when a pull request from the fix branch is open (naming it), when `livespec/<name>` exists, or under the name rules of `change_new`. A failure after the issue is created SHALL name the issue and the remaining step.
+`change_new` with `name` and `from_fix: true` (written `change_new <name> --from-fix`) SHALL, on a fix branch with a clean tree and no open pull request from it, create the change issue with the template of change-tools "Change new tool", labels `livespec` and `livespec:phase/define`, `Branch: livespec/<name>`, `Base: <merge base>` and a Proposal listing the fix's commit subjects; then rename the branch to `livespec/<name>` keeping every commit, and set `branch.livespec/<name>.livespecBase` to the merge base. It MUST refuse, changing nothing, when not on a fix branch, when the tree is dirty, when the fetch or the merge base fails, when the fix is empty (see "Fix branch"; the message says there is nothing to move), when a pull request from the fix branch is open (naming it), when `livespec/<name>` exists, or under the name rules of `change_new`. A failure after the issue is created SHALL name the issue and the remaining step.
 
 #### Scenario: Forced fix keeps its commits
 - **WHEN** `fix/retry` has 2 commits, one adding a requirement, and `change_new retry-budget --from-fix` runs
@@ -177,3 +199,7 @@ On a fix branch the phase card SHALL show the fix slug, the lane outcome of the 
 #### Scenario: Not on a fix branch
 - **WHEN** `change_new retry-budget --from-fix` runs on `main`
 - **THEN** it refuses and no issue is created
+
+#### Scenario: Nothing to move
+- **WHEN** `change_new retry-budget --from-fix` runs on `fix/retry` with no commit after the merge base, or after its change was squash-committed onto `origin/main`
+- **THEN** it refuses, says there is nothing to move, no issue is created, and the checked-out branch is still `fix/retry`
