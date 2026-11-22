@@ -65,13 +65,13 @@ Blocked by: 1, 4, 6
 
 Blocked by: 2, 5, 7
 
-- [ ] 8.1 `src/deps/new-dependency.ts`: drafts validation, options (A default first, `split` when done and not-done units exist), payload, `registerGate("new-dependency", { proposer })`, validator (cap and A cycles)
-- [ ] 8.2 `src/tools/new-dependency.ts` (registered as in 5.2), refused in a child session and while the cap blocks
-- [ ] 8.3 Effects per choice: A creates the prerequisite and adds it to the initiative (or creates `<change>-deps`), then writes `Depends` on both line and entry, reusing `src/initiatives/complete.ts`; C creates the follow-up; D `shape` posts a `stale` listing `shape` and later phases and moves the label (design D9)
-- [ ] 8.4 Derived `discovered_deps` (ignore its counter comment) with the stuck-lift rule in `src/engine/counters.ts`/`snapshot.ts`; next-step rule 7 follow-ups (`src/engine/next-step.ts`); tests in `tests/engine/counters.test.ts` and `next-step.test.ts` (flow-engine "Loop counters": "Counter shown with cap", "Derived discovered dependencies"; discovered-dependencies "Discovered dependencies counter", "New dependency follow-up")
-- [ ] 8.5 `missing-prerequisite` names `new_dependency`, or `spec_stuck` at the cap, with no attempt counted (`src/subagents/result.ts`, `src/tools/subagent-outcome.ts`); tests in `tests/tools/subagent-dispatch.test.ts` and `subagent-record.test.ts` (subagent-dispatch "Result handling": both new scenarios)
-- [ ] 8.6 `change_close --abandon` accepts a change with no `PR` line after choice D `drop` (`src/ship/close.ts`); tests in `tests/tools/change-close.test.ts` (change-close "Closed without merge": "Drop after a discovered dependency", "Abandon refused without a pull request or drop")
-- [ ] 8.7 Tool tests in `tests/tools/new-dependency.test.ts` (discovered-dependencies "New dependency tool" and "New dependency options": all scenarios)
+- [x] 8.1 `src/deps/new-dependency.ts`: drafts validation, options (A default first, `split` when done and not-done units exist), payload, `registerGate("new-dependency", { proposer })`, validator (cap and A cycles)
+- [x] 8.2 `src/tools/new-dependency.ts` (registered as in 5.2), refused in a child session and while the cap blocks
+- [x] 8.3 Effects per choice: A creates the prerequisite and adds it to the initiative (or creates `<change>-deps`), then writes `Depends` on both line and entry, reusing `src/initiatives/complete.ts`; C creates the follow-up; D `shape` posts a `stale` listing `shape` and later phases and moves the label (design D9)
+- [x] 8.4 Derived `discovered_deps` (ignore its counter comment) with the stuck-lift rule in `src/engine/counters.ts`/`snapshot.ts`; next-step rule 7 follow-ups (`src/engine/next-step.ts`); tests in `tests/engine/counters.test.ts` and `next-step.test.ts` (flow-engine "Loop counters": "Counter shown with cap", "Derived discovered dependencies"; discovered-dependencies "Discovered dependencies counter", "New dependency follow-up")
+- [x] 8.5 `missing-prerequisite` names `new_dependency`, or `spec_stuck` at the cap, with no attempt counted (`src/subagents/result.ts`, `src/tools/subagent-outcome.ts`); tests in `tests/tools/subagent-dispatch.test.ts` and `subagent-record.test.ts` (subagent-dispatch "Result handling": both new scenarios)
+- [x] 8.6 `change_close --abandon` accepts a change with no `PR` line after choice D `drop` (`src/ship/close.ts`); tests in `tests/tools/change-close.test.ts` (change-close "Closed without merge": "Drop after a discovered dependency", "Abandon refused without a pull request or drop")
+- [x] 8.7 Tool tests in `tests/tools/new-dependency.test.ts` (discovered-dependencies "New dependency tool" and "New dependency options": all scenarios)
 
 ## 9. Park and resume
 

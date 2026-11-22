@@ -41,15 +41,15 @@ It MUST refuse, writing nothing, when:
 - **THEN** a `gate` comment with `by: livespec` and outcome `approved` is written and the change moves to `define`
 
 #### Scenario: Registered gate
-- **WHEN** a test registers gate `new-dependency` with no checks and `spec_gate new-dependency` is approved
-- **THEN** a `gate` comment for `new-dependency` is written and the phase does not move
+- **WHEN** a test registers gate `custom-gate` with no checks and `spec_gate custom-gate` is approved
+- **THEN** a `gate` comment for `custom-gate` is written and the phase does not move
 
 #### Scenario: Named gate option recorded
-- **WHEN** a test registers gate `new-dependency` with option `accept`, its checks pass, and the human chooses `accept`
-- **THEN** the `gate` comment for `new-dependency` records choice `accept` and no waivers
+- **WHEN** a test registers gate `custom-gate` with option `accept`, its checks pass, and the human chooses `accept`
+- **THEN** the `gate` comment for `custom-gate` records choice `accept` and no waivers
 
 #### Scenario: Named gate option does not waive
-- **WHEN** a test registers gate `new-dependency` with option `accept` and waivable check `size-limits`, `size-limits` fails, and the human chooses `accept`
+- **WHEN** a test registers gate `custom-gate` with option `accept` and waivable check `size-limits`, `size-limits` fails, and the human chooses `accept`
 - **THEN** the `gate` comment is marked `superseded` with no waivers and the tool says to choose `waive`
 
 #### Scenario: Gate with a proposer
