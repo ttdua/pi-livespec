@@ -1,12 +1,14 @@
 // `change_split #N --units U5,U6 --into <name>` (design D8, spec "Change split tool"): moves pending
 // units of the current change into a new change issue. The planner refuses before anything is written;
 // then the tool writes in spec order (new issue, #N body, stale comment and label, initiative), every
-// body write versioned. A conflict stops the run and the message names what was already written.
+// body write versioned. Any failure after the new issue exists stops the run, and the message names what
+// was written, what was not, and the orphan issue to close or rename before a retry.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { changeBody } from "../core/change-body.ts";
 import { parseChange } from "../core/change.ts";
 import { appendChange, initiativeBody, insertChangeAfter } from "../core/initiative.ts";
+import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { setHeaderLine } from "../core/sections.ts";
 import { insertUnitBlock } from "../core/unit-blocks.ts";
@@ -35,9 +37,6 @@ const SPLIT_SUFFIX = "-split";
 /** `version` is the version of #N's body the plan was computed from. */
 type Split = { w: WriteContext; state: ChangeState; plan: SplitPlan; into: string; version: Version; initiative?: number };
 
-/** A conflict of a versioned write, with what the run already wrote. */
-class SplitConflict extends Error {}
-
 const refuse = (message: string): ToolResult<ChangeSplitDetails> => toolResult(`${TOOL} refused: ${message} Nothing was written.`, {}, true);
 
 /** Refusals that need the forge: the name is taken by an open change, or the generated initiative name by an open initiative. */
@@ -61,11 +60,11 @@ async function createChange(s: Split): Promise<number> {
 	return (await s.w.forge.createIssue({ title: s.into, body, labels: [LABEL_LIVESPEC, phaseLabel(FIRST_PHASE)] })).number;
 }
 
-/** A versioned write of `edit(body)` on issue `n`; throws a SplitConflict when the body changed. */
+/** A versioned write of `edit(body)` on issue `n`; throws when the body changed. */
 async function writeBody(s: Split, n: number, edit: (body: string) => string): Promise<void> {
 	const issue = await s.w.forge.getIssue(n);
 	const written = await s.w.forge.updateIssueBody(n, edit(issue.body), issue.version);
-	if (written.status === "conflict") throw new SplitConflict(`#${n} changed meanwhile (${written.changed.join(", ")})`);
+	if (written.status === "conflict") throw new Error(`#${n} changed meanwhile (${written.changed.join(", ")})`);
 }
 
 /** Step 3: the stale comment for plan and every later phase, then the label back to plan when past it. */
@@ -98,24 +97,45 @@ async function linkInitiative(s: Split, m: number, done: string[]): Promise<void
 	}
 }
 
-/** Steps 1 to 4 in order; returns the new issue and what was written, or the conflict that stopped the run. */
-async function applySplit(s: Split): Promise<{ m?: number; done: string[]; conflict?: string }> {
-	const done: string[] = [];
-	let m: number | undefined;
-	try {
-		m = await createChange(s);
-		done.push(`created #${m} ${s.into}`);
-		const written = await s.w.forge.updateIssueBody(s.state.issue.number, s.plan.keptBody, s.version);
-		if (written.status === "conflict") throw new SplitConflict(`#${s.state.issue.number} changed since the split was planned (${written.changed.join(", ")})`);
-		done.push(`removed ${s.plan.moved.map((u) => u.id).join(", ")} from #${s.state.issue.number}`);
-		await reopenPlan(s, m);
-		done.push(`reopened the plan gate of #${s.state.issue.number}`);
-		await linkInitiative(s, m, done);
-		return { m, done };
-	} catch (error) {
-		if (error instanceof SplitConflict) return { ...(m === undefined ? {} : { m }), done, conflict: error.message };
-		throw error;
+type Applied = { m: number; done: string[]; failure?: { error: string; remaining: string[] } };
+
+/**
+ * Steps 2 to 4 after the new issue `m` exists, in order. Any error stops the run and is returned with the
+ * steps already written and those still to run, so the orphan issue is never left unreported.
+ */
+async function applyAfterCreate(s: Split, m: number): Promise<Applied> {
+	const n = s.state.issue.number;
+	const ids = s.plan.moved.map((u) => u.id).join(", ");
+	const done = [`created #${m} ${s.into}`];
+	const steps: { label: string; run: () => Promise<void> }[] = [
+		{
+			label: `remove ${ids} from #${n}`,
+			run: async () => {
+				const written = await s.w.forge.updateIssueBody(n, s.plan.keptBody, s.version);
+				if (written.status === "conflict") throw new Error(`#${n} changed since the split was planned (${written.changed.join(", ")})`);
+				done.push(`removed ${ids} from #${n}`);
+			},
+		},
+		{ label: `post the stale comment and reopen the plan gate of #${n}`, run: async () => (await reopenPlan(s, m), void done.push(`reopened the plan gate of #${n}`)) },
+		{ label: `link #${m} in the initiative`, run: () => linkInitiative(s, m, done) },
+	];
+	for (const [k, step] of steps.entries()) {
+		try {
+			await step.run();
+		} catch (error) {
+			return { m, done, failure: { error: messageOf(error), remaining: steps.slice(k).map((x) => x.label) } };
+		}
 	}
+	return { m, done };
+}
+
+function failureText(s: Split, out: Applied & { failure: NonNullable<Applied["failure"]> }): string {
+	return [
+		`${TOOL} stopped: ${untrusted(out.failure.error)}.`,
+		`Already written: ${out.done.join("; ")}.`,
+		`Not done: ${out.failure.remaining.join("; ")}.`,
+		`Close or rename the orphan issue #${out.m} ${s.into} before running ${TOOL} again, or finish the remaining steps by hand.`,
+	].join(" ");
 }
 
 export async function runChangeSplit(p: ChangeSplitParams, ctx: ToolCtx): Promise<ToolResult<ChangeSplitDetails>> {
@@ -136,10 +156,11 @@ export async function runChangeSplit(p: ChangeSplitParams, ctx: ToolCtx): Promis
 	const s: Split = { w, state: { ...state, change: current }, plan, into: p.into, version: read.version, ...(initiative === undefined ? {} : { initiative }) };
 	const taken = await nameRefusal(s, plan.dependsOnN);
 	if (taken !== undefined) return refuse(taken);
-	const out = await applySplit(s);
+	const m = await createChange(s);
+	const out = await applyAfterCreate(s, m);
 	await afterForgeWrite(w.session, p.issue);
-	const details = out.m === undefined ? {} : { number: out.m };
-	if (out.conflict !== undefined) return toolResult(`${TOOL} stopped: ${out.conflict}. Already written: ${out.done.join("; ") || "nothing"}. Finish the remaining steps by hand.`, details, true);
+	const details = { number: m };
+	if (out.failure !== undefined) return toolResult(failureText(s, { ...out, failure: out.failure }), details, true);
 	return toolResult(withStep(w.session, `Split ${plan.moved.map((u) => u.id).join(", ")} of #${p.issue} into #${out.m} ${p.into} (shape): ${out.done.join("; ")}. The plan gate of #${p.issue} must be approved again.`), details);
 }
 
