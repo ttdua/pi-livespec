@@ -99,7 +99,7 @@ export function fixNextStep(fix: FixCard): string {
 	const branch = `fix/${fix.slug}`;
 	// Reasons and errors carry repo text (requirement names, paths, git output), so they are data.
 	if (fix.error !== undefined) return `The fix diff cannot be read: ${untrusted(fix.error)}. Fix the cause and refresh.`;
-	if (fix.empty) return `Nothing to ship on ${branch}: no commit after the merge base. Switch back to the integration branch.`;
+	if (fix.empty) return `Nothing to ship on ${branch}: it adds nothing to the integration branch. Switch back to the integration branch.`;
 	if (fix.outcome?.lane === "forced") {
 		return `This fix is not small (${fix.outcome.reasons.map(untrusted).join("; ")}): run change_new <name> --from-fix to move it into a full change.`;
 	}

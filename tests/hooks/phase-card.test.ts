@@ -312,8 +312,9 @@ describe("fix card", () => {
 
 	test("Empty fix card", () => {
 		const card = renderCard(empty);
-		expect(card).toContain("Next: Nothing to ship on fix/typo: no commit after the merge base. Switch back to the integration branch.");
+		expect(card).toContain("Next: Nothing to ship on fix/typo: it adds nothing to the integration branch. Switch back to the integration branch.");
 		expect(card).not.toContain("fix_ship");
+		expect(card).not.toContain("change_new");
 	});
 
 	test("facts failure states the error", () => {

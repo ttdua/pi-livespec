@@ -141,3 +141,12 @@ export const textOf = (out: ToolOut): string => out.content.map((c) => c.text).j
 export function originRefs(origin: string): string {
 	return execFileSync("git", ["for-each-ref", "--format=%(objectname) %(refname)"], { cwd: origin, encoding: "utf8" });
 }
+
+/** Simulates a squash merge of `branch` into `main`: the content lands on origin/main, the fix commit is not an ancestor of it. */
+export function squashOntoMain(h: ToolHarness, branch: string): void {
+	h.git("switch", "-q", "main");
+	h.git("checkout", branch, "--", ".");
+	h.git("commit", "-q", "-m", "Squash");
+	h.git("push", "-q", "origin", "main");
+	h.git("switch", "-q", branch);
+}

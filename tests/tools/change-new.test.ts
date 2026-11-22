@@ -5,7 +5,7 @@ import { parseChange } from "../../src/core/change.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { asChild } from "../hooks/fake-pi.ts";
-import { cleanupDirs, textOf, type ToolHarness, type ToolOut, toolHarness } from "./helpers.ts";
+import { cleanupDirs, textOf, type ToolHarness, type ToolOut, squashOntoMain, toolHarness } from "./helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -142,6 +142,27 @@ describe("change_new from_fix", () => {
 		expect(textOf(out)).toContain(`#${n}`);
 		await noIssue(h);
 		expect(h.git("branch", "--show-current")).toBe("fix/retry");
+	});
+
+	describe("Nothing to move", () => {
+		const refusedEmpty = async (h: ToolHarness) => {
+			const out = await moveCall(h);
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("nothing to move");
+			await noIssue(h);
+			expect(h.git("branch", "--show-current")).toBe("fix/retry");
+			expect(h.git("branch", "--list", "livespec/retry-budget")).toBe("");
+		};
+
+		test("no commit after the merge base", async () => {
+			await refusedEmpty(await toolHarness({ config: CONFIG, branch: "fix/retry" }));
+		});
+
+		test("squash-merged fix", async () => {
+			const h = await forcedFix();
+			squashOntoMain(h, "fix/retry");
+			await refusedEmpty(h);
+		});
 	});
 
 	test("Not on a fix branch", async () => {

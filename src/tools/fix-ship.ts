@@ -10,7 +10,7 @@ import { decide } from "../decide/seam.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import { runVerify } from "../evidence/runner.ts";
 import { verifyEnv } from "../evidence/verify-env.ts";
-import { DIRTY_TREE_REFUSAL, fixIntegration, fixRange as gitRange, fixSlug } from "../fix/branch.ts";
+import { DIRTY_TREE_REFUSAL, fixIntegration, fixEmptyReason, fixRange as gitRange, fixSlug } from "../fix/branch.ts";
 import { type LaneOutcome, laneConfigOf } from "../fix/lane.ts";
 import { laneFacts } from "../fix/lane-facts.ts";
 import { type FixTest, fixPullRequestBody } from "../fix/pr-body.ts";
@@ -46,14 +46,14 @@ async function fixRefusal(w: WriteContext): Promise<Fix | Refused> {
 	return { w, slug, branch };
 }
 
-/** Refusal 3: the fetch and merge base succeed, and at least one commit follows the merge base. */
+/** Refusal 3: the fetch and merge base succeed, and the fix adds something to the integration branch (a commit after the merge base whose changes have not landed). */
 async function fixRange(f: Fix): Promise<Range | Refused> {
 	const { git, config } = f.w.session;
 	const integration = await fixIntegration(config.project, git);
 	if (typeof integration !== "string") return integration;
 	try {
-		const { mergeBase: base, subjects } = await gitRange(git, integration);
-		if (subjects.length === 0) return { refused: `there is nothing to ship: ${f.branch} has no commit after the merge base with ${REMOTE}/${integration}; switch back to ${integration}.` };
+		const { mergeBase: base, subjects, empty } = await gitRange(git, integration);
+		if (empty) return { refused: `there is nothing to ship: ${fixEmptyReason(f.branch, integration)}; switch back to ${integration}.` };
 		return { integration, base, subjects };
 	} catch (error) {
 		return { refused: `git failed while finding the merge base with ${REMOTE}/${integration}: ${untrusted(messageOf(error))}.` };
