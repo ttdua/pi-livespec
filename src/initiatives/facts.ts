@@ -7,6 +7,7 @@
 import { parseChange } from "../core/change.ts";
 import { type Initiative, parseInitiative } from "../core/initiative.ts";
 import { decide } from "../decide/seam.ts";
+import { parkedState } from "../deps/parked.ts";
 import type { DepFact, DepState } from "../engine/deps-facts.ts";
 import { GitError, integrationBranch } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
@@ -152,7 +153,9 @@ export async function depsRefreshFacts(session: Session, state: ChangeState): Pr
 	const forge = session.forge;
 	if (forge === undefined || !session.pack.ok) return {};
 	try {
-		return { deps: await changeFacts(session, forge, session.pack.pack, state) };
+		const deps = await changeFacts(session, forge, session.pack.pack, state);
+		const parked = parkedState(state.parkedCore, deps.items);
+		return { deps, ...(parked === undefined ? {} : { parked }) };
 	} catch (error) {
 		if (!isReadFailure(error)) throw error;
 		session.record("deps", error);

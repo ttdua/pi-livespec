@@ -38,6 +38,14 @@ const blockedUnit: Rule = ({ state, unit }) => blockedRefusal(state, unit);
 const staleState: Rule = ({ state }) =>
 	state.stale ? "the change state is stale (forge unreachable or login unknown); retry when the forge is reachable" : undefined;
 
+/** A parked change builds nothing until `change_resume` (discovered-dependencies "Parked state"). */
+const parkedChange: Rule = ({ state }) => {
+	const core = state.parkedCore;
+	if (core === undefined) return undefined;
+	const waits = core.waitsFor.length === 0 ? "" : ` waiting for ${core.waitsFor.map((n) => `#${n}`).join(", ")}`;
+	return `The change is parked${waits}: a human resumes it with change_resume #${state.issue.number} once they merge.`;
+};
+
 const dirtyTree: Rule = ({ state }) => (state.git.dirty ? "The working tree is dirty: commit your changes first, then call the tool again." : undefined);
 
 // --- unit_start -----------------------------------------------------------------------
@@ -73,7 +81,7 @@ const otherStarted: Rule = ({ state, unit }) => {
 	return other === undefined ? undefined : `${displayUnitId(other)} is started: finish it with unit_finish ${displayUnitId(other)} first; one unit at a time in a worktree.`;
 };
 
-const START_RULES: Rule[] = [notPerUnit, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, staleState, dirtyTree, otherStarted];
+const START_RULES: Rule[] = [notPerUnit, parkedChange, notLocked, unknownUnit, doneForStart, changedSinceLock, unmetDepends, blockedUnit, alreadyStarted, staleState, dirtyTree, otherStarted];
 
 function firstRefusal(rules: Rule[], state: ChangeState, pack: Pack, unit: string): string | undefined {
 	const input: Input = { state, pack, unit, target: state.change.units.find((u) => u.id === unit) };
@@ -119,9 +127,9 @@ const digestChanged: Rule = ({ state, unit, target }) => {
 const openLane: Rule = ({ state, unit }) =>
 	unit in state.subagents.lanes ? `${displayUnitId(unit)} has an open lane: merge it with lane_merge ${displayUnitId(unit)} first.` : undefined;
 
-const RUN_RULES: Rule[] = [unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
+const RUN_RULES: Rule[] = [parkedChange, unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
 const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
-const RECONCILE_RULES: Rule[] = [openLane, dirtyTree, changedSinceLock];
+const RECONCILE_RULES: Rule[] = [parkedChange, openLane, dirtyTree, changedSinceLock];
 
 const LANE_OPEN_RULES: Rule[] = [notPerUnit, notLocked, ...INVARIANT_RULES];
 

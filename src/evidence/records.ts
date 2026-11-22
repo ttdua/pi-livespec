@@ -9,11 +9,15 @@ const REBUILD_KIND = "rebuild";
 registerKind(START_KIND);
 registerKind(REBUILD_KIND);
 
+/** `rebuild`: a review-routed rebuild started green; `resumed`: a unit of a resumed park started green. */
+export type StartVerdict = "red" | "green" | "rebuild" | "resumed";
+const START_VERDICTS: ReadonlySet<unknown> = new Set<StartVerdict>(["red", "green", "rebuild", "resumed"]);
+
 export type StartData = {
 	unit: string;
 	digest: string;
 	verify: string;
-	pre: { sha: string; exit?: number; verdict?: "red" | "green" | "rebuild"; output?: string };
+	pre: { sha: string; exit?: number; verdict?: StartVerdict; output?: string };
 	pending?: true;
 	refactor?: true;
 };
@@ -51,7 +55,7 @@ const isRun = (v: unknown): boolean => isObject(v) && isString(v.sha) && isNumbe
 
 function isStartPre(v: unknown): boolean {
 	if (!isObject(v) || !isString(v.sha)) return false;
-	return optional(v, "exit", isNumber) && optional(v, "verdict", (x) => x === "red" || x === "green" || x === "rebuild") && optional(v, "output", isString);
+	return optional(v, "exit", isNumber) && optional(v, "verdict", (x) => START_VERDICTS.has(x)) && optional(v, "output", isString);
 }
 
 function isStartData(d: unknown): d is StartData {

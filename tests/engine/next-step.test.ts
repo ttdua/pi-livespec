@@ -1094,3 +1094,34 @@ describe("new-dependency follow-up", () => {
 		expect(build(result("A"), { requests: { pending: [pending], applying: [] } }).next).toContain("Wait for the human's answer");
 	});
 });
+
+describe("parked change", () => {
+	const core = { index: 0, waitsFor: [41], units: [{ unit: "U3", branch: "livespec/per-ip-cap--wip-U3", head: "a".repeat(40), lane: true }], at: "t" };
+	const dep = (state: "open" | "merged" | "abandoned") => ({ number: 41, title: "token-store", state });
+	const parkedBuild = (over: Partial<ChangeState> = {}) => nextStep(pack, state("build", NO_QUESTION, { parkedCore: core, ...over }));
+
+	test("Parked change waits", () => {
+		const next = parkedBuild({ parked: { waitsFor: [dep("open")], units: core.units, at: "t" } }).next;
+		expect(next).toContain("waiting for #41");
+		expect(next).not.toMatch(/unit_start|unit_finish|spec_gate|Build U/);
+	});
+
+	test("waits for the record's numbers before the refresh fills the states", () => {
+		expect(parkedBuild().next).toContain("waiting for #41");
+	});
+
+	test("Resume proposed", () => {
+		expect(parkedBuild({ parked: { waitsFor: [dep("merged")], units: core.units, at: "t" } }).next).toBe("#41 merged: a human runs change_resume #7.");
+	});
+
+	test("Abandoned prerequisite removed", () => {
+		const next = parkedBuild({ parked: { waitsFor: [], units: core.units, at: "t" } }).next;
+		expect(next).not.toContain("waiting");
+		expect(next).toContain("change_resume #7");
+	});
+
+	test("a pending request still comes first", () => {
+		const pending: PendingRequest = { id: "gate-new-dependency.x", subject: "gate:new-dependency", kind: "gate", mode: "blocking", createdAt: "", data: {} as RequestRecord };
+		expect(parkedBuild({ requests: { pending: [pending], applying: [] } }).next).toContain("Wait for the human's answer");
+	});
+});

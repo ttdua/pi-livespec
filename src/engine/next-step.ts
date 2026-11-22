@@ -15,6 +15,7 @@ import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
 import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase-entries.ts";
 import { dependencyFollowUp } from "../deps/follow-up.ts";
+import { parkedStep } from "../deps/parked.ts";
 import { reviewStep } from "../review/next.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
@@ -186,6 +187,9 @@ const openRequest: Rule = ({ requests }) => {
 	return { next: `Wait for the human's answer to ${request.subject} ${ADAPTER_PLACE[request.adapter]}.` };
 };
 
+/** Rule 6 (discovered-dependencies "Parked state"): what a parked change waits for, or that a human resumes it. */
+const parked: Rule = ({ state }) => parkedStep(state);
+
 /** Rule 7 (discovered-dependencies "New dependency follow-up"): the follow-up of an approved `new-dependency` result. */
 const followUp: Rule = ({ state }) => dependencyFollowUp(state);
 
@@ -346,6 +350,7 @@ const RULES: Rule[] = [
 	notStarted,
 	openStuck,
 	openRequest,
+	parked,
 	followUp,
 	capBlocking,
 	blockingQuestion,

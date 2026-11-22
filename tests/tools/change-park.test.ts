@@ -1,5 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
+import "../../src/initiatives/facts.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { runChangePark } from "../../src/tools/change-park.ts";
 import { asChild } from "../hooks/fake-pi.ts";
@@ -148,5 +149,37 @@ describe("change_park", () => {
 		expect(textOf(out)).toContain("child session");
 		expect(originRefs(h.origin)).toBe(before);
 		expect(await h.ofKind("parked")).toEqual([]);
+	});
+});
+
+describe("Parked change refuses", () => {
+	test("unit_start, unit_finish, change_start and change_split refuse and write nothing", async () => {
+		const h = await parkHarness();
+		expect((await h.park()).isError).toBeFalsy();
+		const count = (await h.marked()).length;
+		const issues = (await h.world.forge.searchIssues({ labels: ["livespec"], state: "open" })).length;
+		for (const out of [await h.start("U3"), await h.finish("U4"), await h.call("change_split", { issue: h.n, units: ["U3"], into: "moved" })]) {
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toMatch(/parked/);
+		}
+		h.git("switch", "-q", "main");
+		await h.session.refresh();
+		const start = await h.call("change_start", { issue: h.n });
+		expect(start.isError).toBe(true);
+		expect(textOf(start)).toContain("parked");
+		expect(h.git("branch", "--show-current")).toBe("main");
+		expect((await h.marked()).length).toBe(count);
+		expect((await h.world.forge.searchIssues({ labels: ["livespec"], state: "open" })).length).toBe(issues);
+	});
+
+	test("the refreshed card waits for the prerequisite and lists the wip branches", async () => {
+		const h = await parkHarness();
+		await writeIn(h.lanes.U2.path, "src/u2.ts", "u2\n");
+		expect((await h.park()).isError).toBeFalsy();
+		const { state, step } = cardState(h);
+		expect(state.parked?.waitsFor).toEqual([{ number: h.prereq, title: "token-store", state: "open" }]);
+		expect(step.next).toContain(`waiting for #${h.prereq}`);
+		await h.mergePrereq();
+		expect(cardState(h).step.next).toBe(`#${h.prereq} merged: a human runs change_resume #${h.n}.`);
 	});
 });

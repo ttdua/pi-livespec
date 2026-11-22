@@ -9,6 +9,8 @@ import "./deps/markers.ts";
 // The readiness refresh facts and the initiative card section.
 import "./initiatives/facts.ts";
 import "./initiatives/card.ts";
+// The parked card section, after the initiative section.
+import "./deps/card.ts";
 // The evidence card section.
 import "./evidence/card.ts";
 // The subagents card section.
