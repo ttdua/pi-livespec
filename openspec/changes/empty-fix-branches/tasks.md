@@ -10,8 +10,8 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `fix_ship` refusal 3 uses `empty` and the shared phrase (`src/tools/fix-ship.ts`)
-- [ ] 2.2 `change_new --from-fix` refuses with "nothing to move" when `empty`, before the open pull request lookup, creating no issue and renaming nothing (`src/tools/change-new.ts`)
-- [ ] 2.3 The fix card sets `empty: true` from `fixRange().empty`; the card next step wording says the fix adds nothing to the integration branch (`src/hooks/card-input.ts`, `src/hooks/phase-card.ts`)
-- [ ] 2.4 Tests: `tests/tools/fix-ship.test.ts` (Squash-merged fix not shipped), `tests/tools/change-new.test.ts` (Nothing to move: empty and squash-merged), `tests/hooks/card-input.test.ts` (Squash-merged fix card), `tests/hooks/phase-card.test.ts` (Empty fix card wording)
-- [ ] 2.5 `bun run typecheck` and `bun run test` pass
+- [x] 2.1 `fix_ship` refusal 3 uses `empty` and the shared phrase (`src/tools/fix-ship.ts`)
+- [x] 2.2 `change_new --from-fix` refuses with "nothing to move" when `empty`, before the open pull request lookup, creating no issue and renaming nothing (`src/tools/change-new.ts`)
+- [x] 2.3 The fix card sets `empty: true` from `fixRange().empty`; the card next step wording says the fix adds nothing to the integration branch (`src/hooks/card-input.ts`, `src/hooks/phase-card.ts`)
+- [x] 2.4 Tests: `tests/tools/fix-ship.test.ts` (Squash-merged fix not shipped), `tests/tools/change-new.test.ts` (Nothing to move: empty and squash-merged), `tests/hooks/card-input.test.ts` (Squash-merged fix card), `tests/hooks/phase-card.test.ts` (Empty fix card wording)
+- [x] 2.5 `bun run typecheck` and `bun run test` pass
