@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 `src/initiatives/graph.ts`: pure `dependencyGraph` (union of a change's `Depends` line and its initiative entry's `Depends`), `findCycle` (DFS, self-edge counts) and `formatCycle` (`#a → #b → #a`); tests in `tests/initiatives/graph.test.ts` (change-initiatives "Depends cycle rejection": "Self dependency")
-- [ ] 1.2 `src/initiatives/readiness.ts`: `readDependencies(forge, numbers)` (issue closed and the `PR` line's pull request merged → `merged`; closed otherwise → `abandoned`; else `open`; read errors propagate) and `isReady`; tests with the memory forge (change-initiatives "Change dependencies and readiness": all three scenarios)
-- [ ] 1.3 Initiative body writers in `src/core/initiative.ts`: `appendChange`, `insertChangeAfter`, `setChangeDepends` and `removeChange`, keeping every other byte; round-trip tests next to the existing ones in `tests/core/`
-- [ ] 1.4 Register marker kinds `parked` and `regression`, and add lane outcome `parked` to `LANE_OUTCOME_NAMES` in `src/subagents/validate.ts`
+- [x] 1.1 `src/initiatives/graph.ts`: pure `dependencyGraph` (union of a change's `Depends` line and its initiative entry's `Depends`), `findCycle` (DFS, self-edge counts) and `formatCycle` (`#a → #b → #a`); tests in `tests/initiatives/graph.test.ts` (change-initiatives "Depends cycle rejection": "Self dependency")
+- [x] 1.2 `src/initiatives/readiness.ts`: `readDependencies(forge, numbers)` (issue closed and the `PR` line's pull request merged → `merged`; closed otherwise → `abandoned`; else `open`; read errors propagate) and `isReady`; tests with the memory forge (change-initiatives "Change dependencies and readiness": all three scenarios)
+- [x] 1.3 Initiative body writers in `src/core/initiative.ts`: `appendChange`, `insertChangeAfter`, `setChangeDepends` and `removeChange`, keeping every other byte; round-trip tests next to the existing ones in `tests/core/`
+- [x] 1.4 Register marker kinds `parked` and `regression`, and add lane outcome `parked` to `LANE_OUTCOME_NAMES` in `src/subagents/validate.ts`
 
 ## 2. Named gate seam
 
