@@ -206,6 +206,50 @@ describe("change_close", () => {
 		expect(await issueState(h, h.n)).toBe("open");
 	});
 
+	/** A started change in build with no `PR` line; with `choice`, an approved `new-dependency` result choosing it. */
+	async function noPr(choice?: { id: string; action: string }): Promise<ToolHarness> {
+		const h = await shipReady({ config: FORGE_CHAIN, noShipGate: true });
+		await h.world.dropLabel("livespec:phase/ship");
+		await h.world.forge.addLabels?.(h.n, ["livespec:phase/build"]);
+		if (choice) {
+			const drafts = { unit: "U1", evidence: "e", a: { name: "token-store", proposal: "p", depends: [] }, b: { units: ["U4"], summary: "s" }, c: { summary: "s", follow_up: { name: "f", proposal: "p" } }, d: { action: choice.action, reason: "wrong direction" } };
+			await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", "gate-new-dependency.r1", { subject: "gate:new-dependency", kind: "gate", mode: "blocking", snapshot: { target: "new-dependency", failingWaivable: [], drafts } }));
+			await h.world.postComment(h.n, BOT_LOGIN, writeMarked("gate", "new-dependency.gate-new-dependency.r1", { request: "gate-new-dependency.r1", gate: "new-dependency", outcome: "approved", choice: choice.id, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] }));
+		}
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		return h;
+	}
+
+	test("Drop after a discovered dependency", async () => {
+		const h = await noPr({ id: "D", action: "drop" });
+		const out = await h.call("change_close", { abandon: "wrong direction" });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const summary = (await ofKind(h, "close-summary"))[0]?.data as Record<string, unknown>;
+		expect(summary).toMatchObject({ abandoned: "wrong direction" });
+		expect(summary).not.toHaveProperty("pr");
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(emits(h)).toEqual([["livespec:change-closed", { change: h.n, abandoned: true }]]);
+	});
+
+	test("Abandon refused without a pull request or drop", async () => {
+		for (const choice of [undefined, { id: "D", action: "shape" }, { id: "A", action: "drop" }]) {
+			const h = await noPr(choice);
+			const out = await h.call("change_close", { abandon: "x" });
+			expect(out.isError).toBe(true);
+			expect(await issueState(h, h.n)).toBe("open");
+			expect(await ofKind(h, "close-summary")).toEqual([]);
+			expect(emits(h)).toEqual([]);
+		}
+	});
+
+	test("without abandon a change with no PR line still refuses after D drop", async () => {
+		const h = await noPr({ id: "D", action: "drop" });
+		const out = await h.call("change_close", {});
+		expect(out.isError).toBe(true);
+		expect(await issueState(h, h.n)).toBe("open");
+	});
+
 	test("a child session refuses", async () => {
 		const h = await closeReady();
 		const t = h.pi.tools.get("change_close");
