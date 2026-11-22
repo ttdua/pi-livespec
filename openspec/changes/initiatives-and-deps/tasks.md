@@ -30,11 +30,11 @@ Blocked by: 2
 
 Blocked by: 1, 2, 3
 
-- [ ] 4.1 `change_start` refuses when a dependency is not merged, naming each with its state, or when a dependency cannot be read (`src/tools/change-start.ts`); tests in `tests/tools/change-start.test.ts` (change-tools "Change start refusals": "Dependency not merged", "Dependency merged", "Abandoned dependency")
-- [ ] 4.2 Refresh facts: `ChangeState.deps` (dependency states, initiative entries with ready flags, capability overlap) via `registerRefreshFacts` in `src/hooks/card-input.ts`, filled by `src/initiatives/facts.ts`, memoized on the session by issue versions
-- [ ] 4.3 `nextStep` rule 3 sentence for unmet dependencies (`src/engine/next-step.ts`); test in `tests/engine/next-step.test.ts` (flow-engine "Next step precedence": "Not started with an unmet dependency")
-- [ ] 4.4 Card: an initiative progress section, the dependency states and the ready entries, the overlap warning (registered card section), and the open-changes list states `ready` / `waits for` (`src/hooks/phase-card.ts`); also in `spec_status` details. Tests in `tests/hooks/phase-card.test.ts` and `card-input.test.ts` (change-initiatives "Initiative progress on the card": both scenarios; "Capability overlap warning")
-- [ ] 4.5 Shape card names `initiative_propose` when `split` returns `propose` (change-initiatives "Split rule": "Too many capabilities suggests an initiative")
+- [x] 4.1 `change_start` refuses when a dependency is not merged, naming each with its state, or when a dependency cannot be read (`src/tools/change-start.ts`); tests in `tests/tools/change-start.test.ts` (change-tools "Change start refusals": "Dependency not merged", "Dependency merged", "Abandoned dependency")
+- [x] 4.2 Refresh facts: `ChangeState.deps` (dependency states, initiative entries with ready flags, capability overlap) via `registerRefreshFacts` in `src/hooks/card-input.ts`, filled by `src/initiatives/facts.ts`, memoized on the session by issue versions
+- [x] 4.3 `nextStep` rule 3 sentence for unmet dependencies (`src/engine/next-step.ts`); test in `tests/engine/next-step.test.ts` (flow-engine "Next step precedence": "Not started with an unmet dependency")
+- [x] 4.4 Card: an initiative progress section, the dependency states and the ready entries, the overlap warning (registered card section), and the open-changes list states `ready` / `waits for` (`src/hooks/phase-card.ts`); also in `spec_status` details. Tests in `tests/hooks/phase-card.test.ts` and `card-input.test.ts` (change-initiatives "Initiative progress on the card": both scenarios; "Capability overlap warning")
+- [x] 4.5 Shape card names `initiative_propose` when `split` returns `propose` (change-initiatives "Split rule": "Too many capabilities suggests an initiative")
 
 ## 5. Initiative propose, gate completion and amendments
 
