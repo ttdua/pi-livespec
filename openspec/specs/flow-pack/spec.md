@@ -9,7 +9,7 @@ Defines the flow pack: its schema and validation errors with line and column, th
 ### Requirement: Default flow pack
 The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-skills.yaml` with:
 - `name: agent-skills`, `version: 1` and `content: agent-skills`;
-- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, `progress: { mode: rule }`, `finding-scope: { mode: rule }` and `durable-docs: { mode: rule }`, each with `mode: rule`;
+- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, `progress: { mode: rule }`, `finding-scope: { mode: rule }`, `durable-docs: { mode: rule }` and `lane: { mode: rule, max_files: 3, max_lines: 100 }`, each with `mode: rule`;
 - the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close`, with the skills, outputs, redirects, checks and gates listed in issue #4, plus the `unit-classification` and `verify-red-on-base` checks in `plan`, the `review-clean` check and the `subagents` entries of review-phase "Reviewer selection" in `review`, and the output `issue#Durable docs` and the check `durable-docs` in `ship`.
 
 The pack MUST NOT name a model or a lane count.
@@ -20,11 +20,11 @@ The pack MUST NOT name a model or a lane count.
 
 #### Scenario: Default pack contents
 - **WHEN** the default pack is loaded
-- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5, #6, #8 and #32, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks, gate and `subagents`
+- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5, #6, #8, #32 and #33, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks, gate and `subagents`
 
 #### Scenario: Spot check
 - **WHEN** the default pack is loaded
-- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification` and `verify-red-on-base`; phase `review` checks `review-clean` and has `gate: self`; phase `ship` lists output `issue#Durable docs`, checks `durable-docs` and has `gate: human`; and `decisions.difficulty.mode`, `decisions.progress.mode`, `decisions.finding-scope.mode` and `decisions.durable-docs.mode` are `rule`
+- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format` and `capabilities-match-diff`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification` and `verify-red-on-base`; phase `review` checks `review-clean` and has `gate: self`; phase `ship` lists output `issue#Durable docs`, checks `durable-docs` and has `gate: human`; and `decisions.difficulty.mode`, `decisions.progress.mode`, `decisions.finding-scope.mode`, `decisions.durable-docs.mode` and `decisions.lane.mode` are `rule`, with `decisions.lane.max_files` 3 and `decisions.lane.max_lines` 100
 
 ### Requirement: Pack schema validation
 The loader SHALL validate a pack against a hand-written schema of the top-level keys `name`, `version`, `content`, `limits`, `loops`, `decisions`, `init`, `phases` and `extends`, and the phase keys `id`, `requires`, `per`, `skills.required`, `skills.optional`, `outputs`, `redirects`, `checks`, `gate` and `subagents`. Every error MUST carry the file, line and column of the offending node, and a YAML syntax error MUST be reported with its line and column.
