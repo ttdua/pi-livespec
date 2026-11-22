@@ -34,8 +34,27 @@ export async function fixMergeBase(git: Git, integration: string): Promise<strin
 	return git.mergeBase("HEAD", `${REMOTE}/${integration}`);
 }
 
-/** The merge base with `origin/<integration>` (after a fetch) and the commit subjects after it, oldest first; throws on any git failure. */
-export async function fixRange(git: Git, integration: string): Promise<{ mergeBase: string; subjects: string[] }> {
+/** Why a fix branch has nothing to ship or move. */
+export const fixEmptyReason = (branch: string, integration: string): string =>
+	`${branch} adds nothing to origin/${integration} (no commit after the merge base, or its changes are already there)`;
+
+/** True when merging HEAD into the local `origin/<integration>` changes nothing (squash- or rebase-merged fix). Any doubt (missing ref, conflict, git error) is false: never a false "empty". */
+async function landed(git: Git, integration: string): Promise<boolean> {
+	const tip = await git.remoteRef(`${REMOTE}/${integration}`);
+	if (tip === undefined) return false;
+	try {
+		const merged = await git.mergeTree(tip, "HEAD");
+		if (merged === "conflict") return false;
+		const tipTree = await git.treeOf(tip);
+		return (merged === "unsupported" ? await git.treeOf("HEAD") : merged.tree) === tipTree;
+	} catch {
+		return false;
+	}
+}
+
+/** The merge base (after a fetch), the commit subjects after it (oldest first) and whether the fix is empty: no commit, or its changes already in `origin/<integration>`; throws on fetch/merge-base/subjects failure. */
+export async function fixRange(git: Git, integration: string): Promise<{ mergeBase: string; subjects: string[]; empty: boolean }> {
 	const mergeBase = await fixMergeBase(git, integration);
-	return { mergeBase, subjects: await git.subjects(mergeBase, "HEAD") };
+	const subjects = await git.subjects(mergeBase, "HEAD");
+	return { mergeBase, subjects, empty: subjects.length === 0 || (await landed(git, integration)) };
 }
