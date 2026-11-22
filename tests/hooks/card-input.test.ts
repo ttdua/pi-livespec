@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { ForgeError } from "../../src/forge/errors.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
+import "../../src/initiatives/facts.ts";
+import "../../src/initiatives/card.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH } from "./helpers.ts";
-import { cleanupDirs, squashOntoMain, type ToolHarness, toolHarness } from "../tools/helpers.ts";
+import { cleanupDirs, squashOntoMain, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
 import { renderCard } from "../../src/hooks/phase-card.ts";
 import { requireChange } from "../../src/tools/guard.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
@@ -179,5 +182,98 @@ describe("buildCardInput on a fix branch", () => {
 		const h = await onFix();
 		await h.session.refresh();
 		expect(requireChange(h.session)).toEqual({ ok: false, message: "On fix/typo: run fix_ship or change_new <name> --from-fix; there is no change issue." });
+	});
+});
+
+describe("readiness refresh facts", () => {
+	const CHANGE = "Capabilities: new [], modified [rate-limit]\n\n## Proposal\nP.\n";
+	const MERGED_BODY = (pr: number) => `PR: #${pr}\n${CHANGE}`;
+
+	/** Initiative #T with #34 (checked, merged) and the current change #35 depending on it, on #35's branch. */
+	async function inInitiative(): Promise<{ h: ToolHarness; t: number; dep: number; n: number }> {
+		const h = await toolHarness({ branch: CHANGE_BRANCH });
+		const pr = await h.world.seedPullRequest({ head: "livespec/audit-log", state: "closed", merged: true });
+		const dep = await h.world.seedIssue({ title: "audit-log", body: MERGED_BODY(pr), labels: ["livespec", "livespec:phase/close"], state: "closed" });
+		const t = await h.world.seedIssue({ title: "rate-limit-deps", labels: ["livespec:initiative"], body: "" });
+		const n = await h.world.seedIssue({
+			title: "per-ip-cap",
+			body: `Base: ${h.head}\nBranch: ${CHANGE_BRANCH}\nInitiative: #${t}\nDepends: #${dep}\n${CHANGE}`,
+			labels: ["livespec", "livespec:phase/build"],
+		});
+		await h.world.editBodyBehindBack(t, `Goal: g\nCapabilities: [rate-limit]\n\n## Changes\n- [x] #${dep} audit-log — Depends: —\n- [ ] #${n} per-ip-cap — Depends: #${dep}\n`);
+		return { h, t, dep, n };
+	}
+
+	test("Progress shown", async () => {
+		const { h, t, dep } = await inInitiative();
+		await h.session.refresh();
+		expect(cardState(h).deps).toMatchObject({ items: [{ number: dep, state: "merged" }], initiative: { number: t, checked: 1, total: 2, ready: [] } });
+		const card = renderCard(h.session.card);
+		expect(card).toContain(`initiative #${t}: 1 of 2 done`);
+		expect(card).toContain(`#${dep} merged`);
+	});
+
+	test("pull request reads are memoized until an issue read changes", async () => {
+		const { h, dep } = await inInitiative();
+		let pulls = 0;
+		const inner = h.world.forge as { getPullRequest(n: number): Promise<unknown> };
+		const original = inner.getPullRequest.bind(h.world.forge);
+		inner.getPullRequest = async (n: number) => {
+			pulls += 1;
+			return original(n);
+		};
+		await h.session.refresh();
+		const first = pulls;
+		expect(first).toBeGreaterThan(0);
+		await h.session.refresh();
+		expect(pulls).toBe(first);
+		await h.world.editBodyBehindBack(dep, `${await h.world.bodyOf(dep)}edited\n`);
+		await h.session.refresh();
+		expect(pulls).toBeGreaterThan(first);
+	});
+
+	test("Two open changes modify the same capability", async () => {
+		const { h } = await inInitiative();
+		await h.world.seedIssue({ title: "burst", body: `Branch: livespec/burst\n${CHANGE}`, labels: ["livespec", "livespec:phase/build"] });
+		await h.world.seedIssue({ title: "later", body: CHANGE, labels: ["livespec", "livespec:phase/define"] });
+		await h.session.refresh();
+		expect(cardState(h).deps?.overlap.map((o) => o.title)).toEqual(["burst"]);
+		expect(renderCard(h.session.card)).toMatch(/#\d+ <untrusted>burst<\/untrusted> also changes <untrusted>rate-limit<\/untrusted>/);
+		const status = await h.call("spec_status");
+		expect(textOf(status)).toMatch(/#\d+ <untrusted>burst<\/untrusted> also changes <untrusted>rate-limit<\/untrusted>/);
+		expect((status.details as { state: { deps?: unknown } }).state.deps).toMatchObject({ overlap: [{ title: "burst" }] });
+	});
+
+	test("Too many capabilities suggests an initiative", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH });
+		await h.world.seedIssue({ title: "per-ip-cap", body: `Branch: ${CHANGE_BRANCH}\nCapabilities: new [], modified [a, b, c, d]\n\n## Proposal\nP.\n`, labels: ["livespec", "livespec:phase/shape"] });
+		await h.session.refresh();
+		expect(cardState(h).deps?.split).toBe("propose");
+		expect(renderCard(h.session.card)).toContain("initiative_propose");
+	});
+
+	test("Ready changes proposed", async () => {
+		const h = await toolHarness();
+		const a = await h.world.seedIssue({ title: "audit-log", body: CHANGE, labels: ["livespec", "livespec:phase/define"] });
+		await h.world.seedIssue({ title: "per-ip-cap", body: `Depends: #${a}\n${CHANGE}`, labels: ["livespec", "livespec:phase/define"] });
+		await h.world.seedIssue({ title: "burst", body: CHANGE, labels: ["livespec", "livespec:phase/build", "livespec:parked"] });
+		await h.session.refresh();
+		const card = renderCard(h.session.card);
+		expect(card).toContain(`#${a} <untrusted>audit-log</untrusted> (define) ready`);
+		expect(card).toContain(`<untrusted>per-ip-cap</untrusted> (define) waits for #${a}`);
+		expect(card).toContain("<untrusted>burst</untrusted> (build) parked");
+	});
+
+	test("a dependency read failure degrades to no deps fact", async () => {
+		const { h, dep } = await inInitiative();
+		const inner = h.world.forge as { getIssue(n: number): Promise<unknown> };
+		const original = inner.getIssue.bind(h.world.forge);
+		inner.getIssue = async (n: number) => {
+			if (n === dep) throw new ForgeError({ code: "http", operation: "getIssue", message: "boom", status: 500 });
+			return original(n);
+		};
+		await h.session.refresh();
+		expect(h.session.card.kind).toBe("change");
+		expect(cardState(h).deps).toBeUndefined();
 	});
 });

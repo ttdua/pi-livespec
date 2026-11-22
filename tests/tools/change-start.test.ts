@@ -315,3 +315,92 @@ describe("change_start", () => {
 		expect(h.faults.writes).toBe(0);
 	});
 });
+
+describe("change_start dependencies", () => {
+	const withLines = (lines: string) => CHANGE_BODY_TEMPLATE.replace("Depends: —\n", lines);
+
+	/** A dependency issue: open, closed with a merged pull request, or closed without one (abandoned). */
+	async function dependency(h: ToolHarness, state: "open" | "merged" | "abandoned"): Promise<number> {
+		if (state === "open") return h.world.seedIssue({ title: "audit-log", labels: SHAPE_LABELS });
+		const pr = await h.world.seedPullRequest({ head: "livespec/audit-log", state: "closed", merged: state === "merged" });
+		return h.world.seedIssue({ title: "audit-log", body: `PR: #${pr}\n`, labels: SHAPE_LABELS, state: "closed" });
+	}
+
+	async function dependent(state: "open" | "merged" | "abandoned"): Promise<StartHarness & { dep: number }> {
+		const h = await started();
+		const dep = await dependency(h, state);
+		await h.world.editBodyBehindBack(h.n, withLines(`Depends: #${dep}\n`));
+		return { ...h, dep };
+	}
+
+	test("Dependency not merged", async () => {
+		const h = await dependent("open");
+		const out = await h.start();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`#${h.dep} open`);
+		expect(textOf(out)).toContain(`change_start #${h.n}`);
+		expect(h.git("branch", "--list", "livespec/*")).toBe("");
+		expect(h.faults.writes).toBe(0);
+	});
+
+	test("Dependency merged", async () => {
+		const h = await dependent("merged");
+		const out = await h.start();
+		expect(out.isError).toBe(false);
+		expect(current(h)).toBe(BRANCH);
+		expect((await header(h)).branch).toBe(BRANCH);
+	});
+
+	test("Abandoned dependency", async () => {
+		const h = await dependent("abandoned");
+		const out = await h.start();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`#${h.dep} abandoned`);
+		expect(hasBranch(h, BRANCH)).toBe(false);
+	});
+
+	test("unreadable dependency refuses", async () => {
+		const h = await dependent("open");
+		const inner = h.world.forge as { getIssue(n: number): Promise<unknown> };
+		const original = inner.getIssue.bind(h.world.forge);
+		inner.getIssue = async (n: number) => {
+			if (n === h.dep) throw new ForgeError({ code: "http", operation: "getIssue", message: "server error", status: 500 });
+			return original(n);
+		};
+		const out = await h.start();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`#${h.dep}`);
+		expect(hasBranch(h, BRANCH)).toBe(false);
+	});
+
+	test("entry depends only", async () => {
+		const h = await started();
+		const dep = await dependency(h, "open");
+		const initiative = await h.world.seedIssue({
+			title: "rate-limit-deps",
+			labels: ["livespec:initiative"],
+			body: `Goal: g\nCapabilities: [rate-limit]\n\n## Changes\n- [ ] #${dep} audit-log — Depends: —\n- [ ] #${h.n} rate-limit — Depends: #${dep}\n`,
+		});
+		await h.world.editBodyBehindBack(h.n, withLines(`Initiative: #${initiative}\nDepends: —\n`));
+		const out = await h.start();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`#${dep} open`);
+		expect(hasBranch(h, BRANCH)).toBe(false);
+	});
+
+	test("stale cached dependency refuses", async () => {
+		const h = await dependent("merged");
+		// Cache the dependency, then make only its reads unreachable: the cache serves it as stale and the forge goes read-only.
+		await h.forge.getIssue(h.dep);
+		const inner = h.world.forge as { getIssue(n: number): Promise<unknown> };
+		const original = inner.getIssue.bind(h.world.forge);
+		inner.getIssue = async (n: number) => {
+			if (n === h.dep) throw new ForgeError({ code: "unreachable", operation: "getIssue", message: "connection refused" });
+			return original(n);
+		};
+		const out = await h.start();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("read-only");
+		expect(hasBranch(h, BRANCH)).toBe(false);
+	});
+});

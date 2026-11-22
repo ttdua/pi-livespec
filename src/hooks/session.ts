@@ -89,6 +89,8 @@ export class Session {
 	lastResolved?: { branch: string; number: number };
 	/** The fix card last built, keyed by HEAD and the integration branch, so a refresh at the same HEAD does not fetch again. */
 	fixMemo?: { key: string; value: FixCard };
+	/** Pull request merged states read for dependency facts, keyed by the sorted versions of the issues read with them. */
+	depsMemo?: { key: string; merged: Map<number, boolean> };
 	/** The background agent-skills check started at session start. */
 	upgrade?: Promise<void>;
 	readonly skillReads = new SkillReads();

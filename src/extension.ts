@@ -6,6 +6,9 @@ import "./interaction/card.ts";
 import "./interaction/doctor.ts";
 // The `parked` and `regression` marker kinds.
 import "./deps/markers.ts";
+// The readiness refresh facts and the initiative card section.
+import "./initiatives/facts.ts";
+import "./initiatives/card.ts";
 // The evidence card section.
 import "./evidence/card.ts";
 // The subagents card section.

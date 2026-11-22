@@ -119,6 +119,17 @@ describe("nextStep", () => {
 		expect(step.next).toBe("Run change_start #7 to create the change branch.");
 	});
 
+	test("Not started with an unmet dependency", () => {
+		const items = [{ number: 34, title: "audit-log", state: "open" as const }, { number: 33, title: "x", state: "merged" as const }];
+		const step = nextStep(pack, state("define", NOT_STARTED, { deps: { items, overlap: [] } }));
+		expect(step.next).toBe("#7 waits for #34 open; a human runs change_start #7 once they merge.");
+	});
+
+	test("not started with every dependency merged names change_start", () => {
+		const step = nextStep(pack, state("define", NOT_STARTED, { deps: { items: [{ number: 34, title: "a", state: "merged" }], overlap: [] } }));
+		expect(step.next).toBe("Run change_start #7 to create the change branch.");
+	});
+
 	test("not started in shape follows the gate", () => {
 		const step = nextStep(pack, state("shape", NOT_STARTED));
 		expect(step.next).toBe("Checks pass; the shape gate can pass.");

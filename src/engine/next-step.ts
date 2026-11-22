@@ -151,10 +151,19 @@ function sentence(text: string): string {
 
 // --- precedence rules (design.md, "Change state and next step") --------------
 
-/** Rule 2: a change not started (no `Branch`) in a phase after the first one. */
+/**
+ * Rule 3: a change not started (no `Branch`) in a phase after the first one. With an unmerged dependency
+ * (read at refresh), only a human starts it once they merge.
+ */
 const notStarted: Rule = ({ state, phase }) => {
 	if (state.change.header.branch !== undefined || phase.requires.length === 0) return undefined;
-	return { next: `Run change_start #${state.issue.number} to create the change branch.` };
+	const n = state.issue.number;
+	const unmet = (state.deps?.items ?? []).filter((d) => d.state !== "merged");
+	if (unmet.length > 0) {
+		const waits = unmet.map((d) => `#${d.number} ${d.state}`).join(", ");
+		return { next: `#${n} waits for ${waits}; a human runs change_start #${n} once they merge.` };
+	}
+	return { next: `Run change_start #${n} to create the change branch.` };
 };
 
 /**

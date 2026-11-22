@@ -8,7 +8,8 @@ import { LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { phaseFromLabels } from "./snapshot.ts";
 
-export type OpenChange = { number: number; title: string; phase?: string };
+/** `readiness` is filled at refresh by a registered list hook: all dependencies merged, the unmerged ones, or parked. */
+export type OpenChange = { number: number; title: string; phase?: string; readiness?: "ready" | { waits: number[] } | "parked" };
 
 export type ResolvedChange =
 	| { kind: "change"; number: number; warning?: string }
