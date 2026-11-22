@@ -5,6 +5,7 @@ import { registerChangeClose } from "./change-close.ts";
 import { registerChangeNew } from "./change-new.ts";
 import { registerChangePush } from "./change-push.ts";
 import { registerChangeShip } from "./change-ship.ts";
+import { registerChangeSplit } from "./change-split.ts";
 import { registerChangeStart } from "./change-start.ts";
 import { registerDocsTable } from "./docs-table.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
@@ -59,6 +60,7 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeShip(pi);
 	registerChangePush(pi);
 	registerChangeClose(pi);
+	registerChangeSplit(pi);
 	registerFixStart(pi);
 	registerFixShip(pi);
 }
