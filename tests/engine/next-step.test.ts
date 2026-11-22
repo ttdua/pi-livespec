@@ -1061,22 +1061,40 @@ describe("new-dependency follow-up", () => {
 	});
 
 	test("after C the next step names unit_amend for the stub", () => {
-		expect(build(result("C")).next).toContain("unit_amend U3");
+		expect(build(result("C")).next).toContain("unit_amend <untrusted>U3</untrusted>");
 		expect(build([...result("C"), amendment()]).next).not.toContain("unit_amend");
 	});
 
 	test("after split the next step is change_split with the units not done", () => {
 		const next = build(result("split")).next;
 		expect(next).toContain("change_split");
-		expect(next).toContain("(U3)");
+		expect(next).toContain("(<untrusted>U3</untrusted>)");
 		expect(build([...result("split"), stale(["build"])]).next).toContain("change_split");
 		expect(build([...result("split"), stale(["plan", "build"])]).next).not.toContain("change_split");
 	});
 
 	test("after D drop the next step is change_close --abandon until the issue closes", () => {
-		expect(build(result("D")).next).toBe('The new-dependency gate chose D: drop the change with change_close --abandon "wrong direction".');
+		expect(build(result("D")).next).toBe("The new-dependency gate chose D: drop the change with change_close --abandon <reason>, giving the reason below.\nReason: <untrusted>wrong direction</untrusted>");
 		const closed = { issue: { number: 7, title: "per-ip-cap", labels: ["livespec", "livespec:phase/build"], state: "closed" as const } };
 		expect(build(result("D"), closed).next).not.toContain("change_close");
+	});
+
+	test("the D drop reason is wrapped on its own line, outside the command", () => {
+		const next = build(result("D", { action: "drop", reason: 'say "no"\nthen <stop>' })).next;
+		expect(next).toBe('The new-dependency gate chose D: drop the change with change_close --abandon <reason>, giving the reason below.\nReason: <untrusted>say "no" then &lt;stop></untrusted>');
+	});
+
+	test("C and split wrap the drafted unit and the unit ids", () => {
+		const c = (choice: string, unit: string) => {
+			n += 1;
+			const id = `gate-new-dependency.f${n}`;
+			return [
+				mark(writeMarked("request", id, { subject: "gate:new-dependency", kind: "gate", mode: "blocking", snapshot: { target: "new-dependency", failingWaivable: [], drafts: { ...DRAFTS, unit } } })),
+				mark(writeMarked("gate", `new-dependency.${id}`, { request: id, gate: "new-dependency", outcome: "approved", choice, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] })),
+			];
+		};
+		expect(build(c("C", "U<3>")).next).toContain("unit_amend <untrusted>U&lt;3></untrusted>;");
+		expect(build(result("split")).next).toContain("(<untrusted>U3</untrusted>)");
 	});
 
 	test("D shape has no follow-up", () => {

@@ -76,8 +76,9 @@ const FILES = {
 	"specs/rate-limit/spec.md": spec("Each IP SHALL be capped."),
 };
 
-/** Comment kinds whose `createComment` throws while listed, to inject a forge failure mid-sync. */
+/** Comment kinds whose `createComment` throws while listed, to inject a forge failure mid-sync; `body` makes every `updateIssueBody` conflict. */
 type Faults = Set<string>;
+const BODY_CONFLICT = "body";
 
 function faultyForge(inner: Forge, faults: Faults): Forge {
 	const createComment = async (n: number, text: string) => {
@@ -85,9 +86,12 @@ function faultyForge(inner: Forge, faults: Faults): Forge {
 		if (kind !== undefined && faults.has(kind)) throw new Error(`injected ${kind} failure`);
 		return inner.createComment(n, text);
 	};
+	const updateIssueBody: Forge["updateIssueBody"] = async (n, body, version) =>
+		faults.has(BODY_CONFLICT) ? { status: "conflict", current: version, changed: ["body"] } : inner.updateIssueBody(n, body, version);
 	return new Proxy(inner, {
 		get(target, prop) {
 			if (prop === "createComment") return createComment;
+			if (prop === "updateIssueBody") return updateIssueBody;
 			const value = Reflect.get(target, prop, target);
 			return typeof value === "function" ? value.bind(target) : value;
 		},
@@ -275,6 +279,27 @@ describe("change_sync", () => {
 		expect((await h.call("change_sync")).isError).toBeFalsy();
 		expect(await doneUnits(h)).toEqual(["U1"]);
 		expect(cardState(h).step.next).toMatch(/Amend U2 with unit_amend/);
+	});
+
+	test("a conflict on the untick refuses with Base unchanged, and a rerun completes the untick", async () => {
+		const faults: Faults = new Set([BODY_CONFLICT]);
+		const h = await harness({ units: [...UNITS, PENDING_U3], faults });
+		const before = (await header(h)).base;
+		const tip = await siblingMerges(h, { "sibling.txt": "s\n" });
+		const out = await h.call("change_sync");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("Base is unchanged, rerun change_sync");
+		expect((await ofKind(h, "stale"))[0]?.data).toMatchObject({ units: ["U2"], after_plan: false });
+		expect(await doneUnits(h)).toEqual(["U1", "U2"]);
+		expect((await header(h)).base).toBe(before);
+		expect(h.git("config", "--default", "unset", "--get", "branch.livespec/per-ip-cap.livespecBase")).not.toBe(tip);
+		faults.clear();
+		const rerun = await h.call("change_sync");
+		expect(rerun.isError, textOf(rerun)).toBeFalsy();
+		expect(await doneUnits(h)).toEqual(["U1"]);
+		expect(await ofKind(h, "stale")).toHaveLength(1);
+		expect((await header(h)).base).toBe(tip);
+		expect(h.git("config", "--get", "branch.livespec/per-ip-cap.livespecBase")).toBe(tip);
 	});
 
 	test("a rerun at the same HEAD posts no duplicate regression or stale record", async () => {

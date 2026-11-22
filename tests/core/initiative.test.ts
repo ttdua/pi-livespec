@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	appendChange,
 	initiativeBody,
+	initiativeRequest,
 	insertChangeAfter,
 	insertChangeBefore,
 	parseInitiative,
@@ -71,5 +72,18 @@ describe("initiative writers", () => {
 	});
 	it("initiativeBody", () => {
 		expect(initiativeBody("g", ["a"])).toBe("Goal: g\nCapabilities: [a]\n\n## Changes\n");
+	});
+	it("initiativeBody with a request marker", () => {
+		const body = initiativeBody("g", ["a"], "gate-initiative.abc");
+		expect(body).toBe("Goal: g\nCapabilities: [a]\n<!-- livespec:request gate-initiative.abc -->\n\n## Changes\n");
+		rt(body);
+		const out = appendChange(body, { number: 36, name: "x", depends: [] });
+		expect(parseInitiative(out)).toMatchObject({ goal: "g", capabilities: ["a"], changes: [{ number: 36, name: "x" }] });
+		expect(initiativeRequest(out)).toBe("gate-initiative.abc");
+		rt(out);
+	});
+	it("initiativeRequest is undefined without a marker", () => {
+		expect(initiativeRequest(fixture)).toBeUndefined();
+		expect(initiativeRequest("Goal: g\n\n## Changes\n<!-- livespec:request x -->\n")).toBeUndefined();
 	});
 });

@@ -127,6 +127,16 @@ describe("new_dependency: the request", () => {
 		expect(await ofKind(h, "request")).toEqual([]);
 	});
 
+	test("refused when an open initiative already has option A's generated name", async () => {
+		const h = await harness();
+		const taken = await h.world.seedIssue({ title: "per-ip-cap-deps", body: "Goal: other\nCapabilities: []\n\n## Changes\n", labels: ["livespec:initiative"] });
+		const out = await h.call("new_dependency", params());
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("<untrusted>per-ip-cap-deps</untrusted>");
+		expect(textOf(out)).toContain(`#${taken}`);
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
 	test("refused in a child session", async () => {
 		const h = await harness();
 		const t = h.pi.tools.get("new_dependency");
@@ -253,6 +263,21 @@ describe("new-dependency options", () => {
 		expect(await titled(h, "token-store-later")).toHaveLength(1);
 	});
 
+	test("an A approval is superseded when another initiative took the generated name meanwhile", async () => {
+		const h = await harness();
+		await h.call("new_dependency", params());
+		const goal = `Prerequisites of #${h.n} per-ip-cap`;
+		const other = await h.world.seedIssue({ title: "per-ip-cap-deps", body: `Goal: ${goal}\nCapabilities: []\n\n## Changes\n`, labels: ["livespec:initiative"] });
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec choose A");
+		await pollApprovals(h.session);
+		expect((await ofKind(h, "gate")).at(-1)?.data).toMatchObject({ superseded: true });
+		expect((await ofKind(h, "answer"))[0]?.data).toMatchObject({ verdict: "superseded", reason: expect.stringContaining(`#${other}`) });
+		expect(await titled(h, "token-store")).toEqual([]);
+		expect(parseInitiative(await h.world.bodyOf(other)).changes).toEqual([]);
+		expect(parseChange(await h.world.bodyOf(h.n)).header.initiative).toBeUndefined();
+	});
+
 	test("Option A rerun after a crash writes nothing twice", async () => {
 		let creates = 0;
 		const crashing = (world: MemoryWorld): Forge =>
@@ -278,6 +303,7 @@ describe("new-dependency options", () => {
 		expect(await depGates(h)).toHaveLength(1);
 		expect(await titled(h, "token-store")).toHaveLength(1);
 		expect(await titled(h, "per-ip-cap-deps")).toHaveLength(1);
+		expect((await one(h, "per-ip-cap-deps")).body).toMatch(/^<!-- livespec:request gate-new-dependency\.\S+ -->$/m);
 		const t = await one(h, "token-store");
 		expect(parseChange(await h.world.bodyOf(h.n)).header.depends).toEqual([`#${t.number}`]);
 	});

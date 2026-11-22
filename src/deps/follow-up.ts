@@ -5,6 +5,7 @@ import { type LatestDependencyChoice, latestDependencyChoice } from "../engine/d
 import { validApproval } from "../engine/locks.ts";
 import type { ChangeState, Decision } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import type { Outcome } from "../interaction/approver.ts";
 
 const PLAN = "plan";
@@ -34,6 +35,10 @@ function done(state: ChangeState, latest: LatestDependencyChoice): boolean {
 	}
 }
 
+/** One line of drafted text: newlines collapsed to spaces, then wrapped as untrusted. */
+const oneLine = (s: string): string => untrusted(s.replace(/\s*[\r\n]+\s*/g, " ").trim());
+
+/** The step text; drafted and forge values are wrapped, and the D reason sits on its own line, outside the command. */
 function followUpText(state: ChangeState, latest: LatestDependencyChoice): string {
 	const pending = state.change.units.filter((u) => !u.done).map((u) => u.id);
 	switch (latest.choice) {
@@ -42,11 +47,11 @@ function followUpText(state: ChangeState, latest: LatestDependencyChoice): strin
 		case "B":
 			return "The new-dependency gate chose B: add the missing units with unit_amend --add.";
 		case "C":
-			return `The new-dependency gate chose C: stub the missing part with unit_amend ${latest.unit ?? "<unit>"}; the follow-up change exists.`;
+			return `The new-dependency gate chose C: stub the missing part with unit_amend ${latest.unit === undefined ? "<unit>" : oneLine(latest.unit)}; the follow-up change exists.`;
 		case "D":
-			return `The new-dependency gate chose D: drop the change with change_close --abandon "${latest.reason ?? ""}".`;
+			return `The new-dependency gate chose D: drop the change with change_close --abandon <reason>, giving the reason below.\nReason: ${oneLine(latest.reason ?? "")}`;
 		case "split":
-			return `The new-dependency gate chose split: move the units not done (${pending.join(", ")}) to a new change with change_split.`;
+			return `The new-dependency gate chose split: move the units not done (${oneLine(pending.join(", "))}) to a new change with change_split.`;
 	}
 }
 

@@ -35,7 +35,7 @@ function capRefusal(state: ChangeState, cap: number | undefined): string | undef
 
 async function readCtx(forge: Forge, state: ChangeState, input: NewDependencyInput): Promise<DependencyRead | { refused: string }> {
 	try {
-		return await readDependencyCtx(forge, state.issue.number, state.change, referencedNumbers(input));
+		return await readDependencyCtx(forge, state.issue, state.change, referencedNumbers(input));
 	} catch (error) {
 		if (error instanceof TooManyDependencies) return { refused: `${error.message}.` };
 		throw error;

@@ -24,6 +24,9 @@ export type NewDependencyDrafts = {
 	d: { action: "shape" | "drop"; reason: string };
 };
 
+/** The initiative option A creates for change `title` when the change is in none (`<change>-deps`). */
+export const depsInitiativeName = (title: string): string => `${title}-deps`;
+
 /** Option A's graph edges: the drafted prerequisite is a node by name, every existing change by number. */
 type Node = number | string;
 
@@ -84,9 +87,10 @@ export function referencedNumbers(input: NewDependencyInput): number[] {
 
 /**
  * What the tool read: the open livespec changes (for name clashes), every issue option A names followed
- * through their `Depends`, and the current change's dependency edges (its line united with its entry).
+ * through their `Depends`, the current change's dependency edges (its line united with its entry), and,
+ * outside an initiative, the open initiative already named as the one option A would create.
  */
-export type NewDependencyCtx = { open: Issue[]; referenced: Map<number, Issue | "missing">; graph: Map<number, number[]> };
+export type NewDependencyCtx = { open: Issue[]; referenced: Map<number, Issue | "missing">; graph: Map<number, number[]>; depsTaken?: Issue };
 
 class Refusal extends Error {}
 const refuse = (message: string): never => {
@@ -138,6 +142,7 @@ export type PlanResult = { drafts: NewDependencyDrafts } | { refused: string };
 export function planNewDependency(input: NewDependencyInput, state: ChangeState, ctx: NewDependencyCtx): PlanResult {
 	try {
 		checkUnits(state, input);
+		if (ctx.depsTaken) refuse(`Option A would create the initiative ${untrusted(ctx.depsTaken.title)}, but an open initiative already has that name: #${ctx.depsTaken.number}.`);
 		checkNewChange(ctx, "Option A", input.a.name, input.a.proposal);
 		checkNewChange(ctx, "Option C", input.c.follow_up.name, input.c.follow_up.proposal);
 		if (input.a.name === input.c.follow_up.name) refuse("Options A and C name the same new change.");
@@ -160,7 +165,7 @@ const dependsText = (d: number[]): string => (d.length === 0 ? "—" : d.map((n)
 /** The review payload: the evidence and each option's draft, all wrapped as untrusted; A without an initiative names the initiative it creates. */
 export function newDependencySummary(d: NewDependencyDrafts, state: ChangeState, options: RequestOption[], initiative: number | undefined): string {
 	const title = state.issue.title;
-	const where = initiative === undefined ? `a new initiative ${untrusted(`${title}-deps`)} listing it, then #${state.issue.number}` : `initiative #${initiative}, before #${state.issue.number}`;
+	const where = initiative === undefined ? `a new initiative ${untrusted(depsInitiativeName(title))} listing it, then #${state.issue.number}` : `initiative #${initiative}, before #${state.issue.number}`;
 	const lines = [
 		`New dependency${d.unit === undefined ? "" : ` found by ${untrusted(d.unit)}`}.`,
 		`Evidence: ${untrusted(d.evidence)}`,

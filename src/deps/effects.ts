@@ -14,15 +14,14 @@ import type { Answered, RequestRecord } from "../interaction/approver.ts";
 import { type CompletionCtx, phasesAfter, postOnce, readIssue, type Run } from "../interaction/complete-effects.ts";
 import { type AnswerData, snapshotOf } from "../interaction/requests.ts";
 import { staleComment } from "../interaction/stale.ts";
-import { applyInitiative, findOrCreateChange } from "../initiatives/complete.ts";
+import { applyInitiative, findOrCreateChange, findTracking, takenInitiative } from "../initiatives/complete.ts";
 import type { DraftEntry, InitiativeDrafts } from "../initiatives/drafts.ts";
 import { TooManyDependencies } from "../initiatives/propose-read.ts";
 import { dependencyNumbers, initiativeNumber } from "../initiatives/readiness.ts";
-import { answerChoice, isNewDependencyDrafts, type NewDependencyDrafts, optionACycle } from "./new-dependency.ts";
+import { answerChoice, depsInitiativeName, isNewDependencyDrafts, type NewDependencyDrafts, optionACycle } from "./new-dependency.ts";
 import { readDependencyCtx } from "./read.ts";
 
 const SHAPE = "shape";
-const DEPS_SUFFIX = "-deps";
 
 export function draftsOf(req: RequestRecord): NewDependencyDrafts | undefined {
 	const typed = snapshotOf(req);
@@ -42,15 +41,15 @@ export function optionADrafts(d: NewDependencyDrafts, change: { number: number; 
 	const entry = p?.changes.find((c) => c.number === current);
 	const depends = dependencyNumbers({ issue: { number: current }, change: parseChange(change.body) }, p);
 	const self: DraftEntry = { name: entry?.name ?? change.title, number: current, depends: [...depends, d.a.name] };
-	if (tracking === undefined || p === undefined) return { name: `${change.title}${DEPS_SUFFIX}`, goal: `Prerequisites of #${current} ${change.title}`, capabilities: [], current, entries: [prerequisite, self] };
+	if (tracking === undefined || p === undefined) return { name: depsInitiativeName(change.title), goal: `Prerequisites of #${current} ${change.title}`, capabilities: [], current, entries: [prerequisite, self] };
 	return { name: tracking.title, goal: p.goal, capabilities: [...p.capabilities], current, amend: tracking.number, entries: [prerequisite, self] };
 }
 
-async function applyA(run: Run, d: NewDependencyDrafts): Promise<void> {
+async function applyA(run: Run, d: NewDependencyDrafts, request: string): Promise<void> {
 	const issue = await readIssue(run);
 	const t = initiativeNumber(parseChange(issue.body));
 	const tracking = t === undefined ? undefined : await run.ctx.forge.getIssue(t);
-	await applyInitiative(run, optionADrafts(d, issue, tracking));
+	await applyInitiative(run, optionADrafts(d, issue, tracking), request);
 }
 
 /** Option C: the follow-up change in `shape`, with no `Depends`, outside any initiative. */
@@ -72,17 +71,25 @@ export async function newDependencyEffect(run: Run, record: AnswerData): Promise
 	const d = draftsOf(record.request);
 	if (!d) throw new Error(`${record.request.id} holds no new-dependency drafts`);
 	const choice = answerChoice(record.answer.choice);
-	if (choice === "A") await applyA(run, d);
+	if (choice === "A") await applyA(run, d, record.request.id);
 	else if (choice === "C") await applyC(run, d);
 	else if (choice === "D" && d.d.action === "shape") await applyDShape(run, record, d);
 }
 
 // --- validation ------------------------------------------------------------------------------------
 
+/** Option A outside an initiative: an open initiative with the generated name that this request did not create. */
+async function initiativeTaken(ctx: CompletionCtx, req: RequestRecord): Promise<string | undefined> {
+	const issue = await ctx.forge.getIssue(ctx.issue);
+	if (initiativeNumber(parseChange(issue.body)) !== undefined) return undefined;
+	const name = depsInitiativeName(issue.title);
+	return takenInitiative(name, await findTracking(ctx.forge, name), req.id);
+}
+
 async function cycleNow(ctx: CompletionCtx, d: NewDependencyDrafts): Promise<string | undefined> {
 	const issue = await ctx.forge.getIssue(ctx.issue);
 	try {
-		const read = await readDependencyCtx(ctx.forge, issue.number, parseChange(issue.body), d.a.depends);
+		const read = await readDependencyCtx(ctx.forge, issue, parseChange(issue.body), d.a.depends);
 		const cycle = optionACycle(read.graph, issue.number, d.a.name, d.a.depends);
 		return cycle === undefined ? undefined : `option A's Depends would form a cycle: ${untrusted(cycle)}`;
 	} catch (error) {
@@ -100,7 +107,8 @@ async function nameTaken(ctx: CompletionCtx, name: string): Promise<string | und
 /**
  * Supersedes an approval that no longer holds: an unknown choice, a counted choice while the cap blocks
  * (another result was approved meanwhile), a new change's name taken meanwhile (the effect would adopt
- * that change), or option A now forming a cycle. Other outcomes pass. It runs once, before any effect.
+ * that change), option A's generated initiative name taken by an initiative this request did not create,
+ * or option A now forming a cycle. Other outcomes pass. It runs once, before any effect.
  */
 export async function validateNewDependency(ctx: CompletionCtx, req: RequestRecord, ans: Answered): Promise<string | undefined> {
 	if (ans.outcome !== "approved" && ans.outcome !== "approved_with_notes") return undefined;
@@ -111,5 +119,5 @@ export async function validateNewDependency(ctx: CompletionCtx, req: RequestReco
 	if (choice !== "D" && discoveredDeps(ctx.marked, ctx.pack.loops.discovered_deps).blocking) return "discovered_deps reached its cap: send a stuck report with spec_stuck";
 	if (choice === "C") return nameTaken(ctx, d.c.follow_up.name);
 	if (choice !== "A") return undefined;
-	return (await nameTaken(ctx, d.a.name)) ?? (await cycleNow(ctx, d));
+	return (await nameTaken(ctx, d.a.name)) ?? (await initiativeTaken(ctx, req)) ?? (await cycleNow(ctx, d));
 }

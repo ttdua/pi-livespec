@@ -4,7 +4,7 @@
 // a rerun after a crash or a version conflict writes nothing twice.
 
 import { parseChange } from "../core/change.ts";
-import { appendChange, type Initiative, initiativeBody, insertChangeBefore, parseInitiative, removeChange, setChangeDepends } from "../core/initiative.ts";
+import { appendChange, type Initiative, initiativeBody, initiativeRequest, insertChangeBefore, parseInitiative, removeChange, setChangeDepends } from "../core/initiative.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
 import { gateEffects, registerGate, registerGateEffect, registerGateValidator } from "../engine/gates.ts";
 import { LABEL_INITIATIVE, LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
@@ -43,16 +43,21 @@ export async function findOrCreateChange(forge: Forge, title: string, initiative
 	return (await forge.createIssue({ title, body, labels: [LABEL_LIVESPEC, phaseLabel(FIRST_PHASE)] })).number;
 }
 
-async function findTracking(forge: Forge, name: string): Promise<Issue | undefined> {
-	return (await forge.searchIssues({ labels: [LABEL_INITIATIVE], state: "open" })).find((i) => i.title === name);
+/** The open tracking issue titled `name` and, with `request`, created by that request; the first match. */
+export async function findTracking(forge: Forge, name: string, request?: string): Promise<Issue | undefined> {
+	const open = await forge.searchIssues({ labels: [LABEL_INITIATIVE], state: "open" });
+	return open.find((i) => i.title === name && (request === undefined || createdByRequest(i, request)));
 }
 
-/** Step 1: the amended tracking issue, the open one titled with the name, or a new one. */
-async function trackingIssue(forge: Forge, d: InitiativeDrafts): Promise<number> {
+/**
+ * Step 1: the amended tracking issue, the open one titled with the name that request `request` created (a crash
+ * retry), or a new one carrying the request marker. Another initiative with the name is never joined.
+ */
+async function trackingIssue(forge: Forge, d: InitiativeDrafts, request: string): Promise<number> {
 	if (d.amend !== undefined) return d.amend;
-	const found = await findTracking(forge, d.name);
+	const found = await findTracking(forge, d.name, request);
 	if (found) return found.number;
-	return (await forge.createIssue({ title: d.name, body: initiativeBody(d.goal, d.capabilities), labels: [LABEL_INITIATIVE] })).number;
+	return (await forge.createIssue({ title: d.name, body: initiativeBody(d.goal, d.capabilities, request), labels: [LABEL_INITIATIVE] })).number;
 }
 
 /** Turns entry names into issue numbers once their issues exist. */
@@ -106,12 +111,12 @@ function changeEdit(body: string, e: DraftEntry, o: { t: number; current: boolea
 }
 
 /**
- * Applies approved drafts in design D6 order and returns the tracking issue and the issues it created
- * by entry name. Reused by `new_dependency` option A.
+ * Applies approved drafts of request `request` in design D6 order and returns the tracking issue and the
+ * issues it created by entry name. Reused by `new_dependency` option A.
  */
-export async function applyInitiative(run: Run, drafts: InitiativeDrafts): Promise<{ tracking: number; created: Record<string, number> }> {
+export async function applyInitiative(run: Run, drafts: InitiativeDrafts, request: string): Promise<{ tracking: number; created: Record<string, number> }> {
 	const forge = run.ctx.forge;
-	const t = await trackingIssue(forge, drafts);
+	const t = await trackingIssue(forge, drafts, request);
 	const ordered = createOrder(drafts.entries);
 	const created = await createEntries(forge, t, ordered);
 	const num = numbersOf(created);
@@ -155,21 +160,19 @@ async function cycleNow(forge: Forge, d: InitiativeDrafts, tracking: Issue | und
 }
 
 /**
- * Whether open tracking issue `issue` was created by this request's completion (a crash retry adopts it).
- * The tool refuses a taken name, so a same-titled issue appeared after the request. This request's issue
- * holds the drafts' Goal and lists only the drafts' entries; an issue that differs in either is another
- * initiative, whose list the effect must not join.
+ * Whether open tracking issue `issue` was created by request `request`'s completion (a crash retry adopts it):
+ * only an issue carrying that request's marker. The tool refuses a taken name, so any other same-titled issue
+ * appeared after the request and is another initiative, whose list the effect must not join, even when its
+ * Goal matches and its list is empty.
  */
-function createdByRequest(issue: Issue, d: InitiativeDrafts): boolean {
-	const parsed = parseInitiative(issue.body);
-	const names = new Set(d.entries.map((e) => e.name));
-	const goal = parseInitiative(initiativeBody(d.goal, d.capabilities)).goal;
-	return parsed.goal === goal && parsed.changes.every((c) => names.has(c.name) || c.number === d.current);
+export function createdByRequest(issue: Issue, request: string): boolean {
+	return initiativeRequest(issue.body) === request;
 }
 
-function takenName(d: InitiativeDrafts, tracking: Issue | undefined): string | undefined {
-	if (d.amend !== undefined || tracking === undefined || createdByRequest(tracking, d)) return undefined;
-	return `an open initiative is already named ${untrusted(d.name)} (#${tracking.number})`;
+/** Why a new initiative named `name` cannot be created by request `request`: an open one it did not create holds the name. */
+export function takenInitiative(name: string, tracking: Issue | undefined, request: string): string | undefined {
+	if (tracking === undefined || createdByRequest(tracking, request)) return undefined;
+	return `an open initiative is already named ${untrusted(name)} (#${tracking.number})`;
 }
 
 async function cycleOrTooMany(forge: Forge, d: InitiativeDrafts, tracking: Issue | undefined): Promise<string | undefined> {
@@ -187,7 +190,7 @@ async function validateInitiative(ctx: CompletionCtx, req: RequestRecord, ans: A
 	const d = draftsOf(req);
 	if (!d) return "the request holds no initiative drafts";
 	const tracking = d.amend !== undefined ? await ctx.forge.getIssue(d.amend) : await findTracking(ctx.forge, d.name);
-	const taken = takenName(d, tracking);
+	const taken = d.amend === undefined ? takenInitiative(d.name, tracking, req.id) : undefined;
 	if (taken !== undefined) return taken;
 	const open = await ctx.forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
 	return nameClash(d, open, tracking?.number) ?? (await cycleOrTooMany(ctx.forge, d, tracking));
@@ -196,7 +199,7 @@ async function validateInitiative(ctx: CompletionCtx, req: RequestRecord, ans: A
 async function initiativeEffect(run: Run, record: AnswerData): Promise<void> {
 	const d = draftsOf(record.request);
 	if (!d) throw new Error(`${record.request.id} holds no initiative drafts`);
-	await applyInitiative(run, d);
+	await applyInitiative(run, d, record.request.id);
 }
 
 /** Registers the `initiative` gate with its validator and effect; called with the tool registration. */

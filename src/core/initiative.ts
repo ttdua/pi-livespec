@@ -124,6 +124,25 @@ export function removeChange(body: string, n: number): string {
 	});
 }
 
-export function initiativeBody(goal: string, capabilities: string[]): string {
-	return `Goal: ${goal}\nCapabilities: [${capabilities.join(", ")}]\n\n## Changes\n`;
+/**
+ * The request marker, an HTML comment line `<!-- livespec:request <request id> -->` right after `Capabilities:`.
+ * It names the request whose completion created the tracking issue, so a crash retry adopts only its own issue.
+ * Only creation writes it; `parseInitiative` ignores it (no Goal/Capabilities match, outside `## Changes`) and
+ * keeps it as a plain line, so edits round-trip it byte for byte. Bodies without it stay valid.
+ */
+const REQUEST_MARKER = /^<!-- livespec:request (\S+) -->\s*$/;
+
+export function initiativeBody(goal: string, capabilities: string[], request?: string): string {
+	const marker = request === undefined ? "" : `<!-- livespec:request ${request} -->\n`;
+	return `Goal: ${goal}\nCapabilities: [${capabilities.join(", ")}]\n${marker}\n## Changes\n`;
+}
+
+/** The request id of the marker above the first level-2 heading, or undefined when the body has none. */
+export function initiativeRequest(body: string): string | undefined {
+	for (const l of splitLines(body)) {
+		if (/^## /.test(l.text)) return undefined;
+		const m = REQUEST_MARKER.exec(l.text);
+		if (m) return m[1];
+	}
+	return undefined;
 }
