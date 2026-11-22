@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { expect } from "vitest";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
+import type { FakeUI } from "../hooks/fake-pi.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import type { ToolOut } from "./helpers.ts";
 import { type Lane, openWorktreeLane } from "./lane-helpers.ts";
@@ -33,8 +34,8 @@ export type ParkHarness = UnitHarness & {
 	/** Rejects pushes of `<unit>`'s wip branch on origin until `allowPush`. */
 	rejectPush(unit: string): void;
 	allowPush(): void;
-	/** Closes the prerequisite with a merged pull request after landing `files` on origin/main. */
-	mergePrereq(files?: Record<string, string>): Promise<void>;
+	/** Closes the prerequisite (`issue`, default `prereq`) with a merged pull request after landing `files` on origin/main. */
+	mergePrereq(files?: Record<string, string>, issue?: number): Promise<void>;
 };
 
 /** Posts the `new-dependency` request and its approved result with `choice`, as the gate completion leaves them. */
@@ -48,11 +49,21 @@ function ok(out: ToolOut, what: string): void {
 	expect(out.isError, `${what}: ${out.content.map((c) => c.text).join("\n")}`).toBeFalsy();
 }
 
-/** The fixture; `choice` is the seeded new-dependency choice (none when undefined). */
-export async function parkHarness(o: { choice?: string | null } = {}): Promise<ParkHarness> {
-	const h = await unitHarness({ units: UNITS, scripts: SCRIPTS, config: "integrationBranch: main\n" });
-	const prereq = await h.world.seedIssue({ title: "token-store", labels: ["livespec", "livespec:phase/shape"] });
-	await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Depends: —", `Depends: #${prereq}`));
+export type ParkHarnessOptions = {
+	/** The seeded new-dependency choice; `null` seeds none. Default `A`. */
+	choice?: string | null;
+	/** With false, no prerequisite is seeded (`prereq` is 0) and Depends stays `—`, for a flow that adds it through `new_dependency`. */
+	seedPrereq?: boolean;
+	ui?: FakeUI;
+	/** Committed files beside the unit scripts. */
+	files?: Record<string, string>;
+};
+
+/** The fixture: U1 done, U4 started in the change worktree, U2 and U3 started in worktree lanes. */
+export async function parkHarness(o: ParkHarnessOptions = {}): Promise<ParkHarness> {
+	const h = await unitHarness({ units: UNITS, scripts: { ...SCRIPTS, ...o.files }, config: "integrationBranch: main\n", ...(o.ui ? { ui: o.ui } : {}) });
+	const prereq = o.seedPrereq === false ? 0 : await h.world.seedIssue({ title: "token-store", labels: ["livespec", "livespec:phase/shape"] });
+	if (prereq !== 0) await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Depends: —", `Depends: #${prereq}`));
 	await h.session.refresh();
 	ok(await h.start("U1"), "start U1");
 	await h.commit({ "src/u1.ts": "u1\n" }, "U1");
@@ -74,15 +85,15 @@ export async function parkHarness(o: { choice?: string | null } = {}): Promise<P
 		resume: (n = h.n) => h.call("change_resume", { issue: n }),
 		rejectPush: (unit) => writeFileSync(marker, unit),
 		allowPush: () => writeFileSync(marker, "-none-"),
-		mergePrereq: async (files = { "prereq.txt": "p\n" }) => {
+		mergePrereq: async (files = { "prereq.txt": "p\n" }, issue = prereq) => {
 			h.git("switch", "-q", "main");
 			for (const [path, text] of Object.entries(files)) await writeIn(h.root, path, text);
 			commitAll(h.root, "token-store #41");
 			h.git("push", "-q", "origin", "main");
 			h.git("switch", "-q", BRANCH);
 			const pr = await h.world.seedPullRequest({ head: "livespec/token-store", state: "closed", merged: true });
-			await h.world.editBodyBehindBack(prereq, `PR: #${pr}\n`);
-			await h.world.forge.closeIssue(prereq);
+			await h.world.editBodyBehindBack(issue, `PR: #${pr}\n`);
+			await h.world.forge.closeIssue(issue);
 			await h.session.refresh();
 		},
 	};
