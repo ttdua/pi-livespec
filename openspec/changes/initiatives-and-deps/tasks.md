@@ -40,10 +40,10 @@ Blocked by: 1, 2, 3
 
 Blocked by: 1, 2
 
-- [ ] 5.1 `src/initiatives/propose.ts`: validate entries (kebab names, exactly one current entry, `Depends` targets, name clashes for new entries only, cycles) and build the gate snapshot and payload; new vs amendment mode (allowed and refused edits per "Initiative amendment")
-- [ ] 5.2 `src/tools/initiative-propose.ts`, registered in `src/tools/change-tools.ts` and the tool-name lists in `tests/extension.test.ts` and `tests/tools/register.test.ts`; `registerGate("initiative", { proposer })`
-- [ ] 5.3 Validator and effect for `initiative` in `src/initiatives/complete.ts`: find-or-create the tracking issue, then the change issues in topological order, then the `## Changes` list, then the current change's body. Each step is idempotent; amendments apply edits to both `Depends` line and entry (design D6)
-- [ ] 5.4 Tests in `tests/tools/initiative-propose.test.ts`: "Proposal sent", "Cycle refused", "Bare spec_gate refused", "Approval creates everything at once", "Retry after a crash", "Changes requested", "New change added midway", "Abandoned dependency removed from a started change", "Amendment cycle refused", "Planned change cannot be re-proposed", "Initiative closes after an abandoned entry is removed"
+- [x] 5.1 `src/initiatives/propose.ts`: validate entries (kebab names, exactly one current entry, `Depends` targets, name clashes for new entries only, cycles) and build the gate snapshot and payload; new vs amendment mode (allowed and refused edits per "Initiative amendment")
+- [x] 5.2 `src/tools/initiative-propose.ts`, registered in `src/tools/change-tools.ts` and the tool-name lists in `tests/extension.test.ts` and `tests/tools/register.test.ts`; `registerGate("initiative", { proposer })`
+- [x] 5.3 Validator and effect for `initiative` in `src/initiatives/complete.ts`: find-or-create the tracking issue, then the change issues in topological order, then the `## Changes` list, then the current change's body. Each step is idempotent; amendments apply edits to both `Depends` line and entry (design D6)
+- [x] 5.4 Tests in `tests/tools/initiative-propose.test.ts`: "Proposal sent", "Cycle refused", "Bare spec_gate refused", "Approval creates everything at once", "Retry after a crash", "Changes requested", "New change added midway", "Abandoned dependency removed from a started change", "Amendment cycle refused", "Planned change cannot be re-proposed", "Initiative closes after an abandoned entry is removed"
 
 ## 6. Change split
 
