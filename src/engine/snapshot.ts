@@ -20,6 +20,7 @@ import { readCounters } from "./counters.ts";
 import { type Git, GitError } from "./git.ts";
 import { deriveIterations } from "./iterations.ts";
 import { deriveLocks } from "./locks.ts";
+import { parkedRecord } from "./parked.ts";
 import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 
 /** The pack's `loops.change_iterations`, `loops.unit_attempts` and `loops.review_rounds`; a missing cap never blocks. */
@@ -79,7 +80,7 @@ async function currentLogin(forge: Forge): Promise<string | undefined> {
 	}
 }
 
-type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents">;
+type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents" | "parkedCore">;
 
 type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
 
@@ -95,6 +96,7 @@ export function deriveCommentFacts(
 ): DerivedFacts {
 	const iterations = deriveIterations(marked, caps.iterations);
 	const evidence = deriveUnitEvidence(change, marked, caps.unitAttempts);
+	const parkedCore = parkedRecord(marked);
 	return {
 		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count, review_rounds: reviewRounds(marked, caps.reviewRounds).value },
 		skillNotes: idsOfKind(marked, "skill-note"),
@@ -105,6 +107,7 @@ export function deriveCommentFacts(
 		lock: deriveLocks(change, marked),
 		iterations,
 		subagents: deriveSubagents(marked),
+		...(parkedCore === undefined ? {} : { parkedCore }),
 	};
 }
 
@@ -176,5 +179,6 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		commandWarnings: [],
 		evidence: comments.evidence,
 		subagents: comments.subagents,
+		...(comments.parkedCore === undefined ? {} : { parkedCore: comments.parkedCore }),
 	};
 }

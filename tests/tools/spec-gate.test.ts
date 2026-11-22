@@ -11,6 +11,8 @@ import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
+import { sendNamedGate } from "../../src/tools/spec-gate.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
@@ -482,5 +484,52 @@ describe("named gate payload", () => {
 		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
 		expect(summary).toContain("Gate checks:");
 		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");
+	});
+});
+
+describe("named gates with a proposer", () => {
+	test("Gate with a proposer", async () => {
+		registerGate("initiative", { checks: [], proposer: "initiative_propose" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		const out = await h.call("spec_gate", { target: "initiative" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("initiative_propose");
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("sendNamedGate sends its drafts and options with a dirty tree", async () => {
+		registerGate("new-dependency", { checks: [], options: [{ id: "A", label: "A (default)" }, { id: "split", label: "split" }], proposer: "new_dependency" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		await writeIn(h.root, "src/lane.ts", "wip\n");
+		const w = await prepareWrite();
+		if (!w.ok) throw new Error(w.message);
+		const state = requireChange(w.session);
+		if (!state.ok) throw new Error(state.message);
+		expect(state.state.git.dirty).toBe(true);
+		const drafts = { a: { name: "dep" } };
+		const out = await sendNamedGate(w, state.state, { target: "new-dependency", options: [{ id: "A", label: "A (default)" }], drafts, summary: "New dependency found.", ctx: h.ctx as never, tool: "new_dependency" });
+		expect(out.isError).toBe(false);
+		const request = (await ofKind(h, "request"))[0]?.data as { subject: string; options: { id: string }[]; snapshot: { target: string; drafts: unknown }; summary: string };
+		expect(request.subject).toBe("gate:new-dependency");
+		expect(request.options.map((o) => o.id)).toEqual(["A"]);
+		expect(request.snapshot).toMatchObject({ target: "new-dependency", drafts });
+		expect(request.summary).toContain("New dependency found.");
+	});
+
+	test("sendNamedGate still refuses a pending request", async () => {
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		const send = async () => {
+			const w = await prepareWrite();
+			if (!w.ok) throw new Error(w.message);
+			const state = requireChange(w.session);
+			if (!state.ok) throw new Error(state.message);
+			return sendNamedGate(w, state.state, { target: "new-dependency", options: [], drafts: {}, summary: "s", ctx: h.ctx as never, tool: "new_dependency" });
+		};
+		expect((await send()).isError).toBe(false);
+		const again = await send();
+		expect(again.isError).toBe(true);
+		expect(textOf(again)).toContain("pending");
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 });

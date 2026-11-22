@@ -1,6 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import "../../src/deps/markers.ts";
+import "../../src/engine/comments-cache.ts";
+import { registerGate, registerGateEffect, registerGateValidator, resetGatesForTests } from "../../src/engine/gates.ts";
+import { hasMarked, postComment, type Run } from "../../src/interaction/complete-effects.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { splitLines } from "../../src/core/lines.ts";
@@ -600,5 +604,100 @@ describe("completion engine", () => {
 		expect(state.issue.labels.filter((l) => l.startsWith("livespec:phase/"))).toEqual(["livespec:phase/define"]);
 		expect(readRequests(state.marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+});
+
+describe("named gate seam", () => {
+	afterEach(() => resetGatesForTests());
+
+	const EFFECT_ID = "effect.new-dependency";
+	const effectBody = writeMarked("skill-note", EFFECT_ID, { by: "effect" });
+	/** An idempotent effect: it writes its own comment unless that comment exists. */
+	const writingEffect = vi.fn(async (run: Run) => {
+		if (!hasMarked(run, "skill-note", EFFECT_ID)) await postComment(run, effectBody);
+	});
+
+	test("Validator supersedes", async () => {
+		const f = await fixture("build");
+		const effect = vi.fn(async () => {});
+		registerGate("initiative", { checks: [], proposer: "initiative_propose" });
+		registerGateValidator("initiative", async () => "name taken");
+		registerGateEffect("initiative", effect);
+		const record = await prepare(f, "gate", "gate:initiative", gateSnapshot("initiative"));
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.status).toBe("superseded");
+		const recorded = ofKind(await markedOf(f), "answer").at(-1)?.data as { verdict: string; reason: string };
+		expect(recorded.verdict).toBe("superseded");
+		expect(recorded.reason).toContain("name taken");
+		expect(effect).not.toHaveBeenCalled();
+	});
+
+	test("approved initiative answer is valid", async () => {
+		const f = await fixture("build");
+		registerGate("initiative", { checks: [], proposer: "initiative_propose" });
+		const record = await prepare(f, "gate", "gate:initiative", gateSnapshot("initiative"));
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.status).toBe("completed");
+		expect((ofKind(await markedOf(f), "answer").at(-1)?.data as { verdict: string }).verdict).toBe("valid");
+	});
+
+	test("Gate effect runs once before the result", async () => {
+		const f = await fixture("build");
+		writingEffect.mockClear();
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		registerGateEffect("new-dependency", writingEffect);
+		const record = await prepare(f, "gate", "gate:new-dependency", gateSnapshot("new-dependency"));
+		const crashing = failingOnce(f.world.forge, commentOfKind("gate"));
+		await expect(completeAnswer(await ctxOf(f, crashing), record, answer())).rejects.toThrow("injected");
+		expect(ofKind(await markedOf(f), "skill-note", EFFECT_ID)).toHaveLength(1);
+		expect(ofKind(await markedOf(f), "gate")).toEqual([]);
+
+		const finished = await finishApplying(await ctxOf(f));
+		expect(finished.errors).toEqual([]);
+		const marked = await markedOf(f);
+		expect(ofKind(marked, "skill-note", EFFECT_ID)).toHaveLength(1);
+		const gates = ofKind(marked, "gate");
+		expect(gates).toHaveLength(1);
+		const order = marked.map((m) => m.kind);
+		expect(order.indexOf("skill-note")).toBeLessThan(order.indexOf("gate"));
+		expect(writingEffect).toHaveBeenCalledTimes(2);
+	});
+
+	test("No effect on changes requested", async () => {
+		const f = await fixture("build");
+		const effect = vi.fn(async () => {});
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		registerGateEffect("new-dependency", effect);
+		const record = await prepare(f, "gate", "gate:new-dependency", gateSnapshot("new-dependency"));
+		const out = await completeAnswer(await ctxOf(f), record, answer({ outcome: "changes_requested" }));
+		expect(out.status).toBe("completed");
+		expect(effect).not.toHaveBeenCalled();
+		expect(ofKind(await markedOf(f), "gate")).toHaveLength(1);
+	});
+
+	test("Proposer gate survives work in progress", async () => {
+		const f = await fixture("build");
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		await writeIn(f.root, "src/lane.ts", "wip\n");
+		const record = await prepare(f, "gate", "gate:new-dependency", gateSnapshot("new-dependency"));
+		await f.world.editBodyBehindBack(f.n, u3Done(await f.world.bodyOf(f.n)));
+		commitAll(f.root, "unit done");
+		await writeIn(f.root, "src/more.ts", "wip\n");
+		const out = await completeAnswer(await ctxOf(f), record, answer());
+		expect(out.status).toBe("completed");
+		expect((ofKind(await markedOf(f), "answer").at(-1)?.data as { verdict: string }).verdict).toBe("valid");
+	});
+
+	test("Forge answer on a parked change", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		const polled = await forgeAnswer(f, record, "/livespec approve");
+		await f.world.postComment(f.n, BOT_LOGIN, writeMarked("parked", "parked.a", { waits_for: [34], units: [], at: AT }));
+		const out = await completeAnswer(await ctxOf(f), record, polled);
+		expect(out.status).toBe("superseded");
+		expect(out.result).toContain("parked");
+		expect((ofKind(await markedOf(f), "gate").at(-1)?.data as { superseded?: boolean }).superseded).toBe(true);
+		expect((await refresh(f)).issue.labels).toContain("livespec:phase/plan");
 	});
 });

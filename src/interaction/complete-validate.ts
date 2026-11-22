@@ -7,7 +7,7 @@ import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { checkDoneMapsScenarios, validateUnits } from "../core/validate-units.ts";
 import { runChecks } from "../engine/checks.ts";
-import { gateRefusal } from "../engine/gates.ts";
+import { gateRefusal, gateValidator, namedGate } from "../engine/gates.ts";
 import { gateDigest } from "../engine/locks.ts";
 import { deriveCommentFacts, phaseFromLabels, readGitFacts, sectionPresence } from "../engine/snapshot.ts";
 import type { ChangeState } from "../engine/state-types.ts";
@@ -45,16 +45,28 @@ async function stateNow(ctx: CompletionCtx, issue: Issue): Promise<ChangeState> 
 	return { ...snapshot, checks: await runChecks(ctx.pack, snapshot, { root: ctx.root, git: ctx.git, ...(ship === undefined ? {} : { ship }) }) };
 }
 
+/** Why the answer no longer matches HEAD or the issue body; a gate with a proposer is bound to neither. */
+async function headBoundReason(ctx: CompletionCtx, req: RequestRecord, issue: Issue): Promise<string | undefined> {
+	if ((await ctx.git.head()) !== req.head_sha) return "HEAD moved since the request";
+	if (req.gate_digest !== undefined && gateDigest(issue.body) !== req.gate_digest) return "the issue changed since the request";
+	return undefined;
+}
+
 async function validateGate(ctx: CompletionCtx, req: RequestRecord, ans: Answered, issue: Issue): Promise<Verdict> {
 	const unwaived = unwaivedApproval(failingWaivableOf(req.snapshot), ans);
 	if (unwaived !== undefined) return superseded(unwaived);
-	if ((await ctx.git.head()) !== req.head_sha) return superseded("HEAD moved since the request");
-	if (req.gate_digest !== undefined && gateDigest(issue.body) !== req.gate_digest) return superseded("the issue changed since the request");
 	const typed = snapshotOf(req);
 	if (typed.kind !== "gate") throw new Error(`${req.subject} is not a gate request`);
 	const target = typed.snapshot.target;
-	const refusal = gateRefusal(await stateNow(ctx, issue), ctx.pack, target, req.id);
-	return refusal === undefined ? VALID : superseded(refusal);
+	const isPhase = ctx.pack.phases.some((p) => p.id === target);
+	const proposer = !isPhase && namedGate(target)?.proposer !== undefined;
+	const moved = proposer ? undefined : await headBoundReason(ctx, req, issue);
+	if (moved !== undefined) return superseded(moved);
+	const refusal = gateRefusal(await stateNow(ctx, issue), ctx.pack, target, req.id, { proposer });
+	if (refusal !== undefined) return superseded(refusal);
+	// Like a refusal, a validator's reason wraps the forge text it quotes itself.
+	const reason = isPhase ? undefined : await gateValidator(target)?.(ctx, req, ans);
+	return reason === undefined ? VALID : superseded(reason);
 }
 
 function validateAmend(req: RequestRecord, issue: Issue): Verdict {
