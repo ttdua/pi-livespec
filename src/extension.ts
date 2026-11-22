@@ -4,6 +4,8 @@ import "./accounts/card.ts";
 import "./accounts/doctor.ts";
 import "./interaction/card.ts";
 import "./interaction/doctor.ts";
+// The `parked` and `regression` marker kinds.
+import "./deps/markers.ts";
 // The evidence card section.
 import "./evidence/card.ts";
 // The subagents card section.

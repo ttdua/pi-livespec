@@ -17,7 +17,7 @@ const FINDING_KEYS = ["severity", "kind", "location", "evidence", "fix", "scope"
 const oneOf = (list: readonly string[]) => (v: unknown): boolean => isStr(v) && list.includes(v);
 const isRole = oneOf(ROLES);
 /** The `outcome` values of a closed `lane` record. */
-export const LANE_OUTCOME_NAMES = ["merged", "violation", "conflict", "red", "moved"] as const;
+export const LANE_OUTCOME_NAMES = ["merged", "violation", "conflict", "red", "moved", "parked"] as const;
 const isStatus = oneOf(RESULT_STATUSES);
 const isThinking = oneOf(["low", "medium", "high"]);
 
