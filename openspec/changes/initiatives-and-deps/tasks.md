@@ -89,10 +89,10 @@ Blocked by: 7, 8
 
 Blocked by: 4, 5, 6, 9
 
-- [ ] 10.1 `tests/e2e/initiative-flow.test.ts` for the #34 Done-when cases:
+- [x] 10.1 `tests/e2e/initiative-flow.test.ts` for the #34 Done-when cases:
   - a plan over the limits cannot be approved without a split or a waiver;
   - change B cannot start before change A merges;
   - a parked change with two lanes in progress resumes with no lost work;
   - a `Depends` cycle is rejected.
-- [ ] 10.2 `docs/architecture.md`: initiatives (propose, readiness, sync, size limits, split) and discovered dependencies (gate options, park, resume, known gap: wip branches stay on the remote); the tool list in the diagram
-- [ ] 10.3 Full `bun run test` and `bun run typecheck` pass
+- [x] 10.2 `docs/architecture.md`: initiatives (propose, readiness, sync, size limits, split) and discovered dependencies (gate options, park, resume, known gap: wip branches stay on the remote); the tool list in the diagram
+- [x] 10.3 Full `bun run test` and `bun run typecheck` pass
