@@ -15,6 +15,7 @@ The system SHALL register rule `split` with `registerRule`, configured as `decis
 `initiative_propose` SHALL take a kebab-case initiative name, a goal, a capability list and a list of entries. Each entry has a kebab-case change name, a non-empty short Proposal with no level-2 heading, and `Depends` given as names of other entries or as `#<n>` of existing changes. Exactly one entry SHALL be the current change, named by its title. The tool SHALL run only while the current change is in `shape`, or when the change already has an `Initiative` line (see "Initiative amendment"). It SHALL send a blocking request for the named gate `initiative` through the approver chain. The review payload SHALL show the tracking issue and every entry with its Proposal and `Depends`. It MUST refuse, writing nothing, when:
 - a name is not kebab-case;
 - a new entry's name equals the title of an open `livespec` issue;
+- for a new initiative, its name equals the title of an open `livespec:initiative` issue;
 - a `#<n>` in `Depends` is not a `livespec` change issue;
 - a `Depends` names an unknown entry;
 - the entries form a `Depends` cycle;
@@ -41,11 +42,15 @@ The `initiative` gate SHALL be registered with `registerGate` and decided by a h
 3. write the `## Changes` list of the tracking issue in dependency order, one `- [ ] #<n> <name> — Depends: <#…|—>` line per entry, through a versioned write;
 4. write `Initiative: #<T>`, `Depends` and the short Proposal on the current change through a versioned write.
 
-The answer SHALL be superseded when, at validation, an entry name other than the current change's matches an open `livespec` issue without `Initiative: #<T>`, or the resulting graph has a cycle. No unit SHALL be planned by completion.
+The answer SHALL be superseded when, at validation, an entry name other than the current change's matches an open `livespec` issue without `Initiative: #<T>`, the initiative name of a new initiative matches an open `livespec:initiative` issue that this request did not create, or the resulting graph has a cycle. No unit SHALL be planned by completion.
 
 #### Scenario: Approval creates everything at once
 - **WHEN** the `initiative` request for #20 with entries `add-request-context` and `rate-limit` is approved
 - **THEN** a tracking issue labeled `livespec:initiative` lists `#<a> add-request-context — Depends: —` and `#20 rate-limit — Depends: #<a>`, issue `#<a>` is in `shape` with `Initiative: #<T>`, and #20 has `Initiative: #<T>` and `Depends: #<a>`
+
+#### Scenario: Initiative name taken
+- **WHEN** an open `livespec:initiative` issue is titled `rate-limit-work` and `initiative_propose` proposes a new initiative with that name
+- **THEN** the tool refuses, names the existing issue, and requests nothing
 
 #### Scenario: Retry after a crash
 - **WHEN** completion created the tracking issue and `#<a>` and then failed, and the next poll finishes the answer

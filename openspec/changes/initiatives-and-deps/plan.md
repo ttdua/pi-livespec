@@ -511,6 +511,7 @@
 - Bare spec_gate refused → `tests/tools/initiative-propose.test.ts`
 - Approval creates everything at once → `tests/tools/initiative-propose.test.ts`
 - Retry after a crash → `tests/tools/initiative-propose.test.ts`
+- Initiative name taken → `tests/initiatives/propose.test.ts` + `tests/tools/initiative-propose.test.ts`
 - Changes requested → `tests/tools/initiative-propose.test.ts`
 - New change added midway → `tests/tools/initiative-propose.test.ts`
 - Abandoned dependency removed from a started change → `tests/tools/initiative-propose.test.ts`
