@@ -16,7 +16,7 @@
 - **Branch**: `LS-09b`
 - **Base branch**: `main`
 - **Final state**: `pr-updated`
-- **PR URL**: N/A at receipt time (no PR existed; the feature branch was pushed and PR creation was offered next)
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/36 (opened at finalize step 11 after the user chose the suggested title)
 
 Deviations from the canonical steps (project `AGENTS.md` policy wins):
 - Push and PR creation ran only after the user approved them in chat ("Đồng ý theo đề xuất"): merge into `LS-09b`, push, then ask about the PR.
@@ -34,7 +34,7 @@ Deviations from the canonical steps (project `AGENTS.md` policy wins):
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)` at receipt time; updated below if a PR is opened
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/36#issuecomment-7072259444)
 
 ---
 
