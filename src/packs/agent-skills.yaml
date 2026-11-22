@@ -20,6 +20,7 @@ decisions:
   progress: { mode: rule }
   finding-scope: { mode: rule }
   durable-docs: { mode: rule }
+  lane: { mode: rule, max_files: 3, max_lines: 100 }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:

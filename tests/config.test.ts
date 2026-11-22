@@ -283,3 +283,19 @@ describe("subagent config", () => {
 		expect(warnings.filter((w) => w.includes("isolation.excludePackages") && w.includes("blank"))).toHaveLength(1);
 	});
 });
+
+describe("test command config", () => {
+	test("Test command", async () => {
+		projectFile("testCommand: bun test\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.testCommand).toBe("bun test");
+		expect(warnings).toEqual([]);
+	});
+
+	test("Invalid test command", async () => {
+		projectFile("testCommand: [bun, test]\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.testCommand).toBeUndefined();
+		expect(warnings.some((w) => w.includes("testCommand"))).toBe(true);
+	});
+});

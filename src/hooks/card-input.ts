@@ -17,7 +17,11 @@ import { latestLaneClose } from "../subagents/state.ts";
 import { readUnfamiliar } from "../subagents/unfamiliar.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { isOffline } from "../forge/errors.ts";
-import type { CardAccount, CardInput } from "./phase-card.ts";
+import { messageOf } from "../core/messages.ts";
+import { fixIntegration, fixIntegrationTip, fixRange, fixSlug } from "../fix/branch.ts";
+import { laneFacts } from "../fix/lane-facts.ts";
+import { type LaneConfig, laneConfigOf, laneRule } from "../fix/lane.ts";
+import type { CardAccount, CardInput, FixCard } from "./phase-card.ts";
 import type { Session } from "./session.ts";
 
 const CONSTRAINTS_FILE = ["specs", "constraints.md"];
@@ -117,9 +121,43 @@ export async function buildCardInput(d: { session: Session; first: boolean }): P
 	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session) };
 	if (!session.pack.ok) return { ...common, kind: "pack-errors", errors: session.pack.errors };
 	const pack = session.pack.pack;
-	const resolved = await resolve(session, common, await session.git.branch());
+	const branch = await session.git.branch();
+	const slug = fixSlug(branch);
+	if (slug !== undefined) return { ...common, kind: "fix", ...(await fixCard(session, slug)) };
+	const resolved = await resolve(session, common, branch);
 	if (resolved.kind !== "change") return resolved;
 	const state = await changeState(session, pack, resolved.number, resolved.warning);
 	const step = nextStep(pack, state);
 	return { ...common, unnotedSkills: unnotedSkills(session, step, state), kind: "change", step, state };
+}
+
+/** The facts of the committed fix diff and the `lane` rule outcome; throws on any git failure. */
+async function buildFixCard(session: Session, config: LaneConfig, slug: string, integration: string): Promise<FixCard> {
+	const { mergeBase, subjects } = await fixRange(session.git, integration);
+	if (subjects.length === 0) return { slug, empty: true };
+	const facts = await laneFacts(session.git, session.cwd, mergeBase);
+	return { slug, outcome: laneRule(facts, config) };
+}
+
+/**
+ * The fix card of `fix/<slug>`, memoized on the session by HEAD, integration branch and the local
+ * `origin/<integration>` tip (read without a fetch), so a refresh at the same HEAD does not fetch again while a
+ * merge seen by any later fetch recomputes it. Never throws and never records a decision: a failure becomes `error`
+ * (not memoized, so the next refresh retries).
+ */
+export async function fixCard(session: Session, slug: string): Promise<FixCard> {
+	if (!session.pack.ok) return { slug, error: "the flow pack is invalid" };
+	const config = laneConfigOf(session.pack.pack);
+	if ("invalid" in config) return { slug, error: config.invalid };
+	try {
+		const integration = await fixIntegration(session.config.project, session.git);
+		if (typeof integration !== "string") return { slug, error: integration.refused };
+		const key = `${await session.git.head()}\0${integration}\0${(await fixIntegrationTip(session.git, integration)) ?? ""}`;
+		if (session.fixMemo?.key === key && session.fixMemo.value.slug === slug) return session.fixMemo.value;
+		const value = await buildFixCard(session, config, slug, integration);
+		session.fixMemo = { key, value };
+		return value;
+	} catch (error) {
+		return { slug, error: messageOf(error) };
+	}
 }

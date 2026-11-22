@@ -4,6 +4,8 @@ import type { ChangeState, NextStep } from "../../src/engine/state-types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { BUILD_LABELS, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { cleanupDirs, textOf, toolHarness } from "./helpers.ts";
+import { renderCard } from "../../src/hooks/phase-card.ts";
+import { commitAll, writeIn } from "../helpers/repo.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -60,6 +62,29 @@ describe("spec_status, spec_next and /livespec next", () => {
 		expect(text).toContain("change_new");
 		const status = await h.call("spec_status");
 		expect(status.details).toEqual({ state: null, open: [{ number: a, title: "rate-limit", phase: "build" }] });
+	});
+
+	test("Next on a fix branch", async () => {
+		const h = await toolHarness({ branch: "fix/typo" });
+		await h.world.seedIssue({ title: "rate-limit", labels: BUILD_LABELS });
+		await writeIn(h.root, "README.md", "fixed\n");
+		commitAll(h.root, "Fix a typo in the README");
+		const next = "Run fix_ship to push fix/typo and open its pull request.";
+		const fix = { slug: "typo", outcome: { lane: "small", reasons: [] }, next };
+		const tool = await h.call("spec_next");
+		expect(tool.isError).toBe(false);
+		expect(tool.details).toEqual({ step: null, fix });
+		expect(textOf(tool)).toContain(`Next: ${next}`);
+		expect(textOf(tool)).toContain("fix/typo");
+		expect(textOf(tool)).not.toContain("rate-limit");
+		const card = renderCard(h.session.card).split("\n").find((l) => l.startsWith("Next:"));
+		expect(card).toBe(`Next: ${next}`);
+		expect(await runNextCommand(h.session)).toBe(textOf(tool));
+		const status = await h.call("spec_status");
+		expect(status.isError).toBe(false);
+		expect(status.details).toEqual({ state: null, fix });
+		expect(textOf(status)).toContain(`Next: ${next}`);
+		expect(textOf(status)).toContain("small");
 	});
 
 	test("Tools refuse", async () => {

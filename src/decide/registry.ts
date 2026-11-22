@@ -8,6 +8,7 @@ import { progressRule, progressSchema } from "../evidence/progress-rule.ts";
 import { difficultyRule, difficultySchema } from "./rules/difficulty.ts";
 import { findingScopeRule, findingScopeSchema } from "../review/route.ts";
 import { durableDocsRuleFn, durableDocsSchema } from "../ship/durable-docs.ts";
+import { laneRuleFn, laneSchema } from "../fix/lane.ts";
 import { tagsRule, tagsSchema } from "./rules/tags.ts";
 
 export type RuleResult =
@@ -17,6 +18,8 @@ export type RuleResult =
 export type RuleSchema = {
 	validate(node: Node | null, report: (n: Node, msg: string) => void): void;
 	merge?(base: unknown, over: unknown): unknown;
+	/** Errors of the effective (merged) config: keys an override may omit but the final pack must have. */
+	complete?(value: unknown): string[];
 };
 
 export type RuleFn = (facts: unknown, config: unknown) => RuleResult;
@@ -88,6 +91,7 @@ export function registerBuiltinRules(): void {
 	registerRule("progress", progressSchema, progressRule);
 	registerRule("finding-scope", findingScopeSchema, findingScopeRule);
 	registerRule("durable-docs", durableDocsSchema, durableDocsRuleFn);
+	registerRule("lane", laneSchema, laneRuleFn);
 	registerSubagentsSchema();
 }
 

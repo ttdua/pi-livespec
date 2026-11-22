@@ -6,9 +6,13 @@ import { formatPackError } from "../commands/messages.ts";
 import type { PackError } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
+import type { LaneOutcome } from "../fix/lane.ts";
 
 /** The forge-account state a card may show: the one-time choice notice and the write block. */
 export type CardAccount = { line?: string; blocked?: string };
+
+/** The fix branch part of the card: the lane outcome of the committed fix diff, nothing to ship, or why the facts failed. */
+export type FixCard = { slug: string; outcome?: LaneOutcome; error?: string; empty?: true };
 
 export type CardInput = { first: boolean; constraintsTemplate: boolean; unnotedSkills: string[]; account?: CardAccount } & (
 	| { kind: "change"; step: NextStep; state: ChangeState }
@@ -16,6 +20,7 @@ export type CardInput = { first: boolean; constraintsTemplate: boolean; unnotedS
 	| { kind: "pack-errors"; errors: PackError[] }
 	| { kind: "forge-unavailable"; message: string }
 	| { kind: "change-error"; message: string }
+	| ({ kind: "fix" } & FixCard)
 );
 
 export type CardSection = (i: CardInput) => string | undefined;
@@ -31,6 +36,7 @@ const PACK_ERRORS_NEXT = "Fix the flow pack errors below; livespec tools refuse 
 const FORGE_UNAVAILABLE_NEXT = "Continue without the forge; livespec tools refuse writes until it is reachable.";
 const CHANGE_ERROR_NEXT = "Fix the change issues so exactly one matches this branch.";
 const PLAIN_PHASE = /^[a-z0-9-]+$/;
+const FIX_COMMITTED_LINE = "The lane is computed from the committed fix diff; uncommitted edits are not counted.";
 
 const sections = new Map<string, CardSection>();
 
@@ -88,6 +94,35 @@ function changeLines(step: NextStep, state: ChangeState): string[] {
 	];
 }
 
+/** The one next-step sentence of a fix branch, shared by the card, `spec_next`, `spec_status` and `/livespec next`. */
+export function fixNextStep(fix: FixCard): string {
+	const branch = `fix/${fix.slug}`;
+	// Reasons and errors carry repo text (requirement names, paths, git output), so they are data.
+	if (fix.error !== undefined) return `The fix diff cannot be read: ${untrusted(fix.error)}. Fix the cause and refresh.`;
+	if (fix.empty) return `Nothing to ship on ${branch}: no commit after the merge base. Switch back to the integration branch.`;
+	if (fix.outcome?.lane === "forced") {
+		return `This fix is not small (${fix.outcome.reasons.map(untrusted).join("; ")}): run change_new <name> --from-fix to move it into a full change.`;
+	}
+	return `Run fix_ship to push ${branch} and open its pull request.`;
+}
+
+/** The lane line of a fix: the outcome, or why there is none. */
+export function fixLaneText(fix: FixCard): string {
+	if (fix.error !== undefined) return "unknown";
+	if (fix.empty) return "nothing to ship";
+	return fix.outcome?.lane ?? "unknown";
+}
+
+/** The fix branch lines; no subagent step exists on this path (subagent-policy "Small-fix lane"). */
+function fixLines(fix: FixCard): string[] {
+	return [
+		[HEADER, `fix/${fix.slug}`, `lane ${fixLaneText(fix)}`].join(SEPARATOR),
+		`Next: ${fixNextStep(fix)}`,
+		...listLines("Reasons", (fix.outcome?.reasons ?? []).map(untrusted)),
+		FIX_COMMITTED_LINE,
+	];
+}
+
 function openChangeText(c: OpenChange): string {
 	return `#${c.number} ${untrusted(c.title)} (${c.phase === undefined ? "no phase" : phaseText(c.phase)})`;
 }
@@ -110,6 +145,8 @@ function kindLines(i: CardInput): string[] {
 			return [`${HEADER}${SEPARATOR}forge unavailable`, `Next: ${FORGE_UNAVAILABLE_NEXT}`, `The forge is unavailable: ${untrusted(i.message)}`];
 		case "change-error":
 			return [`${HEADER}${SEPARATOR}change not resolved`, `Next: ${CHANGE_ERROR_NEXT}`, untrusted(i.message)];
+		case "fix":
+			return fixLines(i);
 	}
 }
 

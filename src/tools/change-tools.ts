@@ -8,6 +8,8 @@ import { registerChangeShip } from "./change-ship.ts";
 import { registerChangeStart } from "./change-start.ts";
 import { registerDocsTable } from "./docs-table.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
+import { registerFixShip } from "./fix-ship.ts";
+import { registerFixStart } from "./fix-start.ts";
 import { registerForgeRead } from "./forge-read.ts";
 import { registerLaneMerge } from "./lane-merge.ts";
 import { registerLaneOpen } from "./lane-open.ts";
@@ -55,4 +57,6 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeShip(pi);
 	registerChangePush(pi);
 	registerChangeClose(pi);
+	registerFixStart(pi);
+	registerFixShip(pi);
 }

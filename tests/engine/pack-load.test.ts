@@ -91,6 +91,7 @@ describe("default pack", () => {
 		expect(phase(r, "ship").outputs).toEqual(["issue#Durable docs"]);
 		expect(phase(r, "ship").checks).toEqual(["durable-docs"]);
 		expect((okPack(r).decisions["durable-docs"] as { mode: string }).mode).toBe("rule");
+		expect(okPack(r).decisions.lane).toEqual({ mode: "rule", max_files: 3, max_lines: 100 });
 	});
 
 	test("Registered check name", async () => {
@@ -153,6 +154,19 @@ describe("override merge", () => {
 		expect(tags.keywords.constructor).toEqual(["cache"]);
 		expect(tags.keywords.toString).toEqual(["latency"]);
 		expect(tags.keywords.perf).toEqual(["performance", "latency", "throughput", "cache"]);
+	});
+
+	test("Project override", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  lane: { mode: rule, max_files: 5 }\n");
+		expect(okPack(r).decisions.lane).toEqual({ mode: "rule", max_files: 5, max_lines: 100 });
+	});
+
+	test("Invalid limit in an override", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  lane: { mode: rule, max_files: 0 }\n");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 3, col: 34 });
+		expect(r.errors[0]?.message).toContain("max_files");
 	});
 
 	test("override of a decision point without mode is an error", async () => {
@@ -237,6 +251,19 @@ describe("override limits", () => {
 		const r = await load("name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n  - id: two\n    requires: [one]\n");
 		expect(okPack(r).phases.map((p) => p.id)).toEqual(["one", "two"]);
 		expect(okPack(r).name).toBe("mine");
+	});
+
+	test("a standalone pack with an incomplete lane config is an error", async () => {
+		const r = await load("name: mine\nversion: 1\ncontent: c\ndecisions:\n  lane: { mode: rule }\nphases:\n  - id: one\n");
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.errors.map((e) => e.message).join("\n")).toMatch(/max_files[\s\S]*max_lines/);
+		expect(r.errors[0]).toMatchObject({ file: ".pi/livespec/flow.yaml", line: 5, col: 3, path: "decisions.lane" });
+	});
+
+	test("a standalone pack without a lane config validates", async () => {
+		const r = await load("name: mine\nversion: 1\ncontent: c\nphases:\n  - id: one\n");
+		expect(okPack(r).decisions.lane).toBeUndefined();
 	});
 
 	test("an unresolved alias in an override returns an error and does not reject", async () => {

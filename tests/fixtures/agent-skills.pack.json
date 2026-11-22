@@ -72,6 +72,11 @@
 		},
 		"durable-docs": {
 			"mode": "rule"
+		},
+		"lane": {
+			"mode": "rule",
+			"max_files": 3,
+			"max_lines": 100
 		}
 	},
 	"init": {

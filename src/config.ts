@@ -17,6 +17,7 @@ export interface ProjectConfig {
 	githubHosts: string[];
 	giteaUrl?: string;
 	integrationBranch?: string;
+	testCommand?: string;
 	agentSkillsChannelSet: boolean;
 	interaction?: InteractionConfig;
 	verify?: VerifyConfig;
@@ -45,7 +46,7 @@ export interface LoadedConfig {
 	warnings: string[];
 }
 
-const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify"];
+const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify", "testCommand"];
 const VERIFY_KEYS = ["setup", "timeout"];
 export const DEFAULT_VERIFY_TIMEOUT_S = 600;
 export const DEFAULT_LANES = 3;
@@ -199,6 +200,8 @@ function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig
 	if (giteaUrl !== undefined) project.giteaUrl = giteaUrl;
 	const branch = optionalString(file, doc, "integrationBranch", warnings);
 	if (branch !== undefined) project.integrationBranch = branch;
+	const testCommand = optionalString(file, doc, "testCommand", warnings);
+	if (testCommand !== undefined) project.testCommand = testCommand;
 	project.agentSkillsChannelSet = readChannel(file, doc, warnings).set;
 	const interaction = readInteraction(file, doc, warnings);
 	if (interaction !== undefined) project.interaction = interaction;

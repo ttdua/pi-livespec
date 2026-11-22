@@ -3,12 +3,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import { formatOpenChanges, formatState } from "./format-step.ts";
+import type { FixCard } from "../hooks/phase-card.ts";
+import { fixDetails, formatFix, formatOpenChanges, formatState } from "./format-step.ts";
 import { requireSession, type ToolResult, toolResult } from "./guard.ts";
 import { readCurrentChange } from "./read-change.ts";
 import { registerLivespecTool } from "./register.ts";
 
-export type SpecStatusDetails = { state: ChangeState | null; open?: OpenChange[] };
+export type SpecStatusDetails = { state: ChangeState | null; open?: OpenChange[]; fix?: FixCard & { next: string } };
 
 export async function runSpecStatus(): Promise<ToolResult<SpecStatusDetails>> {
 	const s = requireSession();
@@ -16,6 +17,7 @@ export async function runSpecStatus(): Promise<ToolResult<SpecStatusDetails>> {
 	const current = await readCurrentChange(s.session);
 	if (current.kind === "change") return toolResult(formatState(current.step, current.state), { state: current.state });
 	if (current.kind === "list") return toolResult(formatOpenChanges(current.open), { state: null, open: current.open });
+	if (current.kind === "fix") return toolResult(formatFix(current.fix), { state: null, fix: fixDetails(current.fix) });
 	return toolResult(current.message, { state: null }, true);
 }
 

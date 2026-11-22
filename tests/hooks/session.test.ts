@@ -44,6 +44,19 @@ describe("session_start", () => {
 		expect(resume?.content).toContain(`#${b} <untrusted>audit-log</untrusted> (define)`);
 	});
 
+	test("Fix branch", async () => {
+		const h = await harness({ branch: "fix/typo" });
+		await h.world.seedIssue({ title: "rate-limit", labels: BUILD_LABELS });
+		await h.world.seedIssue({ title: "audit-log", labels: ["livespec", "livespec:phase/define"] });
+		await h.start();
+		const [resume] = resumeMessages(h.pi.entries);
+		expect(resume?.content).toContain("livespec · fix/typo");
+		expect(resume?.content).not.toContain("rate-limit");
+		expect(resume?.content).not.toContain("audit-log");
+		expect(resume?.content).not.toContain("Open changes");
+		expect(resume?.content).not.toMatch(/subagent_(dispatch|packet)/);
+	});
+
 	test("Forge unavailable", async () => {
 		const h = await harness({ branch: CHANGE_BRANCH, detectFails: true });
 		await expect(h.start()).resolves.toBeUndefined();
