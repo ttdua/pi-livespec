@@ -74,7 +74,7 @@
 | `ChangeState.deps.split` | new | `split?: "propose" \| "single"`, the `split` rule outcome computed by the refresh hook in `shape` | no |
 | `registerRefreshFacts` | new | `registerRefreshFacts(fn: (session: Session, state: ChangeState) => Promise<Partial<Pick<ChangeState, "deps" \| "parked">>>): void` in `src/hooks/card-input.ts`; also called by `requireChange` consumers through the same refresh | no |
 | `OpenChange` | modified | `{ number; title; phase?; readiness?: "ready" \| { waits: number[] } \| "parked" }` | no |
-| `parked` marker | new | id `parked.<k>` (`k` = base36 ms); data `{ waits_for: number[]; units: ParkedUnit[]; at: string } \| { resumed: true; at: string }`; `ParkedUnit = { unit: string; branch?: string; head?: string; lane: boolean }` | yes (issue comment format) |
+| `parked` marker | new | id `parked.<k>` (`k` = base36 ms); `waits_for` = every dependency unmerged at park time (deviation from `[#new]`, see apply.md); data `{ waits_for: number[]; units: ParkedUnit[]; at: string } \| { resumed: true; at: string }`; `ParkedUnit = { unit: string; branch?: string; head?: string; lane: boolean }` | yes (issue comment format) |
 | `regression` marker | new | id `regression.<head>`; data `{ base_from: string; base_to: string; head: string; units: { unit: string; exit: number \| null; verdict: "green" \| "red" \| "invalid"; tail: string }[] }` | yes (issue comment format) |
 | `LANE_OUTCOME_NAMES` | modified | adds `"parked"` | no |
 | `StartRecord.pre.verdict` | modified | adds `"resumed"` | yes (`unit-start` data) |

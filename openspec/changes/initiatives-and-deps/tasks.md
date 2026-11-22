@@ -77,13 +77,13 @@ Blocked by: 2, 5, 7
 
 Blocked by: 7, 8
 
-- [ ] 9.1 Git ports for a given worktree: `addAll` and `commit(message, { allowEmpty })` (wip merges reuse the existing `merge`, which is `--no-ff`), plus lane worktree removal reuse, in `src/engine/git.ts`; tests on a real repo
-- [ ] 9.2 `src/deps/parked.ts`: the `parked` record writer and reader, the `parked` fact on `ChangeState` (waiting list from current dependencies), and the unit-evidence change in `src/evidence/unit-state.ts` (park supersedes older starts and restarts the attempt window; `resumed` verdict)
-- [ ] 9.3 `src/tools/change-park.ts` (registered as in 5.2; the fourth `guardedPush` caller): per in-progress unit wip branch, commit, push `<Branch>--wip-<unit>`; close lanes as `parked` and delete their local branches; label; `parked` record last; idempotent rerun (design D13)
-- [ ] 9.4 `src/tools/change-resume.ts`: refusals, `change_sync` steps, wip merges in unit order skipping merged heads, resume record and label removal (design D14)
-- [ ] 9.5 Parked refusals in `change_start`, `unit_start` (green accepted as `resumed`), `unit_finish` and `change_split`; next-step rule 6 and the parked card section (unit-evidence "Unit start tool": "Parked change refuses", "Resumed unit starts green"; context-injection "Phase card content": "Parked and initiative lines"; flow-engine "Parked change waits", "Park before finishing a started unit")
-- [ ] 9.6 Allow `change-park.ts` in `tests/guard/push-callers.test.ts` and add the wip refspec test (command-guards "Guarded push": "No tool calls the push path", "Refspec of a wip branch")
-- [ ] 9.7 Tests in `tests/tools/change-park.test.ts` and `change-resume.test.ts` with two lanes against a real origin (discovered-dependencies "Park tool", "Parked state" and "Resume tool": all scenarios)
+- [x] 9.1 Git ports for a given worktree: `addAll` and `commit(message, { allowEmpty })` (wip merges reuse the existing `merge`, which is `--no-ff`), plus lane worktree removal reuse, in `src/engine/git.ts`; tests on a real repo
+- [x] 9.2 `src/deps/parked.ts`: the `parked` record writer and reader, the `parked` fact on `ChangeState` (waiting list from current dependencies), and the unit-evidence change in `src/evidence/unit-state.ts` (park supersedes older starts and restarts the attempt window; `resumed` verdict)
+- [x] 9.3 `src/tools/change-park.ts` (registered as in 5.2; the fourth `guardedPush` caller): per in-progress unit wip branch, commit, push `<Branch>--wip-<unit>`; close lanes as `parked` and delete their local branches; label; `parked` record last; idempotent rerun (design D13)
+- [x] 9.4 `src/tools/change-resume.ts`: refusals, `change_sync` steps, wip merges in unit order skipping merged heads, resume record and label removal (design D14)
+- [x] 9.5 Parked refusals in `change_start`, `unit_start` (green accepted as `resumed`), `unit_finish` and `change_split`; next-step rule 6 and the parked card section (unit-evidence "Unit start tool": "Parked change refuses", "Resumed unit starts green"; context-injection "Phase card content": "Parked and initiative lines"; flow-engine "Parked change waits", "Park before finishing a started unit")
+- [x] 9.6 Allow `change-park.ts` in `tests/guard/push-callers.test.ts` and add the wip refspec test (command-guards "Guarded push": "No tool calls the push path", "Refspec of a wip branch")
+- [x] 9.7 Tests in `tests/tools/change-park.test.ts` and `change-resume.test.ts` with two lanes against a real origin (discovered-dependencies "Park tool", "Parked state" and "Resume tool": all scenarios)
 
 ## 10. Done-when flows and docs
 
