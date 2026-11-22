@@ -14,6 +14,7 @@ import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
 import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase-entries.ts";
+import { dependencyFollowUp } from "../deps/follow-up.ts";
 import { reviewStep } from "../review/next.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
@@ -185,6 +186,9 @@ const openRequest: Rule = ({ requests }) => {
 	return { next: `Wait for the human's answer to ${request.subject} ${ADAPTER_PLACE[request.adapter]}.` };
 };
 
+/** Rule 7 (discovered-dependencies "New dependency follow-up"): the follow-up of an approved `new-dependency` result. */
+const followUp: Rule = ({ state }) => dependencyFollowUp(state);
+
 /** Rule 5: the `change_iterations` cap blocks until a stuck report is answered. */
 const capBlocking: Rule = ({ state }) => {
 	const it = state.iterations;
@@ -342,6 +346,7 @@ const RULES: Rule[] = [
 	notStarted,
 	openStuck,
 	openRequest,
+	followUp,
 	capBlocking,
 	blockingQuestion,
 	changedUnit,

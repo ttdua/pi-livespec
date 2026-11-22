@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "vitest";
+import "../../src/deps/markers.ts";
 import { parseChange } from "../../src/core/change.ts";
 import type { IterationState } from "../../src/engine/iterations.ts";
 import type { GateResult, LockState } from "../../src/engine/locks.ts";
@@ -1027,5 +1028,69 @@ describe("close next steps", () => {
 		const step = nextStep(pack, state("close", ALL_DONE, { pr: pr41({ state: "closed", merged: true }) }));
 		expect(step.next).toBe("Run change_close.");
 		expect(step.advance).toBeUndefined();
+	});
+});
+
+describe("new-dependency follow-up", () => {
+	const DRAFTS = { unit: "U3", evidence: "e", a: { name: "token-store", proposal: "p", depends: [] }, b: { units: ["U4"], summary: "s" }, c: { summary: "s", follow_up: { name: "f", proposal: "p" } }, d: { action: "drop", reason: "wrong direction" } };
+	let n = 0;
+	/** A `new-dependency` request and its approved result with `choice`. */
+	const result = (choice: string, d = DRAFTS.d): MarkedComment[] => {
+		n += 1;
+		const id = `gate-new-dependency.f${n}`;
+		return [
+			mark(writeMarked("request", id, { subject: "gate:new-dependency", kind: "gate", mode: "blocking", snapshot: { target: "new-dependency", failingWaivable: [], drafts: { ...DRAFTS, d } } })),
+			mark(writeMarked("gate", `new-dependency.${id}`, { request: id, gate: "new-dependency", outcome: "approved", choice, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] })),
+		];
+	};
+	const amendment = (outcome = "approved") => mark(writeMarked("amendment", `amend-U4.${++n}`, { request: "r", action: "add", unit: "U4", outcome, by: "alice", at: "t", adapter: "forge" }));
+	const parked = () => mark(writeMarked("parked", `parked.${++n}`, { waits_for: [41], units: [], at: "t" }));
+	const stale = (phases: string[]) => mark(writeMarked("stale", `stale.${++n}`, { reason: "r", phases, units: [], after_plan: false }));
+	const build = (marked: MarkedComment[], over: Partial<ChangeState> = {}) => nextStep(pack, state("build", NO_QUESTION, { marked, ...over }));
+
+	test("after A the next step is change_park until a parked record", () => {
+		expect(build(result("A")).next).toContain("change_park");
+		expect(build([...result("A"), parked()]).next).toBe("Build U3 — Rate limit per IP.");
+		expect(build([parked(), ...result("A")]).next).toContain("change_park");
+	});
+
+	test("Follow-up of B ends with the amendment", () => {
+		expect(build(result("B")).next).toContain("unit_amend --add");
+		expect(build([...result("B"), amendment("changes_requested")]).next).toContain("unit_amend --add");
+		expect(build([...result("B"), amendment()]).next).not.toContain("unit_amend");
+	});
+
+	test("after C the next step names unit_amend for the stub", () => {
+		expect(build(result("C")).next).toContain("unit_amend U3");
+		expect(build([...result("C"), amendment()]).next).not.toContain("unit_amend");
+	});
+
+	test("after split the next step is change_split with the units not done", () => {
+		const next = build(result("split")).next;
+		expect(next).toContain("change_split");
+		expect(next).toContain("(U3)");
+		expect(build([...result("split"), stale(["build"])]).next).toContain("change_split");
+		expect(build([...result("split"), stale(["plan", "build"])]).next).not.toContain("change_split");
+	});
+
+	test("after D drop the next step is change_close --abandon until the issue closes", () => {
+		expect(build(result("D")).next).toBe('The new-dependency gate chose D: drop the change with change_close --abandon "wrong direction".');
+		const closed = { issue: { number: 7, title: "per-ip-cap", labels: ["livespec", "livespec:phase/build"], state: "closed" as const } };
+		expect(build(result("D"), closed).next).not.toContain("change_close");
+	});
+
+	test("D shape has no follow-up", () => {
+		expect(build(result("D", { action: "shape", reason: "r" })).next).toBe("Build U3 — Rate limit per IP.");
+	});
+
+	test("Park before finishing a started unit", () => {
+		const started = { U3: { unit: "U3", digest: "d", verify: "v", pre: { sha: "a".repeat(40) }, id: "U3.s", commentId: "c", index: 0 } };
+		const evidence = { started, receipts: {}, attempts: {}, blocked: {}, untickedReceipts: [] };
+		expect(build([pad(), implemented("U3"), ...result("A")], { evidence }).next).toContain("change_park");
+	});
+
+	test("a pending request still comes first", () => {
+		const pending: PendingRequest = { id: "gate-plan.x", subject: "gate:plan", kind: "gate", mode: "blocking", createdAt: "", data: {} as RequestRecord };
+		expect(build(result("A"), { requests: { pending: [pending], applying: [] } }).next).toContain("Wait for the human's answer");
 	});
 });
