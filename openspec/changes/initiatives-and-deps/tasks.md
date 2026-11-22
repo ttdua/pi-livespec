@@ -49,9 +49,9 @@ Blocked by: 1, 2
 
 Blocked by: 1, 3, 5
 
-- [ ] 6.1 `src/initiatives/split.ts`: pure planning of the moved units, `Depends: #N`, the capability split and the refusals (unknown, done, started, in lane, parked, remaining depends on moved, pending plan gate)
-- [ ] 6.2 `src/tools/change-split.ts` (registered as in 5.2): create the issue, versioned write on `#N`, `stale` listing `plan` and later phases, label back to `plan` when past it, and the initiative insert or `<name>-split` initiative (design D8)
-- [ ] 6.3 Tests in `tests/tools/change-split.test.ts` (change-initiatives "Change split tool": all scenarios)
+- [x] 6.1 `src/initiatives/split.ts`: pure planning of the moved units, `Depends: #N`, the capability split and the refusals (unknown, done, started, in lane, parked, remaining depends on moved, pending plan gate)
+- [x] 6.2 `src/tools/change-split.ts` (registered as in 5.2): create the issue, versioned write on `#N`, `stale` listing `plan` and later phases, label back to `plan` when past it, and the initiative insert or `<name>-split` initiative (design D8)
+- [x] 6.3 Tests in `tests/tools/change-split.test.ts` (change-initiatives "Change split tool": all scenarios)
 
 ## 7. Sync with the integration branch
 
