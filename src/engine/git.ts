@@ -27,6 +27,11 @@ export interface Git {
 	configSet(key: string, value: string): Promise<void>;
 	/** `git merge --no-edit --no-ff -- <ref>`; `conflict` when it stops with unmerged paths (the merge is left in progress). */
 	merge(ref: string): Promise<"ok" | "conflict">;
+	/**
+	 * `git merge --no-edit -- <ref>`, fast-forward allowed (sync with the integration branch); `conflict` when it
+	 * stops with unmerged paths (the merge is left in progress).
+	 */
+	mergeOrigin(ref: string): Promise<"ok" | "conflict">;
 	/** `git merge --abort`: restores the tree and HEAD from before a conflicted merge. */
 	mergeAbort(): Promise<void>;
 	/** `git merge-base --is-ancestor <a> <b>`. */
@@ -208,6 +213,13 @@ async function mergeTree(root: string, exec: GitExec, a: string, b: string): Pro
 	throw new GitError(args, result.code, result.stderr || (result.spawnError ?? ""));
 }
 
+/** Runs a `git merge`; a stop with unmerged paths is `conflict`, any other stop throws. */
+async function runMerge(run: Run, args: string[]): Promise<"ok" | "conflict"> {
+	if ((await run(args, EXIT_MERGE_STOPPED)) !== undefined) return "ok";
+	if ((await text(run, ["diff", "--name-only", "--diff-filter=U"])) !== "") return "conflict";
+	throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
+}
+
 export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 	const run = runner(root, exec);
 	return {
@@ -245,12 +257,8 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		configSet: async (key, value) => {
 			await run(["config", END_OF_OPTIONS, key, value]);
 		},
-		merge: async (ref) => {
-			const args = ["merge", "--no-edit", "--no-ff", "--", ref];
-			if ((await run(args, EXIT_MERGE_STOPPED)) !== undefined) return "ok";
-			if ((await text(run, ["diff", "--name-only", "--diff-filter=U"])) !== "") return "conflict";
-			throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
-		},
+		merge: (ref) => runMerge(run, ["merge", "--no-edit", "--no-ff", "--", ref]),
+		mergeOrigin: (ref) => runMerge(run, ["merge", "--no-edit", "--", ref]),
 		mergeAbort: async () => {
 			await run(["merge", "--abort"]);
 		},

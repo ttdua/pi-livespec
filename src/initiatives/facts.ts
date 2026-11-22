@@ -8,6 +8,7 @@ import { parseChange } from "../core/change.ts";
 import { type Initiative, parseInitiative } from "../core/initiative.ts";
 import { decide } from "../decide/seam.ts";
 import type { DepFact, DepState } from "../engine/deps-facts.ts";
+import { GitError, integrationBranch } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState } from "../engine/state-types.ts";
@@ -97,6 +98,32 @@ async function splitOutcome(pack: Pack, state: ChangeState): Promise<Deps["split
 	return decided.status === "decided" && (decided.outcome === "propose" || decided.outcome === "single") ? decided.outcome : undefined;
 }
 
+const REMOTE = "origin";
+
+/**
+ * Whether the local `origin/<integration>` is not an ancestor of HEAD, read without fetching; undefined when
+ * the change is not started, the integration branch is unknown or git cannot answer.
+ */
+async function integrationAhead(session: Session, state: ChangeState): Promise<boolean | undefined> {
+	const project = session.config.project;
+	if (state.change.header.branch === undefined || project === null) return undefined;
+	try {
+		const integration = await integrationBranch(project, session.git);
+		const tip = integration === undefined ? undefined : await session.git.remoteRef(`${REMOTE}/${integration}`);
+		return tip === undefined ? undefined : !(await session.git.isAncestor(tip, "HEAD"));
+	} catch (error) {
+		if (error instanceof GitError) return undefined;
+		throw error;
+	}
+}
+
+/** The sync facts of a change with an initiative: computed on every refresh, never memoized. */
+async function syncFacts(session: Session, state: ChangeState, initiative: Initiative): Promise<Pick<Deps, "integrationAhead" | "siblingMerged">> {
+	const siblingMerged = initiative.changes.some((e) => e.checked && e.number !== state.issue.number);
+	const ahead = await integrationAhead(session, state);
+	return { siblingMerged, ...(ahead === undefined ? {} : { integrationAhead: ahead }) };
+}
+
 async function changeFacts(session: Session, forge: CachedForge, pack: Pack, state: ChangeState): Promise<Deps> {
 	const open = await forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
 	const openMap = new Map(open.map((i) => [i.number, i]));
@@ -113,6 +140,7 @@ async function changeFacts(session: Session, forge: CachedForge, pack: Pack, sta
 		items,
 		...(initiative && t !== undefined ? { initiative: initiativeProgress(t, initiative.parsed, state.issue.number, known, open) } : {}),
 		overlap: capabilityOverlap(state, open),
+		...(initiative ? await syncFacts(session, state, initiative.parsed) : {}),
 		...(split === undefined ? {} : { split }),
 	};
 }

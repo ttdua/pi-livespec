@@ -187,6 +187,24 @@ describe("merge", () => {
 		expect(await git.isAncestor(head, "HEAD")).toBe(true);
 	});
 
+	test("mergeOrigin fast-forwards when HEAD is behind", async () => {
+		const { root, git, side } = await divergent(false);
+		execFileSync("git", ["reset", "-q", "--hard", "HEAD~1"], { cwd: root });
+		expect(await git.mergeOrigin("side")).toBe("ok");
+		expect(await git.head()).toBe(side);
+	});
+
+	test("mergeOrigin merges diverged history and reports a conflict", async () => {
+		const clean = await divergent(false);
+		const head = await clean.git.head();
+		expect(await clean.git.mergeOrigin("side")).toBe("ok");
+		expect(await clean.git.parents("HEAD")).toEqual([head, clean.side]);
+		const conflicted = await divergent(true);
+		expect(await conflicted.git.mergeOrigin("side")).toBe("conflict");
+		await conflicted.git.mergeAbort();
+		expect(existsSync(`${conflicted.root}/.git/MERGE_HEAD`)).toBe(false);
+	});
+
 	test("mergeBase names the fork point", async () => {
 		const { root, git, side } = await divergent(false);
 		const fork = gitIn(root, "rev-parse", "HEAD~1");

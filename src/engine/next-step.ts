@@ -293,6 +293,17 @@ const receiptedUnit: Rule = ({ state, phase }) => {
 	return unticked ? { next: `Run unit_finish ${unticked} again to tick it.` } : undefined;
 };
 
+const SYNC_PHASES: ReadonlySet<string> = new Set(["build", "review", "ship"]);
+
+/**
+ * Rule 16 (change-initiatives "Sync with the integration branch"): in build, review and ship, a checked sibling
+ * entry of the initiative and an integration branch ahead of HEAD ask for `change_sync` before the phase's steps.
+ */
+const syncStep: Rule = ({ state, phase }) => {
+	if (!SYNC_PHASES.has(phase.id) || state.deps?.siblingMerged !== true || state.deps.integrationAhead !== true) return undefined;
+	return { next: "A sibling change of the initiative merged and origin moved ahead: run change_sync before continuing." };
+};
+
 /** Rule 13: in a `per: unit` phase, the next ready unit, or the waiting units; no decision once every unit is done. */
 const nextUnit: Rule = ({ units, state }) => {
 	const rebuilds = state.evidence.rebuilds ?? {};
@@ -342,6 +353,7 @@ const RULES: Rule[] = [
 	laneUnits,
 	startedUnit,
 	receiptedUnit,
+	syncStep,
 	nextUnit,
 	reviewPhase,
 	shipPhase,

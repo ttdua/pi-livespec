@@ -225,6 +225,25 @@ describe("nextStep", () => {
 		expect(step.waitingUnits).toEqual([]);
 	});
 
+	test("Sync before the next unit", () => {
+		const deps = { items: [], overlap: [], siblingMerged: true, integrationAhead: true };
+		const step = nextStep(pack, state("build", NO_QUESTION, { deps }));
+		expect(step.next).toBe("A sibling change of the initiative merged and origin moved ahead: run change_sync before continuing.");
+	});
+
+	test("sync waits until origin is ahead", () => {
+		const deps = { items: [], overlap: [], siblingMerged: true, integrationAhead: false };
+		expect(nextStep(pack, state("build", NO_QUESTION, { deps })).next).toBe("Build U3 — Rate limit per IP.");
+		const noSibling = { items: [], overlap: [], siblingMerged: false, integrationAhead: true };
+		expect(nextStep(pack, state("build", NO_QUESTION, { deps: noSibling })).next).toBe("Build U3 — Rate limit per IP.");
+	});
+
+	test("sync applies in review and ship but not plan", () => {
+		const deps = { items: [], overlap: [], siblingMerged: true, integrationAhead: true };
+		for (const phase of ["review", "ship"]) expect(nextStep(pack, state(phase, ALL_DONE, { deps })).next).toContain("change_sync");
+		expect(nextStep(pack, state("plan", NO_QUESTION, { deps })).next).not.toContain("change_sync");
+	});
+
 	test("Build with pending units does not advance", () => {
 		const step = nextStep(pack, state("build", NO_QUESTION));
 		expect(step.next).toBe("Build U3 — Rate limit per IP.");
