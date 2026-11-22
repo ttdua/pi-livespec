@@ -29,7 +29,7 @@ async function answeredStuck() {
 }
 
 /** Every tool name registered by the harness plus `spec_validate`, read from one real registration. */
-const TOOL_NAMES = ["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "plan_units", "unit_amend", "unit_start", "unit_finish", "spec_question", "spec_stuck", "subagent_dispatch", "subagent_answer", "subagent_packet", "subagent_record", "spec_review", "finding_rebut", "forge_read", "lane_open", "lane_merge", "docs_table", "change_ship", "change_push", "change_close", "fix_start", "fix_ship"];
+const TOOL_NAMES = ["spec_validate", "spec_status", "spec_next", "skill_note", "spec_write", "change_new", "change_start", "spec_gate", "initiative_propose", "plan_units", "unit_amend", "unit_start", "unit_finish", "spec_question", "spec_stuck", "subagent_dispatch", "subagent_answer", "subagent_packet", "subagent_record", "spec_review", "finding_rebut", "forge_read", "lane_open", "lane_merge", "docs_table", "change_ship", "change_push", "change_close", "fix_start", "fix_ship"];
 
 describe("every livespec tool polls first", () => {
 	test("the list covers every registered tool", async () => {

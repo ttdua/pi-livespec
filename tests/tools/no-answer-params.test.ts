@@ -7,7 +7,7 @@ afterEach(async () => {
 	await cleanupDirs();
 });
 
-const DECISION_TOOLS = ["spec_gate", "plan_units", "unit_amend", "spec_question", "spec_stuck"];
+const DECISION_TOOLS = ["spec_gate", "plan_units", "unit_amend", "spec_question", "spec_stuck", "initiative_propose"];
 const FORBIDDEN = ["outcome", "choice", "answer", "approved", "difficulty", "tags"];
 
 /** Every property name declared anywhere in a JSON schema: `properties`, `items`, combinators and nested objects. */

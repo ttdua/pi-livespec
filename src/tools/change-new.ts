@@ -37,6 +37,18 @@ export const CHANGE_BODY_TEMPLATE = [
 	"",
 ].join("\n");
 
+/** `Depends:` line value: `#a, #b`, or `—` without dependencies. */
+export function dependsValue(depends: number[]): string {
+	return depends.length === 0 ? "—" : depends.map((d) => `#${d}`).join(", ");
+}
+
+/** The template with an `Initiative` line (when given), the `Depends` line and the short Proposal. */
+export function changeBody(o: { initiative?: number; depends: number[]; proposal: string }): string {
+	const withDepends = setHeaderLine(CHANGE_BODY_TEMPLATE, "Depends", dependsValue(o.depends));
+	const head = o.initiative === undefined ? withDepends : `Initiative: #${o.initiative}\n${withDepends}`;
+	return replaceSection(head, "Proposal", o.proposal);
+}
+
 /** A fix branch ready to move: its slug, merge base and commit subjects. */
 type Moving = { slug: string; branch: string; base: string; subjects: string[] };
 type Refused = { refused: string };
