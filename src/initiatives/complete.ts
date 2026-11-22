@@ -4,7 +4,7 @@
 // a rerun after a crash or a version conflict writes nothing twice.
 
 import { parseChange } from "../core/change.ts";
-import { appendChange, type Initiative, initiativeBody, parseInitiative, removeChange, setChangeDepends } from "../core/initiative.ts";
+import { appendChange, type Initiative, initiativeBody, insertChangeBefore, parseInitiative, removeChange, setChangeDepends } from "../core/initiative.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
 import { gateEffects, registerGate, registerGateEffect, registerGateValidator } from "../engine/gates.ts";
 import { LABEL_INITIATIVE, LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
@@ -33,10 +33,10 @@ async function writeBody(forge: Forge, n: number, edit: (body: string) => string
 	if (written.status === "conflict") throw new Error(`#${n} changed during the initiative completion (${written.changed.join(", ")}); retry`);
 }
 
-const hasInitiative = (issue: Issue, t: number): boolean => initiativeNumber(parseChange(issue.body)) === t;
+const hasInitiative = (issue: Issue, t: number | undefined): boolean => initiativeNumber(parseChange(issue.body)) === t;
 
-/** The open `livespec` change titled `title` in initiative `#initiative`, or a new one in `shape` with `body`. */
-export async function findOrCreateChange(forge: Forge, title: string, initiative: number, body: string): Promise<number> {
+/** The open `livespec` change titled `title` in initiative `#initiative` (none when undefined), or a new one in `shape` with `body`. */
+export async function findOrCreateChange(forge: Forge, title: string, initiative: number | undefined, body: string): Promise<number> {
 	const open = await forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
 	const found = open.find((i) => i.title === title && hasInitiative(i, initiative));
 	if (found) return found.number;
@@ -57,6 +57,9 @@ async function trackingIssue(forge: Forge, d: InitiativeDrafts): Promise<number>
 
 /** Turns entry names into issue numbers once their issues exist. */
 type Numbers = (d: DraftDep) => number;
+
+/** The numbers of `deps`, without repeats: a name and the number it was created as are one dependency. */
+const numbered = (deps: DraftDep[], num: Numbers): number[] => [...new Set(deps.map(num))];
 
 function numbersOf(created: Record<string, number>): Numbers {
 	return (d) => {
@@ -85,9 +88,10 @@ function changesList(body: string, d: InitiativeDrafts, ordered: DraftEntry[], n
 	for (const e of ordered) {
 		const n = num(e.number ?? e.name);
 		const listed = parseInitiative(out).changes.some((c) => c.number === n);
-		const depends = e.depends?.map(num);
+		const depends = e.depends === undefined ? undefined : numbered(e.depends, num);
+		const entry = { number: n, name: e.name, depends: depends ?? [] };
 		if (listed && depends !== undefined) out = setChangeDepends(out, n, depends);
-		else if (!listed && (e.number === undefined || n === d.current)) out = appendChange(out, { number: n, name: e.name, depends: depends ?? [] });
+		else if (!listed && (e.number === undefined || n === d.current)) out = e.before === undefined ? appendChange(out, entry) : insertChangeBefore(out, e.before, entry);
 	}
 	for (const n of d.remove ?? []) out = removeChange(out, n);
 	return out;
@@ -96,7 +100,7 @@ function changesList(body: string, d: InitiativeDrafts, ordered: DraftEntry[], n
 /** Step 4 as a pure edit of one existing change: its Initiative line (current change), Depends and Proposal. */
 function changeEdit(body: string, e: DraftEntry, o: { t: number; current: boolean; num: Numbers }): string {
 	let out = o.current && initiativeNumber(parseChange(body)) !== o.t ? setHeaderLine(body, "Initiative", `#${o.t}`) : body;
-	if (e.depends !== undefined) out = setHeaderLine(out, "Depends", dependsValue(e.depends.map(o.num)));
+	if (e.depends !== undefined) out = setHeaderLine(out, "Depends", dependsValue(numbered(e.depends, o.num)));
 	if (e.proposal !== undefined) out = replaceSection(out, "Proposal", e.proposal);
 	return out;
 }

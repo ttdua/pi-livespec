@@ -98,6 +98,14 @@ export function insertChangeAfter(body: string, after: number, e: ChangeEntry): 
 	return joinLines(insertAt(i.lines, target.line + 1, entryText(e)));
 }
 
+/** Adds an entry right before entry `before`, or after the last one when `before` is not listed. */
+export function insertChangeBefore(body: string, before: number, e: ChangeEntry): string {
+	const i = parseInitiative(body);
+	const target = i.changes.find((c) => c.number === before);
+	if (!target) return appendChange(body, e);
+	return joinLines(insertAt(i.lines, target.line, entryText(e)));
+}
+
 export function setChangeDepends(body: string, n: number, depends: number[]): string {
 	return edit(body, (i) => {
 		const c = i.changes.find((x) => x.number === n);

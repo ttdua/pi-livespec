@@ -15,8 +15,9 @@ export type DraftDep = string | number;
 /**
  * One entry. `number` is set for an existing change and absent for a change the completion creates.
  * A new entry always has `proposal` and `depends`; an existing one carries only what the request writes.
+ * `before` places a new entry right before that existing entry in `## Changes` instead of last.
  */
-export type DraftEntry = { name: string; number?: number; proposal?: string; depends?: DraftDep[] };
+export type DraftEntry = { name: string; number?: number; proposal?: string; depends?: DraftDep[]; before?: number };
 
 /** `amend` is the tracking issue an amendment edits; `remove` lists the entries it removes from it. */
 export type InitiativeDrafts = {
@@ -99,6 +100,7 @@ function isEntry(v: unknown): v is DraftEntry {
 	if (!isObject(v) || typeof v.name !== "string") return false;
 	if (v.number !== undefined && typeof v.number !== "number") return false;
 	if (v.proposal !== undefined && typeof v.proposal !== "string") return false;
+	if (v.before !== undefined && typeof v.before !== "number") return false;
 	return v.depends === undefined || (Array.isArray(v.depends) && v.depends.every(isDep));
 }
 

@@ -15,6 +15,7 @@ import { registerFixStart } from "./fix-start.ts";
 import { registerForgeRead } from "./forge-read.ts";
 import { registerInitiativePropose } from "./initiative-propose.ts";
 import { registerLaneMerge } from "./lane-merge.ts";
+import { registerNewDependency } from "./new-dependency.ts";
 import { registerLaneOpen } from "./lane-open.ts";
 import { registerPlanUnits } from "./plan-units.ts";
 import { registerSkillNote } from "./skill-note.ts";
@@ -42,6 +43,7 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeStart(pi);
 	registerSpecGate(pi);
 	registerInitiativePropose(pi);
+	registerNewDependency(pi);
 	registerPlanUnits(pi);
 	registerUnitAmend(pi);
 	registerUnitStart(pi);

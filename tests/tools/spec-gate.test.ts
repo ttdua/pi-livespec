@@ -181,13 +181,13 @@ describe("spec_gate", () => {
 	});
 
 	test("Registered gate", async () => {
-		registerGate("new-dependency", { checks: [] });
+		registerGate("custom-gate", { checks: [] });
 		const h = await change("build", { ui: human("approve") });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
 		expect(gate).toHaveLength(1);
-		expect(gateData(gate[0])).toMatchObject({ gate: "new-dependency", outcome: "approved", adapter: "in-session" });
+		expect(gateData(gate[0])).toMatchObject({ gate: "custom-gate", outcome: "approved", adapter: "in-session" });
 		expect(gateData(gate[0]).phase).toBeUndefined();
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
@@ -320,25 +320,25 @@ describe("spec_gate", () => {
 	});
 
 	test("Named gate option recorded", async () => {
-		registerGate("new-dependency", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
 		const h = await change("build", { ui: human("accept") });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
-		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", outcome: "approved", waivers: [] });
+		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", outcome: "approved", waivers: [] });
 		expect(gate.superseded).toBeUndefined();
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
 
 	test("Named gate option does not waive", async () => {
 		registerSizeLimits();
-		registerGate("new-dependency", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
 		const h = await change("build", { ui: human("accept"), files: flow });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(textOf(out)).toContain("choose waive");
 		const gate = gateData((await ofKind(h, "gate"))[0]);
-		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", superseded: true, waivers: [] });
+		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", superseded: true, waivers: [] });
 		expect(gate.outcome).toBe("approved");
 	});
 
@@ -526,9 +526,9 @@ describe("spec_gate gate-only checks", () => {
 describe("named gate payload", () => {
 	test("a named gate's review payload lists its gate-only check results", async () => {
 		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
-		registerGate("new-dependency", { checks: ["dep-audit"] });
+		registerGate("custom-gate", { checks: ["dep-audit"] });
 		const h = await change("build", { ui: human("approve") });
-		await h.call("spec_gate", { target: "new-dependency" });
+		await h.call("spec_gate", { target: "custom-gate" });
 		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
 		expect(summary).toContain("Gate checks:");
 		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");

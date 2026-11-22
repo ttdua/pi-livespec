@@ -4,6 +4,7 @@ import {
 	appendChange,
 	initiativeBody,
 	insertChangeAfter,
+	insertChangeBefore,
 	parseInitiative,
 	removeChange,
 	serializeInitiative,
@@ -47,6 +48,16 @@ describe("initiative writers", () => {
 			"- [ ] #35 per-ip-cap — Depends: #34",
 		]);
 		rt(out);
+	});
+	it("insertChangeBefore", () => {
+		const out = insertChangeBefore(fixture, 35, { number: 36, name: "token-store", depends: [] });
+		expect(out.split("\n").slice(4, 7)).toEqual([
+			"- [ ] #34 add-request-context — Depends: —",
+			"- [ ] #36 token-store — Depends: —",
+			"- [ ] #35 per-ip-cap — Depends: #34",
+		]);
+		rt(out);
+		expect(insertChangeBefore(fixture, 99, { number: 36, name: "x", depends: [] })).toBe(appendChange(fixture, { number: 36, name: "x", depends: [] }));
 	});
 	it("setChangeDepends", () => {
 		const out = setChangeDepends(fixture, 35, [34, 40]);
