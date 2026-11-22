@@ -11,11 +11,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `NamedGate.proposer`, plus `registerGateValidator` and `registerGateEffect` in `src/engine/gates.ts`; `spec_gate` refuses a gate with a proposer and names the tool (`src/tools/spec-gate.ts`)
-- [ ] 2.2 Run the named-gate validator in `validateGate` (`src/interaction/complete-validate.ts`), and the effects in `applyGate` (`src/interaction/complete-gate.ts`) only for a valid approved answer, before the `gate` comment
-- [ ] 2.3 Let a proposer tool send a named-gate request with its own options and snapshot drafts: export a builder from `src/tools/spec-gate.ts` that reuses `gateRequest`/`sendRequest`
-- [ ] 2.4 Derive the parked core (`parkedRecord`) in `deriveCommentFacts` (`src/engine/parked.ts`), and add the parked refusal in `gateRefusal`, except for `new-dependency` and `initiative`; proposer gates skip `dirtyTree` and the `head_sha`/`gate_digest` checks in `validateGate`
-- [ ] 2.5 Tests in `tests/engine/gates.test.ts`, `tests/interaction/complete.test.ts` and `tests/tools/spec-gate.test.ts` (phase-gates "Gate tool": "Gate with a proposer", "Gate effect runs once before the result", "Validator supersedes", "No effect on changes requested", "Parked change refuses the plan gate", "Proposer gate survives work in progress", "Forge answer on a parked change")
+- [x] 2.1 `NamedGate.proposer`, plus `registerGateValidator` and `registerGateEffect` in `src/engine/gates.ts`; `spec_gate` refuses a gate with a proposer and names the tool (`src/tools/spec-gate.ts`)
+- [x] 2.2 Run the named-gate validator in `validateGate` (`src/interaction/complete-validate.ts`), and the effects in `applyGate` (`src/interaction/complete-gate.ts`) only for a valid approved answer, before the `gate` comment
+- [x] 2.3 Let a proposer tool send a named-gate request with its own options and snapshot drafts: export a builder from `src/tools/spec-gate.ts` that reuses `gateRequest`/`sendRequest`
+- [x] 2.4 Derive the parked core (`parkedRecord`) in `deriveCommentFacts` (`src/engine/parked.ts`), and add the parked refusal in `gateRefusal`, except for `new-dependency` and `initiative`; proposer gates skip `dirtyTree` and the `head_sha`/`gate_digest` checks in `validateGate`
+- [x] 2.5 Tests in `tests/engine/gates.test.ts`, `tests/interaction/complete.test.ts` and `tests/tools/spec-gate.test.ts` (phase-gates "Gate tool": "Gate with a proposer", "Gate effect runs once before the result", "Validator supersedes", "No effect on changes requested", "Parked change refuses the plan gate", "Proposer gate survives work in progress", "Forge answer on a parked change")
 
 ## 3. Size limits and the split rule
 
