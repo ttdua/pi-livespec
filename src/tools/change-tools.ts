@@ -3,7 +3,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerChangeClose } from "./change-close.ts";
 import { registerChangeNew } from "./change-new.ts";
+import { registerChangePark } from "./change-park.ts";
 import { registerChangePush } from "./change-push.ts";
+import { registerChangeResume } from "./change-resume.ts";
 import { registerChangeShip } from "./change-ship.ts";
 import { registerChangeSplit } from "./change-split.ts";
 import { registerChangeStart } from "./change-start.ts";
@@ -65,6 +67,8 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeClose(pi);
 	registerChangeSplit(pi);
 	registerChangeSync(pi);
+	registerChangePark(pi);
+	registerChangeResume(pi);
 	registerFixStart(pi);
 	registerFixShip(pi);
 }

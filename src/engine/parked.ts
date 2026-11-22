@@ -19,6 +19,16 @@ function isParkedUnit(x: unknown): x is ParkedUnit {
 	return typeof u.unit === "string" && typeof u.lane === "boolean" && optionalString(u.branch) && optionalString(u.head);
 }
 
+/** Whether `m` is a resume `parked` comment. */
+export const isResumeRecord = (m: MarkedComment): boolean => m.kind === PARKED_KIND && typeof m.data === "object" && m.data !== null && (m.data as ParkedData).resumed === true;
+
+/** The units a non-resume `parked` comment lists; empty for any other comment. */
+export function parkedUnitsOf(m: MarkedComment): string[] {
+	if (m.kind !== PARKED_KIND || isResumeRecord(m)) return [];
+	const units = (m.data as ParkedData | null)?.units;
+	return Array.isArray(units) ? units.filter(isParkedUnit).map((u) => u.unit) : [];
+}
+
 /**
  * The latest own `parked` record, with its index in `marked`; undefined when there is none or the latest
  * one is a resume. Malformed list items are dropped, since the record is forge data.

@@ -452,3 +452,30 @@ describe("small-fix ports", () => {
 		expect(await g.subjects(base, "HEAD")).toEqual(["side work", "main work"]);
 	});
 });
+
+describe("park ports", () => {
+	test("addAll and commit take untracked and modified files, not ignored ones", async () => {
+		const { root, git: g } = await committedRepo();
+		await writeIn(root, ".gitignore", "build/\n");
+		commitAll(root, "ignore build");
+		const before = await g.head();
+		await writeIn(root, "README.md", "changed\n");
+		await writeIn(root, "new.txt", "n\n");
+		await writeIn(root, "build/out.txt", "o\n");
+		await g.addAll();
+		const head = await g.commit("wip(U2): parked for #41");
+		expect(head).toBe(git(root, "rev-parse", "HEAD"));
+		expect(await g.parents(head)).toEqual([before]);
+		expect((await g.changedPaths(head)).sort()).toEqual(["README.md", "new.txt"]);
+		expect(git(root, "log", "-1", "--format=%s")).toBe("wip(U2): parked for #41");
+		expect(await g.isTracked("build/out.txt")).toBe(false);
+	});
+
+	test("commit with allowEmpty records a commit on a clean tree", async () => {
+		const { git: g } = await committedRepo();
+		const before = await g.head();
+		await expect(g.commit("empty")).rejects.toBeInstanceOf(GitError);
+		const head = await g.commit("empty", { allowEmpty: true });
+		expect(await g.parents(head)).toEqual([before]);
+	});
+});

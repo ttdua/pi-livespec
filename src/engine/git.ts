@@ -81,6 +81,10 @@ export interface Git {
 	isTracked(path: string): Promise<boolean>;
 	/** `git log --reverse --no-merges --format=%s <from>..<to>`, oldest first. */
 	subjects(from: string, to: string): Promise<string[]>;
+	/** `git add -A`: every tracked and untracked file that git does not ignore. */
+	addAll(): Promise<void>;
+	/** `git commit -m <message>` (with `--allow-empty` when asked); returns the new HEAD. */
+	commit(message: string, o?: { allowEmpty?: boolean }): Promise<string>;
 }
 
 export type NumstatEntry = { path: string; added: number; deleted: number; binary: boolean };
@@ -297,6 +301,13 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		},
 		isTracked: async (path) => (await run(["ls-files", "--error-unmatch", "--", path], EXIT_NOT_TRACKED)) !== undefined,
 		subjects: async (from, to) => lines(await run(["log", "--reverse", "--no-merges", "--format=%s", END_OF_OPTIONS, `${from}..${to}`])),
+		addAll: async () => {
+			await run(["add", "-A"]);
+		},
+		commit: async (message, o = {}) => {
+			await run(["commit", "--quiet", ...(o.allowEmpty === true ? ["--allow-empty"] : []), "-m", message]);
+			return text(run, ["rev-parse", "HEAD"]);
+		},
 		aliases: async () => parseAliases((await run(["config", "-z", "--get-regexp", "^alias\\."], EXIT_NOT_FOUND)) ?? ""),
 	};
 }
