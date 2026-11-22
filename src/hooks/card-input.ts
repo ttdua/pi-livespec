@@ -138,7 +138,7 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const forge = session.forge;
 	const comments = session.comments;
 	if (forge === undefined || comments === undefined) throw new Error(FORGE_NOT_CONNECTED);
-	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds };
+	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds, discoveredDeps: pack.loops.discovered_deps };
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const ship = await shipFor(session, snapshot);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
