@@ -1,12 +1,18 @@
-// `change_sync` core (design D12), shared with `change_resume`: merge the integration branch, move `Base`,
-// re-run every done unit's `Verify` into one `regression` record, and untick the units that regressed or
-// whose covered requirement changed in the living specs between the old and the new base.
+// `change_sync` core (design D12), shared with `change_resume`: merge the integration branch, re-run every
+// done unit's `Verify` into one `regression` record, mark and untick the units that regressed or whose covered
+// requirement changed in the living specs between the old and the new base, and move `Base` last.
+//
+// Write order is what makes a rerun safe: the issue `Base` stays the old base until every other effect is
+// written, so a failure anywhere before it leaves the requirement diff intact for the rerun; the `stale`
+// comment precedes the untick, so a unit is never pending with a matching receipt and no stale mark (which
+// `unit_finish` would re-tick without running `Verify`); records are posted once per HEAD.
 
 import type { Unit } from "../core/change.ts";
+// Side effect: registers the `regression` marker kind, so `writeMarked` accepts it outside the extension entry.
 import "../deps/markers.ts";
 import { parseChange } from "../core/change.ts";
 import { setHeaderLine } from "../core/sections.ts";
-import { parseSpec } from "../core/spec.ts";
+import { parseSpec, type Requirement } from "../core/spec.ts";
 import { untickUnit } from "../core/tick.ts";
 import { advancePhase } from "../engine/advance.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
@@ -16,7 +22,7 @@ import { classifyRun } from "../evidence/red-green.ts";
 import { runVerify } from "../evidence/runner.ts";
 import { RECEIPT_OUTPUT_BYTES, type VerifyEnv, verifyEnv } from "../evidence/verify-env.ts";
 import type { CachedForge } from "../forge/cache.ts";
-import { writeMarked } from "../forge/markers.ts";
+import { readMarkedComments, writeMarked } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import type { Session } from "../hooks/session.ts";
 import { phasesAfter } from "../interaction/complete-effects.ts";
@@ -34,7 +40,17 @@ const BUILD_PHASE = "build";
 const BASE_KEY = "Base";
 const COVERS_SEPARATOR = "/Requirement:";
 
-type Synced = { ctx: SyncContext; pack: Pack; git: Git; oldBase: string; base: string; head: string };
+/** `own` holds the ids of own marked comments, read fresh, so a rerun at the same HEAD posts nothing twice. */
+type Synced = { ctx: SyncContext; pack: Pack; git: Git; oldBase: string; base: string; head: string; own: Set<string> };
+
+const markedKey = (kind: string, id: string): string => `${kind}\0${id}`;
+
+/** Posts an own marked comment unless one of `kind`/`id` already exists. */
+async function postOnce(s: Synced, kind: string, id: string, body: string): Promise<void> {
+	if (s.own.has(markedKey(kind, id))) return;
+	await s.ctx.forge.createComment(s.ctx.state.issue.number, body);
+	s.own.add(markedKey(kind, id));
+}
 
 // --- refusals ------------------------------------------------------------------
 
@@ -49,7 +65,7 @@ async function preconditionRefusal(ctx: SyncContext, git: Git): Promise<string |
 	return undefined;
 }
 
-// --- steps 1 and 2: merge and move Base ------------------------------------------
+// --- step 1: merge ----------------------------------------------------------------
 
 /** Step 1: fetch, then merge the integration tip unless HEAD already contains it; a conflict is aborted. */
 async function mergeIntegration(git: Git, integration: string): Promise<{ base: string } | { refused: string }> {
@@ -60,16 +76,6 @@ async function mergeIntegration(git: Git, integration: string): Promise<{ base: 
 	if ((await git.mergeOrigin(ref)) === "ok") return { base };
 	await git.mergeAbort();
 	return { refused: `merging ${ref} conflicts; the merge was aborted and nothing changed. Merge ${ref} by hand, resolve the conflicts and commit, then rerun change_sync.` };
-}
-
-/** Step 2: `Base` in the issue (versioned) and the `livespecBase` git config. */
-async function recordBase(ctx: SyncContext, git: Git, base: string): Promise<string | undefined> {
-	const n = ctx.state.issue.number;
-	await git.configSet(livespecBaseKey(ctx.state.change.header.branch as string), base);
-	const issue = await ctx.forge.getIssue(n);
-	if (parseChange(issue.body).header.base === base) return undefined;
-	const written = await ctx.forge.updateIssueBody(n, setHeaderLine(issue.body, BASE_KEY, base), issue.version);
-	return written.status === "conflict" ? `#${n} changed while Base was written (${written.changed.join(", ")}); rerun change_sync.` : undefined;
 }
 
 // --- step 3: regression record ---------------------------------------------------
@@ -97,10 +103,14 @@ async function regressionRuns(s: Synced): Promise<RegressionUnit[] | undefined> 
 
 type Requirements = Map<string, string>;
 
-/** Requirement name to text of `specs/<capability>/spec.md` at `rev`; empty when the file is absent. */
+/** The whole requirement block, body text and scenarios, without line numbers, so only content changes count. */
+const requirementContent = (r: Requirement): string =>
+	JSON.stringify({ text: r.text, scenarios: r.scenarios.map(({ name, given, when, then }) => ({ name, given, when, then })) });
+
+/** Requirement name to its content in `specs/<capability>/spec.md` at `rev`; empty when the file is absent. */
 async function requirementsAt(git: Git, rev: string, capability: string): Promise<Requirements> {
 	const text = await git.showFile(rev, `specs/${capability}/spec.md`);
-	return new Map(text === undefined ? [] : parseSpec(text, capability).requirements.map((r) => [r.name, r.text]));
+	return new Map(text === undefined ? [] : parseSpec(text, capability).requirements.map((r) => [r.name, requirementContent(r)]));
 }
 
 /** `<capability>/Requirement: <name>` entries added, removed or changed in text between the bases. */
@@ -124,25 +134,46 @@ async function staleUnits(s: Synced, runs: RegressionUnit[]): Promise<string[]> 
 	return done.filter((u) => red.has(u.id) || u.covers.some((c) => changed.has(c.trim()))).map((u) => u.id);
 }
 
-/** Unticks `units` in one versioned write, posts the `stale` comment and moves a later phase back to build. */
+/**
+ * The `stale` comment first, then one versioned untick of the units still done, then a later phase back to
+ * build. A conflict on the untick refuses; the stale mark already blocks the units until they are amended.
+ */
 async function markStale(s: Synced, units: string[]): Promise<string | undefined> {
 	const { forge, state } = s.ctx;
 	const n = state.issue.number;
-	const issue = await forge.getIssue(n);
-	const body = units.reduce((b, unit) => untickUnit(b, unit), issue.body);
-	const written = await forge.updateIssueBody(n, body, issue.version);
-	if (written.status === "conflict") return `#${n} changed while ${units.join(", ")} were unticked (${written.changed.join(", ")}); rerun change_sync.`;
 	const later = phasesAfter(s.pack, BUILD_PHASE);
 	const past = state.phase.kind === "ok" && later.includes(state.phase.id);
+	const id = `stale.sync.${s.head}`;
 	const reason = `regression after syncing to ${REMOTE} ${s.base}`;
-	await forge.createComment(n, staleComment(`stale.sync.${s.head}`, { reason, phases: past ? later : [], units }));
+	await postOnce(s, "stale", id, staleComment(id, { reason, phases: past ? later : [], units }));
+	const issue = await forge.getIssue(n);
+	const done = new Set(parseChange(issue.body).units.filter((u) => u.done).map((u) => u.id));
+	const body = units.filter((u) => done.has(u)).reduce((b, unit) => untickUnit(b, unit), issue.body);
+	if (body !== issue.body) {
+		const written = await forge.updateIssueBody(n, body, issue.version);
+		if (written.status === "conflict") return `#${n} changed while ${units.join(", ")} were unticked (${written.changed.join(", ")}); Base is unchanged, rerun change_sync.`;
+	}
 	if (past) await advancePhase(forge, n, BUILD_PHASE, s.pack);
+	return undefined;
+}
+
+// --- last: move Base ---------------------------------------------------------------
+
+/** The issue `Base` (versioned, skipped when equal), then the `livespecBase` git config, as plan_units does. */
+async function recordBase(s: Synced): Promise<string | undefined> {
+	const n = s.ctx.state.issue.number;
+	const issue = await s.ctx.forge.getIssue(n);
+	if (parseChange(issue.body).header.base !== s.base) {
+		const written = await s.ctx.forge.updateIssueBody(n, setHeaderLine(issue.body, BASE_KEY, s.base), issue.version);
+		if (written.status === "conflict") return `#${n} changed while Base was written (${written.changed.join(", ")}); Base is unchanged, rerun change_sync.`;
+	}
+	await s.git.configSet(livespecBaseKey(s.ctx.state.change.header.branch as string), s.base);
 	return undefined;
 }
 
 // --- syncChange ------------------------------------------------------------------
 
-/** D12 steps 1 to 4. Every refusal before the merge leaves HEAD, Base and the issue unchanged. */
+/** D12 steps 1, 3 and 4, then step 2 (Base) last. Every refusal before the merge leaves HEAD, Base and the issue unchanged. */
 export async function syncChange(ctx: SyncContext): Promise<SyncResult> {
 	const { session, state } = ctx;
 	const git = session.git;
@@ -154,9 +185,8 @@ export async function syncChange(ctx: SyncContext): Promise<SyncResult> {
 	if (integration === undefined) return { refused: "the integration branch is unknown: origin/HEAD is not set. Set integrationBranch in .pi/livespec/config.yaml." };
 	const merged = await mergeIntegration(git, integration);
 	if ("refused" in merged) return merged;
-	const baseFailure = await recordBase(ctx, git, merged.base);
-	if (baseFailure !== undefined) return { refused: baseFailure };
-	const s: Synced = { ctx, pack: session.pack.pack, git, oldBase: state.change.header.base as string, base: merged.base, head: await git.head() };
+	const own = new Set((await readMarkedComments(ctx.forge, state.issue.number)).comments.map((m) => markedKey(m.kind, m.id)));
+	const s: Synced = { ctx, pack: session.pack.pack, git, oldBase: state.change.header.base as string, base: merged.base, head: await git.head(), own };
 	return regressAndMark(s);
 }
 
@@ -164,9 +194,9 @@ async function regressAndMark(s: Synced): Promise<SyncResult> {
 	const runs = await regressionRuns(s);
 	if (runs === undefined) return { refused: "Verify was aborted (the tool call was cancelled or the session is shutting down); no regression record was written. Rerun change_sync." };
 	const data: RegressionData = { base_from: s.oldBase, base_to: s.base, head: s.head, units: runs };
-	await s.ctx.forge.createComment(s.ctx.state.issue.number, writeMarked("regression", `regression.${s.head}`, data));
+	const id = `regression.${s.head}`;
+	await postOnce(s, "regression", id, writeMarked("regression", id, data));
 	const stale = await staleUnits(s, runs);
-	if (stale.length === 0) return { base: s.base, stale };
-	const failure = await markStale(s, stale);
+	const failure = (stale.length === 0 ? undefined : await markStale(s, stale)) ?? (await recordBase(s));
 	return failure === undefined ? { base: s.base, stale } : { refused: failure };
 }

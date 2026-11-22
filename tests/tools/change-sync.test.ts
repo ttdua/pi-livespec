@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import "../../src/initiatives/facts.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { unitDigest } from "../../src/core/digest.ts";
+import type { Forge } from "../../src/forge/types.ts";
+import { filterMarked, type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { runChangeSync } from "../../src/tools/change-sync.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -56,8 +58,8 @@ const body = (units: U[]): string =>
 		"",
 	].join("\n");
 
-const spec = (capText: string): string =>
-	["# rate-limit", "", "## Purpose", "Limits.", "", "## Requirements", "### Requirement: Per-IP cap", capText, "", "#### Scenario: Capped", "- **WHEN** x", "- **THEN** y", "", "### Requirement: Window", "The window SHALL slide.", "", "#### Scenario: Slides", "- **WHEN** x", "- **THEN** y", ""].join("\n");
+const spec = (capText: string, cappedThen = "y"): string =>
+	["# rate-limit", "", "## Purpose", "Limits.", "", "## Requirements", "### Requirement: Per-IP cap", capText, "", "#### Scenario: Capped", "- **WHEN** x", `- **THEN** ${cappedThen}`, "", "### Requirement: Window", "The window SHALL slide.", "", "#### Scenario: Slides", "- **WHEN** x", "- **THEN** y", ""].join("\n");
 
 const UNITS: U[] = [
 	{ id: "U1", requirement: "Per-IP cap", script: "u1.sh", done: true },
@@ -74,8 +76,27 @@ const FILES = {
 	"specs/rate-limit/spec.md": spec("Each IP SHALL be capped."),
 };
 
-async function harness(o: { phase?: string; siblingChecked?: boolean; units?: U[] } = {}): Promise<ToolHarness> {
-	const h = await toolHarness({ change: { body: body(o.units ?? UNITS), phase: o.phase ?? "build" }, locked: true, files: FILES });
+/** Comment kinds whose `createComment` throws while listed, to inject a forge failure mid-sync. */
+type Faults = Set<string>;
+
+function faultyForge(inner: Forge, faults: Faults): Forge {
+	const createComment = async (n: number, text: string) => {
+		const kind = parseMarked(text)?.kind;
+		if (kind !== undefined && faults.has(kind)) throw new Error(`injected ${kind} failure`);
+		return inner.createComment(n, text);
+	};
+	return new Proxy(inner, {
+		get(target, prop) {
+			if (prop === "createComment") return createComment;
+			const value = Reflect.get(target, prop, target);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+}
+
+async function harness(o: { phase?: string; siblingChecked?: boolean; units?: U[]; faults?: Faults } = {}): Promise<ToolHarness> {
+	const faults = o.faults ?? new Set<string>();
+	const h = await toolHarness({ change: { body: body(o.units ?? UNITS), phase: o.phase ?? "build" }, locked: true, files: FILES, forge: (world) => faultyForge(world.forge, faults) });
 	const tracking = await h.world.seedIssue({
 		title: "limits",
 		body: `Goal: Limit\nCapabilities: [rate-limit]\n\n## Changes\n- [${o.siblingChecked === false ? " " : "x"}] #9 audit-log — Depends: —\n- [ ] #${h.n} per-ip-cap — Depends: —\n`,
@@ -210,6 +231,59 @@ describe("change_sync", () => {
 		expect((await ofKind(h, "regression"))[0]?.data).toMatchObject({ units: [{ unit: "U1", verdict: "green" }, { unit: "U2", verdict: "green" }] });
 		expect(await doneUnits(h)).toEqual(["U2"]);
 		expect((await ofKind(h, "stale"))[0]?.data).toMatchObject({ units: ["U1"] });
+	});
+
+	test("a scenario-only edit of a covered requirement makes its unit stale", async () => {
+		const h = await harness();
+		await siblingMerges(h, { "specs/rate-limit/spec.md": spec("Each IP SHALL be capped.", "the request is rejected with 429") });
+		const out = await h.call("change_sync");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await doneUnits(h)).toEqual(["U2"]);
+		expect((await ofKind(h, "stale"))[0]?.data).toMatchObject({ units: ["U1"] });
+	});
+
+	test("a failed regression write keeps Base, so a rerun still finds the changed requirement", async () => {
+		const faults: Faults = new Set(["regression"]);
+		const h = await harness({ faults });
+		const before = (await header(h)).base;
+		const tip = await siblingMerges(h, { "specs/rate-limit/spec.md": spec("Each IP SHALL be capped at 100 requests.") });
+		await expect(h.call("change_sync")).rejects.toThrow("injected regression failure");
+		expect((await header(h)).base).toBe(before);
+		expect(h.git("config", "--default", "unset", "--get", "branch.livespec/per-ip-cap.livespecBase")).not.toBe(tip);
+		faults.clear();
+		const out = await h.call("change_sync");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await doneUnits(h)).toEqual(["U2"]);
+		expect((await ofKind(h, "stale"))[0]?.data).toMatchObject({ units: ["U1"] });
+		expect((await header(h)).base).toBe(tip);
+		expect(h.git("config", "--get", "branch.livespec/per-ip-cap.livespecBase")).toBe(tip);
+	});
+
+	test("a failed stale write leaves the unit ticked, never unticked with a receipt", async () => {
+		const faults: Faults = new Set(["stale"]);
+		const h = await harness({ units: [...UNITS, PENDING_U3], faults });
+		const u2 = parseChange(await h.world.bodyOf(h.n)).units.find((u) => u.id === "U2");
+		const sha = h.git("rev-parse", "HEAD");
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("receipt", "U2.r", { unit: "U2", digest: unitDigest(u2 as never), verify: "sh u2.sh", pre: { sha, exit: 1 }, post: { sha, exit: 0 }, output: "", start: "U2.s" }));
+		await h.session.comments?.invalidate(h.n);
+		await siblingMerges(h, { "sibling.txt": "s\n" });
+		await expect(h.call("change_sync")).rejects.toThrow("injected stale failure");
+		expect(await doneUnits(h)).toEqual(["U1", "U2"]);
+		await h.session.refresh();
+		expect(cardState(h).step.next).not.toContain("unit_finish U2 again");
+		faults.clear();
+		expect((await h.call("change_sync")).isError).toBeFalsy();
+		expect(await doneUnits(h)).toEqual(["U1"]);
+		expect(cardState(h).step.next).toMatch(/Amend U2 with unit_amend/);
+	});
+
+	test("a rerun at the same HEAD posts no duplicate regression or stale record", async () => {
+		const h = await harness();
+		await siblingMerges(h, { "sibling.txt": "s\n" });
+		expect((await h.call("change_sync")).isError).toBeFalsy();
+		expect((await h.call("change_sync")).isError).toBeFalsy();
+		expect(await ofKind(h, "regression")).toHaveLength(1);
+		expect(await ofKind(h, "stale")).toHaveLength(1);
 	});
 
 	test("refuses on a dirty tree or off the change branch", async () => {
