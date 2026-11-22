@@ -13,6 +13,7 @@ import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
 import { sendNamedGate } from "../../src/tools/spec-gate.ts";
+import { registerSizeLimits as registerSizeLimitsCheck } from "../../src/initiatives/size-limits.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
@@ -29,7 +30,11 @@ afterEach(async () => {
 /** The real check needs a worktree run per unit; these tests are about the gate, so it reports nothing. */
 const passRedOnBase = (): void => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
 
-beforeEach(passRedOnBase);
+beforeEach(() => {
+	passRedOnBase();
+	// A test may replace `size-limits` with a failing stub; every other test runs the real check.
+	registerSizeLimitsCheck();
+});
 
 const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const AT = "2026-11-15T10:00:00.000Z";
@@ -146,6 +151,13 @@ function registerSizeLimits(): void {
 	registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 }
 
+/** The fixture plan grown to nine units (U3 cloned as U4…U10), one more than `max_units` 8 of the default pack. */
+function nineUnits(body: string): string {
+	const u3 = /### U3 — [\s\S]*?- \[ \] pending\n/.exec(body)?.[0] ?? "";
+	const clones = [4, 5, 6, 7, 8, 9, 10].map((i) => `\n${u3.replace("### U3 —", `### U${i} —`)}`).join("");
+	return body.replace(u3, `${u3}${clones}`);
+}
+
 describe("spec_gate", () => {
 	test("Self gate", async () => {
 		const h = await change("shape");
@@ -246,6 +258,42 @@ describe("spec_gate", () => {
 	test("Waive at the gate", async () => {
 		registerSizeLimits();
 		const h = await change("plan", { ui: human("waive"), files: SIZE_LIMITS_FLOW });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError).toBe(false);
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
+		expect(gate.superseded).toBeUndefined();
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
+	});
+
+	test("Over the unit limit", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits });
+		await seedClassification(h);
+		expect(parseChange(await h.world.bodyOf(h.n)).units).toHaveLength(9);
+		await h.call("spec_gate", { target: "plan" });
+		const request = (await ofKind(h, "request"))[0];
+		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec approve");
+		await h.call("spec_status");
+		expect(h.session.commandWarnings.join("\n")).toContain("choose waive");
+		expect(await ofKind(h, "gate")).toEqual([]);
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
+	});
+
+	test("over the unit limit, in session approve is not offered", async () => {
+		const h = await change("plan", { ui: human("approve"), edit: nineUnits });
+		await seedClassification(h);
+		await h.call("spec_gate", { target: "plan" });
+		const options = h.ctx.ui.select.mock.calls[0]?.[1] ?? [];
+		expect(options).not.toContain("approve");
+		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
+	});
+
+	test("Waived", async () => {
+		const h = await change("plan", { ui: human("waive"), edit: nineUnits });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan" });
 		expect(out.isError).toBe(false);

@@ -77,6 +77,9 @@
 			"mode": "rule",
 			"max_files": 3,
 			"max_lines": 100
+		},
+		"split": {
+			"mode": "rule"
 		}
 	},
 	"init": {
@@ -176,7 +179,8 @@
 				"units-format",
 				"done-maps-scenarios",
 				"unit-classification",
-				"verify-red-on-base"
+				"verify-red-on-base",
+				"size-limits"
 			],
 			"gate": "human",
 			"subagents": [

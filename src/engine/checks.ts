@@ -4,6 +4,7 @@
 import { registerRedOnBase } from "../evidence/red-on-base.ts";
 import { registerReviewPayload } from "../review/payload.ts";
 import { registerDurableDocs } from "../ship/durable-register.ts";
+import { registerSizeLimits } from "../initiatives/size-limits.ts";
 import { registerReviewClean } from "../review/status.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -87,6 +88,7 @@ export function registerBuiltinChecks(): void {
 	registerReviewClean();
 	registerReviewPayload();
 	registerDurableDocs();
+	registerSizeLimits();
 }
 
 registerBuiltinChecks();
@@ -142,7 +144,7 @@ export async function runChecks(
 	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
 	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);
-	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(state.phase.kind === "ok" ? { phase: state.phase.id } : {}), ...(ctx.ship === undefined ? {} : { ship: ctx.ship }) };
+	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(state.phase.kind === "ok" ? { phase: state.phase.id } : {}), ...(ctx.ship === undefined ? {} : { ship: ctx.ship }), limits: pack.limits };
 	const results: CheckResult[] = [];
 	for (const name of names) results.push(...(await resultsOf(name, checkCtx, opts.gate === true)));
 	return results;

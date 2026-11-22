@@ -15,7 +15,7 @@ import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs"];
+const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits"];
 const VALID_SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const EMPTY_SPEC = "# broken\n\n## Purpose\nNothing.\n\n## Requirements\n";
 
@@ -86,7 +86,14 @@ describe("runChecks", () => {
 		expect(await runChecks(pack, stateFor("shape"), { root: "/nowhere", git: NO_GIT })).toEqual([]);
 		expect(called).toEqual([]);
 		await runChecks(pack, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
-		expect(called).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base"]);
+		expect(called).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base", "size-limits"]);
+	});
+
+	test("passes the pack limits to the checks", async () => {
+		let seen: unknown;
+		registerCheck("size-limits", async (ctx) => ((seen = ctx.limits), []));
+		await runChecks(pack, stateFor("plan"), { root: "/nowhere", git: NO_GIT });
+		expect(seen).toEqual({ max_units: 8, max_capabilities: 3 });
 	});
 
 	test("no check runs without a single phase", async () => {
