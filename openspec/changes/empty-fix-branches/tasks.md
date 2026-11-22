@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 `fixRange` in `src/fix/branch.ts` returns `empty`: no commit after the merge base, or `mergeTree(origin/<integration>, HEAD)` equals the tree of `origin/<integration>`; conflict is not empty; `unsupported` falls back to HEAD tree equals the integration tree (design D1, D2)
-- [ ] 1.2 Export the shared reason phrase `fixEmptyReason(branch, integration)` (design D3)
-- [ ] 1.3 Tests in `tests/fix/branch.test.ts`: no commit, squash-merged then a later upstream commit, rebase-merged two-commit fix, conflicting fix, real fix, `unsupported` fallback via a fake `Git`
+- [x] 1.1 `fixRange` in `src/fix/branch.ts` returns `empty`: no commit after the merge base, or `mergeTree(origin/<integration>, HEAD)` equals the tree of `origin/<integration>`; conflict is not empty; `unsupported` falls back to HEAD tree equals the integration tree (design D1, D2)
+- [x] 1.2 Export the shared reason phrase `fixEmptyReason(branch, integration)` (design D3)
+- [x] 1.3 Tests in `tests/fix/branch.test.ts`: no commit, squash-merged then a later upstream commit, rebase-merged two-commit fix, conflicting fix, real fix, `unsupported` fallback via a fake `Git`
 
 ## 2. Callers use the shared check
 
