@@ -6,6 +6,7 @@ import { runChangePark } from "../../src/tools/change-park.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, originRefs, textOf } from "./helpers.ts";
+import { openWorktreeLane } from "./lane-helpers.ts";
 import { BRANCH, type ParkHarness, parkHarness, wip } from "./park-fixture.ts";
 import { cardState } from "./unit-helpers.ts";
 
@@ -117,6 +118,80 @@ describe("change_park", () => {
 		const record = (await h.ofKind("parked")).at(-1)?.data as { units: unknown[] };
 		expect(record.units).toContainEqual({ unit: "U3", lane: true });
 		expect(h.git("branch", "--list", "*--lane-U3")).toBe("");
+	});
+
+	test("a missing lane worktree with commits keeps them on a pushed wip branch", async () => {
+		const h = await parkHarness();
+		await writeIn(h.lanes.U3.path, "src/u3.ts", "u3 committed\n");
+		h.lanes.U3.git("add", "-A");
+		h.lanes.U3.git("commit", "-q", "-m", "U3 partial");
+		const laneHead = h.lanes.U3.git("rev-parse", "HEAD");
+		rmSync(h.lanes.U3.path, { recursive: true, force: true });
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(wipRefs(h)).toEqual([`refs/heads/${wip("U3")}`]);
+		expect(h.git("ls-remote", "origin", `refs/heads/${wip("U3")}`)).toContain(laneHead);
+		const record = (await h.ofKind("parked")).at(-1)?.data as { units: unknown[] };
+		expect(record.units).toContainEqual({ unit: "U3", branch: wip("U3"), head: laneHead, lane: true });
+		expect(h.git("branch", "--list", "*--lane-U3")).toBe("");
+		const closed = (await h.ofKind("lane")).filter((m) => (m.data as { unit: string; closed?: boolean }).unit === "U3" && (m.data as { closed?: boolean }).closed === true);
+		expect(closed).toHaveLength(1);
+	});
+
+	test("a lane branch with commits the wip branch lacks is kept", async () => {
+		const h = await parkHarness();
+		await writeIn(h.lanes.U3.path, "src/u3.ts", "u3 committed\n");
+		h.lanes.U3.git("add", "-A");
+		h.lanes.U3.git("commit", "-q", "-m", "U3 partial");
+		rmSync(h.lanes.U3.path, { recursive: true, force: true });
+		// A stale local wip branch from elsewhere, without the lane commit.
+		h.git("branch", wip("U3"), "HEAD");
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(textOf(out)).toContain("livespec/per-ip-cap--lane-U3");
+		expect(h.git("branch", "--list", "*--lane-U3")).toContain("--lane-U3");
+	});
+
+	test("rerun after a crash between the lane close and the worktree removal", async () => {
+		const h = await parkHarness();
+		await writeIn(h.lanes.U2.path, "src/u2.ts", "u2 edit\n");
+		// The crash: U2's closed record is posted; its worktree and lane branch are left behind and nothing else ran.
+		const lane = cardState(h).state.subagents.lanes.U2;
+		await h.seed("lane", "lane.U2", { ...lane, closed: true, outcome: "parked" });
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(h.git("show", `${wip("U2")}:src/u2.ts`)).toBe("u2 edit");
+		expect(existsSync(h.lanes.U2.path)).toBe(false);
+		expect(h.git("branch", "--list", "*--lane-U2")).toBe("");
+		expect(await h.ofKind("parked")).toHaveLength(1);
+		const record = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string }[] };
+		expect(record.units.map((u) => u.unit)).toEqual(["U2", "U3", "U4"]);
+	});
+
+	test("a lane of a unit not in Units is branched before it closes", async () => {
+		const h = await parkHarness();
+		const ghost = await openWorktreeLane(h, "U9");
+		await writeIn(ghost.path, "src/u9.ts", "u9\n");
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(h.git("show", `${wip("U9")}:src/u9.ts`)).toBe("u9");
+		const record = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string }[] };
+		expect(record.units.map((u) => u.unit)).toEqual(["U2", "U3", "U4", "U9"]);
+		expect(existsSync(ghost.path)).toBe(false);
+	});
+
+	test("refused when nothing is left to wait for", async () => {
+		const h = await parkHarness();
+		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace(`Depends: #${h.prereq}`, "Depends: —"));
+		await h.session.refresh();
+		const before = originRefs(h.origin);
+		const count = (await h.marked()).length;
+		const out = await h.park();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("not in Depends yet or already merged");
+		expect(originRefs(h.origin)).toBe(before);
+		expect((await h.marked()).length).toBe(count);
+		expect(await labels(h)).not.toContain("livespec:parked");
 	});
 
 	test("refused before choice A", async () => {
