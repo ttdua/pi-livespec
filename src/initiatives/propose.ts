@@ -8,7 +8,7 @@ import { isKebabName } from "../core/names.ts";
 import { sectionText } from "../core/sections.ts";
 import type { DepState } from "../engine/deps-facts.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import { LABEL_LIVESPEC } from "../forge/labels.ts";
+import { LABEL_INITIATIVE, LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { type DraftDep, type DraftEntry, draftCycle, existingDepends, type InitiativeDrafts } from "./drafts.ts";
@@ -18,7 +18,7 @@ export type InitiativeEntryInput = { name: string; proposal: string; depends: st
 export type InitiativeInput = { name: string; goal: string; capabilities: string[]; entries: InitiativeEntryInput[]; remove?: string[] };
 
 /**
- * What the tool read: the open `livespec` issues, every issue the input or the amended initiative names
+ * What the tool read: the open `livespec` and `livespec:initiative` issues, every issue the input or the amended initiative names
  * (the tracking issue included; `missing` when it does not exist), and the dependency state of the
  * issues an amendment removes.
  */
@@ -94,6 +94,8 @@ function planNew(input: InitiativeInput, state: ChangeState, ctx: PlanCtx): Init
 	const title = state.issue.title;
 	if (state.phase.kind !== "ok" || state.phase.id !== SHAPE) refuse(`initiative_propose runs in ${SHAPE}, or on a change that already has an Initiative line.`);
 	if ((input.remove ?? []).length > 0) refuse("remove only applies to an amendment of an existing initiative.");
+	const taken = ctx.open.find((i) => i.title === input.name && i.labels.includes(LABEL_INITIATIVE));
+	if (taken) refuse(`An open initiative is already named ${name(input.name)}: #${taken.number}; amend it from one of its changes or pick another name.`);
 	if (input.entries.filter((e) => e.name === title).length !== 1) refuse(`Exactly one entry must be the current change ${name(title)}.`);
 	const nodes = new Map<string, DraftDep>(input.entries.map((e) => [e.name, e.name === title ? current : e.name]));
 	const scope: Scope = { nodes, ctx };

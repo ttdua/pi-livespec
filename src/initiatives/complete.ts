@@ -14,9 +14,9 @@ import type { Answered, RequestRecord } from "../interaction/approver.ts";
 import type { CompletionCtx, Run } from "../interaction/complete-effects.ts";
 import type { AnswerData } from "../interaction/requests.ts";
 import { snapshotOf } from "../interaction/requests.ts";
-import { changeBody, dependsValue } from "../tools/change-new.ts";
+import { changeBody, dependsValue } from "../core/change-body.ts";
 import { type DraftDep, type DraftEntry, createOrder, draftCycle, existingDepends, type InitiativeDrafts, isInitiativeDrafts } from "./drafts.ts";
-import { readReferenced } from "./propose-read.ts";
+import { readReferenced, TooManyDependencies } from "./propose-read.ts";
 import { initiativeNumber } from "./readiness.ts";
 
 export const INITIATIVE_GATE = "initiative";
@@ -150,14 +150,43 @@ async function cycleNow(forge: Forge, d: InitiativeDrafts, tracking: Issue | und
 	return cycle === undefined ? undefined : `the Depends would form a cycle: ${untrusted(cycle)}`;
 }
 
-/** Supersedes an approval whose new names are taken outside the initiative, or whose graph now has a cycle. */
+/**
+ * Whether open tracking issue `issue` was created by this request's completion (a crash retry adopts it).
+ * The tool refuses a taken name, so a same-titled issue appeared after the request. This request's issue
+ * holds the drafts' Goal and lists only the drafts' entries; an issue that differs in either is another
+ * initiative, whose list the effect must not join.
+ */
+function createdByRequest(issue: Issue, d: InitiativeDrafts): boolean {
+	const parsed = parseInitiative(issue.body);
+	const names = new Set(d.entries.map((e) => e.name));
+	const goal = parseInitiative(initiativeBody(d.goal, d.capabilities)).goal;
+	return parsed.goal === goal && parsed.changes.every((c) => names.has(c.name) || c.number === d.current);
+}
+
+function takenName(d: InitiativeDrafts, tracking: Issue | undefined): string | undefined {
+	if (d.amend !== undefined || tracking === undefined || createdByRequest(tracking, d)) return undefined;
+	return `an open initiative is already named ${untrusted(d.name)} (#${tracking.number})`;
+}
+
+async function cycleOrTooMany(forge: Forge, d: InitiativeDrafts, tracking: Issue | undefined): Promise<string | undefined> {
+	try {
+		return await cycleNow(forge, d, tracking);
+	} catch (error) {
+		if (error instanceof TooManyDependencies) return error.message;
+		throw error;
+	}
+}
+
+/** Supersedes an approval whose names are taken (by a change outside the initiative or another initiative), or whose graph now has a cycle. */
 async function validateInitiative(ctx: CompletionCtx, req: RequestRecord, ans: Answered): Promise<string | undefined> {
 	if (ans.outcome !== "approved" && ans.outcome !== "approved_with_notes") return undefined;
 	const d = draftsOf(req);
 	if (!d) return "the request holds no initiative drafts";
 	const tracking = d.amend !== undefined ? await ctx.forge.getIssue(d.amend) : await findTracking(ctx.forge, d.name);
+	const taken = takenName(d, tracking);
+	if (taken !== undefined) return taken;
 	const open = await ctx.forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
-	return nameClash(d, open, tracking?.number) ?? (await cycleNow(ctx.forge, d, tracking));
+	return nameClash(d, open, tracking?.number) ?? (await cycleOrTooMany(ctx.forge, d, tracking));
 }
 
 async function initiativeEffect(run: Run, record: AnswerData): Promise<void> {

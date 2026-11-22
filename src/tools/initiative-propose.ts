@@ -5,12 +5,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseInitiative } from "../core/initiative.ts";
 import type { DepState } from "../engine/deps-facts.ts";
-import { LABEL_LIVESPEC } from "../forge/labels.ts";
+import { LABEL_INITIATIVE, LABEL_LIVESPEC } from "../forge/labels.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import { INITIATIVE_GATE, INITIATIVE_TOOL, registerInitiativeGate } from "../initiatives/complete.ts";
 import { initiativeSummary } from "../initiatives/drafts.ts";
 import { type InitiativeInput, type PlanCtx, planInitiative, referencedNumbers } from "../initiatives/propose.ts";
-import { readReferenced } from "../initiatives/propose-read.ts";
+import { readReferenced, TooManyDependencies } from "../initiatives/propose-read.ts";
 import { dependencyFact, initiativeNumber, mergedOn } from "../initiatives/readiness.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApproverCtx } from "./approver-for.ts";
@@ -28,7 +28,11 @@ async function statesOf(forge: Forge, referenced: Map<number, Issue | "missing">
 
 /** Reads the open changes, the issues the input names, and the amended initiative with its entries. */
 async function planCtx(forge: Forge, input: InitiativeInput, state: ChangeState): Promise<PlanCtx> {
-	const open = await forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
+	const [changes, initiatives] = await Promise.all([
+		forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" }),
+		forge.searchIssues({ labels: [LABEL_INITIATIVE], state: "open" }),
+	]);
+	const open = [...changes, ...initiatives];
 	const t = initiativeNumber(state.change);
 	const tracking = await readReferenced(forge, t === undefined ? [] : [t]);
 	const trackingIssue = t === undefined ? undefined : tracking.get(t);
@@ -36,6 +40,18 @@ async function planCtx(forge: Forge, input: InitiativeInput, state: ChangeState)
 	const referenced = new Map([...tracking, ...(await readReferenced(forge, [state.issue.number, ...entries, ...referencedNumbers(input)]))]);
 	return { open, referenced, ...(t === undefined ? {} : { states: await statesOf(forge, referenced) }) };
 }
+
+/** The plan context, or a refusal when the dependency chains are too long to check for a cycle. */
+async function readPlanCtx(forge: Forge, input: InitiativeInput, state: ChangeState): Promise<PlanCtx | { refused: string }> {
+	try {
+		return await planCtx(forge, input, state);
+	} catch (error) {
+		if (error instanceof TooManyDependencies) return { refused: `${error.message}.` };
+		throw error;
+	}
+}
+
+const refuse = (message: string): ToolResult<undefined> => toolResult(`${INITIATIVE_TOOL} refused: ${message} Nothing was requested.`, undefined, true);
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
@@ -61,8 +77,10 @@ export async function runInitiativePropose(params: unknown, ctx: ApproverCtx): P
 	const change = requireChange(w.session);
 	if (!change.ok) return toolResult(change.message, undefined, true);
 	const input = inputOf(params);
-	const planned = planInitiative(input, change.state, await planCtx(w.forge, input, change.state));
-	if ("refused" in planned) return toolResult(`${INITIATIVE_TOOL} refused: ${planned.refused} Nothing was requested.`, undefined, true);
+	const read = await readPlanCtx(w.forge, input, change.state);
+	if ("refused" in read) return refuse(read.refused);
+	const planned = planInitiative(input, change.state, read);
+	if ("refused" in planned) return refuse(planned.refused);
 	const summary = initiativeSummary(planned.drafts);
 	return sendNamedGate(w, change.state, { target: INITIATIVE_GATE, options: [], drafts: planned.drafts, summary, ctx, tool: INITIATIVE_TOOL });
 }

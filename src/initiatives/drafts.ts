@@ -5,6 +5,7 @@
 import { parseChange } from "../core/change.ts";
 import type { Initiative } from "../core/initiative.ts";
 import type { Issue } from "../forge/types.ts";
+import { untrusted } from "../hooks/phase-card.ts";
 import { findCycle, formatCycle } from "./graph.ts";
 import { dependencyNumbers } from "./readiness.ts";
 
@@ -85,7 +86,7 @@ function entryLines(e: DraftEntry): string[] {
 
 /** The review payload of the request: the tracking issue and the entries it writes. */
 export function initiativeSummary(d: InitiativeDrafts): string {
-	const tracking = d.amend === undefined ? `Initiative ${d.name} (new tracking issue)` : `Amendment of initiative #${d.amend} ${d.name}`;
+	const tracking = d.amend === undefined ? `Initiative ${d.name} (new tracking issue)` : `Amendment of initiative #${d.amend} ${untrusted(d.name)}`;
 	const head = d.amend === undefined ? [tracking, `Goal: ${d.goal}`, `Capabilities: [${d.capabilities.join(", ")}]`] : [tracking];
 	const removed = (d.remove ?? []).length === 0 ? [] : [`Removed entries: ${(d.remove ?? []).map((n) => `#${n}`).join(", ")}`];
 	return [...head, "Changes:", ...d.entries.flatMap(entryLines), ...removed].join("\n");

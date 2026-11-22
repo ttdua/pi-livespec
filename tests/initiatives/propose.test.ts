@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { DepState } from "../../src/engine/deps-facts.ts";
 import type { Issue, Version } from "../../src/forge/types.ts";
-import type { InitiativeDrafts } from "../../src/initiatives/drafts.ts";
+import { type InitiativeDrafts, initiativeSummary } from "../../src/initiatives/drafts.ts";
 import { type InitiativeInput, type PlanCtx, planInitiative } from "../../src/initiatives/propose.ts";
 import { stateFor } from "../helpers/change-state.ts";
 
@@ -86,6 +86,18 @@ describe("planInitiative: a new initiative", () => {
 	test("a new entry's name clashing with an open issue is refused", () => {
 		const open = [issue(33, "audit-log", "")];
 		expect(refusedOf(planInitiative(input([entry("audit-log"), entry("rate-limit")]), shape20(), ctxOf({ open })))).toContain("#33");
+	});
+
+	test("Initiative name taken", () => {
+		const open = [issue(41, "limits", "Goal: other\n\n## Changes\n", { labels: ["livespec:initiative"] })];
+		const refused = refusedOf(planInitiative(input([entry("rate-limit")]), shape20(), ctxOf({ open })));
+		expect(refused).toContain("#41");
+		expect(refused).toContain("<untrusted>limits</untrusted>");
+	});
+
+	test("a closed initiative or a livespec change with the same name does not take it", () => {
+		const open = [issue(42, "limits", "")];
+		expect(draftsOf(planInitiative(input([entry("rate-limit")]), shape20(), ctxOf({ open }))).name).toBe("limits");
 	});
 
 	test("no current entry, or two, is refused", () => {
@@ -178,6 +190,12 @@ describe("planInitiative: amendments", () => {
 		const { state, ctx } = amendCtx();
 		const refused = refusedOf(planInitiative(input([entry("request-context", ["#35"], "")]), state, ctx));
 		expect(refused).toContain("#34 → #35 → #34");
+	});
+
+	test("the amendment summary wraps the tracking title from the forge", () => {
+		const { state, ctx } = amendCtx();
+		const drafts = draftsOf(planInitiative(input([entry("audit-log", ["#35"])]), state, ctx));
+		expect(initiativeSummary(drafts)).toContain("#30 <untrusted>limits</untrusted>");
 	});
 
 	test("an amendment that changes nothing is refused", () => {

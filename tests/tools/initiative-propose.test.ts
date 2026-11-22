@@ -8,6 +8,7 @@ import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.t
 import { setSession } from "../../src/hooks/session-store.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
 import { readRequests } from "../../src/interaction/requests.ts";
+import { MAX_READS } from "../../src/initiatives/propose-read.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
@@ -128,6 +129,25 @@ describe("initiative_propose: the request", () => {
 		expect(await ofKind(h, "request")).toEqual([]);
 	});
 
+	test("Initiative name taken", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const taken = await h.world.seedIssue({ title: "limits", body: "Goal: other\n\n## Changes\n", labels: ["livespec:initiative"] });
+		const out = await h.call("initiative_propose", twoEntries);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`#${taken}`);
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("too many dependencies to check is refused", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		let prev = await h.world.seedIssue({ title: "c0", body: "Depends: —\n", labels: ["livespec"] });
+		for (let i = 1; i <= MAX_READS; i++) prev = await h.world.seedIssue({ title: `c${i}`, body: `Depends: #${prev}\n`, labels: ["livespec"] });
+		const out = await h.call("initiative_propose", { ...twoEntries, entries: [{ name: "per-ip-cap", proposal: "Cap.", depends: [`#${prev}`] }] });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("too many dependencies");
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
 	test("a foreign issue in Depends is refused", async () => {
 		const h = await shape({ config: FORGE_CHAIN });
 		const foreign = await h.world.seedIssue({ title: "bug", labels: ["bug"] });
@@ -227,6 +247,19 @@ describe("initiative gate completion", () => {
 		expect(await titled(h, "add-request-context")).toHaveLength(1);
 		expect(parseInitiative((await oneTracking(h)).body).changes).toHaveLength(2);
 		expect(await ofKind(h, "gate")).toHaveLength(1);
+	});
+
+	test("an approval is superseded when another initiative took the name meanwhile", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		await h.call("initiative_propose", twoEntries);
+		const other = await h.world.seedIssue({ title: "limits", body: "Goal: other\nCapabilities: []\n\n## Changes\n- [ ] #77 elsewhere — Depends: —\n", labels: ["livespec:initiative"] });
+		await forgeApprove(h);
+		const gate = (await ofKind(h, "gate"))[0]?.data as { superseded?: boolean };
+		expect(gate.superseded).toBe(true);
+		expect((await ofKind(h, "answer"))[0]?.data).toMatchObject({ verdict: "superseded", reason: expect.stringContaining(`#${other}`) });
+		expect(await trackingIssues(h)).toHaveLength(1);
+		expect(await titled(h, "add-request-context")).toEqual([]);
+		expect(await h.world.bodyOf(other)).not.toContain("add-request-context");
 	});
 
 	test("an approval is superseded when a new name was taken meanwhile", async () => {
