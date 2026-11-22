@@ -9,7 +9,7 @@ import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guar
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { interpret } from "../subagents/result.ts";
-import { resultText } from "./subagent-outcome.ts";
+import { outcomeOptions, resultText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchRequest, findingOf, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
 import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
@@ -54,7 +54,7 @@ export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: Sub
 	};
 	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;
-	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT");
+	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT", outcomeOptions(state, w.pack));
 	return toolResult(withStep(w.session, `Inline run: ${text}`), undefined);
 }
 

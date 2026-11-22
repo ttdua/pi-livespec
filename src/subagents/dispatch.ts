@@ -14,7 +14,7 @@ export type DispatchOutcome =
 	| { kind: "inline"; reason: string; packet: Packet }
 	| { kind: "sequential"; reason: string }
 	| { kind: "blocked"; reason: string; result?: SubagentResult }
-	| { kind: "stuck"; reason: string; result?: SubagentResult }
+	| { kind: "stuck"; reason: string; result?: SubagentResult; prerequisite?: true }
 	| { kind: "cancelled"; reason: string };
 
 export type AgentInfo = { name: string; source: string; filePath?: string };
@@ -186,7 +186,7 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 			return { kind: "blocked", reason: decision.reason };
 		case "stuck": {
 			const result = await recordResult(deps, run, cwd, decision.result ?? blockedResult(decision.reason));
-			return { kind: "stuck", reason: decision.reason, result };
+			return { kind: "stuck", reason: decision.reason, result, ...(decision.prerequisite ? { prerequisite: true as const } : {}) };
 		}
 		case "more-context":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };

@@ -1,7 +1,11 @@
 // What the parent reads after a subagent run: the recorded result with its reason, evidence and named sources, a question, or the next step.
 
+import { discoveredDeps } from "../engine/deps-facts.ts";
+import type { Pack } from "../engine/pack-types.ts";
+import type { ChangeState } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import type { DispatchOutcome } from "../subagents/dispatch.ts";
+import { isMissingPrerequisite } from "../subagents/result.ts";
 import type { SubagentResult } from "../subagents/roles.ts";
 import type { Packet } from "../subagents/source-types.ts";
 import { packetText } from "./subagent-request.ts";
@@ -20,6 +24,20 @@ const STATUS_HINT: Partial<Record<SubagentResult["status"], string>> = {
 	BLOCKED: "\nThe child is blocked: read its reason and evidence, then send a stuck report with spec_stuck.",
 };
 
+/** What the callers know about the `discovered_deps` cap: while it blocks, a missing prerequisite goes to `spec_stuck`. */
+export type OutcomeOptions = { depsCapped?: boolean };
+
+/** The options of `state` under `pack`: whether the `discovered_deps` cap blocks now. */
+export const outcomeOptions = (state: Pick<ChangeState, "marked">, pack: Pick<Pack, "loops">): OutcomeOptions => ({ depsCapped: discoveredDeps(state.marked, pack.loops.discovered_deps).blocking });
+
+/** The next step of a missing prerequisite: `new_dependency` with the child's evidence, or `spec_stuck` at the cap. Not a failed attempt. */
+function prerequisiteHint(t: Target, r: SubagentResult | undefined, o: OutcomeOptions): string {
+	const unit = t.unit ?? "the change";
+	if (o.depsCapped === true) return `\nA prerequisite is missing, but discovered_deps reached its cap: send a stuck report with spec_stuck for ${unit}, so the human can send the work back to the initiative's shape. This is not a failed attempt.`;
+	const args = t.unit === undefined ? "" : ` ${t.unit}`;
+	return `\nA prerequisite is missing: run new_dependency${args} with the child's evidence (${untrusted(r?.evidence ?? "")}) and a draft for each option. This is not a failed attempt.`;
+}
+
 /** The recorded result's lines; every child-authored part is wrapped as untrusted. */
 function resultLines(t: Target, r: SubagentResult, named: string[] | undefined): string[] {
 	return [
@@ -34,14 +52,14 @@ function resultLines(t: Target, r: SubagentResult, named: string[] | undefined):
 	];
 }
 
-/** The recorded result and what to do next; `capped` turns NEEDS_CONTEXT into a stuck hint. */
-export function resultText(t: Target, r: SubagentResult, named: string[] | undefined, capped = false): string {
-	const hint = capped && r.status === "NEEDS_CONTEXT" ? STUCK_HINT(t) : (STATUS_HINT[r.status] ?? "");
+/** The recorded result and what to do next; `capped` turns NEEDS_CONTEXT into a stuck hint, a missing prerequisite names `new_dependency`. */
+export function resultText(t: Target, r: SubagentResult, named: string[] | undefined, capped = false, o: OutcomeOptions = {}): string {
+	const hint = isMissingPrerequisite(r) ? prerequisiteHint(t, r, o) : capped && r.status === "NEEDS_CONTEXT" ? STUCK_HINT(t) : (STATUS_HINT[r.status] ?? "");
 	return resultLines(t, r, named).join("\n") + hint;
 }
 
 /** What the parent reads after a dispatch: the recorded result, the child's question, or the next step. */
-export function outcomeText(t: Target, outcome: DispatchOutcome): string {
+export function outcomeText(t: Target, outcome: DispatchOutcome, o: OutcomeOptions = {}): string {
 	switch (outcome.kind) {
 		case "result":
 			return resultText(t, outcome.result, outcome.sourcesNamed);
@@ -56,6 +74,7 @@ export function outcomeText(t: Target, outcome: DispatchOutcome): string {
 		case "cancelled":
 			return `${argsOf(t)} was cancelled: ${outcome.reason}. Dispatch it again when ready.`;
 		case "stuck":
+			if (outcome.prerequisite === true) return `${argsOf(t)} settled with BLOCKED (missing-prerequisite) and was recorded.${prerequisiteHint(t, outcome.result, o)}${outcome.result ? `\n${resultLines(t, outcome.result, undefined).slice(1).join("\n")}` : ""}`;
 			return `${argsOf(t)} needs a decision: ${outcome.reason}. Send a stuck report with spec_stuck for ${t.unit ?? "the change"}.${outcome.result ? `\n${resultLines(t, outcome.result, undefined).join("\n")}` : ""}`;
 	}
 }

@@ -263,7 +263,29 @@ describe("subagent-dispatch tools", () => {
 		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "do <this>" }));
 		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
 		expect(out).toContain("<untrusted>do &lt;this></untrusted>");
+		expect(out).toContain("new_dependency");
+	});
+
+	test("Missing prerequisite opens the dependency gate", async () => {
+		const h = await subagentHarness({ executor: {} });
+		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "needs a <token> store" }));
+		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
+		expect(out).toContain("new_dependency U1");
+		expect(out).toContain("<untrusted>needs a &lt;token> store</untrusted>");
+		expect(out).not.toContain("spec_stuck");
+		expect((await h.ofKind("decision")).filter((m) => m.id.startsWith("progress."))).toEqual([]);
+		expect(h.session.card.kind === "change" && h.session.card.state.evidence.attempts.U1).toBeFalsy();
+	});
+
+	test("Missing prerequisite past the cap", async () => {
+		const h = await subagentHarness({ executor: {} });
+		for (const [i, choice] of ["A", "B"].entries()) {
+			await h.seed("gate", `new-dependency.r${i}`, { request: `r${i}`, gate: "new-dependency", outcome: "approved", choice, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] });
+		}
+		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "needs a token store" }));
+		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
 		expect(out).toContain("spec_stuck");
+		expect(out).not.toContain("run new_dependency");
 	});
 
 	test("a dispatch stores its packet for unit_finish freshness", async () => {
