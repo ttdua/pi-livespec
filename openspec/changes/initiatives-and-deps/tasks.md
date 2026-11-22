@@ -21,10 +21,10 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 `src/initiatives/size-limits.ts`: waivable check `size-limits` over `limits.max_units` and `limits.max_capabilities` (a missing limit never fails), registered in `registerBuiltinChecks`. `CheckContext` gains `limits`, filled by `runChecks` from the pack
-- [ ] 3.2 `src/initiatives/split-rule.ts`: rule `split` (`registerRule`, schema `mode` only, never asks) and its facts from the change; registered in `src/decide/builtin.ts`
-- [ ] 3.3 Default pack: `size-limits` in `plan` checks and `decisions.split: { mode: rule }` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json` (flow-pack "Default flow pack": all scenarios)
-- [ ] 3.4 Tests: `tests/initiatives/size-limits.test.ts` and `tests/initiatives/split-rule.test.ts`, plus a plan-gate tool test (change-initiatives "Size limits check": "Over the unit limit", "Waived"; "Split rule": both scenarios)
+- [x] 3.1 `src/initiatives/size-limits.ts`: waivable check `size-limits` over `limits.max_units` and `limits.max_capabilities` (a missing limit never fails), registered in `registerBuiltinChecks`. `CheckContext` gains `limits`, filled by `runChecks` from the pack
+- [x] 3.2 `src/initiatives/split-rule.ts`: rule `split` (`registerRule`, schema `mode` only, never asks) and its facts from the change; registered in `src/decide/builtin.ts`
+- [x] 3.3 Default pack: `size-limits` in `plan` checks and `decisions.split: { mode: rule }` in `src/packs/agent-skills.yaml` and `tests/fixtures/agent-skills.pack.json` (flow-pack "Default flow pack": all scenarios)
+- [x] 3.4 Tests: `tests/initiatives/size-limits.test.ts` and `tests/initiatives/split-rule.test.ts`, plus a plan-gate tool test (change-initiatives "Size limits check": "Over the unit limit", "Waived"; "Split rule": both scenarios)
 
 ## 4. Readiness at start, on the card and in the next step
 

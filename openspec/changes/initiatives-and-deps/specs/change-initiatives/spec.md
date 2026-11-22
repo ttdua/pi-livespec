@@ -158,7 +158,7 @@ The system SHALL register the waivable check `size-limits` and list it in the de
 
 #### Scenario: Over the unit limit
 - **WHEN** the plan has 9 units and `max_units` is 8, and the human approves without waiving
-- **THEN** the answer is superseded and the change stays in `plan`
+- **THEN** the approval is refused (or, when completed, superseded), no approved `plan` gate is recorded, and the change stays in `plan`
 
 #### Scenario: Waived
 - **WHEN** the plan has 9 units and the human chooses `waive` at the plan gate
