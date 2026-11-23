@@ -300,7 +300,7 @@ The `ship` phase publishes the reviewed code as one pull request. The code lives
 
 **Reviewed SHA.** The `head_sha` of the latest valid approved `review` gate. `change_ship` and `change_push` refuse unless `HEAD` equals it. The only exception is the clean-merge exception: every first-parent commit after the reviewed SHA must be a merge of the integration branch whose tree equals a fresh `git merge-tree` of its parents (no conflicts resolved by hand, no later edit). It needs git ≥ 2.38; older git falls back to strict equality with the reviewed SHA. Any other new commit sends the change back to `review`.
 
-**Head-bound gates.** Both gate results carry `head_sha`. An approval at an older `HEAD` is not reused, except through the clean-merge exception. A fix that touches `specs/constraints.md` or `specs/decisions/` needs the `ship` gate again before it is pushed.
+**Head-bound gates.** Both gate results carry `head_sha`. An approval at an older `HEAD` is not reused, except through the clean-merge exception. A fix that touches any file under `specs/`, or that gives `durable-docs` a confirmation item the latest `ship` record does not list, needs the `ship` gate again before it is pushed (see Re-confirmation).
 
 **`docs_table`** writes the `## Durable docs` table of the issue body. An `updated` row must name a file in the change diff, a `not needed` row needs a reason, and hard-rule rows (a new capability, a constraints change) cannot be waived. Missing or inconsistent rows block the `ship` gate.
 
@@ -320,7 +320,7 @@ While a change is in `ship` with an open pull request, `pollFeedback` (`src/ship
 
 Own comments (the current login with a livespec marker) are skipped. Comments from authors without write permission are ignored. The forge account may be shared, so the marker, not the login, decides.
 
-**Ingest once.** Each item has a key: `comment:<id>@<updatedAt>`, `review-comment:<id>@<updatedAt>`, `review:<id>@<updatedAt>`, `check:<pushedHead>:<name>`. A round records its `feedbackKeys` and later polls skip them; an edited comment is a new version and comes back. A round posts the `review-run`, a `stale` comment for `review` and `ship`, then moves the change to `review`; an interrupted round is finished by the next poll, not duplicated.
+**Ingest once.** Each item has a key: `comment:<id>@<updatedAt>`, `review-comment:<id>@<updatedAt>`, `review:<id>@<updatedAt>`, `check:<pushedHead>:<name>`. GitHub keeps a review's `submitted_at` on an edit, so its adapter appends a body hash to `updatedAt`. A round records its `feedbackKeys` and later polls skip them; an edited comment is a new version and comes back. A round posts the `review-run`, a `stale` comment for `review` and `ship`, then moves the change to `review`; an interrupted round is finished by the next poll, not duplicated.
 
 **Routing.** `spec_review` aggregates and routes a feedback round like any other round (no reviewers run) and counts it toward `loops.review_rounds`. The fix stays on the same pull request; the review gate must pass again at the new `HEAD` before `change_push`.
 
