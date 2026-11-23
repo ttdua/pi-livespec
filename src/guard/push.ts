@@ -6,6 +6,9 @@
 // (command-guards "Guarded push"). `guardedDeleteWip` deletes a remote wip branch under a lease
 // on its recorded head; its single caller is `change_resume` (command-guards "Guarded push", scenario "Delete of a wip branch").
 
+import type { GitExec } from "../engine/git-exec.ts";
+import { GitError } from "../engine/git.ts";
+
 const REMOTE = "origin";
 
 export type WipDeleteOutcome = "deleted" | "gone" | "moved";
@@ -46,9 +49,6 @@ async function readRemote(exec: GitExec, root: string, ref: string): Promise<str
 	}
 	return null;
 }
-
-import type { GitExec } from "../engine/git-exec.ts";
-import { GitError } from "../engine/git.ts";
 
 /** Pushes `refspec` to `remote` from `root`; `--` keeps either from being read as an option. Throws `GitError` on failure. */
 export async function guardedPush(exec: GitExec, root: string, remote: string, refspec: string): Promise<void> {
