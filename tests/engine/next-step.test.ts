@@ -1061,7 +1061,7 @@ describe("new-dependency follow-up", () => {
 	});
 
 	test("after C the next step names unit_amend for the stub", () => {
-		expect(build(result("C")).next).toContain("unit_amend <untrusted>U3</untrusted>");
+		expect(build(result("C")).next).toContain("unit_amend U3;");
 		expect(build([...result("C"), amendment()]).next).not.toContain("unit_amend");
 	});
 
@@ -1093,7 +1093,9 @@ describe("new-dependency follow-up", () => {
 				mark(writeMarked("gate", `new-dependency.${id}`, { request: id, gate: "new-dependency", outcome: "approved", choice, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] })),
 			];
 		};
-		expect(build(c("C", "U<3>")).next).toContain("unit_amend <untrusted>U&lt;3></untrusted>;");
+		const invalid = build(c("C", "U<3>")).next;
+		expect(invalid).toContain("unit_amend <unit>;");
+		expect(invalid).toContain("Drafted unit: <untrusted>U&lt;3></untrusted>");
 		expect(build(result("split")).next).toContain("(<untrusted>U3</untrusted>)");
 	});
 

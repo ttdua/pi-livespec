@@ -38,7 +38,16 @@ function done(state: ChangeState, latest: LatestDependencyChoice): boolean {
 /** One line of drafted text: newlines collapsed to spaces, then wrapped as untrusted. */
 const oneLine = (s: string): string => untrusted(s.replace(/\s*[\r\n]+\s*/g, " ").trim());
 
-/** The step text; drafted and forge values are wrapped, and the D reason sits on its own line, outside the command. */
+const UNIT_ID = /^U\d+$/;
+
+/** The C step: a valid unit id goes bare into the command; anything else leaves `<unit>` and sits wrapped on its own line. */
+function stubText(unit: string | undefined): string {
+	const text = "The new-dependency gate chose C: stub the missing part with unit_amend";
+	if (unit !== undefined && UNIT_ID.test(unit)) return `${text} ${unit}; the follow-up change exists.`;
+	return `${text} <unit>; the follow-up change exists.${unit === undefined ? "" : `\nDrafted unit: ${oneLine(unit)}`}`;
+}
+
+/** The step text; drafted and forge prose is wrapped and sits outside the command, and the D reason sits on its own line. */
 function followUpText(state: ChangeState, latest: LatestDependencyChoice): string {
 	const pending = state.change.units.filter((u) => !u.done).map((u) => u.id);
 	switch (latest.choice) {
@@ -47,7 +56,7 @@ function followUpText(state: ChangeState, latest: LatestDependencyChoice): strin
 		case "B":
 			return "The new-dependency gate chose B: add the missing units with unit_amend --add.";
 		case "C":
-			return `The new-dependency gate chose C: stub the missing part with unit_amend ${latest.unit === undefined ? "<unit>" : oneLine(latest.unit)}; the follow-up change exists.`;
+			return stubText(latest.unit);
 		case "D":
 			return `The new-dependency gate chose D: drop the change with change_close --abandon <reason>, giving the reason below.\nReason: ${oneLine(latest.reason ?? "")}`;
 		case "split":
