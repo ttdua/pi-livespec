@@ -3,6 +3,8 @@
 // pushed through `guardedPush` (the refspec comes from the issue's Branch line and the unit id only). Then the
 // open lanes close as `parked`, the label is added and the `parked` record is posted last, so a crash before it
 // leaves the change unparked and a rerun completes the park: an existing wip branch is reused and re-pushed.
+// A wip branch already merged into the change branch (left by `change_resume`) is not reused: the unit parks
+// from its current HEAD, which contains it, so the push fast-forwards the remote wip branch.
 
 import { existsSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -27,6 +29,8 @@ export type ChangeParkDetails = { units?: ParkedUnit[] };
 const TOOL = "change_park";
 const REMOTE = "origin";
 const PARKED_KIND = "parked";
+/** Unit ids that may reach `wipBranch` and the refspec; lane records naming anything else are ignored. */
+const UNIT_ID = /^U\d+$/;
 
 /** An in-progress unit: where its work lives (`root` undefined when its lane worktree is gone) and its pre SHA. */
 type InProgress = { unit: string; lane?: LaneRecord; open: boolean; root?: string; pre: string };
@@ -70,7 +74,7 @@ async function waitedFor(w: WriteContext, state: ChangeState): Promise<number[] 
  */
 function inProgress(state: ChangeState, cwd: string): InProgress[] {
 	const choice = latestDependencyChoice(state.marked)?.index ?? -1;
-	const ids = [...new Set([...state.change.units.map((u) => u.id), ...Object.keys(state.subagents.lanes)])];
+	const ids = [...new Set([...state.change.units.map((u) => u.id), ...Object.keys(state.subagents.lanes)])].filter((id) => UNIT_ID.test(id));
 	return ids.flatMap((id): InProgress[] => {
 		const start = state.evidence.started[id];
 		const open = state.subagents.lanes[id];
@@ -105,6 +109,17 @@ async function commitWip(git: Git, u: InProgress, prereq: number[]): Promise<str
 	return git.commit(message, { allowEmpty: !dirty });
 }
 
+/**
+ * Whether the unit's local wip branch is to be reused: it exists and is not merged into the change branch (a
+ * rerun of this park). A merged one is left by a resume and is deleted, so the unit parks from its current HEAD.
+ */
+async function reusableWip(p: Park, wip: string): Promise<boolean> {
+	if (!(await p.git.branchExists(wip))) return false;
+	if (!(await p.git.isAncestor(wip, p.branch))) return true;
+	await p.git.deleteBranch(wip);
+	return false;
+}
+
 /** Whether `rev` has commits since the unit's pre SHA. */
 async function hasCommits(git: Git, pre: string, rev: string): Promise<boolean> {
 	return (await git.revList(`${pre}..${rev}`)).length > 0;
@@ -131,7 +146,7 @@ async function branchInWorktree(p: Park, u: InProgress, root: string): Promise<P
 	const lane = u.lane !== undefined;
 	const git = root === p.w.session.cwd ? p.git : createGit(root, p.w.session.exec);
 	const on = await git.branch();
-	if (on !== wip && (await p.git.branchExists(wip))) {
+	if (on !== wip && (await reusableWip(p, wip))) {
 		if (await git.isDirty()) throw new ParkRefusal(`${wip} exists, but ${untrusted(root)} has uncommitted changes outside it; commit or move them, then rerun change_park.`);
 		return { unit: u.unit, branch: wip, head: await pushWip(p, git, root, u.unit), lane };
 	}
@@ -155,7 +170,7 @@ async function branchInWorktree(p: Park, u: InProgress, root: string): Promise<P
 async function branchGoneLane(p: Park, u: InProgress, lane: LaneRecord): Promise<ParkedUnit> {
 	const wip = wipBranch(p.branch, u.unit);
 	const cwd = p.w.session.cwd;
-	if (await p.git.branchExists(wip)) return { unit: u.unit, branch: wip, head: await pushWip(p, p.git, cwd, u.unit), lane: true };
+	if (await reusableWip(p, wip)) return { unit: u.unit, branch: wip, head: await pushWip(p, p.git, cwd, u.unit), lane: true };
 	if (!(await p.git.branchExists(lane.branch)) || !(await hasCommits(p.git, u.pre, lane.branch))) return { unit: u.unit, lane: true };
 	await p.git.switchCreate(wip, lane.branch);
 	return { unit: u.unit, branch: wip, head: await pushWip(p, p.git, cwd, u.unit), lane: true };
