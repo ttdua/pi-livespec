@@ -2,8 +2,8 @@
 
 Blocked by: none
 
-- [ ] 1.1 `src/guard/push.ts`: add `guardedDeleteWip(exec, root, branch, head)` returning `"deleted" | "gone" | "moved"`. The remote is fixed to `origin`. It throws `GitError` without pushing when the branch lacks `--wip-` or starts with `-`. It reads the ref with `ls-remote --exit-code` (exit 2 means `gone`) and deletes with `--force-with-lease=refs/heads/<branch>:<head>`; on a failed push it reads the ref again to tell `gone`, `moved` and a real failure apart (design D1). Update the header comment.
-- [ ] 1.2 Tests in `tests/guard/push-callers.test.ts` against a real bare `origin`: deleted at the recorded head, gone, moved, a lease that goes stale between read and delete (simulated by a different sha), a non-wip name refused with no `push` call, and a failure (unreachable remote) thrown as `GitError` (command-guards "Delete of a wip branch", "Delete refuses a non-wip branch").
+- [x] 1.1 `src/guard/push.ts`: add `guardedDeleteWip(exec, root, branch, head)` returning `"deleted" | "gone" | "moved"`. The remote is fixed to `origin`. It throws `GitError` without pushing when the branch lacks `--wip-` or starts with `-`. It reads the ref with `ls-remote --exit-code` (exit 2 means `gone`) and deletes with `--force-with-lease=refs/heads/<branch>:<head>`; on a failed push it reads the ref again to tell `gone`, `moved` and a real failure apart (design D1). Update the header comment.
+- [x] 1.2 Tests in `tests/guard/push-callers.test.ts` against a real bare `origin`: deleted at the recorded head, gone, moved, a lease that goes stale between read and delete (simulated by a different sha), a non-wip name refused with no `push` call, and a failure (unreachable remote) thrown as `GitError` (command-guards "Delete of a wip branch", "Delete refuses a non-wip branch").
 
 ## 2. Resume deletes remote wip branches
 
