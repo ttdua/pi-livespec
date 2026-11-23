@@ -10,7 +10,8 @@ import { isSubject } from "../interaction/approver.ts";
 import { openRequestFor } from "../interaction/requests.ts";
 import type { Forge } from "../forge/types.ts";
 import { type AggregateFinding, type FindingSummaryData, findingKey } from "../subagents/records.ts";
-import { normalizeLocation } from "./route.ts";
+import { untrusted } from "../hooks/phase-card.ts";
+import { CHECK_PREFIX, normalizeLocation } from "./route.ts";
 import { findingState } from "./status.ts";
 
 export type Aggregate = { commentId: string; data: FindingSummaryData };
@@ -97,10 +98,14 @@ async function raiseQuestion(deps: EffectDeps, state: ChangeState, key: string, 
 		if (again === undefined) out.posted.push(`question ${key}`);
 		return again;
 	}
-	const error = await deps.ask(oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${f.location}. Proposed fix: ${f.fix}`));
+	const error = await deps.ask(oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${locationText(f.location)}. Proposed fix: ${f.fix}`));
 	if (error === undefined) out.posted.push(`question ${key}`);
 	return error;
 }
+
+/** A `check:<name>` location carries a CI check name from the forge; only the name is wrapped. */
+const locationText = (location: string): string =>
+	location.startsWith(CHECK_PREFIX) ? `${CHECK_PREFIX}${untrusted(location.slice(CHECK_PREFIX.length))}` : location;
 
 /** A route question was added to the body but not sent; `effects` holds what the stage did apply. */
 export class QuestionNotSent extends Error {
