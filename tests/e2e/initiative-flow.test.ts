@@ -213,6 +213,7 @@ describe("initiatives and discovered dependencies", () => {
 		await h.mergePrereq({ "other.txt": "o\n" }, prereq.number);
 		const tip = h.git("rev-parse", "origin/main");
 		ok(await h.resume(), "change_resume");
+		for (const u of ["U2", "U3"]) expect(h.git("ls-remote", "origin", `refs/heads/${wip(u)}`)).toBe("");
 		expect(h.git("merge-base", "--is-ancestor", tip, "HEAD")).toBe("");
 		expect(h.git("show", "HEAD:src/u2.ts")).toBe("u2 partial");
 		expect(h.git("show", "HEAD:src/u3.ts")).toBe("u3 edit");

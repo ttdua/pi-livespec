@@ -4,7 +4,8 @@ import { basename, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { GitError } from "../../src/engine/git.ts";
-import { guardedPush } from "../../src/guard/push.ts";
+import type { GitExec } from "../../src/engine/git-exec.ts";
+import { guardedDeleteWip, guardedPush } from "../../src/guard/push.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, originRefs, textOf, toolHarness } from "../tools/helpers.ts";
 import { BRANCH, parkHarness } from "../tools/park-fixture.ts";
@@ -27,11 +28,13 @@ describe("command-guards", () => {
 		const sources = sourcesUnder(SRC_DIR);
 		expect(sources.length).toBeGreaterThan(0);
 		const importing = sources.filter((path) => !path.endsWith("/guard/push.ts") && /guard\/push(\.ts)?["']|from "\.\/push(\.ts)?"/.test(readFileSync(path, "utf8")));
-		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts", "change-park.ts"]);
+		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts", "change-park.ts", "change-resume.ts"]);
 		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
 		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
 		expect(importing.map((path) => basename(path))).toContain("change-park.ts");
-		expect(importing.map((path) => basename(path))).not.toContain("change-resume.ts");
+		const others = sources.filter((path) => !path.endsWith("/guard/push.ts"));
+		expect(others.filter((path) => readFileSync(path, "utf8").includes("guardedDeleteWip")).map((path) => basename(path))).toEqual(["change-resume.ts"]);
+		expect(readFileSync(others.find((path) => basename(path) === "change-resume.ts") as string, "utf8")).not.toContain("guardedPush(");
 		expect(importing.every((path) => path.includes("/src/tools/"))).toBe(true);
 	});
 
@@ -54,6 +57,113 @@ describe("wip refspec", () => {
 		const pushes = h.gitCalls.filter((args) => args[0] === "push");
 		expect(pushes).toEqual([["push", "--", "origin", `HEAD:refs/heads/${BRANCH}--wip-U2`]]);
 		expect(originRefs(h.origin)).toContain(`refs/heads/${BRANCH}--wip-U2`);
+	});
+});
+
+describe("guardedDeleteWip", () => {
+	const B = "livespec/x--wip-U2";
+	const DECOY = "refs/heads/pre/refs/heads/livespec/x--wip-U2";
+
+	async function pushed() {
+		const h = await toolHarness();
+		h.git("push", "origin", `HEAD:refs/heads/${B}`);
+		const head = h.git("rev-parse", "HEAD");
+		return { h, head };
+	}
+	function recording(inner: GitExec = defaultGitExec): { exec: GitExec; calls: string[][] } {
+		const calls: string[][] = [];
+		return { calls, exec: (args, opts) => (calls.push(args), inner(args, opts)) };
+	}
+	function newCommit(h: Awaited<ReturnType<typeof toolHarness>>, head: string): string {
+		return h.git("commit-tree", "-p", head, "-m", "moved", `${head}^{tree}`);
+	}
+
+	test("deletes the ref at the recorded head", async () => {
+		const { h, head } = await pushed();
+		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("deleted");
+		expect(originRefs(h.origin)).not.toContain(`refs/heads/${B}`);
+	});
+
+	test("returns gone when the ref is already absent", async () => {
+		const { h, head } = await pushed();
+		await guardedDeleteWip(defaultGitExec, h.root, B, head);
+		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("gone");
+	});
+
+	test("returns moved and keeps the ref when its head differs", async () => {
+		const { h, head } = await pushed();
+		const c = newCommit(h, head);
+		h.git("push", "origin", `${c}:refs/heads/${B}`);
+		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("moved");
+		expect(originRefs(h.origin)).toContain(`${c} refs/heads/${B}`);
+	});
+
+	test("stale lease is reported as moved", async () => {
+		const { h, head } = await pushed();
+		const c = newCommit(h, head);
+		h.git("push", "origin", `${c}:refs/heads/${B}`);
+		let first = true;
+		const exec: GitExec = async (args, opts) => {
+			if (first && args[0] === "ls-remote") {
+				first = false;
+				return { stdout: `${head}\trefs/heads/${B}\n`, stderr: "", code: 0 };
+			}
+			return defaultGitExec(args, opts);
+		};
+		expect(await guardedDeleteWip(exec, h.root, B, head)).toBe("moved");
+		expect(originRefs(h.origin)).toContain(`${c} refs/heads/${B}`);
+	});
+
+	function failingPush(lsRemote: string[]): GitExec {
+		const reads = [...lsRemote];
+		return async (args) => {
+			if (args[0] === "push") return { stdout: "", stderr: "rejected", code: 1 };
+			const out = reads.shift();
+			return out === undefined ? { stdout: "", stderr: "", code: 2 } : { stdout: out, stderr: "", code: 0 };
+		};
+	}
+
+	test("a failed push whose re-read shows the ref absent returns gone", async () => {
+		const { h, head } = await pushed();
+		const exec = failingPush([`${head}\trefs/heads/${B}\n`]);
+		expect(await guardedDeleteWip(exec, h.root, B, head)).toBe("gone");
+	});
+
+	test("a failed push whose re-read still shows the head throws GitError", async () => {
+		const { h, head } = await pushed();
+		const line = `${head}\trefs/heads/${B}\n`;
+		await expect(guardedDeleteWip(failingPush([line, line]), h.root, B, head)).rejects.toBeInstanceOf(GitError);
+	});
+
+	test("refuses a non-wip branch", async () => {
+		const { h, head } = await pushed();
+		const { exec, calls } = recording();
+		for (const name of ["livespec/x", "main", "-x--wip-U2"]) {
+			await expect(guardedDeleteWip(exec, h.root, name, head)).rejects.toBeInstanceOf(GitError);
+		}
+		expect(calls).toEqual([]);
+	});
+
+	test("ignores a suffix ref", async () => {
+		const { h, head } = await pushed();
+		const c = newCommit(h, head);
+		h.git("push", "origin", `${c}:${DECOY}`);
+		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("deleted");
+		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("gone");
+		expect(originRefs(h.origin)).toContain(`${c} ${DECOY}`);
+	});
+
+	test("unreachable remote throws", async () => {
+		const { h, head } = await pushed();
+		h.git("remote", "set-url", "origin", "/nonexistent");
+		await expect(guardedDeleteWip(defaultGitExec, h.root, B, head)).rejects.toBeInstanceOf(GitError);
+	});
+
+	test("Delete of a wip branch", async () => {
+		const { h, head } = await pushed();
+		const { exec, calls } = recording();
+		expect(await guardedDeleteWip(exec, h.root, B, head)).toBe("deleted");
+		expect(calls.filter((a) => a[0] === "push")).toEqual([["push", `--force-with-lease=refs/heads/${B}:${head}`, "--", "origin", `:refs/heads/${B}`]]);
 	});
 });
 
