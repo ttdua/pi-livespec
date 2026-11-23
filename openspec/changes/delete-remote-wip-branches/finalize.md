@@ -16,7 +16,7 @@
 - **Branch**: `issue-45`
 - **Base branch**: `main`
 - **Final state**: `pr-open`
-- **PR URL**: `<filled after PR creation>`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/47`
 
 The worktree branch `delete-remote-wip-branches` was fast-forwarded into `issue-45` at `e1a732d`. `issue-45` had no upstream before the push, so the pull step was skipped. The user approved the push and the PR in chat, as the project `AGENTS.md` requires before any push or PR.
 
@@ -33,7 +33,7 @@ The worktree was created by Worktrunk (`wt`), outside `.worktrees/`. Following t
 
 ## PR comment
 
-- **PR comment status**: `<filled after posting>`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/47#issuecomment-7099959940)
 
 ---
 
