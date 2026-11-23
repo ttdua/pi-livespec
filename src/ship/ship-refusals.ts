@@ -6,6 +6,7 @@ import type { PullRequest } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import type { ShipStaleness } from "./freshness.ts";
 import { filesOutsideUnits } from "./diff.ts";
+import { closingReferences } from "./pr-body.ts";
 import { SHIP_PHASE } from "./phase.ts";
 
 /** Marker ids allow only `[A-Za-z0-9._-]`, so the timestamp drops its colons. */
@@ -33,6 +34,19 @@ export function filesRefusal(files: string[], units: ChangeState["change"]["unit
 	const outside = filesOutsideUnits(files, units);
 	if (outside.length === 0) return undefined;
 	return `the change diff touches files no unit lists and not under specs/: ${untrusted(outside.join(", "))}; add them to a unit's Files with unit_amend.`;
+}
+
+/**
+ * No commit message holds a closing reference: merging the pull request would close the issue past `change_close`.
+ * Undefined when none does.
+ */
+export function closingCommitsRefusal(commits: { sha: string; message: string }[]): string | undefined {
+	const closing = commits.flatMap((c) => {
+		const refs = closingReferences(c.message);
+		return refs.length === 0 ? [] : [`${c.sha.slice(0, 7)} (${untrusted(refs.join(", "))})`];
+	});
+	if (closing.length === 0) return undefined;
+	return `commit messages hold a closing reference, which would close the issue on merge without change_close: ${closing.join("; ")}; reword them to \`Refs #<n>\` (e.g. git rebase -i with reword) first.`;
 }
 
 /** Phase, no `PR` line, clean tree, current branch = `Branch` line; undefined when all hold. */

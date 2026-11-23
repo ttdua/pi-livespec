@@ -37,7 +37,9 @@ export interface ReviewRec {
 export interface ReviewCommentRec {
 	id: number;
 	path: string;
-	line: number;
+	/** `null` for a file-level or an outdated comment, as GitHub sends it. */
+	line: number | null;
+	originalLine?: number | null;
 	body: string;
 	author: string;
 	updatedAt: string;

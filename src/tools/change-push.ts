@@ -14,7 +14,7 @@ import { type ShipContext, shipContext } from "../ship/context.ts";
 import { durableDocsRule } from "../ship/durable-docs.ts";
 import { pollFeedback } from "../ship/feedback-poll.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
-import { cleanBranchRefusal, filesRefusal, shipPhaseRefusal } from "../ship/ship-refusals.ts";
+import { cleanBranchRefusal, closingCommitsRefusal, filesRefusal, shipPhaseRefusal } from "../ship/ship-refusals.ts";
 import { latestShipRecord } from "../ship/records.ts";
 import { postShipRecord } from "../ship/ship-writes.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -59,7 +59,7 @@ function reconfirmRefusal(state: ChangeState, context: ShipContext): string | un
 	return `the commits since the pushed head change specs/ or the durable-docs confirmation items; the ship gate needs a valid approved result at ${state.git.head.slice(0, 7)}: request it with spec_gate ${SHIP_PHASE}.`;
 }
 
-/** The refusals that need the ship context: reviewed HEAD, Files, the pushed head as ancestor, durable-docs, re-confirmation. */
+/** The refusals that need the ship context: reviewed HEAD, Files, the pushed head as ancestor, closing messages of the commits to publish, durable-docs, re-confirmation. */
 async function gitRefusal(session: Session, state: ChangeState, context: ShipContext, pushedHead: string): Promise<string | undefined> {
 	if (!context.reviewed.ok) return `HEAD is not reviewed: ${context.reviewed.reason}.`;
 	const files = filesRefusal(context.diff.files, state.change.units);
@@ -71,6 +71,8 @@ async function gitRefusal(session: Session, state: ChangeState, context: ShipCon
 		return `cannot check whether HEAD descends from the pushed head ${pushedHead.slice(0, 7)}: ${untrusted(messageOf(error))}.`;
 	}
 	if (!descends) return `the pushed head ${pushedHead.slice(0, 7)} is not an ancestor of HEAD ${state.git.head.slice(0, 7)}: ${REMOTE}/${state.git.branch} diverged from this branch; reconcile it before pushing.`;
+	const closing = closingCommitsRefusal(await session.git.messages(`${pushedHead}..HEAD`));
+	if (closing !== undefined) return closing;
 	const errors = durableDocsRule(context.facts).errors;
 	if (errors.length > 0) return `durable-docs reports: ${untrusted(errors.join("; "))}.`;
 	return reconfirmRefusal(state, context);

@@ -86,6 +86,14 @@ describe("collectFeedback findings", () => {
 		expect(isFindingData(item?.finding)).toBe(true);
 	});
 
+	test("a writer's review comment without a valid line is a needs-decision finding with its review-comment key", async () => {
+		const items = await collect(world({ reviewComments: [reviewComment("8", "alice", "whole file is odd", { line: 0 }), reviewComment("9", "bob", "reader", { line: 0 })] }));
+		expect(items.map((i) => i.key)).toEqual([`review-comment:8@${T1}`]);
+		expect(items[0]?.finding).toMatchObject({ severity: "WARNING", kind: "other", location: `pr#${PR}`, scope: "needs-decision" });
+		expect(items[0]?.finding.evidence).toContain("whole file is odd");
+		expect(isFindingData(items[0]?.finding)).toBe(true);
+	});
+
 	test("a non-approved review body is a needs-decision finding; an empty body is not", async () => {
 		const items = await collect(world({ reviews: [review("5", "alice", "changes_requested", "please split"), review("6", "alice", "commented", "  ")] }));
 		expect(items.map((i) => i.key)).toEqual([`review:5@${T1}`]);

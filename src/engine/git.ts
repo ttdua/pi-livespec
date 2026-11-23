@@ -81,6 +81,8 @@ export interface Git {
 	isTracked(path: string): Promise<boolean>;
 	/** `git log --reverse --no-merges --format=%s <from>..<to>`, oldest first. */
 	subjects(from: string, to: string): Promise<string[]>;
+	/** `git log --reverse --format=%H%x00%B%x00 <range>`: each commit's SHA and full message, oldest first. */
+	messages(range: string): Promise<{ sha: string; message: string }[]>;
 	/** `git add -A`: every tracked and untracked file that git does not ignore. */
 	addAll(): Promise<void>;
 	/** `git commit -m <message>` (with `--allow-empty` when asked); returns the new HEAD. */
@@ -160,6 +162,14 @@ const EXIT_NOT_IGNORED = 1;
 const ALIAS_PREFIX = "alias.";
 /** `ls-files --error-unmatch` exits 1 when the path is not tracked. */
 const EXIT_NOT_TRACKED = 1;
+
+/** `%H%x00%B%x00` log output: SHA and message fields alternate, each padded by the newline log adds between entries. */
+function commitMessages(out: string | undefined): { sha: string; message: string }[] {
+	const fields = (out ?? "").split("\0");
+	const commits: { sha: string; message: string }[] = [];
+	for (let i = 0; i + 1 < fields.length; i += 2) commits.push({ sha: (fields[i] as string).trim(), message: (fields[i + 1] as string).trim() });
+	return commits;
+}
 
 /** Non-empty lines of a command's stdout. */
 const lines = (out: string | undefined): string[] => (out ?? "").split("\n").filter((l) => l !== "");
@@ -301,6 +311,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		},
 		isTracked: async (path) => (await run(["ls-files", "--error-unmatch", "--", path], EXIT_NOT_TRACKED)) !== undefined,
 		subjects: async (from, to) => lines(await run(["log", "--reverse", "--no-merges", "--format=%s", END_OF_OPTIONS, `${from}..${to}`])),
+		messages: async (range) => commitMessages(await run(["log", "--reverse", "--format=%H%x00%B%x00", END_OF_OPTIONS, range])),
 		addAll: async () => {
 			await run(["add", "-A"]);
 		},
