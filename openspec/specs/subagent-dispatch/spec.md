@@ -123,7 +123,7 @@ The system SHALL handle a settled run as follows:
 - a run with no structured result (`structuredResultError`, error, crash or abort not caused by the parent) SHALL be retried once with the identical packet, then the unit SHALL be `BLOCKED`;
 - a result whose `sources_used` lacks a required source of the manifest SHALL be returned to the child once, naming the missing ids; a second miss SHALL be `BLOCKED`;
 - `NEEDS_CONTEXT` naming source ids SHALL make the parent add those sources and dispatch again, not counted as a failed attempt, at most 2 times per unit, then `spec_stuck`;
-- `BLOCKED` with reason `missing-prerequisite` SHALL go to `spec_stuck` until a dependency gate exists;
+- `BLOCKED` with reason `missing-prerequisite` SHALL name `new_dependency` with the unit and the child's evidence (discovered-dependencies "New dependency tool"), or `spec_stuck` while the `discovered_deps` cap blocks, and MUST NOT count as a failed attempt;
 - a claimed commit that is not reachable from the child's cwd HEAD, or a claim no receipt or commit supports, MUST NOT count as evidence.
 
 #### Scenario: Missing required source
@@ -137,6 +137,14 @@ The system SHALL handle a settled run as follows:
 #### Scenario: Crash retried once
 - **WHEN** the child's run ends with `error` and no structured result
 - **THEN** the dispatch is retried with a packet whose hash equals the first, and a second failure marks the unit `BLOCKED`
+
+#### Scenario: Missing prerequisite opens the dependency gate
+- **WHEN** U3's implementer returns `BLOCKED` with reason `missing-prerequisite` and `discovered_deps` is 0 of 2
+- **THEN** the parent is told to run `new_dependency` for U3 with the child's evidence, and no attempt is counted for U3
+
+#### Scenario: Missing prerequisite past the cap
+- **WHEN** U3's implementer returns `BLOCKED` with reason `missing-prerequisite` and `discovered_deps` is 2 of 2
+- **THEN** the parent is told to send a stuck report with `spec_stuck`
 
 ### Requirement: Questions from a child
 When a waited run settles with `pendingQuestion`, `subagent_dispatch` SHALL return the question and the agent id to the parent without interpreting a result. Before returning, `subagent_dispatch` SHALL post a `dispatch` comment with status `QUESTION`, the agent id and the question, so the pending child survives a session reload. `subagent_answer <id> <answer>` SHALL post a `dispatch` comment with status `ANSWERED` for that agent id, then resume that child with the answer, record the answer as source `answer:<id>:<n>`, wait for the run, and handle its result as `subagent_dispatch` does. A question SHALL stay pending until an `ANSWERED` record or a later result record (`dispatch` or `finding-summary`) carries the same agent id; every record of a launched run SHALL carry its agent id. `subagent_answer` MUST refuse an id with no pending question in the current change, and an id the executor no longer knows (the parent then dispatches again). The parent MUST NOT answer a question that only the user can decide (a change of scope, a requirement, a public contract or an acceptance criterion); it SHALL raise it with `spec_question` and answer the child with the user's answer once given. The phase card SHALL show a child with an unanswered question as the next step.

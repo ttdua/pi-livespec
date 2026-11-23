@@ -51,7 +51,7 @@ Events SHALL be emitted only by the call that closed the change issue. The marke
 - **THEN** a second `change_close` closes the change issue and emits `livespec:change-closed` then `livespec:initiative-closed`
 
 ### Requirement: Closed without merge
-When the pull request is closed and not merged, the phase SHALL NOT move. When a human reopens the pull request, the flow SHALL continue with that pull request. `change_close --abandon <reason>` SHALL accept a change in any phase whose pull request is closed and not merged, refuse an empty reason, post the `close-summary` with the reason, close the issue without ticking the initiative, and emit `livespec:change-closed` marked abandoned. What an initiative does with an abandoned change is left to the initiatives change (LS-09c).
+When the pull request is closed and not merged, the phase SHALL NOT move. When a human reopens the pull request, the flow SHALL continue with that pull request. `change_close --abandon <reason>` SHALL accept a change in any phase whose pull request is closed and not merged, or a change with no `PR` line whose latest valid `new-dependency` gate result chose `D` with action `drop`. It SHALL refuse an empty reason, post the `close-summary` with the reason, close the issue without ticking the initiative, and emit `livespec:change-closed` marked abandoned. An abandoned change SHALL stay unchecked in its initiative, and the changes that depend on it SHALL stay not ready (change-initiatives "Change dependencies and readiness") until an approved initiative amendment removes it from their `Depends`; the same amendment may remove its entry, which closes the initiative when every remaining entry is checked (change-initiatives "Initiative amendment").
 
 #### Scenario: Pull request closed unmerged
 - **WHEN** a human closes pull request 41 without merging
@@ -64,6 +64,14 @@ When the pull request is closed and not merged, the phase SHALL NOT move. When a
 #### Scenario: Abandon
 - **WHEN** `change_close --abandon "superseded by #50"` runs for that change
 - **THEN** the `close-summary` holds the reason, the initiative entry stays unchecked, the issue is closed, and `livespec:change-closed` is emitted with `abandoned: true`
+
+#### Scenario: Drop after a discovered dependency
+- **WHEN** change #40 has no `PR` line, its `new-dependency` gate was approved with choice D and action `drop`, and `change_close --abandon "wrong direction"` runs
+- **THEN** the `close-summary` holds the reason, #40 is closed, and `livespec:change-closed` is emitted with `abandoned: true`
+
+#### Scenario: Abandon refused without a pull request or drop
+- **WHEN** change #40 has no `PR` line and no `new-dependency` result chose D with `drop`
+- **THEN** `change_close --abandon "x"` refuses and writes nothing
 
 ### Requirement: Close next steps
 In the `close` phase, the next step SHALL be `change_close` while the change issue is open, and SHALL say the flow has no further phase once it is closed.

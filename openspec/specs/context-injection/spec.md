@@ -68,6 +68,9 @@ The card SHALL show:
 - frozen and stale units;
 - an unanswered stuck report;
 - forge command comments ignored by the last poll, with the reason;
+- the initiative progress, this change's dependencies with their state, and the ready entries (change-initiatives "Initiative progress on the card");
+- the parked state with what it waits for and its wip branches;
+- the capability overlap warning;
 - the sections registered by other specs.
 
 Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be stated.
@@ -95,6 +98,10 @@ Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be st
 #### Scenario: Evidence shown
 - **WHEN** the change is in `build`, U1 is started at pre SHA `abc1234` and U2 is blocked by `progress`
 - **THEN** the card names U1 as started with `abc1234` and U2 as BLOCKED with reason `progress`
+
+#### Scenario: Parked and initiative lines
+- **WHEN** change #40 of initiative #30 is parked waiting for #41
+- **THEN** the card shows `initiative #30`, #41 as open, and the parked state with its wip branches
 
 ### Requirement: Cache evidence
 The change SHALL record a manual smoke run of at least five turns against a real model, listing per turn the uncached input and cache-read tokens with and without the livespec hooks, in the format of probe (c) in `docs/evidence/host-seams.md`. The run passes when, from turn 2 on, each hooked turn's cache-read tokens are within one cache block of the control turn, or the hooked turn reads more; an isolated full miss counts only if the control run shows none.

@@ -57,21 +57,24 @@ From own marked comments it SHALL derive pending approver requests, gate results
 `nextStep` SHALL only be called with a valid pack; the caller reports pack errors instead (see flow-pack). The next-step sentence MUST follow this precedence:
 1. missing or ambiguous phase label;
 2. outside the last phase and while the change issue is open, a `PR` line whose pull request is merged or closed without merge: the steps of change-close "Pull request outcome";
-3. change not started after `shape`;
+3. change not started after `shape`: when a dependency is not merged, name each one with its state and say a human runs `change_start #N` once they merge; otherwise name `change_start #N`;
 4. unanswered stuck report;
 5. pending blocking approver request, or an answered request whose effects are not yet fully applied;
-6. the `change_iterations` cap blocking, as questions-and-stuck "Iteration cap" defines it;
-7. open blocking question;
-8. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
-9. missing phase output;
-10. failing check not waived by the phase's valid gate result;
-11. in a `per: unit` phase, a blocked unit: send a stuck report with `spec_stuck`;
-12. in a `per: unit` phase, a started unit: finish it with `unit_finish`;
-13. in a `per: unit` phase, a receipted unit that is not ticked: run `unit_finish` again;
-14. in `build`, the next pending unit whose `Depends` are done, or the units waiting on `Depends` when none is ready;
-15. in `review`, the review steps of review-phase "Review next steps";
-16. in `ship`, the steps of ship-phase "Ship next steps", and in `close`, the steps of change-close "Close next steps";
-17. the phase gate.
+6. a parked change: the steps of discovered-dependencies "Parked state";
+7. an approved `new-dependency` result whose follow-up is not done: the step of discovered-dependencies "New dependency follow-up";
+8. the `change_iterations` cap blocking, as questions-and-stuck "Iteration cap" defines it;
+9. open blocking question;
+10. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
+11. missing phase output;
+12. failing check not waived by the phase's valid gate result;
+13. in a `per: unit` phase, a blocked unit: send a stuck report with `spec_stuck`;
+14. in a `per: unit` phase, a started unit: finish it with `unit_finish`;
+15. in a `per: unit` phase, a receipted unit that is not ticked: run `unit_finish` again;
+16. in `build`, `review` and `ship`, the `change_sync` step of change-initiatives "Sync with the integration branch";
+17. in `build`, the next pending unit whose `Depends` are done, or the units waiting on `Depends` when none is ready;
+18. in `review`, the review steps of review-phase "Review next steps";
+19. in `ship`, the steps of ship-phase "Ship next steps", and in `close`, the steps of change-close "Close next steps";
+20. the phase gate.
 
 At the gate, the sentence MUST reflect the valid gate result for the phase, meaning the latest own result newer than the latest `stale` comment listing the phase. A superseded latest result counts as no valid result and never falls back to an older one. In `review` and `ship`, an approved result SHALL count as superseded, for the sentence and for its waivers, when HEAD is not reviewed against its `head_sha` in the sense of ship-phase "Reviewed HEAD" (equal, or only clean integration merges after it), so the gate is requested again at the new HEAD. An approved valid result MUST report the successor as `advance`, except at `ship`. The sentence covers:
 - `changes_requested`: revise and request again;
@@ -161,6 +164,22 @@ In the last phase of the flow, once no earlier rule applies, the sentence MUST s
 - **WHEN** a feedback round moved the change to `review` and a human then merged its pull request
 - **THEN** the next step reports `close` as the phase to advance to
 
+#### Scenario: Parked change waits
+- **WHEN** the change is parked waiting for #41 and #41 is open
+- **THEN** the next sentence says the change waits for #41, and no unit or gate step is named
+
+#### Scenario: Not started with an unmet dependency
+- **WHEN** the change is in `define` with no `Branch` line and `Depends: #34`, and #34 is open
+- **THEN** the next sentence names #34 as open and says a human runs `change_start` once it merges
+
+#### Scenario: Park before finishing a started unit
+- **WHEN** the latest `new-dependency` result chose A, no `parked` record follows it, and U2 is started in a lane
+- **THEN** the next sentence names `change_park`, not `unit_finish U2`
+
+#### Scenario: Sync before the next unit
+- **WHEN** the change is in `build` with a ready unit, a sibling entry of its initiative is checked, and `origin/main` is not an ancestor of HEAD
+- **THEN** the next sentence names `change_sync`
+
 ### Requirement: Successor phase
 The successor of a phase SHALL be the first phase, in pack order, whose `requires` include it. A phase with no successor is the last phase. A `gate: none` phase SHALL report its successor as the phase to advance to only when no earlier rule of the precedence applies; for a `per: unit` phase that means every unit is done.
 
@@ -205,12 +224,17 @@ A check MAY be registered as gate-only. A gate-only check SHALL run only when it
 Loop counters SHALL be tool-written marked comments of kind `counter` with id `<loop>` or `<loop>.<unit>` and data `{ value }`. Setting a counter MUST edit the existing own counter comment or create one when none exists. A loop MAY instead be counted from other own marked comments:
 - `change_iterations` SHALL be the number of own `stale` comments marked as a counted return to define after a plan approval;
 - `unit_attempts.<unit>` SHALL be derived from `progress` decision records, as unit-evidence "Unit attempts and blocked units" defines;
-- `review_rounds` SHALL be derived from aggregate review records, as review-phase "Review round cap" defines.
+- `review_rounds` SHALL be derived from aggregate review records, as review-phase "Review round cap" defines;
+- `discovered_deps` SHALL be derived from `new-dependency` gate results, as discovered-dependencies "Discovered dependencies counter" defines.
 
 A `counter` comment for a derived loop MUST be ignored. The engine SHALL report each counter with its cap from the pack's `loops`.
 
 #### Scenario: Counter shown with cap
-- **WHEN** a `counter` comment `discovered_deps` has value 1 and the pack cap is 2
+- **WHEN** a `counter` comment `custom_loop` has value 1 and the pack sets `loops.custom_loop: 2`
+- **THEN** `nextStep` reports `custom_loop` as 1 of 2
+
+#### Scenario: Derived discovered dependencies
+- **WHEN** the issue has one valid approved `new-dependency` gate result with choice `A` and an own `counter` comment `discovered_deps` with value 9
 - **THEN** `nextStep` reports `discovered_deps` as 1 of 2
 
 #### Scenario: Derived review rounds
