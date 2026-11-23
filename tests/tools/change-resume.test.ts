@@ -44,11 +44,12 @@ describe("change_resume", () => {
 	test("Resume with two lanes keeps all work", async () => {
 		const h = await parked();
 		const u2Wip = h.git("rev-parse", wip("U2"));
+		const u3Wip = h.git("rev-parse", wip("U3"));
 		await h.mergePrereq({ "other.txt": "o\n" });
 		const tip = h.git("rev-parse", "origin/main");
 		const out = await h.resume();
 		expect(out.isError, textOf(out)).toBeFalsy();
-		expect(out.details).toEqual({ merged: [wip("U2"), wip("U3")] });
+		expect(out.details).toEqual({ merged: [wip("U2"), wip("U3")], deleted: [wip("U2"), wip("U3")], kept: [] });
 		for (const sha of [tip, u2Wip]) expect(h.git("merge-base", "--is-ancestor", sha, "HEAD")).toBe("");
 		expect(h.git("show", "HEAD:src/u3.ts")).toBe("u3 edit");
 		expect(h.git("show", "HEAD:src/u2.ts")).toBe("u2 partial");
@@ -58,8 +59,76 @@ describe("change_resume", () => {
 		expect(last.resumed).toBe(true);
 		expect(cardState(h).state.parkedCore).toBeUndefined();
 		expect(parseChange(await h.world.bodyOf(h.n)).header.base).toBe(tip);
-		// Remote wip branches are kept.
-		expect(h.git("ls-remote", "origin", `refs/heads/${wip("U2")}`)).toContain(u2Wip);
+		const heads = { U2: u2Wip, U3: u3Wip };
+		const pushes = h.gitCalls.filter((a) => a[0] === "push").slice(-2);
+		expect(pushes).toEqual(["U2", "U3"].map((u) => ["push", `--force-with-lease=refs/heads/${wip(u)}:${heads[u as "U2" | "U3"]}`, "--", "origin", `:refs/heads/${wip(u)}`]));
+	});
+
+	test("Remote wip branches deleted after resume", async () => {
+		const h = await parked();
+		await h.mergePrereq({ "other.txt": "o\n" });
+		const out = await h.resume();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		for (const u of ["U2", "U3"]) expect(h.git("ls-remote", "origin", `refs/heads/${wip(u)}`)).toBe("");
+		expect(textOf(out)).toMatch(new RegExp(`Deleted remote .*${wip("U2")}.*${wip("U3")}`));
+	});
+
+	test("Wip branch already gone", async () => {
+		const h = await parked();
+		const u2Head = h.git("rev-parse", wip("U2"));
+		await h.mergePrereq({ "other.txt": "o\n" });
+		h.git("push", "origin", `:refs/heads/${wip("U2")}`);
+		expect(h.git("rev-parse", wip("U2"))).toBe(u2Head);
+		const out = await h.resume();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(h.git("show", "HEAD:src/u2.ts")).toBe("u2 partial");
+		expect(h.git("ls-remote", "origin", `refs/heads/${wip("U3")}`)).toBe("");
+		expect(out.details).toMatchObject({ deleted: [wip("U2"), wip("U3")] });
+	});
+
+	test("Wip branch moved since the park", async () => {
+		const h = await parked();
+		const u3Head = h.git("rev-parse", wip("U3"));
+		await h.mergePrereq({ "other.txt": "o\n" });
+		const moved = h.git("commit-tree", "-p", u3Head, "-m", "moved", `${u3Head}^{tree}`);
+		h.git("push", "origin", `${moved}:refs/heads/${wip("U3")}`);
+		const out = await h.resume();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(out.details).toMatchObject({ kept: [wip("U3")] });
+		expect(h.git("ls-remote", "origin", `refs/heads/${wip("U3")}`)).toContain(moved);
+		expect(textOf(out)).toContain(wip("U3"));
+		expect(textOf(out)).toContain("head moved since the park");
+	});
+
+	test("Delete fails and rerun completes", async () => {
+		const h = await parked();
+		await h.mergePrereq({ "other.txt": "o\n" });
+		h.git("remote", "set-url", "--push", "origin", "/nonexistent");
+		const out = await h.resume();
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(wip("U2"));
+		expect(await labels(h)).toContain("livespec:parked");
+		expect(cardState(h).state.parkedCore).toBeDefined();
+		h.git("remote", "set-url", "--delete", "--push", "origin", "/nonexistent");
+		for (const u of ["U2", "U3"]) expect(h.git("ls-remote", "origin", `refs/heads/${wip(u)}`)).not.toBe("");
+		const rerun = await h.resume();
+		expect(rerun.isError, textOf(rerun)).toBeFalsy();
+		expect(rerun.details).toMatchObject({ merged: [] });
+		for (const u of ["U2", "U3"]) expect(h.git("ls-remote", "origin", `refs/heads/${wip(u)}`)).toBe("");
+	});
+
+	test("Record entry that is not a wip branch of the change", async () => {
+		const h = await parked();
+		await h.mergePrereq({ "other.txt": "o\n" });
+		const original = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string; branch?: string }[] };
+		const units = original.units.map((u) => (u.unit === "U2" ? { ...u, branch: "main" } : u));
+		await h.seed("parked", "parked.tampered", { ...original, units });
+		const mainBefore = h.git("rev-parse", "origin/main");
+		const out = await h.resume();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(out.details).toEqual({ merged: ["main", wip("U3")], deleted: [wip("U3")], kept: ["main"] });
+		expect(h.git("ls-remote", "origin", "refs/heads/main")).toContain(mainBefore);
+		expect(h.gitCalls.filter((a) => a[0] === "push" && a.some((x) => x.includes("main")))).toEqual([]);
 	});
 
 	test("Finished unit regresses", async () => {
@@ -81,6 +150,7 @@ describe("change_resume", () => {
 		expect(textOf(out)).toContain(wip("U3"));
 		expect(h.git("status", "--porcelain")).toBe("");
 		expect(h.git("merge-base", "--is-ancestor", h.git("rev-parse", wip("U2")), "HEAD")).toBe("");
+		for (const u of ["U2", "U3"]) expect(h.git("ls-remote", "origin", `refs/heads/${wip(u)}`)).not.toBe("");
 		expect(await labels(h)).toContain("livespec:parked");
 		expect(cardState(h).state.parkedCore).toBeDefined();
 		// Resolve by hand: merge U3's wip branch keeping its edit, then rerun.
@@ -88,7 +158,7 @@ describe("change_resume", () => {
 		const headBefore = h.git("rev-parse", "HEAD");
 		const rerun = await h.resume();
 		expect(rerun.isError, textOf(rerun)).toBeFalsy();
-		expect(rerun.details).toEqual({ merged: [] });
+		expect(rerun.details).toEqual({ merged: [], deleted: [wip("U2"), wip("U3")], kept: [] });
 		expect(h.git("rev-parse", "HEAD")).toBe(headBefore);
 		expect(cardState(h).state.parkedCore).toBeUndefined();
 	});

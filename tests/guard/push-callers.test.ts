@@ -28,11 +28,13 @@ describe("command-guards", () => {
 		const sources = sourcesUnder(SRC_DIR);
 		expect(sources.length).toBeGreaterThan(0);
 		const importing = sources.filter((path) => !path.endsWith("/guard/push.ts") && /guard\/push(\.ts)?["']|from "\.\/push(\.ts)?"/.test(readFileSync(path, "utf8")));
-		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts", "change-park.ts"]);
+		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts", "change-park.ts", "change-resume.ts"]);
 		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
 		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
 		expect(importing.map((path) => basename(path))).toContain("change-park.ts");
-		expect(importing.map((path) => basename(path))).not.toContain("change-resume.ts");
+		const others = sources.filter((path) => !path.endsWith("/guard/push.ts"));
+		expect(others.filter((path) => readFileSync(path, "utf8").includes("guardedDeleteWip")).map((path) => basename(path))).toEqual(["change-resume.ts"]);
+		expect(readFileSync(others.find((path) => basename(path) === "change-resume.ts") as string, "utf8")).not.toContain("guardedPush(");
 		expect(importing.every((path) => path.includes("/src/tools/"))).toBe(true);
 	});
 
