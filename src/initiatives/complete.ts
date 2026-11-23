@@ -43,10 +43,15 @@ export async function findOrCreateChange(forge: Forge, title: string, initiative
 	return (await forge.createIssue({ title, body, labels: [LABEL_LIVESPEC, phaseLabel(FIRST_PHASE)] })).number;
 }
 
+/** Every open tracking issue titled `name`; several can exist, since the forge does not keep titles unique. */
+export async function findTrackings(forge: Forge, name: string): Promise<Issue[]> {
+	const open = await forge.searchIssues({ labels: [LABEL_INITIATIVE], state: "open" });
+	return open.filter((i) => i.title === name);
+}
+
 /** The open tracking issue titled `name` and, with `request`, created by that request; the first match. */
 export async function findTracking(forge: Forge, name: string, request?: string): Promise<Issue | undefined> {
-	const open = await forge.searchIssues({ labels: [LABEL_INITIATIVE], state: "open" });
-	return open.find((i) => i.title === name && (request === undefined || createdByRequest(i, request)));
+	return (await findTrackings(forge, name)).find((i) => request === undefined || createdByRequest(i, request));
 }
 
 /**
@@ -169,10 +174,13 @@ export function createdByRequest(issue: Issue, request: string): boolean {
 	return initiativeRequest(issue.body) === request;
 }
 
-/** Why a new initiative named `name` cannot be created by request `request`: an open one it did not create holds the name. */
-export function takenInitiative(name: string, tracking: Issue | undefined, request: string): string | undefined {
-	if (tracking === undefined || createdByRequest(tracking, request)) return undefined;
-	return `an open initiative is already named ${untrusted(name)} (#${tracking.number})`;
+/**
+ * Why a new initiative named `name` cannot be created by request `request`: among the open ones titled `name`
+ * (`trackings`), one it did not create holds the name, even when another one is its own crash-retry issue.
+ */
+export function takenInitiative(name: string, trackings: Issue[], request: string): string | undefined {
+	const foreign = trackings.find((t) => !createdByRequest(t, request));
+	return foreign === undefined ? undefined : `an open initiative is already named ${untrusted(name)} (#${foreign.number})`;
 }
 
 async function cycleOrTooMany(forge: Forge, d: InitiativeDrafts, tracking: Issue | undefined): Promise<string | undefined> {
@@ -189,9 +197,14 @@ async function validateInitiative(ctx: CompletionCtx, req: RequestRecord, ans: A
 	if (ans.outcome !== "approved" && ans.outcome !== "approved_with_notes") return undefined;
 	const d = draftsOf(req);
 	if (!d) return "the request holds no initiative drafts";
-	const tracking = d.amend !== undefined ? await ctx.forge.getIssue(d.amend) : await findTracking(ctx.forge, d.name);
-	const taken = d.amend === undefined ? takenInitiative(d.name, tracking, req.id) : undefined;
-	if (taken !== undefined) return taken;
+	let tracking: Issue | undefined;
+	if (d.amend !== undefined) tracking = await ctx.forge.getIssue(d.amend);
+	else {
+		const trackings = await findTrackings(ctx.forge, d.name);
+		const taken = takenInitiative(d.name, trackings, req.id);
+		if (taken !== undefined) return taken;
+		tracking = trackings.find((t) => createdByRequest(t, req.id));
+	}
 	const open = await ctx.forge.searchIssues({ labels: [LABEL_LIVESPEC], state: "open" });
 	return nameClash(d, open, tracking?.number) ?? (await cycleOrTooMany(ctx.forge, d, tracking));
 }
