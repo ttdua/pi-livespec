@@ -19,4 +19,4 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 `docs/architecture.md`: in "Resume", describe the delete step and its gone, moved and failure rules; in the `guardedPush` paragraph, describe the delete and its single caller; remove the wip-branch "Known gap".
+- [x] 3.1 `docs/architecture.md`: in "Resume", describe the delete step and its gone, moved and failure rules; in the `guardedPush` paragraph, describe the delete and its single caller; remove the wip-branch "Known gap".
