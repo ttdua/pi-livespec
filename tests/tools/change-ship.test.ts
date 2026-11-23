@@ -302,6 +302,22 @@ describe("change_ship", () => {
 		await expectNothingShipped(h, before);
 	});
 
+	test("a closing reference in a commit message refuses naming the commit", async () => {
+		const h = await shipReady({ noShipGate: true });
+		await writeIn(h.root, "src/limit.ts", "export const cap = 50;\n");
+		commitAll(h.root, `lower cap\n\nFixes #${h.n}`);
+		const head = h.git("rev-parse", "HEAD");
+		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-2", head));
+		await approveShip(h, "a1", head);
+		const before = originRefs(h.origin);
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(head.slice(0, 7));
+		expect(textOf(out)).toContain(`Fixes #${h.n}`);
+		expect(textOf(out)).toContain("reword");
+		await expectNothingShipped(h, before);
+	});
+
 	test("a PR line refuses naming change_push", async () => {
 		const h = await shipReady({ body: (b) => b.replace("Depends: —", "Depends: —\nPR: #99") });
 		const before = originRefs(h.origin);

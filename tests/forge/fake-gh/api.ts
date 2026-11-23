@@ -262,7 +262,7 @@ function reviewJson(review: ReviewRec): unknown {
 }
 
 function reviewCommentJson(comment: ReviewCommentRec): unknown {
-	return { id: comment.id, path: comment.path, line: comment.line, body: comment.body, user: userJson(comment.author), updated_at: comment.updatedAt };
+	return { id: comment.id, path: comment.path, line: comment.line, original_line: comment.originalLine ?? null, body: comment.body, user: userJson(comment.author), updated_at: comment.updatedAt };
 }
 
 /** Statuses seeded as plain commit statuses: the legacy API. */

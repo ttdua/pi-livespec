@@ -293,6 +293,22 @@ describe("change_push", () => {
 		expect((await ofKind(h, "ship")).map((m) => m.id)).toEqual([expect.stringContaining(head(h))]);
 	});
 
+	test("a closing reference in a fix commit message refuses naming the commit", async () => {
+		const h = await shipped();
+		await writeIn(h.root, "src/limit.ts", "fix closing\n");
+		commitAll(h.root, `fix\n\ncloses https://github.com/o/r/issues/${h.n}`);
+		const sha = head(h);
+		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", `self-${sha.slice(0, 7)}`, sha));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const before = originRefs(h.origin);
+		const { out, text } = await push(h);
+		expect(out.isError).toBe(true);
+		expect(text).toContain(sha.slice(0, 7));
+		expect(text).toContain("reword");
+		expect(originRefs(h.origin)).toBe(before);
+	});
+
 	test("Child pushes", async () => {
 		const h = await shipped();
 		await fix(h);

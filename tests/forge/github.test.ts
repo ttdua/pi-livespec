@@ -113,6 +113,21 @@ describe("github adapter", () => {
 		expect(result).toMatchObject({ status: "written", check: "best-effort" });
 	});
 
+	it("listReviewComments maps line null to 0 and prefers original_line", async () => {
+		const w = make();
+		const n = await w.seedPullRequest({ head: "feat/rc", files: ["src/x.ts"] });
+		await w.forge.createReviewComment(n, { path: "src/x.ts", line: 3, body: "file-level" });
+		await w.forge.createReviewComment(n, { path: "src/x.ts", line: 4, body: "outdated" });
+		w.store.update((d) => {
+			const [fileLevel, outdated] = d.pulls[String(n)].reviewComments;
+			fileLevel.line = null;
+			outdated.line = null;
+			outdated.originalLine = 9;
+		});
+		const lines = (await w.forge.listReviewComments(n)).map((c) => c.line);
+		expect(lines).toEqual([0, 9]);
+	});
+
 	it("getChecks follows pagination on check runs and commit statuses", async () => {
 		for (const failing of [248, 249]) {
 			const w = make();

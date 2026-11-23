@@ -187,6 +187,8 @@ interface JsonReviewComment {
 	updated_at: string;
 	path: string;
 	line: number | null;
+	/** Still set when `line` is null on an outdated comment. */
+	original_line?: number | null;
 	body: string;
 	user: JsonUser | null;
 }
@@ -384,7 +386,8 @@ export class GitHubForge implements Forge, LabelRepo {
 		return raw.map((c) => ({
 			id: String(c.id),
 			path: c.path,
-			line: c.line ?? 0,
+			// A file-level comment has neither line: 0 means no line.
+			line: c.line ?? c.original_line ?? 0,
 			body: c.body,
 			author: c.user?.login ?? "",
 			updatedAt: c.updated_at,

@@ -72,8 +72,14 @@ function failingChecks(checks: Check[]): Check[] {
 	return [...byName.values()];
 }
 
+const hasLine = (c: ReviewComment): boolean => c.path !== "" && Number.isInteger(c.line) && c.line > 0;
+
+/** A review comment with a path and line is a located defect; without a valid line it needs a decision, like a conversation comment. */
+const reviewCommentFeedback = (pr: number, max: number, c: ReviewComment): FeedbackItem =>
+	hasLine(c) ? reviewCommentItem(pr, max, c) : { key: `review-comment:${c.id}@${c.updatedAt}`, finding: decisionFinding(pr, max, c) };
+
 /**
- * The feedback items not yet ingested, in order: review comments with a location, conversation comments, non-approved
+ * The feedback items not yet ingested, in order: review comments (with a location, else needing a decision), conversation comments, non-approved
  * review bodies, then failing checks of `pushedHead`. Only writers' (`write`/`admin`) human voices count.
  * Forge read failures propagate; the caller records them.
  */
@@ -87,12 +93,11 @@ export async function collectFeedback(
 ): Promise<FeedbackItem[]> {
 	const [reviewComments, comments, reviews, checks] = await Promise.all([forge.listReviewComments(pr), forge.listComments(pr), forge.listReviews(pr), forge.getChecks(pushedHead)]);
 	const isWriter = writerCheck(permission);
-	const located = reviewComments.filter((c) => c.path !== "" && Number.isInteger(c.line) && c.line > 0);
 	const withBody = reviews.filter((r) => r.state !== "approved" && r.body.trim() !== "");
-	const [byComment, byConversation, byReview] = [await humanWriters(located, login, isWriter), await humanWriters(comments, login, isWriter), await humanWriters(withBody, login, isWriter)];
+	const [byComment, byConversation, byReview] = [await humanWriters(reviewComments, login, isWriter), await humanWriters(comments, login, isWriter), await humanWriters(withBody, login, isWriter)];
 	const max = Math.min(MAX_TEXT, Math.max(MIN_TEXT, Math.floor(TEXT_BUDGET / Math.max(1, byComment.length + byConversation.length + byReview.length))));
 	const items = [
-		...byComment.map((c) => reviewCommentItem(pr, max, c)),
+		...byComment.map((c) => reviewCommentFeedback(pr, max, c)),
 		...byConversation.map((c) => commentItem(pr, max, c)),
 		...byReview.map((r) => reviewItem(pr, max, r)),
 		...failingChecks(checks.checks).map((c) => checkItem(pushedHead, c)),

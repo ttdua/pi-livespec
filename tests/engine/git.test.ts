@@ -451,6 +451,15 @@ describe("small-fix ports", () => {
 		git(root, "merge", "--no-ff", "-q", "-m", "merge side", "side");
 		expect(await g.subjects(base, "HEAD")).toEqual(["side work", "main work"]);
 	});
+
+	test("messages lists full commit messages of a range, merges included", async () => {
+		const { root, git: g, base } = await twoCommits();
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "subject\n\nbody line\nFixes #3");
+		const sha = git(root, "rev-parse", "HEAD");
+		expect(await g.messages(`${base}..HEAD`)).toEqual([{ sha, message: "subject\n\nbody line\nFixes #3" }]);
+		expect(await g.messages("HEAD..HEAD")).toEqual([]);
+	});
 });
 
 describe("park ports", () => {

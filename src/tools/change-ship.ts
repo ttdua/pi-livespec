@@ -20,7 +20,7 @@ import { shipStaleness, writerVoices } from "../ship/freshness.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { pullRequestBody } from "../ship/pr-body.ts";
 import { isReviewed } from "../ship/reviewed.ts";
-import { filesRefusal, pullRequestChoice, shipLocalRefusal, staleShipId } from "../ship/ship-refusals.ts";
+import { closingCommitsRefusal, filesRefusal, pullRequestChoice, shipLocalRefusal, staleShipId } from "../ship/ship-refusals.ts";
 import { postShipRecord, writePrLine } from "../ship/ship-writes.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -44,12 +44,14 @@ async function shipGateRefusal(s: Ship): Promise<string | undefined> {
 	return atHead.ok ? undefined : `the ship gate was approved at another commit: ${atHead.reason}; request the ship gate again.`;
 }
 
-/** The git refusals after the local ones: the ship gate, reviewed HEAD and the Files check. */
+/** The git refusals after the local ones: the ship gate, reviewed HEAD, the Files check and closing commit messages. */
 async function gitRefusal(s: Ship): Promise<string | undefined> {
 	const gate = await shipGateRefusal(s);
 	if (gate !== undefined) return gate;
 	if (!s.context.reviewed.ok) return `HEAD is not reviewed: ${s.context.reviewed.reason}.`;
-	return filesRefusal(s.context.diff.files, s.state.change.units);
+	const files = filesRefusal(s.context.diff.files, s.state.change.units);
+	if (files !== undefined) return files;
+	return closingCommitsRefusal(await s.w.session.git.messages(`${s.context.diff.from}..HEAD`));
 }
 
 /** A stale ship approval posts its `stale` comment (once per id) and returns the refusal; undefined when fresh. */

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
-import { pullRequestBody } from "../../src/ship/pr-body.ts";
+import { closingReferences, neutralizeClosing, pullRequestBody } from "../../src/ship/pr-body.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
 describe("pullRequestBody", () => {
@@ -51,6 +51,18 @@ describe("pullRequestBody", () => {
 		expect(body).not.toMatch(/\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b\s*:?\s*#/i);
 		expect(body).toContain("Refs #8");
 		expect(body).toContain("Refs #9");
+	});
+
+	test.each([
+		["closes https://github.com/ttdua/pi-livespec/issues/32", "Refs https://github.com/ttdua/pi-livespec/issues/32"],
+		["Fixes: http://git.example.com/o/r/issues/7.", "Refs http://git.example.com/o/r/issues/7."],
+	])("closing keyword before an issue URL %s", (input, expected) => {
+		expect(neutralizeClosing(input)).toBe(expected);
+	});
+
+	test("closingReferences lists every closing phrase, by short ref and by URL", () => {
+		expect(closingReferences("wip\n\nFixes #7 and resolves https://github.com/o/r/issues/8")).toEqual(["Fixes #7", "resolves https://github.com/o/r/issues/8"]);
+		expect(closingReferences("Refs #7, see https://github.com/o/r/pull/8")).toEqual([]);
 	});
 
 	test("a bare owner/repo# without a number is left alone", () => {

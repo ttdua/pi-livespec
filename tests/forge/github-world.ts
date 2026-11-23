@@ -170,7 +170,7 @@ export class GitHubWorld implements ContractWorld {
 	}
 
 	async reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]> {
-		return this.store.read().pulls[String(pr)].reviewComments;
+		return this.store.read().pulls[String(pr)].reviewComments.map((c) => ({ ...c, line: c.line ?? 0 }));
 	}
 
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {

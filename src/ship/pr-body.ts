@@ -1,13 +1,19 @@
-// The pull request title and body (design D5). Pure; closing keywords never survive (`Refs`, not `Closes`).
+// The pull request title and body (design D5). Pure; closing keywords never survive (`Refs`, not `Closes`), before
+// a short reference (`#N`, `owner/repo#N`) or an issue URL alike.
 
 import { sectionText } from "../core/sections.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 
-const CLOSING = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b(\s*:?\s*)((?:[\w.-]+\/[\w.-]+)?#\d+)/gi;
+const CLOSING = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b(\s*:?\s*)((?:[\w.-]+\/[\w.-]+)?#\d+|https?:\/\/[^\s/]+\/[\w.-]+\/[\w.-]+\/issues\/\d+)/gi;
 
 /** Rewrites closing keywords before an issue reference to `Refs <ref>`. */
 export function neutralizeClosing(text: string): string {
 	return text.replace(CLOSING, "Refs $4");
+}
+
+/** Every closing phrase in `text` (a keyword before an issue reference), as written. */
+export function closingReferences(text: string): string[] {
+	return text.match(CLOSING) ?? [];
 }
 
 function firstParagraph(text: string | undefined): string {
