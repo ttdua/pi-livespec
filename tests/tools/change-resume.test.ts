@@ -127,6 +127,7 @@ describe("change_resume", () => {
 		const out = await h.resume();
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(out.details).toEqual({ merged: ["main", wip("U3")], deleted: [wip("U3")], kept: ["main"] });
+		expect(textOf(out)).toContain("not a wip branch of this change");
 		expect(h.git("ls-remote", "origin", "refs/heads/main")).toContain(mainBefore);
 		expect(h.gitCalls.filter((a) => a[0] === "push" && a.some((x) => x.includes("main")))).toEqual([]);
 	});

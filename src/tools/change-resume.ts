@@ -84,7 +84,7 @@ async function mergeWips(git: Git, core: ParkedCore): Promise<{ merged: string[]
 		if (await isMerged(git, wip.head)) continue;
 		if ((await git.merge(await mergeRef(git, wip))) === "conflict") {
 			await git.mergeAbort();
-			const done = merged.length === 0 ? "" : ` ${merged.join(", ")} ${merged.length === 1 ? "is" : "are"} merged and kept.`;
+			const done = merged.length === 0 ? "" : ` ${merged.map(untrusted).join(", ")} ${merged.length === 1 ? "is" : "are"} merged and kept.`;
 			return { refused: `merging ${untrusted(wip.branch)} conflicts; the merge was aborted and the change stays parked.${done} Merge ${untrusted(wip.branch)} by hand, resolve the conflicts and commit, then rerun change_resume.` };
 		}
 		merged.push(wip.branch);
@@ -150,7 +150,7 @@ async function resume(w: WriteContext, state: ChangeState, core: ParkedCore, sig
 	await w.forge.createComment(n, parkedComment({ resumed: true, at: new Date().toISOString() }));
 	await afterForgeWrite(w.session, n);
 	const stale = synced.stale.length === 0 ? "" : ` ${synced.stale.join(", ")} regressed or cover a changed requirement, so they are unticked and stale.`;
-	const merged = wips.merged.length === 0 ? "no wip branch was left to merge" : `merged ${wips.merged.join(", ")}`;
+	const merged = wips.merged.length === 0 ? "no wip branch was left to merge" : `merged ${wips.merged.map(untrusted).join(", ")}`;
 	const gone = removal.deleted.length === 0 ? "" : ` Deleted remote ${removal.deleted.map(untrusted).join(", ")}.`;
 	const left = removal.kept.length === 0 ? "" : ` Kept on origin: ${removal.kept.map((k) => `${untrusted(k.branch)} (${k.reason})`).join(", ")}.`;
 	const details = { merged: wips.merged, deleted: removal.deleted, kept: removal.kept.map((k) => k.branch) };
