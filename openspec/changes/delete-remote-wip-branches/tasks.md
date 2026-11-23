@@ -9,11 +9,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 `src/tools/change-resume.ts`: after `mergeWips` succeeds, add the delete step in unit order. Only units of the change issue whose record branch equals `wipBranch(<Branch line>, unit)` and whose head is a full sha (40 or 64 hex digits) are deleted; any other unit is kept (design D2). A `moved` result is kept, a thrown `GitError` refuses naming the branch (cause wrapped in `untrusted`) and leaves the change parked (D3). The step runs before the label removal and the resume record.
-- [ ] 2.2 `ChangeResumeDetails` gains `deleted` and `kept`; the result text names the deleted and kept branches (D4). Update the module header comment and the tool description ("Never pushes" no longer holds).
-- [ ] 2.3 Allow `change-resume.ts` as an importer in "No tool calls the push path" (`tests/guard/push-callers.test.ts`, D5).
-- [ ] 2.4 Tests in `tests/tools/change-resume.test.ts`: update "Resume with two lanes keeps all work" (the branches are now deleted) and the expected `details` of existing tests; add "Remote wip branches deleted after resume", "Wip branch already gone", "Wip branch moved since the park", and "Delete fails and rerun completes" (discovered-dependencies "Resume tool").
-- [ ] 2.5 Extend `tests/e2e/initiative-flow.test.ts` so that after `change_resume` the wip branches are absent from `origin`.
+- [x] 2.1 `src/tools/change-resume.ts`: after `mergeWips` succeeds, add the delete step in unit order. Only units of the change issue whose record branch equals `wipBranch(<Branch line>, unit)` and whose head is a full sha (40 or 64 hex digits) are deleted; any other unit is kept (design D2). A `moved` result is kept, a thrown `GitError` refuses naming the branch (cause wrapped in `untrusted`) and leaves the change parked (D3). The step runs before the label removal and the resume record.
+- [x] 2.2 `ChangeResumeDetails` gains `deleted` and `kept`; the result text names the deleted and kept branches (D4). Update the module header comment and the tool description ("Never pushes" no longer holds).
+- [x] 2.3 Allow `change-resume.ts` as an importer in "No tool calls the push path" (`tests/guard/push-callers.test.ts`, D5).
+- [x] 2.4 Tests in `tests/tools/change-resume.test.ts`: update "Resume with two lanes keeps all work" (the branches are now deleted) and the expected `details` of existing tests; add "Remote wip branches deleted after resume", "Wip branch already gone", "Wip branch moved since the park", and "Delete fails and rerun completes" (discovered-dependencies "Resume tool").
+- [x] 2.5 Extend `tests/e2e/initiative-flow.test.ts` so that after `change_resume` the wip branches are absent from `origin`.
 
 ## 3. Docs
 
