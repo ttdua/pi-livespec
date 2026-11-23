@@ -21,8 +21,9 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ tools/       spec_status · spec_next · spec_validate · spec_write · spec_gate ·   │
 │              spec_question · spec_stuck · plan_units · unit_amend · unit_start ·  │
 │              unit_finish · change_new · change_start · change_split ·             │
-│              change_ship · change_push · change_close · change_resume ·           │
-│              initiative_propose · docs_table · fix_start · fix_ship ·             │
+│              change_sync · change_park · change_resume · change_ship ·            │
+│              change_push · change_close · initiative_propose ·                    │
+│              new_dependency · docs_table · fix_start · fix_ship ·                 │
 │              subagent_dispatch · subagent_answer · subagent_packet ·              │
 │              subagent_record · finding_rebut · lane_open · lane_merge ·           │
 │              forge_read                                                           │
@@ -38,6 +39,9 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │              guardedPush (the only git push)                                      │
 │ subagents/   executor adapter · child mode · roles and policy · packets ·         │
 │              dispatch · dispatch/finding-summary/lane records · lanes · doctor    │
+│ initiatives/ dependency graph and cycles · readiness · propose and amendments ·   │
+│              split · size-limits · split rule · capability overlap · sync         │
+│ deps/        new-dependency gate and effects · park · resume · parked state       │
 │ content/     agent-skills clone: mirror, immutable trees, compatibility check,    │
 │              upgrade policy, livespec.lock, root lock, pin, rollback, exposure    │
 │ commands/    /livespec validate · migrate-openspec · init · doctor · next ·       │
@@ -116,7 +120,8 @@ define ──gate──► plan ──gate──► build ──► review ─�
   └──── an answer that changes a requirement
 ```
 
-- `shape` comes first. It clarifies the intent and may split the work into an initiative of several changes.
+- `shape` comes first. It clarifies the intent and may split the work into an initiative of several changes (see [Initiatives](#initiatives)).
+- The `plan` checks include the waivable `size-limits`: more units than `limits.max_units` (8) or more declared capabilities than `limits.max_capabilities` (3) holds the plan gate until a `change_split` or a `waive`.
 - The **small-fix lane** skips the ceremony: `fix_start <slug>` creates `fix/<slug>` from the fetched integration branch, and the agent edits code, tests and the living spec directly, with no issue. The `lane` rule runs on the committed diff since the merge base and forces a full change when it exceeds `max_files: 3` or `max_lines: 100` (added plus deleted), adds or removes a requirement or scenario, creates a capability, or touches `specs/constraints.md` or `specs/decisions/`. Otherwise it is `small`; a code change under a living spec's `paths` with that spec unchanged is `small` with `behavior_change: declared-none`. `fix_ship` (no parameters) refuses unless `testCommand` in the project config exits 0, then pushes `HEAD:refs/heads/fix/<slug>` and opens or updates its one pull request. The body carries the test result and a `lane` decision block (`point: lane`). A forced fix moves into a change with `change_new <name> --from-fix`, which keeps the commits and renames the branch to `livespec/<name>`. The phase card shows the lane outcome and one next step, never a subagent. Bare work is advisory: an edit of a tracked file outside `specs/` on a branch that is neither `livespec/*` nor `fix/*` gets a `livespec guard:` warning and one line in `specs/bare-work.md`, and never blocks. Edits made through `bash` are not detected.
 - Every loop has a cap. Reaching a cap stops the work and sends a stuck report to the human.
 
@@ -174,7 +179,7 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 Every reason starts with `livespec guard:`, names the rule and names the livespec tool to use. The guard fails closed: an internal error blocks the call with "the command was not run". It has no flag, variable or parameter that lets a call through.
 
-**`guardedPush`.** `src/guard/push.ts` is the only code that runs `git push`. It is not a tool, and no tool imports it in LS-06; LS-09 adds callers that check the state first.
+**`guardedPush`.** `src/guard/push.ts` is the only code that runs `git push`. It is not a tool, and no tool imports it in LS-06; LS-09 adds callers that check the state first, and `change_park` pushes wip branches through it ([Discovered dependencies](#discovered-dependencies)).
 
 **Settle.** At `agent_before_settle` with outcome `completed`, a resolved change in a `per: unit` phase or with a started unit has unfinished items: each started unit, a dirty tree, and each message of a condition registered with `registerSettleCondition`. The first time in a user prompt, the hook appends a `livespec-settle` message and requests one continuation. If items remain at the next settle, it writes the own `incomplete` comment (id `<change number>`, edited in place) and lets the agent settle. A later settle with nothing unfinished clears that comment, whatever the phase. A read-only forge writes nothing and records a warning. The settle hook fails open: errors are recorded.
 
@@ -330,6 +335,46 @@ A human merges the pull request; livespec never merges. A merged pull request is
 **Abandon.** A pull request closed unmerged keeps the change in its current phase, with an abandon step: `change_close` with `abandon: "<reason>"` closes the issue recording that reason, and an abandoned change has nothing left to do.
 
 **Events.** `livespec:change-closed` (`{ change, pr }`, plus `initiative` whenever the issue has an `Initiative` line, and `abandoned: true` on the abandon path) and `livespec:initiative-closed` (`{ initiative, changes }`) are emitted in-process on the pi event bus, once per close. Nothing is written to the forge for them.
+
+## Initiatives
+
+An initiative groups changes that ship separately but depend on each other. It is a tracking issue labelled `livespec:initiative` with `Goal`, `Capabilities` and a `## Changes` list of entries `- [ ] #<n> <name> — Depends: <#a, #b | —>`; each change names it with an `Initiative: #T` line and lists its own `Depends`. The code lives in `src/initiatives/`, and the engine reaches it only through registered hooks (gate effects and validators, refresh facts, card sections).
+
+**Split rule.** At `shape`, the `split` rule (`decisions.split: { mode: rule }`) compares the declared capabilities and the drafted units with the pack `limits`. Over either limit it returns `propose`, and the shape card names `initiative_propose`. It never asks.
+
+**Propose and its gate.** `initiative_propose` drafts the initiative (name, goal, capabilities, entries with a short Proposal and `Depends` by name, the current change as one entry) and sends the named `initiative` gate. `spec_gate initiative` refuses and names the tool, because a bare request has no drafts. Nothing is created before approval. The tool refuses a cycle (`#34 → token-store → #34`, also through existing changes and at answer validation), a self dependency and a name already taken. An approval creates everything in one gate effect, in order: the tracking issue, the new change issues in `shape` (topological order), the `## Changes` list and the current change's `Initiative`, `Depends` and Proposal. Each step finds before it creates, so a crash leaves the request applying and the next poll finishes it.
+
+**Amendments.** When the current change already has an `Initiative` line, `initiative_propose` amends that initiative through the same gate: it adds changes (also mid-way, in any phase), edits the Proposal of a change with no units or the `Depends` of a change not started, and removes an abandoned dependency or the entry of an abandoned change. After a removal, the normal `change_close` of the last remaining entry closes the initiative.
+
+**Readiness.** A dependency is merged when its issue is closed, its `PR` line names a pull request, and the forge reports that pull request merged. Anything else waits: open, or closed without a merged pull request (shown as abandoned). The facts are read at refresh, never stored. `change_start` refuses while a dependency is not merged and names each one with its state; the not-started card says "waits for #A, #B".
+
+**Card.** A change in an initiative shows the initiative's progress and the entries that are ready to start. The open-changes list marks each change `ready`, `waits for #n` or `parked`. Another open change with a `Branch` whose `Capabilities` share a name with this one is a warning on the card and in `spec_status`.
+
+**`change_sync`.** Once a sibling in the initiative merged and `origin/<integration>` is not an ancestor of HEAD, the next step in `build`, `review` and `ship` is `change_sync`. On a clean tree with no started unit it fetches and merges the integration branch (a conflict aborts and refuses), writes the new `Base` and `livespecBase`, re-runs every done unit's `Verify` and posts one `regression` record. Done units whose `Verify` is red or invalid, or whose `Covers` names a requirement the sibling changed under `specs/`, are unticked and made stale (`after_plan: false`, not a counted iteration), so `unit_amend` comes before build continues; a change past `build` returns to `build`.
+
+**`change_split`.** `change_split #N --units U5,U6 --into <name>` moves pending units (not started, not in a lane, not parked) into a new change in `shape`. It refuses while #N's `plan` gate request is pending, and when a remaining unit depends on a moved one. The new change gets `Depends: #N` only when a moved unit depends on a unit that stays, the moved units' capabilities (removed from `#N` when no remaining unit covers them), and the entry right after `#N` in its initiative; without an initiative and with that dependency, a `<name>-split` initiative is created. `#N` loses the units, gets a `stale` comment for `plan` and later phases, and returns to `plan`, so its plan gate is approved again within the limits.
+
+**`size-limits`.** The waivable `plan` check fails when the plan has more units than `limits.max_units` (8) or more declared capabilities than `limits.max_capabilities` (3), with the messages "<n> units exceed max_units <m>" and "<n> capabilities exceed max_capabilities <m>". A `waive` or a `change_split` clears it. An in-session approve is not offered while it fails.
+
+## Discovered dependencies
+
+A unit may find, during build, that it needs work outside the change. The code lives in `src/deps/`.
+
+**Gate.** An implementer that returns `BLOCKED` with reason `missing-prerequisite` (dispatched or recorded inline with `subagent_record`) makes the next step `new_dependency`. The tool drafts every option and sends the blocking named `new-dependency` gate; nothing is created before approval:
+
+- **A** (default; an approval without a choice counts as A): create the prerequisite change in `shape`, inside the change's initiative or else in a new `<change>-deps` initiative, and add it to this change's `Depends`; cycles are refused as for initiatives. The next step is `change_park`.
+- **B**: add units; the next step is `unit_amend --add`.
+- **C**: a stub in this change plus a follow-up change in `shape`; the next step is `unit_amend` for the stub.
+- **D**: back to `shape` (a `stale` comment listing `shape` and later phases, not a counted iteration), or drop the change, after which `change_close --abandon <reason>` is accepted without a pull request.
+- **split**: offered only when some units are done and some are not; the next step is `change_split` at that boundary.
+
+`discovered_deps` is derived: the approved `new-dependency` results with choice A, B, C or split. At `loops.discovered_deps` (2) the tool refuses and a missing-prerequisite result names `spec_stuck`; a chosen stuck answer lifts the cap. Choice D does not count.
+
+**Park.** `change_park` runs after choice A, on the change branch, in the parent session. Each started unit with work (a lane with commits or uncommitted edits, or the change worktree) is committed to a wip branch `<Branch>--wip-<unit>` (message `wip(<unit>): parked for #<n>`) and pushed through `guardedPush`, with the refspec built from the issue's `Branch` line. A unit with no work gets no branch. Lanes are closed with outcome `parked` and their worktrees removed, the change gets the label `livespec:parked`, and a `parked` record listing the units and the dependencies it waits for is written last, so a rerun after a failed push completes the park. The parked units return to pending with a fresh attempt budget. While parked, the card says "waiting for #X to merge" and the gates refuse except `new-dependency` and `initiative`, so an abandoned prerequisite can still be removed.
+
+**Resume.** Once every waited-for dependency merged, the next step is "a human runs `change_resume #N`". On a clean change branch it runs the `change_sync` steps (merge, new `Base`, `regression` record, regressed units unticked) and then merges each wip branch with `--no-ff` in unit order. A conflict aborts, refuses and names the branch; a rerun skips wip heads already merged. It posts a `parked` record with `resumed: true` and removes the label. A resumed unit's partial work is already in HEAD, so its next `unit_start` accepts a green `Verify` with verdict `resumed`.
+
+**Known gap.** Wip branches stay on the remote after resume: no delete path exists through `guardedPush`, so they are removed by hand.
 
 ## Forge accounts
 

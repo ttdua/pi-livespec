@@ -263,7 +263,29 @@ describe("subagent-dispatch tools", () => {
 		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "do <this>" }));
 		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
 		expect(out).toContain("<untrusted>do &lt;this></untrusted>");
+		expect(out).toContain("new_dependency");
+	});
+
+	test("Missing prerequisite opens the dependency gate", async () => {
+		const h = await subagentHarness({ executor: {} });
+		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "needs a <token> store" }));
+		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
+		expect(out).toContain("new_dependency U1");
+		expect(out).toContain("<untrusted>needs a &lt;token> store</untrusted>");
+		expect(out).not.toContain("spec_stuck");
+		expect((await h.ofKind("decision")).filter((m) => m.id.startsWith("progress."))).toEqual([]);
+		expect(h.session.card.kind === "change" && h.session.card.state.evidence.attempts.U1).toBeFalsy();
+	});
+
+	test("Missing prerequisite past the cap", async () => {
+		const h = await subagentHarness({ executor: {} });
+		for (const [i, choice] of ["A", "B"].entries()) {
+			await h.seed("gate", `new-dependency.r${i}`, { request: `r${i}`, gate: "new-dependency", outcome: "approved", choice, notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "h", waivers: [] });
+		}
+		next(h, citing(h, { status: "BLOCKED", reason: "missing-prerequisite", evidence: "needs a token store" }));
+		const out = textOf(await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }));
 		expect(out).toContain("spec_stuck");
+		expect(out).not.toContain("run new_dependency");
 	});
 
 	test("a dispatch stores its packet for unit_finish freshness", async () => {
@@ -297,5 +319,22 @@ describe("verifier dispatch", () => {
 		const out = await h.call("subagent_dispatch", { role: "verifier", finding: key });
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect((await h.ofKind("finding-summary")).filter((m) => m.id.startsWith("finding-summary.verify.")).at(-1)?.data).toMatchObject({ role: "verifier", verifies: key, verdict: "confirmed" });
+	});
+});
+
+describe("outcome text", () => {
+	const t = { role: "implementer" as const, unit: "U1" };
+	const prerequisite = { status: "BLOCKED" as const, notes: "n", discoveries: [], sources_used: [], reason: "missing-prerequisite", evidence: "needs a token store" };
+	test("a result outcome follows the discovered_deps cap", async () => {
+		const { outcomeText } = await import("../../src/tools/subagent-outcome.ts");
+		const out = outcomeText(t, { kind: "result", result: prerequisite, facts: {} as never }, { depsCapped: true });
+		expect(out).toContain("spec_stuck");
+		expect(out).not.toContain("run new_dependency");
+	});
+	test("a stuck prerequisite prints the evidence once", async () => {
+		const { outcomeText } = await import("../../src/tools/subagent-outcome.ts");
+		const out = outcomeText(t, { kind: "stuck", reason: "r", result: prerequisite, prerequisite: true });
+		expect(out.split("needs a token store")).toHaveLength(2);
+		expect(out).toContain("new_dependency U1");
 	});
 });

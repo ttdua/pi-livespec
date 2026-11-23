@@ -12,8 +12,10 @@ import type { RequestsState } from "../interaction/requests.ts";
 import type { ReviewSubject, Role } from "../subagents/roles.ts";
 import type { LaneRecord } from "../subagents/state.ts";
 import type { UnfamiliarFacts } from "../subagents/unfamiliar.ts";
+import type { DepFact, ParkedUnit } from "./deps-facts.ts";
 import type { IterationState } from "./iterations.ts";
 import type { LockState } from "./locks.ts";
+import type { ParkedCore } from "./parked.ts";
 
 /** A check Result tagged with the registered name of the check that produced it. */
 export type CheckResult = Result & { check: string };
@@ -57,6 +59,19 @@ export type ChangeState = {
 	requests: RequestsState;
 	lock: LockState;
 	iterations: IterationState;
+	/** The latest own `parked` record while the change is parked, from comments only (design D3a). */
+	parkedCore?: ParkedCore;
+	/** The parked core plus the states of the dependencies it waits for; filled at refresh. */
+	parked?: { waitsFor: DepFact[]; units: ParkedUnit[]; at: string };
+	/** Readiness facts of the change's dependencies and initiative; filled at refresh (design D3). */
+	deps?: {
+		items: DepFact[];
+		initiative?: { number: number; checked: number; total: number; ready: { number: number; name: string }[] };
+		overlap: { number: number; title: string; capabilities: string[] }[];
+		integrationAhead?: boolean;
+		siblingMerged?: boolean;
+		split?: "propose" | "single";
+	};
 	/** Warnings from the last approval poll about ignored command comments. */
 	commandWarnings: string[];
 	/** Started, receipted and blocked units, derived from own `unit-start`, `receipt` and `progress` comments. */

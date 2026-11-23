@@ -14,6 +14,8 @@ import { DEFAULT_LANES } from "../config.ts";
 import { buildLoopStep, implementerHolds } from "../subagents/build-loop.ts";
 import { eligibleLanes } from "../subagents/lanes.ts";
 import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase-entries.ts";
+import { dependencyFollowUp } from "../deps/follow-up.ts";
+import { parkedStep } from "../deps/parked.ts";
 import { reviewStep } from "../review/next.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
@@ -151,10 +153,19 @@ function sentence(text: string): string {
 
 // --- precedence rules (design.md, "Change state and next step") --------------
 
-/** Rule 2: a change not started (no `Branch`) in a phase after the first one. */
+/**
+ * Rule 3: a change not started (no `Branch`) in a phase after the first one. With an unmerged dependency
+ * (read at refresh), only a human starts it once they merge.
+ */
 const notStarted: Rule = ({ state, phase }) => {
 	if (state.change.header.branch !== undefined || phase.requires.length === 0) return undefined;
-	return { next: `Run change_start #${state.issue.number} to create the change branch.` };
+	const n = state.issue.number;
+	const unmet = (state.deps?.items ?? []).filter((d) => d.state !== "merged");
+	if (unmet.length > 0) {
+		const waits = unmet.map((d) => `#${d.number} ${d.state}`).join(", ");
+		return { next: `#${n} waits for ${waits}; a human runs change_start #${n} once they merge.` };
+	}
+	return { next: `Run change_start #${n} to create the change branch.` };
 };
 
 /**
@@ -175,6 +186,12 @@ const openRequest: Rule = ({ requests }) => {
 	if (request.applying) return { next: `The answer to ${request.subject} is not fully applied: run any livespec tool to finish it.` };
 	return { next: `Wait for the human's answer to ${request.subject} ${ADAPTER_PLACE[request.adapter]}.` };
 };
+
+/** Rule 6 (discovered-dependencies "Parked state"): what a parked change waits for, or that a human resumes it. */
+const parked: Rule = ({ state }) => parkedStep(state);
+
+/** Rule 7 (discovered-dependencies "New dependency follow-up"): the follow-up of an approved `new-dependency` result. */
+const followUp: Rule = ({ state }) => dependencyFollowUp(state);
 
 /** Rule 5: the `change_iterations` cap blocks until a stuck report is answered. */
 const capBlocking: Rule = ({ state }) => {
@@ -284,6 +301,17 @@ const receiptedUnit: Rule = ({ state, phase }) => {
 	return unticked ? { next: `Run unit_finish ${unticked} again to tick it.` } : undefined;
 };
 
+const SYNC_PHASES: ReadonlySet<string> = new Set(["build", "review", "ship"]);
+
+/**
+ * Rule 16 (change-initiatives "Sync with the integration branch"): in build, review and ship, a checked sibling
+ * entry of the initiative and an integration branch ahead of HEAD ask for `change_sync` before the phase's steps.
+ */
+const syncStep: Rule = ({ state, phase }) => {
+	if (!SYNC_PHASES.has(phase.id) || state.deps?.siblingMerged !== true || state.deps.integrationAhead !== true) return undefined;
+	return { next: "A sibling change of the initiative merged and origin moved ahead: run change_sync before continuing." };
+};
+
 /** Rule 13: in a `per: unit` phase, the next ready unit, or the waiting units; no decision once every unit is done. */
 const nextUnit: Rule = ({ units, state }) => {
 	const rebuilds = state.evidence.rebuilds ?? {};
@@ -322,6 +350,8 @@ const RULES: Rule[] = [
 	notStarted,
 	openStuck,
 	openRequest,
+	parked,
+	followUp,
 	capBlocking,
 	blockingQuestion,
 	changedUnit,
@@ -333,6 +363,7 @@ const RULES: Rule[] = [
 	laneUnits,
 	startedUnit,
 	receiptedUnit,
+	syncStep,
 	nextUnit,
 	reviewPhase,
 	shipPhase,

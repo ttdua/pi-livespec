@@ -42,41 +42,41 @@ function countingCreates(forge: Forge, calls: { create: number }): Forge {
 describe("readCounters", () => {
 	test("reads counter values and ignores other kinds and malformed data", () => {
 		const counters = readCounters([
-			marked("counter", "discovered_deps", { value: 2 }),
-			marked("counter", "discovered_deps.U3", { value: 1 }),
+			marked("counter", "custom_loop", { value: 2 }),
+			marked("counter", "custom_loop.U3", { value: 1 }),
 			marked("counter", "broken", { value: "two" }),
 			marked("skill-note", "build.x", { value: 9 }),
 		]);
-		expect(counters).toEqual({ discovered_deps: 2, "discovered_deps.U3": 1 });
+		expect(counters).toEqual({ custom_loop: 2, "custom_loop.U3": 1 });
 	});
 
 	test("change_iterations counter comment is ignored", () => {
-		const counters = readCounters([marked("counter", "change_iterations", { value: 3 }), marked("counter", "discovered_deps", { value: 1 })]);
-		expect(counters).toEqual({ discovered_deps: 1 });
+		const counters = readCounters([marked("counter", "change_iterations", { value: 3 }), marked("counter", "custom_loop", { value: 1 })]);
+		expect(counters).toEqual({ custom_loop: 1 });
 	});
 });
 
 describe("setCounter", () => {
 	test("Counter update edits in place", async () => {
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "discovered_deps", { value: 1 }));
+		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 1 }));
 		const calls = { create: 0 };
-		await setCounter(countingCreates(world.forge, calls), n, "discovered_deps", 2, await own());
+		await setCounter(countingCreates(world.forge, calls), n, "custom_loop", 2, await own());
 		expect(calls.create).toBe(0);
 		const after = await own();
 		expect(after).toHaveLength(1);
-		expect(readCounters(after)).toEqual({ discovered_deps: 2 });
+		expect(readCounters(after)).toEqual({ custom_loop: 2 });
 	});
 
 	test("setCounter creates when missing", async () => {
-		await setCounter(world.forge, n, "discovered_deps.U3", 1, await own());
-		expect(readCounters(await own())).toEqual({ "discovered_deps.U3": 1 });
+		await setCounter(world.forge, n, "custom_loop.U3", 1, await own());
+		expect(readCounters(await own())).toEqual({ "custom_loop.U3": 1 });
 	});
 });
 
 describe("Derived unit attempts", () => {
 	test("counter comments for unit_attempts.* are ignored", () => {
-		const counters = readCounters([marked("counter", "unit_attempts.U2", { value: 9 }), marked("counter", "discovered_deps", { value: 1 })]);
-		expect(counters).toEqual({ discovered_deps: 1 });
+		const counters = readCounters([marked("counter", "unit_attempts.U2", { value: 9 }), marked("counter", "custom_loop", { value: 1 })]);
+		expect(counters).toEqual({ custom_loop: 1 });
 	});
 });
 

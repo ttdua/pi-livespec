@@ -24,7 +24,7 @@ export type ResultDecision =
 	| { kind: "more-context"; ids: string[]; result: SubagentResult }
 	| { kind: "question"; text: string }
 	| { kind: "blocked"; reason: string }
-	| { kind: "stuck"; reason: string; result?: SubagentResult };
+	| { kind: "stuck"; reason: string; result?: SubagentResult; prerequisite?: true };
 
 /** A source id as packets name them: `<kind>:<rest>` or `issue#<n>`. */
 const SOURCE_ID = /(?:^|[\s,;(`'"])((?:[a-z]+:[^\s,;)`'"]+)|(?:issue#\d+))/g;
@@ -56,12 +56,17 @@ function missingSources(result: SubagentResult, packet: Packet): string[] {
 	return packet.sources.filter((s) => s.required && !result.sources_used.includes(s.id)).map((s) => s.id);
 }
 
+/** A `BLOCKED` result whose reason names `missing-prerequisite`: a discovered dependency, not a failed attempt. */
+export function isMissingPrerequisite(result: SubagentResult): boolean {
+	return result.status === "BLOCKED" && result.reason?.includes(MISSING_PREREQUISITE) === true;
+}
+
 function statusDecision(result: SubagentResult, history: DispatchHistory): ResultDecision {
 	if (result.status === "NEEDS_CONTEXT") {
 		if (history.needsContext >= NEEDS_CONTEXT_CAP) return { kind: "stuck", reason: `NEEDS_CONTEXT returned ${history.needsContext + 1} times: ${untrusted(result.reason ?? "")}`, result };
 		return { kind: "more-context", ids: namedSourceIds(result), result };
 	}
-	if (result.status === "BLOCKED" && result.reason?.includes(MISSING_PREREQUISITE)) return { kind: "stuck", reason: `${MISSING_PREREQUISITE}: ${untrusted(result.evidence ?? "")}`, result };
+	if (isMissingPrerequisite(result)) return { kind: "stuck", reason: `${MISSING_PREREQUISITE}: ${untrusted(result.evidence ?? "")}`, result, prerequisite: true };
 	return { kind: "accept", result };
 }
 

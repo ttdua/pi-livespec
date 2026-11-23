@@ -28,3 +28,14 @@ export async function openLane(h: UnitHarness, unit: string): Promise<Lane> {
 	await h.seed("lane", `lane.${unit}`, { unit, path, branch: `livespec/per-ip-cap--lane-${unit}`, base: h.head });
 	return { path, git: (...args) => gitIn(path, ...args) };
 }
+
+/** A real git worktree of the change repo on the unit's lane branch at the current HEAD, plus its open `lane` record; it shares `origin`. */
+export async function openWorktreeLane(h: UnitHarness, unit: string): Promise<Lane> {
+	const path = join(mkdtempSync(join(tmpdir(), "ls-lane-")), "lane");
+	dirs.push(join(path, ".."));
+	const branch = `livespec/per-ip-cap--lane-${unit}`;
+	const base = h.git("rev-parse", "HEAD");
+	h.git("worktree", "add", "-q", "-b", branch, path, base);
+	await h.seed("lane", `lane.${unit}`, { unit, path, branch, base });
+	return { path, git: (...args) => gitIn(path, ...args) };
+}

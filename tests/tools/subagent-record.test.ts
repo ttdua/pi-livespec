@@ -52,6 +52,17 @@ describe("inline fallback", () => {
 		expect(summary?.data).not.toHaveProperty("agentId");
 	});
 
+	test("an inline BLOCKED missing-prerequisite result names new_dependency", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		await h.start("U1");
+		const packet = await h.call("subagent_packet", { role: "implementer", unit: "U1" });
+		const result = done({ status: "BLOCKED", reason: "missing-prerequisite", evidence: "needs a <token> store", commits: [], sources_used: footerIds(textOf(packet)) });
+		const out = textOf(await h.call("subagent_record", { role: "implementer", unit: "U1", result }));
+		expect(out).toContain("new_dependency U1");
+		expect(out).toContain("<untrusted>needs a &lt;token> store</untrusted>");
+		expect((await h.ofKind("decision")).filter((m) => m.id.startsWith("progress."))).toEqual([]);
+	});
+
 	test("subagent_record validates the result against the role schema", async () => {
 		const h = await subagentHarness({ units: [U1] });
 		const before = (await h.marked()).length;

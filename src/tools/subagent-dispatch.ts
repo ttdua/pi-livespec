@@ -10,7 +10,7 @@ import { closeLane } from "../subagents/lane-ops.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
-import { inlineText, outcomeText } from "./subagent-outcome.ts";
+import { inlineText, outcomeOptions, outcomeText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
 import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
 
@@ -38,7 +38,7 @@ export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx
 	const d = { ...dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), ...(signal === undefined ? {} : { signal }) };
 	const outcome = await runDispatch(d, request);
 	if (outcome.kind === "sequential") await closeMovedLane(w, state, target.unit);
-	return toolResult(withStep(w.session, outcomeText(target, outcome)), undefined, outcome.kind === "cancelled");
+	return toolResult(withStep(w.session, outcomeText(target, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
 }
 
 /** A child moved out of its lane: the lane is closed and removed, so the unit re-runs in the change worktree. */

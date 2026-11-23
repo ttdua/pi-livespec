@@ -187,6 +187,24 @@ describe("merge", () => {
 		expect(await git.isAncestor(head, "HEAD")).toBe(true);
 	});
 
+	test("mergeOrigin fast-forwards when HEAD is behind", async () => {
+		const { root, git, side } = await divergent(false);
+		execFileSync("git", ["reset", "-q", "--hard", "HEAD~1"], { cwd: root });
+		expect(await git.mergeOrigin("side")).toBe("ok");
+		expect(await git.head()).toBe(side);
+	});
+
+	test("mergeOrigin merges diverged history and reports a conflict", async () => {
+		const clean = await divergent(false);
+		const head = await clean.git.head();
+		expect(await clean.git.mergeOrigin("side")).toBe("ok");
+		expect(await clean.git.parents("HEAD")).toEqual([head, clean.side]);
+		const conflicted = await divergent(true);
+		expect(await conflicted.git.mergeOrigin("side")).toBe("conflict");
+		await conflicted.git.mergeAbort();
+		expect(existsSync(`${conflicted.root}/.git/MERGE_HEAD`)).toBe(false);
+	});
+
 	test("mergeBase names the fork point", async () => {
 		const { root, git, side } = await divergent(false);
 		const fork = gitIn(root, "rev-parse", "HEAD~1");
@@ -432,5 +450,32 @@ describe("small-fix ports", () => {
 		commitAll(root, "main work");
 		git(root, "merge", "--no-ff", "-q", "-m", "merge side", "side");
 		expect(await g.subjects(base, "HEAD")).toEqual(["side work", "main work"]);
+	});
+});
+
+describe("park ports", () => {
+	test("addAll and commit take untracked and modified files, not ignored ones", async () => {
+		const { root, git: g } = await committedRepo();
+		await writeIn(root, ".gitignore", "build/\n");
+		commitAll(root, "ignore build");
+		const before = await g.head();
+		await writeIn(root, "README.md", "changed\n");
+		await writeIn(root, "new.txt", "n\n");
+		await writeIn(root, "build/out.txt", "o\n");
+		await g.addAll();
+		const head = await g.commit("wip(U2): parked for #41");
+		expect(head).toBe(git(root, "rev-parse", "HEAD"));
+		expect(await g.parents(head)).toEqual([before]);
+		expect((await g.changedPaths(head)).sort()).toEqual(["README.md", "new.txt"]);
+		expect(git(root, "log", "-1", "--format=%s")).toBe("wip(U2): parked for #41");
+		expect(await g.isTracked("build/out.txt")).toBe(false);
+	});
+
+	test("commit with allowEmpty records a commit on a clean tree", async () => {
+		const { git: g } = await committedRepo();
+		const before = await g.head();
+		await expect(g.commit("empty")).rejects.toBeInstanceOf(GitError);
+		const head = await g.commit("empty", { allowEmpty: true });
+		expect(await g.parents(head)).toEqual([before]);
 	});
 });

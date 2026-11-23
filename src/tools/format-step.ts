@@ -6,7 +6,7 @@ import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
-import { type FixCard, fixLaneText, fixNextStep, untrusted } from "../hooks/phase-card.ts";
+import { type FixCard, fixLaneText, fixNextStep, readinessText, untrusted } from "../hooks/phase-card.ts";
 import { pendingText } from "../interaction/card.ts";
 import { displayStuckId, displayUnitList } from "../interaction/display-ids.ts";
 
@@ -77,6 +77,9 @@ function questionText(q: Question): string {
 	return `${q.id} (${q.kind}, ${q.checked ? "answered" : "open"}): ${untrusted(q.text)}${answer}`;
 }
 
+const overlapWarning = (o: NonNullable<ChangeState["deps"]>["overlap"][number]): string =>
+	`#${o.number} ${untrusted(o.title)} also changes ${o.capabilities.map(untrusted).join(", ")}`;
+
 function stateLines(state: ChangeState): string[] {
 	const questions = state.change.questions.map(questionText);
 	const checks = state.checks.map((c) => `${c.severity} ${c.check}: ${untrusted(c.message)}`);
@@ -88,7 +91,8 @@ function stateLines(state: ChangeState): string[] {
 		...listLines("Questions", questions),
 		...inlineLine("Counters", counters),
 		...listLines("Checks", checks),
-		...listLines("Warnings", state.warnings.map(untrusted)),
+		...listLines("Dependencies", (state.deps?.items ?? []).map((d) => `#${d.number} ${untrusted(d.title)}: ${d.state}`)),
+		...listLines("Warnings", [...state.warnings.map(untrusted), ...(state.deps?.overlap ?? []).map(overlapWarning)]),
 		`Stale: ${state.stale ? "yes" : "no"}`,
 		`Read-only: ${state.readOnly ? "yes" : "no"}`,
 	];
@@ -100,7 +104,7 @@ export function formatState(step: NextStep, state: ChangeState): string {
 }
 
 function openChangeText(c: OpenChange): string {
-	return `#${c.number} ${untrusted(c.title)} (${c.phase === undefined ? "no phase" : phaseId(c.phase)})`;
+	return `#${c.number} ${untrusted(c.title)} (${c.phase === undefined ? "no phase" : phaseId(c.phase)})${readinessText(c.readiness)}`;
 }
 
 /** No change resolves on this branch: the open changes and how to start or switch to one. */

@@ -11,6 +11,9 @@ import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
+import { sendNamedGate } from "../../src/tools/spec-gate.ts";
+import { registerSizeLimits as registerSizeLimitsCheck } from "../../src/initiatives/size-limits.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI, SelectFn } from "../hooks/fake-pi.ts";
@@ -27,7 +30,11 @@ afterEach(async () => {
 /** The real check needs a worktree run per unit; these tests are about the gate, so it reports nothing. */
 const passRedOnBase = (): void => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
 
-beforeEach(passRedOnBase);
+beforeEach(() => {
+	passRedOnBase();
+	// A test may replace `size-limits` with a failing stub; every other test runs the real check.
+	registerSizeLimitsCheck();
+});
 
 const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const AT = "2026-11-15T10:00:00.000Z";
@@ -144,6 +151,13 @@ function registerSizeLimits(): void {
 	registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 }
 
+/** The fixture plan grown to nine units (U3 cloned as U4…U10), one more than `max_units` 8 of the default pack. */
+function nineUnits(body: string): string {
+	const u3 = /### U3 — [\s\S]*?- \[ \] pending\n/.exec(body)?.[0] ?? "";
+	const clones = [4, 5, 6, 7, 8, 9, 10].map((i) => `\n${u3.replace("### U3 —", `### U${i} —`)}`).join("");
+	return body.replace(u3, `${u3}${clones}`);
+}
+
 describe("spec_gate", () => {
 	test("Self gate", async () => {
 		const h = await change("shape");
@@ -167,13 +181,13 @@ describe("spec_gate", () => {
 	});
 
 	test("Registered gate", async () => {
-		registerGate("new-dependency", { checks: [] });
+		registerGate("custom-gate", { checks: [] });
 		const h = await change("build", { ui: human("approve") });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
 		expect(gate).toHaveLength(1);
-		expect(gateData(gate[0])).toMatchObject({ gate: "new-dependency", outcome: "approved", adapter: "in-session" });
+		expect(gateData(gate[0])).toMatchObject({ gate: "custom-gate", outcome: "approved", adapter: "in-session" });
 		expect(gateData(gate[0]).phase).toBeUndefined();
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
@@ -253,6 +267,42 @@ describe("spec_gate", () => {
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
 
+	test("Over the unit limit", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits });
+		await seedClassification(h);
+		expect(parseChange(await h.world.bodyOf(h.n)).units).toHaveLength(9);
+		await h.call("spec_gate", { target: "plan" });
+		const request = (await ofKind(h, "request"))[0];
+		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec approve");
+		await h.call("spec_status");
+		expect(h.session.commandWarnings.join("\n")).toContain("choose waive");
+		expect(await ofKind(h, "gate")).toEqual([]);
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
+	});
+
+	test("over the unit limit, in session approve is not offered", async () => {
+		const h = await change("plan", { ui: human("approve"), edit: nineUnits });
+		await seedClassification(h);
+		await h.call("spec_gate", { target: "plan" });
+		const options = h.ctx.ui.select.mock.calls[0]?.[1] ?? [];
+		expect(options).not.toContain("approve");
+		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
+	});
+
+	test("Waived", async () => {
+		const h = await change("plan", { ui: human("waive"), edit: nineUnits });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError).toBe(false);
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
+		expect(gate.superseded).toBeUndefined();
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
+	});
+
 	test("Approve without waiving", async () => {
 		registerSizeLimits();
 		const h = await change("plan", { config: FORGE_CHAIN, files: SIZE_LIMITS_FLOW });
@@ -270,25 +320,25 @@ describe("spec_gate", () => {
 	});
 
 	test("Named gate option recorded", async () => {
-		registerGate("new-dependency", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
 		const h = await change("build", { ui: human("accept") });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
-		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", outcome: "approved", waivers: [] });
+		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", outcome: "approved", waivers: [] });
 		expect(gate.superseded).toBeUndefined();
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
 	});
 
 	test("Named gate option does not waive", async () => {
 		registerSizeLimits();
-		registerGate("new-dependency", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
 		const h = await change("build", { ui: human("accept"), files: flow });
-		const out = await h.call("spec_gate", { target: "new-dependency" });
+		const out = await h.call("spec_gate", { target: "custom-gate" });
 		expect(textOf(out)).toContain("choose waive");
 		const gate = gateData((await ofKind(h, "gate"))[0]);
-		expect(gate).toMatchObject({ gate: "new-dependency", choice: "accept", superseded: true, waivers: [] });
+		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", superseded: true, waivers: [] });
 		expect(gate.outcome).toBe("approved");
 	});
 
@@ -476,11 +526,58 @@ describe("spec_gate gate-only checks", () => {
 describe("named gate payload", () => {
 	test("a named gate's review payload lists its gate-only check results", async () => {
 		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
-		registerGate("new-dependency", { checks: ["dep-audit"] });
+		registerGate("custom-gate", { checks: ["dep-audit"] });
 		const h = await change("build", { ui: human("approve") });
-		await h.call("spec_gate", { target: "new-dependency" });
+		await h.call("spec_gate", { target: "custom-gate" });
 		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
 		expect(summary).toContain("Gate checks:");
 		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");
+	});
+});
+
+describe("named gates with a proposer", () => {
+	test("Gate with a proposer", async () => {
+		registerGate("initiative", { checks: [], proposer: "initiative_propose" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		const out = await h.call("spec_gate", { target: "initiative" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("initiative_propose");
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("sendNamedGate sends its drafts and options with a dirty tree", async () => {
+		registerGate("new-dependency", { checks: [], options: [{ id: "A", label: "A (default)" }, { id: "split", label: "split" }], proposer: "new_dependency" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		await writeIn(h.root, "src/lane.ts", "wip\n");
+		const w = await prepareWrite();
+		if (!w.ok) throw new Error(w.message);
+		const state = requireChange(w.session);
+		if (!state.ok) throw new Error(state.message);
+		expect(state.state.git.dirty).toBe(true);
+		const drafts = { a: { name: "dep" } };
+		const out = await sendNamedGate(w, state.state, { target: "new-dependency", options: [{ id: "A", label: "A (default)" }], drafts, summary: "New dependency found.", ctx: h.ctx as never, tool: "new_dependency" });
+		expect(out.isError).toBe(false);
+		const request = (await ofKind(h, "request"))[0]?.data as { subject: string; options: { id: string }[]; snapshot: { target: string; drafts: unknown }; summary: string };
+		expect(request.subject).toBe("gate:new-dependency");
+		expect(request.options.map((o) => o.id)).toEqual(["A"]);
+		expect(request.snapshot).toMatchObject({ target: "new-dependency", drafts });
+		expect(request.summary).toContain("New dependency found.");
+	});
+
+	test("sendNamedGate still refuses a pending request", async () => {
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		const h = await change("build", { config: FORGE_CHAIN });
+		const send = async () => {
+			const w = await prepareWrite();
+			if (!w.ok) throw new Error(w.message);
+			const state = requireChange(w.session);
+			if (!state.ok) throw new Error(state.message);
+			return sendNamedGate(w, state.state, { target: "new-dependency", options: [], drafts: {}, summary: "s", ctx: h.ctx as never, tool: "new_dependency" });
+		};
+		expect((await send()).isError).toBe(false);
+		const again = await send();
+		expect(again.isError).toBe(true);
+		expect(textOf(again)).toContain("pending");
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 });

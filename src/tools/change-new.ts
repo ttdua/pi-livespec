@@ -2,6 +2,7 @@
 // the fixed body template. It never creates a branch.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CHANGE_BODY_TEMPLATE } from "../core/change-body.ts";
 import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { replaceSection, setHeaderLine } from "../core/sections.ts";
@@ -20,22 +21,7 @@ export type ChangeNewDetails = { number?: number; branch?: string };
 const FIRST_PHASE = "shape";
 const MOVED_PHASE = "define";
 
-export const CHANGE_BODY_TEMPLATE = [
-	"Depends: —",
-	"Capabilities: new [], modified []",
-	"Product impact: —",
-	"",
-	"## Proposal",
-	"",
-	"## Design",
-	"",
-	"## Questions",
-	"",
-	"## Units",
-	"",
-	"## Durable docs",
-	"",
-].join("\n");
+export { CHANGE_BODY_TEMPLATE, changeBody, dependsValue } from "../core/change-body.ts";
 
 /** A fix branch ready to move: its slug, merge base and commit subjects. */
 type Moving = { slug: string; branch: string; base: string; subjects: string[] };

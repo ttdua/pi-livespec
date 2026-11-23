@@ -21,6 +21,7 @@ decisions:
   finding-scope: { mode: rule }
   durable-docs: { mode: rule }
   lane: { mode: rule, max_files: 3, max_lines: 100 }
+  split: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -48,7 +49,7 @@ phases:
     skills: { required: [planning-and-task-breakdown] }
     outputs: [issue#Units]
     redirects: ["No tasks/plan.md or tasks/todo.md; units live in the change issue"]
-    checks: [units-format, done-maps-scenarios, unit-classification, verify-red-on-base]
+    checks: [units-format, done-maps-scenarios, unit-classification, verify-red-on-base, size-limits]
     gate: human
     subagents:
       - { role: scout, mode: auto, when: ["unfamiliar-code"] }

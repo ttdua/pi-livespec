@@ -3,6 +3,7 @@ import { type Change, parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { rebuildComment, type ReceiptData, type StartData } from "../../src/evidence/records.ts";
 import { budgetWindow, deriveUnitEvidence } from "../../src/evidence/unit-state.ts";
+import { isResumedUnit } from "../../src/deps/parked.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 
 const unitBlock = (n: number, done: boolean): string =>
@@ -166,5 +167,38 @@ describe("deriveUnitEvidence", () => {
 			expect(receipted.rebuilds ?? {}).toEqual({});
 			expect(receipted.untickedReceipts).toEqual(["U2"]);
 		});
+	});
+});
+
+describe("parked units", () => {
+	const parked = (units: string[]): MarkedComment => m("parked", `parked.${seq}`, { waits_for: [41], units: units.map((unit) => ({ unit, lane: false })), at: "t" });
+	const resumed = (): MarkedComment => m("parked", `parked.r${seq}`, { resumed: true, at: "t" });
+
+	test("a start older than a parked record listing the unit is not started, and its budget restarts", () => {
+		const c = change();
+		const ev = deriveUnitEvidence(c, [start("U2"), progress("U2", "retry", 1), progress("U2", "retry", 2), parked(["U2"])], 3);
+		expect(ev.started).toEqual({});
+		expect(ev.attempts.U2).toBe(0);
+	});
+
+	test("a parked record that does not list the unit keeps its start", () => {
+		const c = change();
+		const ev = deriveUnitEvidence(c, [start("U2"), parked(["U1"])], 3);
+		expect(Object.keys(ev.started)).toEqual(["U2"]);
+	});
+
+	test("a start after the park counts again", () => {
+		const c = change();
+		const ev = deriveUnitEvidence(c, [start("U2"), parked(["U2"]), resumed(), start("U2", "d", "s2"), progress("U2", "retry")], 3);
+		expect(ev.started.U2?.id).toBe("U2.s2");
+		expect(ev.attempts.U2).toBe(1);
+	});
+
+	test("isResumedUnit holds only after a resume record follows the park", () => {
+		expect(isResumedUnit([start("U2"), parked(["U2"])], "U2")).toBe(false);
+		expect(isResumedUnit([start("U2"), parked(["U2"]), resumed()], "U2")).toBe(true);
+		expect(isResumedUnit([start("U2"), parked(["U3"]), resumed()], "U2")).toBe(false);
+		expect(isResumedUnit([parked(["U2"]), resumed(), start("U2", "d", "s2")], "U2")).toBe(false);
+		expect(isResumedUnit([parked(["U2"]), resumed()], "U2")).toBe(true);
 	});
 });

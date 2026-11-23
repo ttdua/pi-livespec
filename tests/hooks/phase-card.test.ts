@@ -9,6 +9,8 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { type CardInput, type FixCard, fixNextStep, registerCardSection, renderCard, resetCardSectionsForTests, untrusted } from "../../src/hooks/phase-card.ts";
 import { subagentsSection } from "../../src/subagents/card.ts";
 import { approvalsSection } from "../../src/interaction/card.ts";
+import { initiativeSection } from "../../src/initiatives/card.ts";
+import { parkedSection } from "../../src/deps/card.ts";
 import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
@@ -331,5 +333,93 @@ describe("fix card", () => {
 			expect(card).not.toContain("subagent_packet");
 			expect(card.split("\n").filter((l) => l.startsWith("Next:"))).toHaveLength(1);
 		}
+	});
+});
+
+describe("initiative section", () => {
+	const deps = (over: Partial<NonNullable<ChangeState["deps"]>> = {}): NonNullable<ChangeState["deps"]> => ({ items: [], overlap: [], ...over });
+	const render = (state: ChangeState): string => {
+		registerCardSection("initiative", initiativeSection);
+		return renderCard(changeCard(state));
+	};
+
+	test("Progress shown", () => {
+		const card = render(stateFor("build", { deps: deps({ items: [{ number: 34, title: "audit-log", state: "merged" }], initiative: { number: 30, checked: 1, total: 2, ready: [] } }) }));
+		expect(card).toContain("initiative #30: 1 of 2 done");
+		expect(card).toContain("#34 merged");
+	});
+
+	test("ready entries are proposed, never started", () => {
+		const card = render(stateFor("build", { deps: deps({ initiative: { number: 30, checked: 1, total: 3, ready: [{ number: 36, name: "x</untrusted>" }] } }) }));
+		expect(card).toContain("#36 <untrusted>x&lt;/untrusted></untrusted>");
+		expect(card).toContain("a human runs change_start #36");
+	});
+
+	test("Two open changes modify the same capability", () => {
+		const card = render(stateFor("build", { deps: deps({ overlap: [{ number: 36, title: "burst", capabilities: ["rate-limit"] }] }) }));
+		expect(card).toContain("#36 <untrusted>burst</untrusted> also changes <untrusted>rate-limit</untrusted>");
+	});
+
+	test("Too many capabilities suggests an initiative", () => {
+		const noInitiative = FIXTURE_BODY.replace(/^Initiative: .*\n/m, "");
+		expect(render(stateFor("shape", { deps: deps({ split: "propose" }) }, noInitiative))).toContain("initiative_propose");
+		expect(render(stateFor("shape", { deps: deps({ split: "single" }) }, noInitiative))).not.toContain("initiative_propose");
+		expect(render(stateFor("shape", { deps: deps({ split: "propose" }) }))).not.toContain("initiative_propose");
+	});
+
+	test("nothing without deps facts", () => {
+		expect(initiativeSection(changeCard(stateFor("build")))).toBeUndefined();
+	});
+
+	test("list card shows readiness", () => {
+		const card = renderCard({
+			...BASE,
+			kind: "list",
+			open: [
+				{ number: 34, title: "audit-log", phase: "define", readiness: "ready" },
+				{ number: 35, title: "per-ip-cap", phase: "define", readiness: { waits: [34, 33] } },
+				{ number: 36, title: "burst", phase: "build", readiness: "parked" },
+			],
+		});
+		expect(card).toContain("- #34 <untrusted>audit-log</untrusted> (define) ready");
+		expect(card).toContain("- #35 <untrusted>per-ip-cap</untrusted> (define) waits for #34, #33");
+		expect(card).toContain("- #36 <untrusted>burst</untrusted> (build) parked");
+	});
+});
+
+describe("parked section", () => {
+	const parked = (state: "open" | "merged") => ({
+		waitsFor: [{ number: 41, title: "token-store", state }],
+		units: [
+			{ unit: "U2", branch: "livespec/per-ip-cap--wip-U2", head: "a".repeat(40), lane: true },
+			{ unit: "U4", lane: false },
+		],
+		at: "2026-11-20T10:00:00.000Z",
+	});
+	const core = { index: 0, waitsFor: [41], units: parked("open").units, at: "t" };
+	const render = (state: ChangeState): string => {
+		registerCardSection("initiative", initiativeSection);
+		registerCardSection("parked", parkedSection);
+		return renderCard(changeCard(state));
+	};
+
+	test("Card while waiting", () => {
+		const card = render(stateFor("build", { parkedCore: core, parked: parked("open") }));
+		expect(card).toContain("parked, waiting for #41 open");
+		expect(card).toContain("livespec/per-ip-cap--wip-U2");
+		expect(card).toContain("U4</untrusted> (no work kept)");
+	});
+
+	test("Parked and initiative lines", () => {
+		const deps = { items: [{ number: 41, title: "token-store", state: "open" as const }], overlap: [], initiative: { number: 30, checked: 1, total: 3, ready: [] } };
+		const card = render(stateFor("build", { parkedCore: core, parked: parked("open"), deps }));
+		expect(card).toContain("initiative #30");
+		expect(card).toContain("#41 open");
+		expect(card).toContain("parked, waiting for #41 open");
+		expect(card).toContain("livespec/per-ip-cap--wip-U2");
+	});
+
+	test("no section while not parked", () => {
+		expect(parkedSection(changeCard(stateFor("build")))).toBeUndefined();
 	});
 });

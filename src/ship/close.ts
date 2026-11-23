@@ -4,6 +4,7 @@
 import type { Change } from "../core/change.ts";
 import { parseInitiative } from "../core/initiative.ts";
 import { tickChange } from "../core/tick.ts";
+import { latestDependencyChoice } from "../engine/deps-facts.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, readMarkedComments, registerKind, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
@@ -16,19 +17,27 @@ registerKind(CLOSE_SUMMARY_KIND);
 
 export const INITIATIVE_SUMMARY_ID = "close-summary.initiative";
 
-export type CloseSummary = { pr: number; mergedAt?: string; units: string[]; durableDocs: string[]; reviewRounds: number; abandoned?: string };
+/** `pr` is absent only on the abandon of a change with no `PR` line after choice D `drop`. */
+export type CloseSummary = { pr?: number; mergedAt?: string; units: string[]; durableDocs: string[]; reviewRounds: number; abandoned?: string };
 
-export type CloseEvents = { closed: { change: number; pr: number; initiative?: number; abandoned?: true }; initiativeClosed?: { initiative: number; changes: number[] } };
+export type CloseEvents = { closed: { change: number; pr?: number; initiative?: number; abandoned?: true }; initiativeClosed?: { initiative: number; changes: number[] } };
 
 const summaryComment = (id: string, data: CloseSummary): string => writeMarked(CLOSE_SUMMARY_KIND, id, data);
 const hasSummary = (marked: MarkedComment[], id: string): boolean => marked.some((m) => m.kind === CLOSE_SUMMARY_KIND && m.id === id);
+
+/** A change with no `PR` line whose latest valid `new-dependency` result chose D with action `drop`. */
+export function droppedWithoutPr(state: Pick<ChangeState, "change" | "marked">): boolean {
+	const latest = latestDependencyChoice(state.marked);
+	return state.change.header.pr === undefined && latest?.choice === "D" && latest.action === "drop";
+}
 
 /** The refusal of `change_close` (nothing is written), or undefined when the change may close. `abandon` is the raw reason. */
 export function closeRefusal(state: ChangeState, abandon: string | undefined): string | undefined {
 	const pr = state.pr;
 	if (abandon !== undefined) {
 		if (abandon.trim() === "") return "the abandon reason is empty.";
-		if (pr === undefined) return "the change has no readable pull request to abandon.";
+		if (pr === undefined && droppedWithoutPr(state)) return undefined;
+		if (pr === undefined) return "the change has no readable pull request to abandon, and no new-dependency result chose D with drop.";
 		if (pr.state !== "closed" || pr.merged) return `pull request #${pr.number} is not closed without merge; abandon applies only to a closed, unmerged pull request.`;
 		return undefined;
 	}
@@ -38,11 +47,11 @@ export function closeRefusal(state: ChangeState, abandon: string | undefined): s
 	return undefined;
 }
 
-/** The summary data of the change, per the `close-summary` contract. */
-export function summaryData(state: ChangeState, pr: NonNullable<ChangeState["pr"]>, abandon: string | undefined): CloseSummary {
+/** The summary data of the change, per the `close-summary` contract; without a pull request it holds no `pr`. */
+export function summaryData(state: ChangeState, pr: ChangeState["pr"], abandon: string | undefined): CloseSummary {
 	return {
-		pr: pr.number,
-		...(pr.mergedAt === undefined ? {} : { mergedAt: pr.mergedAt }),
+		...(pr === undefined ? {} : { pr: pr.number }),
+		...(pr?.mergedAt === undefined ? {} : { mergedAt: pr.mergedAt }),
 		units: state.change.units.map((u) => `${u.id} ${u.done ? "done" : "pending"}`),
 		durableDocs: state.change.durableDocs.map((r) => `${r.file} — ${r.status}`),
 		reviewRounds: reviewRounds(state.marked, undefined).value,

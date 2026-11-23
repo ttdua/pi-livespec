@@ -4,6 +4,7 @@
 
 import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
+import { gateEffects } from "../engine/gates.ts";
 import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import type { AdapterName, Answered, GateSnapshot, RequestRecord } from "./approver.ts";
@@ -64,6 +65,11 @@ async function lockedDigests(run: Run): Promise<Record<string, string>> {
 	return Object.fromEntries(units.map((u) => [u.id, unitDigest(u)]));
 }
 
+/** The registered effects of `target`, in order; each one skips itself when already applied. */
+async function runEffects(run: Run, record: AnswerData, target: string): Promise<void> {
+	for (const effect of gateEffects(target)) await effect(run, record);
+}
+
 export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const { request, answer } = record;
 	const target = gateSnapshotOf(request).target;
@@ -71,6 +77,7 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const superseded = record.verdict === "superseded";
 	const approvedPlan = validApproval({ outcome: answer.outcome, superseded }) && target === PLAN;
 	if (approvedPlan) await applyOverrides(run, answer);
+	if (validApproval({ outcome: answer.outcome, superseded })) await runEffects(run, record, target);
 	if (!superseded && answer.outcome === "changes_requested" && isPhase) await writeStale(run, request, target);
 	const input: GateCommentInput = {
 		request: request.id,

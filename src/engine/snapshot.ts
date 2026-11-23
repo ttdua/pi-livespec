@@ -18,14 +18,16 @@ import type { CommentsCache } from "./comments-cache.ts";
 import { deriveUnitEvidence } from "../evidence/unit-state.ts";
 import { readCounters } from "./counters.ts";
 import { type Git, GitError } from "./git.ts";
+import { discoveredDeps } from "./deps-facts.ts";
 import { deriveIterations } from "./iterations.ts";
 import { deriveLocks } from "./locks.ts";
+import { parkedRecord } from "./parked.ts";
 import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 
-/** The pack's `loops.change_iterations`, `loops.unit_attempts` and `loops.review_rounds`; a missing cap never blocks. */
-export type Caps = { iterations: number | undefined; unitAttempts: number | undefined; reviewRounds: number | undefined };
+/** The pack's `loops.change_iterations`, `loops.unit_attempts`, `loops.review_rounds` and `loops.discovered_deps`; a missing cap never blocks. */
+export type Caps = { iterations: number | undefined; unitAttempts: number | undefined; reviewRounds: number | undefined; discoveredDeps?: number | undefined };
 
-export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number; reviewRounds?: number } };
+export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number; reviewRounds?: number; discoveredDeps?: number } };
 
 const PHASE_PREFIX = phaseLabel("");
 const BODY_SECTIONS = ["Proposal", "Design", "Units"] as const;
@@ -79,7 +81,7 @@ async function currentLogin(forge: Forge): Promise<string | undefined> {
 	}
 }
 
-type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents">;
+type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents" | "parkedCore">;
 
 type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
 
@@ -95,8 +97,9 @@ export function deriveCommentFacts(
 ): DerivedFacts {
 	const iterations = deriveIterations(marked, caps.iterations);
 	const evidence = deriveUnitEvidence(change, marked, caps.unitAttempts);
+	const parkedCore = parkedRecord(marked);
 	return {
-		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count, review_rounds: reviewRounds(marked, caps.reviewRounds).value },
+		counters: { ...readCounters(marked), ...attemptCounters(evidence.attempts), change_iterations: iterations.count, review_rounds: reviewRounds(marked, caps.reviewRounds).value, discovered_deps: discoveredDeps(marked, caps.discoveredDeps).value },
 		skillNotes: idsOfKind(marked, "skill-note"),
 		incomplete: incompleteItems(marked),
 		evidence,
@@ -105,6 +108,7 @@ export function deriveCommentFacts(
 		lock: deriveLocks(change, marked),
 		iterations,
 		subagents: deriveSubagents(marked),
+		...(parkedCore === undefined ? {} : { parkedCore }),
 	};
 }
 
@@ -126,7 +130,7 @@ async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): 
 	const login = await currentLogin(d.forge);
 	const own = login === undefined ? { comments: [], warnings: [UNKNOWN_LOGIN_WARNING] } : filterMarked(read.comments, login);
 	return {
-		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds }),
+		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds, discoveredDeps: d.caps?.discoveredDeps }),
 		stale: read.stale || login === undefined,
 		warnings: [...own.warnings, ...invalidWarnings(own.comments)],
 	};
@@ -176,5 +180,6 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		commandWarnings: [],
 		evidence: comments.evidence,
 		subagents: comments.subagents,
+		...(comments.parkedCore === undefined ? {} : { parkedCore: comments.parkedCore }),
 	};
 }

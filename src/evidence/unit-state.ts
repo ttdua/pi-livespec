@@ -4,6 +4,7 @@
 import type { Change, Unit } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { liftsCap } from "../engine/iterations.ts";
+import { parkedUnitsOf } from "../engine/parked.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { type ReceiptRecord, type RebuildRecord, type StartRecord, asReceiptRecord, asRebuildRecord, asStartRecord } from "./records.ts";
 
@@ -25,6 +26,8 @@ type Trail = {
 	receipts: Map<string, ReceiptRecord[]>;
 	rebuilds: Map<string, RebuildRecord>;
 	attempts: Map<string, Attempt[]>;
+	/** The index of the latest non-resume `parked` record listing each unit. */
+	parks: Map<string, number>;
 	lastLift: number;
 };
 
@@ -46,7 +49,7 @@ function asAttempt(m: MarkedComment, index: number): { unit: string; attempt: At
 
 /** One pass over `marked` in comment order. */
 function collect(marked: MarkedComment[]): Trail {
-	const trail: Trail = { starts: new Map(), receipts: new Map(), rebuilds: new Map(), attempts: new Map(), lastLift: NONE };
+	const trail: Trail = { starts: new Map(), receipts: new Map(), rebuilds: new Map(), attempts: new Map(), parks: new Map(), lastLift: NONE };
 	marked.forEach((m, index) => {
 		const start = asStartRecord(m, index);
 		if (start) trail.starts.set(start.unit, start);
@@ -56,14 +59,15 @@ function collect(marked: MarkedComment[]): Trail {
 		if (rebuild) trail.rebuilds.set(rebuild.unit, rebuild);
 		const progress = asAttempt(m, index);
 		if (progress) push(trail.attempts, progress.unit, progress.attempt);
+		for (const unit of parkedUnitsOf(m)) trail.parks.set(unit, index);
 		if (liftsCap(m)) trail.lastLift = index;
 	});
 	return trail;
 }
 
-/** The comment index of the latest start, receipt or lifting stuck answer of `unit`; NONE when there is none. */
+/** The comment index of the latest start, receipt, `parked` record listing `unit` or lifting stuck answer; NONE when there is none. */
 function windowStart(trail: Trail, unit: string): number {
-	return Math.max(trail.starts.get(unit)?.index ?? NONE, trail.receipts.get(unit)?.at(-1)?.index ?? NONE, trail.lastLift);
+	return Math.max(trail.starts.get(unit)?.index ?? NONE, trail.receipts.get(unit)?.at(-1)?.index ?? NONE, trail.parks.get(unit) ?? NONE, trail.lastLift);
 }
 
 /** The comment index after which `progress` records of `unit` count towards its current attempt budget. */
@@ -100,8 +104,9 @@ export function deriveUnitEvidence(change: Change, marked: MarkedComment[], cap:
 		if (trail.attempts.has(u.id)) evidence.attempts[u.id] = budgetAttempts(trail, u.id).length;
 		if (u.done) continue;
 		const rebuild = trail.rebuilds.get(u.id);
-		// A rebuild newer than the start makes that start stale: the unit restarts with unit_start.
-		if (start !== undefined && start.index > Math.max(latest?.index ?? NONE, rebuild?.index ?? NONE)) evidence.started[u.id] = start;
+		// A rebuild or a park newer than the start makes that start stale: the unit restarts with unit_start.
+		const superseded = Math.max(latest?.index ?? NONE, rebuild?.index ?? NONE, trail.parks.get(u.id) ?? NONE);
+		if (start !== undefined && start.index > superseded) evidence.started[u.id] = start;
 		if (rebuild !== undefined && rebuild.index > Math.max(latest?.index ?? NONE, start?.index ?? NONE)) {
 			(evidence.rebuilds ??= {})[u.id] = { round: rebuild.round, finding: rebuild.finding };
 		}

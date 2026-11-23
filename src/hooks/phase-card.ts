@@ -123,8 +123,14 @@ function fixLines(fix: FixCard): string[] {
 	];
 }
 
+/** The readiness suffix of a listed change: ` ready`, ` waits for #34, #33`, ` parked`, or nothing when unknown. */
+export function readinessText(r: OpenChange["readiness"]): string {
+	if (r === undefined) return "";
+	return typeof r === "string" ? ` ${r}` : ` waits for ${r.waits.map((n) => `#${n}`).join(", ")}`;
+}
+
 function openChangeText(c: OpenChange): string {
-	return `#${c.number} ${untrusted(c.title)} (${c.phase === undefined ? "no phase" : phaseText(c.phase)})`;
+	return `#${c.number} ${untrusted(c.title)} (${c.phase === undefined ? "no phase" : phaseText(c.phase)})${readinessText(c.readiness)}`;
 }
 
 function listCardLines(open: OpenChange[]): string[] {

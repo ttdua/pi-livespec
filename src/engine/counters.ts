@@ -5,8 +5,11 @@ import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
 
 export const COUNTER_KIND = "counter";
-/** Derived from own `stale` comments (src/engine/iterations.ts) and aggregate review records (src/review/status.ts); a counter comment for them is ignored. */
-const DERIVED_COUNTERS = new Set(["change_iterations", "review_rounds"]);
+/**
+ * Derived from own `stale` comments (src/engine/iterations.ts), aggregate review records (src/review/status.ts)
+ * and `new-dependency` gate results (src/engine/deps-facts.ts); a counter comment for them is ignored.
+ */
+const DERIVED_COUNTERS = new Set(["change_iterations", "review_rounds", "discovered_deps"]);
 /** Derived from `progress` decision records (src/evidence/unit-state.ts); a counter comment for it is ignored. */
 const DERIVED_PREFIX = "unit_attempts.";
 

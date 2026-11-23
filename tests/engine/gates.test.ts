@@ -6,7 +6,20 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
 import { gatePayload, type ReviewFacts } from "../../src/engine/gate-payload.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
-import { blockingStateRefusal, gateRefusal, registerGate, registerGatePayload, resetGatesForTests } from "../../src/engine/gates.ts";
+import "../../src/deps/markers.ts";
+import {
+	blockingStateRefusal,
+	gateEffects,
+	gateRefusal,
+	gateValidator,
+	registerGate,
+	registerGateEffect,
+	registerGatePayload,
+	registerGateValidator,
+	resetGatesForTests,
+} from "../../src/engine/gates.ts";
+import { parkedRecord } from "../../src/engine/parked.ts";
+import { deriveCommentFacts } from "../../src/engine/snapshot.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
@@ -25,6 +38,8 @@ const FACTS: ReviewFacts = {
 	specsFiles: ["specs/rate-limit/spec.md"],
 	issueUrl: "https://forge.example/o/r/issues/7",
 };
+
+const AT_PARK = "2026-11-20T10:00:00.000Z";
 
 let pack: Pack;
 
@@ -215,6 +230,75 @@ describe("gatePayload", () => {
 	test("named gate payload is the header", () => {
 		registerGate("new-dependency", { checks: [] });
 		expect(gatePayload(ready("build"), pack, "new-dependency", FACTS)).toEqual({ summary: "Gate new-dependency for #7 per-ip-cap.", links: [FACTS.issueUrl], files: [], findings: [] });
+	});
+});
+
+describe("parked and proposer gates", () => {
+	const parkedCore = { index: 0, waitsFor: [34], units: [], at: AT_PARK };
+
+	test("Parked change refuses the plan gate", () => {
+		const refusal = gateRefusal(ready("plan", { parkedCore }), pack, "plan");
+		expect(refusal).toContain("parked");
+		expect(refusal).toContain("#34");
+		registerGate("new-dependency", { checks: [] });
+		registerGate("initiative", { checks: [] });
+		expect(gateRefusal(ready("plan", { parkedCore }), pack, "new-dependency")).toBeUndefined();
+		expect(gateRefusal(ready("plan", { parkedCore }), pack, "initiative")).toBeUndefined();
+	});
+
+	test("the parked refusal comes after the iteration cap", () => {
+		const iterations = { count: 5, cap: 5, blocking: true, stuckOpen: undefined };
+		expect(gateRefusal(ready("plan", { parkedCore, iterations }), pack, "plan")).toContain("change_iterations reached");
+	});
+
+	test("a proposer request skips only the dirty tree", () => {
+		registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+		const git = { branch: "b", head: "f", dirty: true, specsChanged: true };
+		expect(gateRefusal(ready("build", { git }), pack, "new-dependency")).toContain("dirty");
+		expect(gateRefusal(ready("build", { git }), pack, "new-dependency", undefined, { proposer: true })).toBeUndefined();
+		const pending = { ...ready("build").requests, pending: [pendingGate("new-dependency")] };
+		expect(gateRefusal(ready("build", { git, requests: pending }), pack, "new-dependency", undefined, { proposer: true })).toContain("pending");
+	});
+});
+
+describe("parkedRecord", () => {
+	const parked = (id: string, data: unknown): MarkedComment => ({ commentId: id, author: "bot", ...parseMarked(writeMarked("parked", id, data))! });
+
+	test("the latest parked record, or none after a resume", () => {
+		expect(parkedRecord([])).toBeUndefined();
+		const units = [{ unit: "U2", branch: "livespec/per-ip-cap--wip-U2", head: "abc", lane: true }];
+		const first = parked("parked.a", { waits_for: [34], units, at: AT_PARK });
+		expect(parkedRecord([first])).toEqual({ index: 0, waitsFor: [34], units, at: AT_PARK });
+		const resumed = parked("parked.b", { resumed: true, at: AT_PARK });
+		expect(parkedRecord([first, resumed])).toBeUndefined();
+		const again = parked("parked.c", { waits_for: [35], units: [], at: AT_PARK });
+		expect(parkedRecord([first, resumed, again])?.waitsFor).toEqual([35]);
+		expect(parkedRecord([first, resumed, again])?.index).toBe(2);
+	});
+
+	test("deriveCommentFacts fills parkedCore", () => {
+		const change = parseChange(NO_QUESTION);
+		const caps = { iterations: undefined, unitAttempts: undefined, reviewRounds: undefined };
+		const marked = [parked("parked.a", { waits_for: [34], units: [], at: AT_PARK })];
+		expect(deriveCommentFacts(marked, change, caps).parkedCore?.waitsFor).toEqual([34]);
+		expect(deriveCommentFacts([], change, caps).parkedCore).toBeUndefined();
+	});
+});
+
+describe("gate registries", () => {
+	test("validators and effects are kept per gate and cleared for tests", async () => {
+		const validator = async () => "name taken";
+		const first = async () => {};
+		const second = async () => {};
+		registerGateValidator("initiative", validator);
+		registerGateEffect("initiative", first);
+		registerGateEffect("initiative", second);
+		expect(gateValidator("initiative")).toBe(validator);
+		expect(gateEffects("initiative")).toEqual([first, second]);
+		expect(gateEffects("new-dependency")).toEqual([]);
+		resetGatesForTests();
+		expect(gateValidator("initiative")).toBeUndefined();
+		expect(gateEffects("initiative")).toEqual([]);
 	});
 });
 

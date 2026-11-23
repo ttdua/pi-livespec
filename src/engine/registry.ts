@@ -13,8 +13,16 @@ export type SubSchema = {
 
 export type CheckGit = { diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string> };
 /** `marked` are the own marked comments of the change issue, in comment order. */
-/** `phase` is the active phase id; `ship` is the ship context, built in `ship` only. */
-export type CheckContext = { root: string; change: Change; git: CheckGit; marked: MarkedComment[]; phase?: string; ship?: ShipContext | { refused: string } };
+/** `phase` is the active phase id; `ship` is the ship context, built in `ship` only; `limits` is the pack's `limits`. */
+export type CheckContext = {
+	root: string;
+	change: Change;
+	git: CheckGit;
+	marked: MarkedComment[];
+	phase?: string;
+	ship?: ShipContext | { refused: string };
+	limits?: Record<string, number>;
+};
 export type CheckFn = (ctx: CheckContext) => Promise<Result[]>;
 
 const schemas = new Map<"decisions" | "subagents", SubSchema>();

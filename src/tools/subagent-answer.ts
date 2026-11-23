@@ -11,7 +11,7 @@ import type { Packet } from "../subagents/source-types.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
-import { outcomeText } from "./subagent-outcome.ts";
+import { outcomeOptions, outcomeText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchDeps, dispatchRequest, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
 import { argsOf, childRefusal, refusal, type Target, type ToolCtx, warn } from "./subagent-target.ts";
 
@@ -82,7 +82,7 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded on the forge, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
 	const run = resumedRun(p.id, packet.cwd, q.launch, request.difficulty);
 	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0 });
-	return toolResult(withStep(w.session, outcomeText(t, outcome)), undefined, outcome.kind === "cancelled");
+	return toolResult(withStep(w.session, outcomeText(t, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
 }
 
 export function registerSubagentAnswer(pi: ExtensionAPI, deps: SubagentToolDeps = defaultSubagentDeps): void {

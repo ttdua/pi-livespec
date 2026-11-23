@@ -11,7 +11,11 @@ import { parseChange } from "../core/change.ts";
 import { messageOf } from "../core/messages.ts";
 import { isKebabName } from "../core/names.ts";
 import { setHeaderLine } from "../core/sections.ts";
+import type { DepFact } from "../engine/deps-facts.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
+import { parkedRecord } from "../engine/parked.ts";
+import { readMarkedComments } from "../forge/markers.ts";
+import { changeDependencies, DependencyReadError, isReady } from "../initiatives/readiness.ts";
 import { CHANGE_BRANCH_PREFIX } from "../engine/resolve-change.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { LABEL_LIVESPEC } from "../forge/labels.ts";
@@ -54,6 +58,31 @@ function issueRefusal(issue: Issue): string | undefined {
 const STALE_ISSUE =
 	"The issue could only be read from the cache (the forge is in read-only mode), so change_start makes no branch. Retry once the forge is reachable.";
 
+const depText = (d: DepFact): string => `#${d.number} ${d.state}`;
+
+/** Undefined when every dependency is merged; a forge error or a cached read refuses and names the issue. */
+async function dependencyRefusal(w: WriteContext, issue: Issue): Promise<string | undefined> {
+	let facts: DepFact[];
+	try {
+		facts = await changeDependencies(w.forge, { issue, change: parseChange(issue.body) });
+	} catch (error) {
+		if (!(error instanceof DependencyReadError)) throw error;
+		if (error.stale) return `#${error.number} could only be read from the cache (the forge is in read-only mode), so its state is unknown and change_start makes no branch. Retry once the forge is reachable.`;
+		return `#${error.number}, a dependency of #${issue.number}, cannot be read from the forge (${untrusted(messageOf(error.cause))}), so change_start makes no branch. Retry once it can be read.`;
+	}
+	if (isReady(facts)) return undefined;
+	const unmet = facts.filter((d) => d.state !== "merged").map(depText).join(", ");
+	return `#${issue.number} depends on changes that are not merged: ${unmet}. A human runs change_start #${issue.number} once they merge.`;
+}
+
+/** A parked change is resumed with `change_resume`, never restarted (discovered-dependencies "Parked state"). */
+async function parkedRefusal(w: WriteContext, n: number): Promise<string | undefined> {
+	const parked = parkedRecord((await readMarkedComments(w.forge, n)).comments);
+	if (parked === undefined) return undefined;
+	const waits = parked.waitsFor.length === 0 ? "" : ` waiting for ${parked.waitsFor.map((d) => `#${d}`).join(", ")}`;
+	return `#${n} is parked${waits}: a human resumes it with change_resume #${n} on its branch; change_start makes no branch.`;
+}
+
 /**
  * The validation read may fall back to a stale cached issue and switch the forge to read-only mode, so
  * the forge is checked again right after it, before any other git command.
@@ -72,6 +101,10 @@ async function validateStart(w: WriteContext, n: number): Promise<StartPlan> {
 	if (offline) return { kind: "refused", message: offline };
 	const bad = issueRefusal(issue);
 	if (bad) return { kind: "refused", message: bad };
+	const parked = await parkedRefusal(w, n);
+	if (parked) return { kind: "refused", message: parked };
+	const waiting = await dependencyRefusal(w, issue);
+	if (waiting) return { kind: "refused", message: waiting };
 	if (await git.isDirty()) return { kind: "refused", message: "The working tree has uncommitted changes; commit or stash them, then rerun change_start." };
 	const branch = `${CHANGE_BRANCH_PREFIX}${issue.title}`;
 	const start = { issue, branch };

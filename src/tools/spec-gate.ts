@@ -10,7 +10,7 @@ import { unitDigest } from "../core/digest.ts";
 import { runChecks } from "../engine/checks.ts";
 import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
-import { failingWaivable, gateRefusal, resolveGateTarget } from "../engine/gates.ts";
+import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
@@ -87,9 +87,14 @@ export function gateRequest(
 	pack: Pack,
 	target: string,
 	plan: GatePlan,
-	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date },
+	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown },
 ): ApprovalRequest {
-	const snapshot: GateSnapshot = { target, failingWaivable: plan.failingWaivable, ...(input.payload.findings.length === 0 ? {} : { findings: input.payload.findings }) };
+	const snapshot: GateSnapshot = {
+		target,
+		failingWaivable: plan.failingWaivable,
+		...(input.payload.findings.length === 0 ? {} : { findings: input.payload.findings }),
+		...(input.drafts === undefined ? {} : { drafts: input.drafts }),
+	};
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });
@@ -108,11 +113,15 @@ async function passSelf(w: WriteContext, state: ChangeState, target: string): Pr
 	return toolResult(withStep(w.session, `The ${target} self gate passed.`), undefined);
 }
 
-async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan): Promise<ApprovalRequest> {
+type RequestExtras = { drafts?: unknown; summary?: string };
+
+async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, extras: RequestExtras = {}): Promise<ApprovalRequest> {
 	const facts = await collectReviewFacts(w.session.git, state.change.header.base);
 	const issue = await w.forge.getIssue(state.issue.number);
 	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: gatePayload(state, w.pack, target, withLink), now: new Date() });
+	const payload = gatePayload(state, w.pack, target, withLink);
+	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts });
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
@@ -128,12 +137,39 @@ async function withGateChecks(w: WriteContext, state: ChangeState, target: strin
 	return { ...state, checks };
 }
 
+export type NamedGateInput = { target: string; options: RequestOption[]; drafts: unknown; summary: string; ctx: ApproverCtx; tool: string };
+
+/**
+ * Sends the request of a named gate with a proposer: the proposer's drafts go into the snapshot, its
+ * `summary` follows the gate payload, and `options` (a subset of the gate's) replace the gate's own.
+ * The refusals hold except the dirty tree, since a proposer gate is not bound to HEAD (design D4).
+ */
+export async function sendNamedGate(w: WriteContext, state: ChangeState, i: NamedGateInput): Promise<ToolResult<undefined>> {
+	const checked = await withGateChecks(w, state, i.target);
+	const refusal = gateRefusal(checked, w.pack, i.target, undefined, { proposer: true });
+	if (refusal) return toolResult(refusalText(checked, refusal), undefined, true);
+	const plan = planGate(checked, w.pack, i.target);
+	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
+	const waive = plan.options.filter((o) => o.id === WAIVE);
+	const request = await buildRequest(w, checked, i.target, { ...plan, options: [...waive, ...i.options] }, { drafts: i.drafts, summary: i.summary });
+	return sendRequest(w, checked, request, i.ctx, { tool: i.tool, retry: `run ${i.tool} again` });
+}
+
+/** `spec_gate` cannot send a gate whose proposer builds the request with its drafts. */
+function proposerRefusal(target: string): string | undefined {
+	const proposer = namedGate(target)?.proposer;
+	return proposer === undefined ? undefined : `The ${target} gate is requested by ${proposer}, which sends it with its drafts: run ${proposer} instead.`;
+}
+
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
 	const change = requireChange(w.session);
 	if (!change.ok) return toolResult(change.message, undefined, true);
 	const target = String(p.target ?? "");
+	const isPhase = w.pack.phases.some((ph) => ph.id === target);
+	const byProposer = isPhase ? undefined : proposerRefusal(target);
+	if (byProposer) return toolResult(byProposer, undefined, true);
 	const state = await withGateChecks(w, change.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);

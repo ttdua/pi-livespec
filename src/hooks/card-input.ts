@@ -10,7 +10,7 @@ import { runChecks } from "../engine/checks.ts";
 import { createGit, type Git } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
-import { resolveChange } from "../engine/resolve-change.ts";
+import { OPEN_CHANGES_CAP, type OpenChange, resolveChange } from "../engine/resolve-change.ts";
 import { readChangeSnapshot } from "../engine/snapshot.ts";
 import { shipFor, shipStateFor } from "../ship/context.ts";
 import { latestLaneClose } from "../subagents/state.ts";
@@ -28,6 +28,27 @@ const CONSTRAINTS_FILE = ["specs", "constraints.md"];
 const FORGE_NOT_CONNECTED = "the forge is not connected";
 
 type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills" | "account">;
+
+export type RefreshFacts = (session: Session, state: ChangeState) => Promise<Partial<Pick<ChangeState, "deps" | "parked">>>;
+export type ListFacts = (session: Session, open: OpenChange[]) => Promise<OpenChange[]>;
+
+const refreshFacts: RefreshFacts[] = [];
+const listFacts: ListFacts[] = [];
+
+/** Adds facts computed at refresh with forge access, merged into the change state in registration order. */
+export function registerRefreshFacts(fn: RefreshFacts): void {
+	refreshFacts.push(fn);
+}
+
+/** Adds facts to the open-changes list (at most OPEN_CHANGES_CAP changes), applied in registration order. */
+export function registerListFacts(fn: ListFacts): void {
+	listFacts.push(fn);
+}
+
+export function resetRefreshFactsForTests(): void {
+	refreshFacts.length = 0;
+	listFacts.length = 0;
+}
 
 /** The account part of the card: the pending notice and the write block; `undefined` when neither is set. */
 export function cardAccount(session: Session): CardAccount | undefined {
@@ -90,7 +111,7 @@ async function resolve(session: Session, common: Common, branch: string): Promis
 	try {
 		const r = await resolveChange(forge, branch);
 		if (r.kind === "error") return { ...common, kind: "change-error", message: r.message };
-		if (r.kind === "none") return { ...common, kind: "list", open: r.open };
+		if (r.kind === "none") return { ...common, kind: "list", open: await withListFacts(session, r.open.slice(0, OPEN_CHANGES_CAP)) };
 		session.lastResolved = { branch, number: r.number };
 		return r;
 	} catch (error) {
@@ -100,11 +121,24 @@ async function resolve(session: Session, common: Common, branch: string): Promis
 	}
 }
 
+async function withListFacts(session: Session, open: OpenChange[]): Promise<OpenChange[]> {
+	let listed = open;
+	for (const fn of listFacts) listed = await fn(session, listed);
+	return listed;
+}
+
+/** Merges each registered refresh hook's facts into the state; a later hook sees the earlier hooks' facts. */
+async function withRefreshFacts(session: Session, state: ChangeState): Promise<ChangeState> {
+	let merged = state;
+	for (const fn of refreshFacts) merged = { ...merged, ...(await fn(session, merged)) };
+	return merged;
+}
+
 async function changeState(session: Session, pack: Pack, n: number, warning: string | undefined): Promise<ChangeState> {
 	const forge = session.forge;
 	const comments = session.comments;
 	if (forge === undefined || comments === undefined) throw new Error(FORGE_NOT_CONNECTED);
-	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds };
+	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds, discoveredDeps: pack.loops.discovered_deps };
 	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const ship = await shipFor(session, snapshot);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
@@ -113,7 +147,8 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
 	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
 	const shipState = await shipStateFor(session, snapshot, ship);
-	return { ...snapshot, ...(shipState === undefined ? {} : { ship: shipState }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	const state = { ...snapshot, ...(shipState === undefined ? {} : { ship: shipState }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	return withRefreshFacts(session, state);
 }
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {

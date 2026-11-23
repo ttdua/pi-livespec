@@ -38,7 +38,7 @@ function phase(r: LoadedPack, id: string) {
 beforeEach(() => {
 	resetRegistryForTests();
 	registerBuiltinRules();
-	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs"]) {
+	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits"]) {
 		registerCheck(name, async () => []);
 	}
 });
@@ -82,7 +82,7 @@ describe("default pack", () => {
 		expect(define.checks).toEqual(["spec-format", "capabilities-match-diff"]);
 		expect(define.gate).toBe("human");
 		expect(phase(r, "build").per).toBe("unit");
-		expect(phase(r, "plan").checks).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base"]);
+		expect(phase(r, "plan").checks).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base", "size-limits"]);
 		expect((okPack(r).decisions.difficulty as { mode: string }).mode).toBe("rule");
 		expect((okPack(r).decisions.progress as { mode: string }).mode).toBe("rule");
 		expect(phase(r, "review").checks).toEqual(["review-clean"]);
@@ -92,6 +92,9 @@ describe("default pack", () => {
 		expect(phase(r, "ship").checks).toEqual(["durable-docs"]);
 		expect((okPack(r).decisions["durable-docs"] as { mode: string }).mode).toBe("rule");
 		expect(okPack(r).decisions.lane).toEqual({ mode: "rule", max_files: 3, max_lines: 100 });
+		expect((okPack(r).decisions.split as { mode: string }).mode).toBe("rule");
+		expect(okPack(r).limits).toEqual({ max_units: 8, max_capabilities: 3 });
+		expect(okPack(r).loops.discovered_deps).toBe(2);
 	});
 
 	test("Registered check name", async () => {

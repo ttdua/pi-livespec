@@ -3,15 +3,21 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerChangeClose } from "./change-close.ts";
 import { registerChangeNew } from "./change-new.ts";
+import { registerChangePark } from "./change-park.ts";
 import { registerChangePush } from "./change-push.ts";
+import { registerChangeResume } from "./change-resume.ts";
 import { registerChangeShip } from "./change-ship.ts";
+import { registerChangeSplit } from "./change-split.ts";
 import { registerChangeStart } from "./change-start.ts";
+import { registerChangeSync } from "./change-sync.ts";
 import { registerDocsTable } from "./docs-table.ts";
 import { registerFindingRebut } from "./finding-rebut.ts";
 import { registerFixShip } from "./fix-ship.ts";
 import { registerFixStart } from "./fix-start.ts";
 import { registerForgeRead } from "./forge-read.ts";
+import { registerInitiativePropose } from "./initiative-propose.ts";
 import { registerLaneMerge } from "./lane-merge.ts";
+import { registerNewDependency } from "./new-dependency.ts";
 import { registerLaneOpen } from "./lane-open.ts";
 import { registerPlanUnits } from "./plan-units.ts";
 import { registerSkillNote } from "./skill-note.ts";
@@ -38,6 +44,8 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeNew(pi);
 	registerChangeStart(pi);
 	registerSpecGate(pi);
+	registerInitiativePropose(pi);
+	registerNewDependency(pi);
 	registerPlanUnits(pi);
 	registerUnitAmend(pi);
 	registerUnitStart(pi);
@@ -57,6 +65,10 @@ export function registerChangeTools(pi: ExtensionAPI): void {
 	registerChangeShip(pi);
 	registerChangePush(pi);
 	registerChangeClose(pi);
+	registerChangeSplit(pi);
+	registerChangeSync(pi);
+	registerChangePark(pi);
+	registerChangeResume(pi);
 	registerFixStart(pi);
 	registerFixShip(pi);
 }

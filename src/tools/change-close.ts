@@ -25,7 +25,7 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	const { state } = change;
 	const abandon = typeof p.abandon === "string" ? p.abandon : undefined;
 	const why = closeRefusal(state, abandon);
-	if (why !== undefined || state.pr === undefined) return refuse(why ?? "the change has no readable pull request.");
+	if (why !== undefined) return refuse(why);
 	const n = state.issue.number;
 	const data = summaryData(state, state.pr, abandon);
 	const initiative = initiativeNumber(state.change.header);
@@ -43,7 +43,7 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 		return toolResult(`${TOOL} failed: ${messageOf(error)}. Steps already done are kept; run ${TOOL} again.`, undefined, true);
 	}
 	// The issue is closed: from here every failure is reported, never an error result, and the events always go first.
-	const closed = { change: n, pr: state.pr.number, ...(initiative === undefined ? {} : { initiative }), ...(abandon === undefined ? {} : { abandoned: true as const }) };
+	const closed = { change: n, ...(state.pr === undefined ? {} : { pr: state.pr.number }), ...(initiative === undefined ? {} : { initiative }), ...(abandon === undefined ? {} : { abandoned: true as const }) };
 	const problems = [emitQuietly(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) }), await refreshQuietly(w.session, n)].filter((m): m is string => m !== undefined);
 	const note = problems.length === 0 ? "" : ` Closed, but: ${problems.join("; ")}.`;
 	return toolResult(`Closed change #${n}${abandon === undefined ? "" : ` (abandoned: ${abandon.trim()})`}.${note}`, undefined);
@@ -84,7 +84,7 @@ export function registerChangeClose(pi: ExtensionAPI): void {
 		name: TOOL,
 		label: "Close the change",
 		description:
-			"Close the change after a human merged its pull request: post the close summary, tick the initiative entry (closing the initiative when it was the last), close the change issue and emit the close events. With `abandon` (a reason) it instead closes a change whose pull request was closed without merge, leaving the initiative entry unchecked.",
+			"Close the change after a human merged its pull request: post the close summary, tick the initiative entry (closing the initiative when it was the last), close the change issue and emit the close events. With `abandon` (a reason) it instead closes a change whose pull request was closed without merge, or a change with no pull request after the new-dependency gate chose D drop, leaving the initiative entry unchecked.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: { abandon: { type: "string" } } } as never,
 		execute: (_id, params, _signal, _update, ctx) => runChangeClose(params as ChangeCloseParams, ctx as ToolCtx, pi as unknown as Emitter),

@@ -36,6 +36,8 @@ export interface GateSnapshot {
 	failingWaivable: string[];
 	/** Keys (`<commentId>:<index>`) of the subagent findings the gate payload listed. */
 	findings?: string[];
+	/** The proposer's payload of a named gate with a proposer (initiative entries, new-dependency drafts). */
+	drafts?: unknown;
 }
 
 export interface AmendSnapshot {
