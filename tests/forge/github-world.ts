@@ -160,6 +160,14 @@ export class GitHubWorld implements ContractWorld {
 		});
 	}
 
+	async editReviewBehindBack(pr: number, id: string, body: string): Promise<void> {
+		this.store.update((d) => {
+			const review = d.pulls[String(pr)].reviews.find((r) => String(r.id) === id);
+			if (!review) throw new Error(`no review ${id} on pull ${pr}`);
+			review.body = body; // GitHub keeps `submitted_at` on an edit
+		});
+	}
+
 	/** Alternates between commit statuses and check runs so both endpoints are exercised. */
 	async seedStatus(ref: string, status: SeedStatus): Promise<void> {
 		this.store.update((d) => {

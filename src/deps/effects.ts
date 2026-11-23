@@ -14,7 +14,7 @@ import type { Answered, RequestRecord } from "../interaction/approver.ts";
 import { type CompletionCtx, phasesAfter, postOnce, readIssue, type Run } from "../interaction/complete-effects.ts";
 import { type AnswerData, snapshotOf } from "../interaction/requests.ts";
 import { staleComment } from "../interaction/stale.ts";
-import { applyInitiative, findOrCreateChange, findTracking, takenInitiative } from "../initiatives/complete.ts";
+import { applyInitiative, findOrCreateChange, findTrackings, takenInitiative } from "../initiatives/complete.ts";
 import type { DraftEntry, InitiativeDrafts } from "../initiatives/drafts.ts";
 import { TooManyDependencies } from "../initiatives/propose-read.ts";
 import { dependencyNumbers, initiativeNumber } from "../initiatives/readiness.ts";
@@ -83,7 +83,7 @@ async function initiativeTaken(ctx: CompletionCtx, req: RequestRecord): Promise<
 	const issue = await ctx.forge.getIssue(ctx.issue);
 	if (initiativeNumber(parseChange(issue.body)) !== undefined) return undefined;
 	const name = depsInitiativeName(issue.title);
-	return takenInitiative(name, await findTracking(ctx.forge, name), req.id);
+	return takenInitiative(name, await findTrackings(ctx.forge, name), req.id);
 }
 
 async function cycleNow(ctx: CompletionCtx, d: NewDependencyDrafts): Promise<string | undefined> {

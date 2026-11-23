@@ -5,6 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import { closeInitiative, closeRefusal, type CloseEvents, initiativeNumber, initiativeRefusal, postChangeSummary, summaryData } from "../ship/close.ts";
+import type { Forge } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -37,7 +38,7 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	try {
 		await postChangeSummary(w.forge, state, data);
 		initiativeClosed = abandon === undefined && initiative !== undefined ? await closeInitiative(w.forge, initiative, n, data) : undefined;
-		await w.forge.closeIssue(n);
+		await closeChangeIssue(w.forge, n);
 	} catch (error) {
 		await refreshQuietly(w.session, n); // the failure reported is the write error; a refresh problem here adds nothing
 		return toolResult(`${TOOL} failed: ${messageOf(error)}. Steps already done are kept; run ${TOOL} again.`, undefined, true);
@@ -47,6 +48,19 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	const problems = [emitQuietly(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) }), await refreshQuietly(w.session, n)].filter((m): m is string => m !== undefined);
 	const note = problems.length === 0 ? "" : ` Closed, but: ${problems.join("; ")}.`;
 	return toolResult(`Closed change #${n}${abandon === undefined ? "" : ` (abandoned: ${abandon.trim()})`}.${note}`, undefined);
+}
+
+/**
+ * Closes the change issue. A call that throws after the forge stored the close (a timeout) counts as closed once a
+ * re-read shows the issue `closed`: a rerun could not resolve the change any more, so the events would never go out.
+ */
+async function closeChangeIssue(forge: Pick<Forge, "closeIssue" | "getIssue">, n: number): Promise<void> {
+	try {
+		await forge.closeIssue(n);
+	} catch (error) {
+		const state = await forge.getIssue(n).then((issue) => (issue.stale ? undefined : issue.state), () => undefined);
+		if (state !== "closed") throw error;
+	}
 }
 
 /** Emits each event in order; a failing listener is reported and does not stop the next event. */

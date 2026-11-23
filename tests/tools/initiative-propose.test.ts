@@ -273,6 +273,18 @@ describe("initiative gate completion", () => {
 		expect(parseInitiative(await h.world.bodyOf(other)).changes).toEqual([]);
 	});
 
+	test("a second same-titled initiative is seen even when the first carries the request marker", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		await h.call("initiative_propose", twoEntries);
+		const id = (await ofKind(h, "request"))[0]?.id as string;
+		await h.world.seedIssue({ title: "limits", body: `Goal: Limit requests\nCapabilities: [rate-limit]\n<!-- livespec:request ${id} -->\n\n## Changes\n`, labels: ["livespec:initiative"] });
+		const other = await h.world.seedIssue({ title: "limits", body: "Goal: other\nCapabilities: []\n\n## Changes\n", labels: ["livespec:initiative"] });
+		await forgeApprove(h);
+		expect((await ofKind(h, "gate"))[0]?.data).toMatchObject({ superseded: true });
+		expect((await ofKind(h, "answer"))[0]?.data).toMatchObject({ verdict: "superseded", reason: expect.stringContaining(`#${other}`) });
+		expect(await titled(h, "add-request-context")).toEqual([]);
+	});
+
 	test("the tracking issue carries the request id", async () => {
 		const h = await shape({ config: FORGE_CHAIN });
 		await h.call("initiative_propose", twoEntries);

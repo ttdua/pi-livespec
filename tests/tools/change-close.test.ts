@@ -116,6 +116,52 @@ describe("change_close", () => {
 		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed"]);
 	});
 
+	test("a closeIssue that stores the close but throws still emits the close events", async () => {
+		const target = { n: -1 };
+		const timeout = (world: MemoryWorld): Forge =>
+			new Proxy(world.forge, {
+				get: (t, k) => {
+					if (k === "closeIssue") {
+						return async (n: number) => {
+							await t.closeIssue(n);
+							if (n === target.n) throw new Error("timeout");
+						};
+					}
+					const v = Reflect.get(t, k) as unknown;
+					return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+				},
+			});
+		const h = await closeReady({ forge: timeout });
+		target.n = h.n;
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed"]);
+	});
+
+	test("a closeIssue that throws and leaves the issue open still fails", async () => {
+		const target = { n: -1 };
+		const broken = (world: MemoryWorld): Forge =>
+			new Proxy(world.forge, {
+				get: (t, k) => {
+					if (k === "closeIssue") {
+						return async (n: number) => {
+							if (n === target.n) throw new Error("boom");
+							return t.closeIssue(n);
+						};
+					}
+					const v = Reflect.get(t, k) as unknown;
+					return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+				},
+			});
+		const h = await closeReady({ forge: broken });
+		target.n = h.n;
+		const out = await h.call("change_close", {});
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("boom");
+		expect(emits(h)).toEqual([]);
+	});
+
 	test("a foreign close-summary.initiative does not count; the own one is posted", async () => {
 		const h = await closeReady({ initiative: true });
 		const t = h.tracking as number;

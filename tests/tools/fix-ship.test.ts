@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { parseDecisionBlocks } from "../../src/decide/records.ts";
 import type { PullRequest } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { OTHER_LOGIN } from "../forge/world.ts";
+import { BOT_LOGIN, OTHER_LOGIN } from "../forge/world.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, originRefs, squashOntoMain, textOf, type ToolHarness, type ToolHarnessOptions, toolHarness } from "./helpers.ts";
@@ -235,6 +235,53 @@ describe("fix_ship", () => {
 		expect(textOf(out)).toContain("was pushed");
 		expect(textOf(out)).toContain("run fix_ship again");
 		expect(originRefs(h.origin)).toContain(`${h.git("rev-parse", "HEAD")} refs/heads/fix/typo`);
+	});
+
+	test("a pull request another session opened after the first check is updated, not duplicated", async () => {
+		let lists = 0;
+		const h = await fixReady({
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop === "listPullRequests") {
+							return async (q: { state: "open"; head?: string }) => {
+								const found = await target.listPullRequests(q);
+								if (lists++ === 0) await world.seedPullRequest({ head: "fix/typo", author: BOT_LOGIN, body: "other session" });
+								return found;
+							};
+						}
+						return Reflect.get(target, prop, receiver);
+					},
+				}),
+		});
+		const out = await h.call("fix_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const pulls = await openPulls(h);
+		expect(pulls).toHaveLength(1);
+		expect(textOf(out)).toContain(`Updated pull request #${pulls[0]?.number}`);
+		expect(pulls[0]?.body).toContain("## Test");
+	});
+
+	test("a create that fails because the pull request now exists updates it", async () => {
+		const h = await fixReady({
+			forge: (world) =>
+				new Proxy(world.forge, {
+					get(target, prop, receiver) {
+						if (prop === "createPullRequest") {
+							return async () => {
+								await world.seedPullRequest({ head: "fix/typo", author: BOT_LOGIN, body: "other session" });
+								throw new Error("a pull request already exists for fix/typo");
+							};
+						}
+						return Reflect.get(target, prop, receiver);
+					},
+				}),
+		});
+		const out = await h.call("fix_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const pulls = await openPulls(h);
+		expect(pulls).toHaveLength(1);
+		expect(pulls[0]?.body).toContain("## Test");
 	});
 
 	test("create failure after the push says the branch was pushed", async () => {

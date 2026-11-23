@@ -118,18 +118,47 @@ async function pullRequestTarget(f: Fix): Promise<{ pr: PullRequest | undefined 
 	return { pr: open[0] };
 }
 
-/** Opens the pull request or updates the read one with its version; the branch is already pushed. */
-async function openOrUpdate(f: Fix, p: Publish): Promise<PullRequest | { failed: string }> {
-	const { target, content } = p;
-	const pushed = `the branch ${f.branch} was pushed, but`;
+type Written = { pr: PullRequest; updated: boolean } | { failed: string };
+
+const pushedBut = (f: Fix): string => `the branch ${f.branch} was pushed, but`;
+
+/** Updates the read pull request with its version. */
+async function update(f: Fix, target: PullRequest, content: Publish["content"]): Promise<Written> {
 	try {
-		if (target === undefined) return await f.w.forge.createPullRequest({ head: f.branch, base: p.integration, ...content });
 		const write = await f.w.forge.updatePullRequest(target.number, content, target.version);
-		if (write.status === "written") return write.item;
-		return { failed: `${pushed} pull request #${target.number} changed since it was read (${write.changed.join(", ")}); run ${TOOL} again.` };
+		if (write.status === "written") return { pr: write.item, updated: true };
+		return { failed: `${pushedBut(f)} pull request #${target.number} changed since it was read (${write.changed.join(", ")}); run ${TOOL} again.` };
 	} catch (error) {
-		const what = target === undefined ? "opening the pull request" : `updating pull request #${target.number}`;
-		return { failed: `${pushed} ${what} failed (${untrusted(messageOf(error))}); run ${TOOL} again.` };
+		return { failed: `${pushedBut(f)} updating pull request #${target.number} failed (${untrusted(messageOf(error))}); run ${TOOL} again.` };
+	}
+}
+
+/** Re-reads the open pull requests from the branch; another session may have opened one since the first check. */
+async function freshTarget(f: Fix): Promise<{ pr: PullRequest | undefined } | { failed: string }> {
+	try {
+		const target = await pullRequestTarget(f);
+		return isRefused(target) ? { failed: `${pushedBut(f)} ${target.refused}` } : target;
+	} catch (error) {
+		return { failed: `${pushedBut(f)} listing its pull requests failed (${untrusted(messageOf(error))}); run ${TOOL} again.` };
+	}
+}
+
+/**
+ * Opens the pull request, or updates the one found; the branch is already pushed. The evidence lock is per process,
+ * so the open pull requests are listed again right before the create, and a create that fails is followed by one more
+ * list: an own pull request found then (the forge's "already exists") is updated instead.
+ */
+async function openOrUpdate(f: Fix, p: Publish): Promise<Written> {
+	if (p.target !== undefined) return update(f, p.target, p.content);
+	const before = await freshTarget(f);
+	if ("failed" in before) return before;
+	if (before.pr !== undefined) return update(f, before.pr, p.content);
+	try {
+		return { pr: await f.w.forge.createPullRequest({ head: f.branch, base: p.integration, ...p.content }), updated: false };
+	} catch (error) {
+		const after = await freshTarget(f);
+		if (!("failed" in after) && after.pr !== undefined) return update(f, after.pr, p.content);
+		return { failed: `${pushedBut(f)} opening the pull request failed (${untrusted(messageOf(error))}); run ${TOOL} again.` };
 	}
 }
 
@@ -140,10 +169,10 @@ async function publish(f: Fix, p: Publish): Promise<ToolResult<FixShipDetails>> 
 	} catch (error) {
 		return refuse(`pushing ${f.branch} failed: ${untrusted(messageOf(error))}.`);
 	}
-	const pr = await openOrUpdate(f, p);
-	if ("failed" in pr) return failed(pr.failed);
-	const verb = p.target === undefined ? "Opened" : "Updated";
-	return toolResult(`Pushed ${f.branch} at ${p.head.slice(0, 7)}. ${verb} pull request #${pr.number}; a human merges it on the forge.`, { pr: pr.number });
+	const written = await openOrUpdate(f, p);
+	if ("failed" in written) return failed(written.failed);
+	const verb = written.updated ? "Updated" : "Opened";
+	return toolResult(`Pushed ${f.branch} at ${p.head.slice(0, 7)}. ${verb} pull request #${written.pr.number}; a human merges it on the forge.`, { pr: written.pr.number });
 }
 
 /** Every refusal in order, then the push and the pull request. */

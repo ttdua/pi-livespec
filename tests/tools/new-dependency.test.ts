@@ -278,6 +278,21 @@ describe("new-dependency options", () => {
 		expect(parseChange(await h.world.bodyOf(h.n)).header.initiative).toBeUndefined();
 	});
 
+	test("an A approval is superseded by a second same-titled initiative next to its own crash-retry one", async () => {
+		const h = await harness();
+		await h.call("new_dependency", params());
+		const id = (await ofKind(h, "request")).at(-1)?.id as string;
+		const goal = `Prerequisites of #${h.n} per-ip-cap`;
+		await h.world.seedIssue({ title: "per-ip-cap-deps", body: `Goal: ${goal}\nCapabilities: []\n<!-- livespec:request ${id} -->\n\n## Changes\n`, labels: ["livespec:initiative"] });
+		const other = await h.world.seedIssue({ title: "per-ip-cap-deps", body: `Goal: ${goal}\nCapabilities: []\n\n## Changes\n`, labels: ["livespec:initiative"] });
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec choose A");
+		await pollApprovals(h.session);
+		expect((await ofKind(h, "gate")).at(-1)?.data).toMatchObject({ superseded: true });
+		expect((await ofKind(h, "answer"))[0]?.data).toMatchObject({ verdict: "superseded", reason: expect.stringContaining(`#${other}`) });
+		expect(await titled(h, "token-store")).toEqual([]);
+	});
+
 	test("Option A rerun after a crash writes nothing twice", async () => {
 		let creates = 0;
 		const crashing = (world: MemoryWorld): Forge =>

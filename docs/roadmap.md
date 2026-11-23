@@ -16,7 +16,7 @@ Sizes: **M** is a few tasks, **L** many. They compare specs and are not time est
 | LS-06 Unit evidence loop and guards | [#6](https://github.com/ttdua/pi-livespec/issues/6) | `unit-evidence-and-guards` | L | LS-05 |
 | LS-07 Subagent dispatch, context packets and parallel lanes | [#7](https://github.com/ttdua/pi-livespec/issues/7) | `subagent-dispatch` | L | LS-06 |
 | LS-08 Review fan-out and finding routing | [#8](https://github.com/ttdua/pi-livespec/issues/8) | `review-and-findings` | L | LS-07 |
-| LS-09 Ship, small-fix lane and initiatives | [#9](https://github.com/ttdua/pi-livespec/issues/9) | `ship-and-initiatives` | L | LS-08 |
+| LS-09 Ship, small-fix lane and initiatives | [#9](https://github.com/ttdua/pi-livespec/issues/9) | `ship-and-close`, `small-fix-lane` (plus `empty-fix-branches`), `initiatives-and-deps` | L | LS-08 |
 | LS-10 Durable docs and drift audit | [#10](https://github.com/ttdua/pi-livespec/issues/10) | `durable-docs-audit` | M | LS-09 |
 | LS-11 Dogfood and v0.1 release | [#11](https://github.com/ttdua/pi-livespec/issues/11) | `dogfood-release` | M | LS-01 to LS-10 |
 

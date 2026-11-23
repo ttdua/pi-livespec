@@ -66,7 +66,7 @@ export interface Review {
 	author: string;
 	state: ReviewState;
 	body: string;
-	/** When the review was last changed (GitHub: `submitted_at`). */
+	/** Moves when the review body changes (GitHub: `submitted_at` plus a body hash; Gitea: `updated_at`). */
 	updatedAt: string;
 }
 
