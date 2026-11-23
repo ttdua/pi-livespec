@@ -7,7 +7,7 @@ import { asChild } from "../hooks/fake-pi.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, originRefs, textOf } from "./helpers.ts";
 import { openWorktreeLane } from "./lane-helpers.ts";
-import { BRANCH, type ParkHarness, parkHarness, wip } from "./park-fixture.ts";
+import { BRANCH, type ParkHarness, parkHarness, seedChoice, wip } from "./park-fixture.ts";
 import { cardState } from "./unit-helpers.ts";
 
 afterEach(async () => {
@@ -144,8 +144,8 @@ describe("change_park", () => {
 		h.lanes.U3.git("add", "-A");
 		h.lanes.U3.git("commit", "-q", "-m", "U3 partial");
 		rmSync(h.lanes.U3.path, { recursive: true, force: true });
-		// A stale local wip branch from elsewhere, without the lane commit.
-		h.git("branch", wip("U3"), "HEAD");
+		// A local wip branch from an interrupted park elsewhere (not merged into the change branch), without the lane commit.
+		h.git("branch", wip("U3"), h.git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "other wip"));
 		const out = await h.park();
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(textOf(out)).toContain("livespec/per-ip-cap--lane-U3");
@@ -178,6 +178,51 @@ describe("change_park", () => {
 		const record = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string }[] };
 		expect(record.units.map((u) => u.unit)).toEqual(["U2", "U3", "U4", "U9"]);
 		expect(existsSync(ghost.path)).toBe(false);
+	});
+
+	test("a second park after resume pushes the work done since the resume", async () => {
+		const h = await parkHarness();
+		await withWork(h);
+		expect((await h.park()).isError).toBeFalsy();
+		const firstU2 = h.git("rev-parse", wip("U2"));
+		await h.mergePrereq({ "other.txt": "o\n" });
+		const resumed = await h.resume();
+		expect(resumed.isError, textOf(resumed)).toBeFalsy();
+		// A second prerequisite is found and option A is chosen again.
+		const second = await h.world.seedIssue({ title: "second", labels: ["livespec", "livespec:phase/shape"] });
+		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace(`Depends: #${h.prereq}`, `Depends: #${h.prereq}, #${second}`));
+		await h.session.refresh();
+		const lanes = { U2: await openWorktreeLane(h, "U2"), U3: await openWorktreeLane(h, "U3") };
+		for (const u of ["U2", "U3"]) expect((await h.start(u)).isError).toBeFalsy();
+		await seedChoice(h, "A");
+		await writeIn(lanes.U2.path, "src/u2.ts", "u2 after resume\n");
+		lanes.U2.git("add", "-A");
+		lanes.U2.git("commit", "-q", "-m", "U2 after resume");
+		const u2New = lanes.U2.git("rev-parse", "HEAD");
+		await writeIn(lanes.U3.path, "src/u3.ts", "u3 after resume\n");
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const remote = (unit: string) => h.git("ls-remote", "origin", `refs/heads/${wip(unit)}`).split(/\s/)[0] as string;
+		const record = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string; head?: string }[] };
+		for (const unit of ["U2", "U3"]) expect(record.units.find((u) => u.unit === unit)?.head).toBe(remote(unit));
+		expect(h.git("merge-base", "--is-ancestor", u2New, remote("U2"))).toBe("");
+		expect(h.git("merge-base", "--is-ancestor", firstU2, remote("U2"))).toBe("");
+		expect(h.git("show", `${remote("U2")}:src/u2.ts`)).toBe("u2 after resume");
+		expect(h.git("show", `${remote("U3")}:src/u3.ts`)).toBe("u3 after resume");
+	});
+
+	test("a lane record with an invalid unit id is ignored and never pushed", async () => {
+		const h = await parkHarness();
+		// The marker id is a valid token; only the record's unit field carries the bad id.
+		const lane = await openWorktreeLane(h, "U9");
+		await h.seed("lane", "lane.U9", { unit: "U1;x", path: lane.path, branch: "livespec/per-ip-cap--lane-U9", base: h.head });
+		await h.seed("lane", "lane.U9", { unit: "U9", path: lane.path, branch: "livespec/per-ip-cap--lane-U9", base: h.head, closed: true, outcome: "merged" });
+		await writeIn(lane.path, "src/u9.ts", "x\n");
+		const out = await h.park();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(originRefs(h.origin)).not.toContain(";");
+		const record = (await h.ofKind("parked")).at(-1)?.data as { units: { unit: string }[] };
+		expect(record.units.map((u) => u.unit)).toEqual(["U2", "U3", "U4"]);
 	});
 
 	test("refused when nothing is left to wait for", async () => {
