@@ -76,19 +76,19 @@ describe("guardedDeleteWip", () => {
 		return h.git("commit-tree", "-p", head, "-m", "moved", `${head}^{tree}`);
 	}
 
-	test("deletes at the recorded head", async () => {
+	test("deletes the ref at the recorded head", async () => {
 		const { h, head } = await pushed();
 		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("deleted");
 		expect(originRefs(h.origin)).not.toContain(`refs/heads/${B}`);
 	});
 
-	test("gone", async () => {
+	test("returns gone when the ref is already absent", async () => {
 		const { h, head } = await pushed();
 		await guardedDeleteWip(defaultGitExec, h.root, B, head);
 		expect(await guardedDeleteWip(defaultGitExec, h.root, B, head)).toBe("gone");
 	});
 
-	test("moved", async () => {
+	test("returns moved and keeps the ref when its head differs", async () => {
 		const { h, head } = await pushed();
 		const c = newCommit(h, head);
 		h.git("push", "origin", `${c}:refs/heads/${B}`);
@@ -110,6 +110,27 @@ describe("guardedDeleteWip", () => {
 		};
 		expect(await guardedDeleteWip(exec, h.root, B, head)).toBe("moved");
 		expect(originRefs(h.origin)).toContain(`${c} refs/heads/${B}`);
+	});
+
+	function failingPush(lsRemote: string[]): GitExec {
+		const reads = [...lsRemote];
+		return async (args) => {
+			if (args[0] === "push") return { stdout: "", stderr: "rejected", code: 1 };
+			const out = reads.shift();
+			return out === undefined ? { stdout: "", stderr: "", code: 2 } : { stdout: out, stderr: "", code: 0 };
+		};
+	}
+
+	test("a failed push whose re-read shows the ref absent returns gone", async () => {
+		const { h, head } = await pushed();
+		const exec = failingPush([`${head}\trefs/heads/${B}\n`]);
+		expect(await guardedDeleteWip(exec, h.root, B, head)).toBe("gone");
+	});
+
+	test("a failed push whose re-read still shows the head throws GitError", async () => {
+		const { h, head } = await pushed();
+		const line = `${head}\trefs/heads/${B}\n`;
+		await expect(guardedDeleteWip(failingPush([line, line]), h.root, B, head)).rejects.toBeInstanceOf(GitError);
 	});
 
 	test("refuses a non-wip branch", async () => {

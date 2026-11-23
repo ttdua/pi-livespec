@@ -4,7 +4,7 @@
 // with refspec `HEAD:refs/heads/<Branch line>`, `fix_ship` with `HEAD:refs/heads/fix/<slug>`
 // from the checked-out fix branch, `change_park` with `HEAD:refs/heads/<Branch line>--wip-<unit>`
 // (command-guards "Guarded push"). `guardedDeleteWip` deletes a remote wip branch under a lease
-// on its recorded head; its single caller is `change_resume` (command-guards "Guarded delete of a wip branch").
+// on its recorded head; its single caller is `change_resume` (command-guards "Guarded push", scenario "Delete of a wip branch").
 
 const REMOTE = "origin";
 
@@ -13,10 +13,10 @@ export type WipDeleteOutcome = "deleted" | "gone" | "moved";
 /** Deletes `branch` on origin if it is still at `head`. Throws `GitError` on a refused name (no git call) or an unclassified failure. */
 export async function guardedDeleteWip(exec: GitExec, root: string, branch: string, head: string): Promise<WipDeleteOutcome> {
 	const ref = `refs/heads/${branch}`;
-	const args = ["push", `--force-with-lease=${ref}:${head}`, "--", REMOTE, `:${ref}`];
 	if (!branch.includes("--wip-") || branch.startsWith("-")) {
 		throw new GitError(["push", "--", REMOTE, `:${ref}`], null, "not a wip branch");
 	}
+	const args = ["push", `--force-with-lease=${ref}:${head}`, "--", REMOTE, `:${ref}`];
 	const before = await readRemote(exec, root, ref);
 	if (before === null) return "gone";
 	if (before !== head) return "moved";
