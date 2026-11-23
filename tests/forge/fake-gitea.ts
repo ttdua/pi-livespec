@@ -276,6 +276,14 @@ export class FakeGitea {
 		comment.updatedAt = this.tick();
 	}
 
+	/** Edits a submitted review body as its author would: `submitted_at` stays, `updated_at` moves. */
+	editReview(n: number, id: number, body: string): void {
+		const review = this.pull(n).reviews.find((r) => r.id === id);
+		if (!review) throw new Error(`fake gitea: no review ${id} on pull ${n}`);
+		review.body = body;
+		review.updatedAt = this.tick();
+	}
+
 	reviewComments(n: number): { path: string; line: number; body: string; author: string }[] {
 		return this.pull(n).reviews.flatMap((r) => r.comments.map((c) => ({ path: c.path, line: c.position, body: c.body, author: c.author })));
 	}

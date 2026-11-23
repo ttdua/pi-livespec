@@ -188,6 +188,13 @@ export class MemoryWorld implements ContractWorld {
 		comment.updatedAt = this.state.tick();
 	}
 
+	async editReviewBehindBack(pr: number, id: string, body: string): Promise<void> {
+		const review = this.state.pull(pr).reviews.find((r) => r.id === id);
+		if (!review) throw new Error(`no review ${id} on pull ${pr}`);
+		review.body = body;
+		review.updatedAt = this.state.tick();
+	}
+
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {
 		this.state.permissions.set(login, level);
 	}

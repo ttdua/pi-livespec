@@ -22,7 +22,7 @@ import type {
 	WriteResult,
 } from "./types.ts";
 import { type SnapshotKind, SnapshotStore } from "./snapshots.ts";
-import { bodyVersion, type ComparableIssue, changedFields } from "./version.ts";
+import { bodyDigest, bodyVersion, type ComparableIssue, changedFields } from "./version.ts";
 
 export interface ExecResult {
 	stdout: string;
@@ -363,7 +363,8 @@ export class GitHubForge implements Forge, LabelRepo {
 			author: r.user?.login ?? "",
 			state: toReviewState(r.state),
 			body: r.body ?? "",
-			updatedAt: r.submitted_at ?? "",
+			// `submitted_at` stays on a body edit, so a body hash makes the value move with the text.
+			updatedAt: `${r.submitted_at ?? ""}#${bodyDigest(r.body ?? "")}`,
 		}));
 	}
 

@@ -88,6 +88,10 @@ export class GiteaWorld implements ContractWorld {
 		this.fake.editReviewComment(pr, Number(id), body);
 	}
 
+	async editReviewBehindBack(pr: number, id: string, body: string): Promise<void> {
+		this.fake.editReview(pr, Number(id), body);
+	}
+
 	async setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void> {
 		this.fake.setPermission(login, level);
 	}

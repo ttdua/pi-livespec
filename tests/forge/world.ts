@@ -85,6 +85,8 @@ export interface ContractWorld {
 	reviewCommentsOf(pr: number): Promise<Pick<ReviewComment, "path" | "line" | "body" | "author">[]>;
 	/** Replaces a review comment body as its author would, which moves its `updatedAt`. */
 	editReviewCommentBehindBack(pr: number, id: string, body: string): Promise<void>;
+	/** Replaces a submitted review body as its author would; GitHub keeps `submitted_at`, Gitea moves `updated_at`. */
+	editReviewBehindBack(pr: number, id: string, body: string): Promise<void>;
 
 	/** Sets the repository permission the forge reports for `login`. */
 	setPermission(login: string, level: "none" | "read" | "write" | "admin"): Promise<void>;

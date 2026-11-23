@@ -436,6 +436,17 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect(new Set(reviews.map((r) => r.id)).size).toBe(2);
 			});
 
+			it("listReviews returns an updatedAt that a body edit changes", async () => {
+				const w = await world();
+				const n = await w.seedPullRequest({ head: "feat/re" });
+				await w.seedReview(n, { author: OTHER_LOGIN, state: "commented", body: "first" });
+				const [before] = await w.forge.listReviews(n);
+				await w.editReviewBehindBack(n, before.id, "second");
+				const [after] = await w.forge.listReviews(n);
+				expect(after.body).toBe("second");
+				expect(after.updatedAt).not.toBe(before.updatedAt);
+			});
+
 			it("listReviewComments returns an id and an updatedAt that an edit changes", async () => {
 				const w = await world();
 				const n = await w.seedPullRequest({ head: "feat/rc", files: ["src/x.ts"] });

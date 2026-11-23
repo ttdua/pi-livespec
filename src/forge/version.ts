@@ -19,8 +19,12 @@ const COMPARED_FIELDS = ["title", "body", "labels", "state"] as const;
  * so a title-only edit changes `updatedAt` but not the body hash.
  */
 export function bodyVersion(updatedAt: string, body: string, prefix: ReadVersionPrefix = "gh"): Version {
-	const digest = createHash("sha256").update(body, "utf8").digest("hex");
-	return `${prefix}:${updatedAt}:${digest}` as Version;
+	return `${prefix}:${updatedAt}:${bodyDigest(body)}` as Version;
+}
+
+/** SHA-256 of a body, hex. */
+export function bodyDigest(body: string): string {
+	return createHash("sha256").update(body, "utf8").digest("hex");
 }
 
 /** Lists the compared fields that differ between `a` and `b`, in a fixed order. Labels compare as sets. */
