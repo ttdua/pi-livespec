@@ -9,7 +9,6 @@ import type { RepoView } from "./repo-view.ts";
 
 const TEST_GLOBS = ["**/*.test.*", "**/*.spec.*", "**/*_test.*", "tests/**", "test/**"];
 const IDENTIFIER_CHARS = /^[A-Za-z][A-Za-z0-9_]*$/;
-const CAPITALIZED_WORD = /^[A-Z][a-z0-9]+$/;
 const MIN_IDENTIFIER = 4;
 const GLOB_CHARS = /[*?[{]/;
 const BACKTICKED = /`([^`\n]+)`/g;
@@ -17,7 +16,9 @@ const BACKTICKED = /`([^`\n]+)`/g;
 /** A `camelCase`, `PascalCase`, `snake_case` or capitalized word of at least four characters; all-caps is not one. */
 export function isIdentifierToken(token: string): boolean {
 	if (token.length < MIN_IDENTIFIER || !IDENTIFIER_CHARS.test(token)) return false;
-	return token.includes("_") || (/[a-z]/.test(token) && /[A-Z]/.test(token)) || CAPITALIZED_WORD.test(token);
+	// All-caps (`API`, `API_KEY`) is not an identifier; a capitalized word (`Bucket`) has both cases.
+	if (!/[a-z]/.test(token)) return false;
+	return token.includes("_") || /[A-Z]/.test(token);
 }
 
 /** A repository path: it contains `/` and no glob character. */

@@ -78,6 +78,12 @@ describe("Drift detectors", () => {
 		expect(await detectAll(seededFiles())).not.toContain("removed-reference:rate-limit/RateLimiter");
 	});
 
+	test("all-caps backticked token is not a removed reference", async () => {
+		const spec = seededFiles()["specs/cache/spec.md"]?.replace("The store SHALL", "The store reads `API_KEY` and SHALL");
+		const keys = await detectAll({ ...seededFiles(), "specs/cache/spec.md": spec ?? "" });
+		expect(keys.filter((k) => k.startsWith("removed-reference:cache/"))).toEqual([]);
+	});
+
 	test("empty repo view yields no items", async () => {
 		expect(await detectAll({})).toEqual([]);
 		const template = { "specs/product.md": "# Product\n\n<!-- describe the product -->\n", "specs/glossary.md": "# Glossary\n" };
@@ -143,7 +149,7 @@ describe("pullRequestOf", () => {
 describe("tokens", () => {
 	test("isIdentifierToken", () => {
 		for (const t of ["rateLimit", "RateLimiter", "Change", "Bucket", "URLParser", "rate_limit"]) expect(isIdentifierToken(t), t).toBe(true);
-		for (const t of ["abc", "API", "the", "a.b"]) expect(isIdentifierToken(t), t).toBe(false);
+		for (const t of ["abc", "API", "the", "a.b", "API_KEY", "HTTP_2"]) expect(isIdentifierToken(t), t).toBe(false);
 	});
 
 	test("isPathToken", () => {
