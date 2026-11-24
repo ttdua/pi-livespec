@@ -8,8 +8,8 @@ export type Triaged = { items: ClassifiedItem[]; ignored: string[]; unmatched: s
 type Verdict = Severity | "ignore";
 type Command = { key: string; verdict: Verdict; author: string };
 
-/** First line `/livespec triage <key> <verdict>`; the key may hold any non-space character. */
-const TRIAGE = /^\/livespec triage (\S+) (major|minor|ignore)\s*$/;
+/** First line `/livespec triage <key> <verdict>`; the verdict is the last word, so the key may hold spaces. */
+const TRIAGE = /^\/livespec triage (.+) (major|minor|ignore)$/;
 const ROUTE: Record<Severity, Route> = { major: "change", minor: "small-fix" };
 
 function parseTriage(c: Comment): Command | undefined {

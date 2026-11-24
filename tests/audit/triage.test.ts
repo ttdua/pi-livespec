@@ -62,3 +62,17 @@ describe("applyTriage", () => {
 		expect(asked.length).toBeLessThanOrEqual(1);
 	});
 });
+
+describe("applyTriage multi-word keys", () => {
+	const SCENARIO: ClassifiedItem = { type: "scenario-untested", key: "scenario-untested:rate-limit/rejects 101st request", subject: "rate-limit/rejects 101st request", capability: "rate-limit", evidence: "named in no test", severity: "minor", route: "small-fix" };
+
+	test("a writer re-triages a key containing spaces", async () => {
+		const out = await applyTriage([SCENARIO], [comment("wanda", `/livespec triage ${SCENARIO.key} ignore`)], canWrite);
+		expect(out).toEqual({ items: [], ignored: [SCENARIO.key], unmatched: [] });
+	});
+
+	test("a reader cannot re-triage a key containing spaces", async () => {
+		const out = await applyTriage([SCENARIO], [comment("rita", `/livespec triage ${SCENARIO.key} major`)], canWrite);
+		expect(out).toEqual({ items: [SCENARIO], ignored: [], unmatched: [] });
+	});
+});

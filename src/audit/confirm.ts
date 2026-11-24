@@ -81,7 +81,7 @@ async function specTexts(candidates: DriftItem[], commit: string, git: Pick<Git,
 	for (const capability of capabilities) {
 		const path = `specs/${capability}/spec.md`;
 		const text = await git.showFile(commit, path);
-		if (text !== undefined) out.push(`## Spec ${path}\n\n${untrusted(text)}`);
+		if (text !== undefined) out.push(`## Spec\n\n${untrusted(path)}\n\n${untrusted(text)}`);
 	}
 	return out;
 }
@@ -121,6 +121,9 @@ function noResultReason(outcome: Exclude<DispatchOutcome, { kind: "result" }>): 
 function judgementOf(outcome: DispatchOutcome, candidates: DriftItem[]): Judgement {
 	if (outcome.kind !== "result") {
 		return unjudged(noResultReason(outcome));
+	}
+	if (outcome.result.status !== "DONE" && outcome.result.status !== "DONE_WITH_CONCERNS") {
+		return unjudged(`the scout returned ${outcome.result.status}, not verdicts`);
 	}
 	const keys = new Set(candidates.map((i) => i.key));
 	const verdicts = new Map((outcome.result.verdicts ?? []).filter((v) => keys.has(v.key)).map((v) => [v.key, v]));
