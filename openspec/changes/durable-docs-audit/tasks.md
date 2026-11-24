@@ -26,10 +26,10 @@ Blocked by: 2
 
 Blocked by: none
 
-- [ ] 4.1 Make `SourceProvider` accept an optional `Target` second argument (`src/subagents/source-types.ts`, `registered()` in `src/subagents/sources.ts`)
-- [ ] 4.2 Add `src/docs/readers.ts`: glossary entries matching the unit text or `## Units` section (`file:specs/glossary.md`, omitted when none match), accepted `spine: true` decisions and accepted decisions tagged with a declared capability (`file:specs/decisions/<file>`), registered for `implementer` and `reviewer` with `registerPacketSource`; registration called from the extension entry
-- [ ] 4.3 Add the existing `constraints` provider to the reviewer manifests in `src/subagents/sources.ts`
-- [ ] 4.4 Tests in `tests/docs/readers.test.ts` and `tests/subagents/sources.test.ts` for "Glossary entries for the unit", "Spine and capability decisions" and "Reviewer sees constraints"
+- [x] 4.1 Make `SourceProvider` accept an optional `Target` second argument (`src/subagents/source-types.ts`, `registered()` in `src/subagents/sources.ts`)
+- [x] 4.2 Add `src/docs/readers.ts`: glossary entries matching the unit text or `## Units` section (`file:specs/glossary.md`, omitted when none match), accepted `spine: true` decisions and accepted decisions tagged with a declared capability (`file:specs/decisions/<file>`), registered for `implementer` and `reviewer` with `registerPacketSource`; registration called from the extension entry
+- [x] 4.3 Add the existing `constraints` provider to the reviewer manifests in `src/subagents/sources.ts`
+- [x] 4.4 Tests in `tests/docs/readers.test.ts` and `tests/subagents/sources.test.ts` for "Glossary entries for the unit", "Spine and capability decisions" and "Reviewer sees constraints"
 
 ## 5. Pack, fixture and scout schema
 
