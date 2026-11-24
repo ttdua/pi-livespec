@@ -35,9 +35,9 @@ Blocked by: none
 
 Blocked by: 1, 2, 6
 
-- [ ] 5.1 Update `src/packs/agent-skills.yaml`: `define` checks gain `product-impact`, `glossary-terms`, `behavior-change`; `review` checks become `[product-impact, glossary-terms, behavior-change, review-clean]`; `decisions` gains `behavior-change: { mode: rule }` and `drift-severity: { mode: rule }` (both rules are registered by groups 2 and 6; an unregistered point fails pack validation)
-- [ ] 5.2 Update `tests/fixtures/agent-skills.pack.json` and the spot check in the pack tests
-- [ ] 5.3 Add optional `verdicts` to the scout result schema in `src/subagents/roles.ts`; test "Scout verdicts accepted" in `tests/subagents/roles.test.ts`
+- [x] 5.1 Update `src/packs/agent-skills.yaml`: `define` checks gain `product-impact`, `glossary-terms`, `behavior-change`; `review` checks become `[product-impact, glossary-terms, behavior-change, review-clean]`; `decisions` gains `behavior-change: { mode: rule }` and `drift-severity: { mode: rule }` (both rules are registered by groups 2 and 6; an unregistered point fails pack validation)
+- [x] 5.2 Update `tests/fixtures/agent-skills.pack.json` and the spot check in the pack tests
+- [x] 5.3 Add optional `verdicts` to the scout result schema in `src/subagents/roles.ts`; test "Scout verdicts accepted" in `tests/subagents/roles.test.ts`
 
 ## 6. Drift detectors and severity
 
