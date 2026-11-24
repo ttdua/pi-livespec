@@ -316,6 +316,27 @@ describe("suggestAtStart", () => {
 		expect(r.state).toEqual(expected);
 		expect(await readAuditState(git)).toEqual(expected);
 	});
+
+	test("a suggestion the audit clears while the scan runs is not resurrected", async () => {
+		const { root, run, publish } = await specRepo();
+		const git = createGit(root);
+		const base = run("rev-parse", "HEAD");
+		await writeAuditState(git, { cursor: base, pending: [{ kind: "commit", sha: BBB, capabilities: ["cache"] }] });
+		await writeIn(root, "src/limit/cap.ts", "1\n");
+		commitAll(root, "feat: cap (#41)");
+		const a = publish();
+		const forge = {
+			getPullRequest: async (n: number) => {
+				// the audit completes mid-scan
+				await auditAndSave({ commonDir: () => git.commonDir(), isAncestor: async () => true }, { ok: true, text: "", commit: AAA, fixesRan: false });
+				return pullRequest(n, "feature/cap", "");
+			},
+		};
+		const r = await suggestAtStart({ git, forge, project: PROJECT });
+		const expected: AuditState = { cursor: a, auditedCommit: AAA, pending: [{ kind: "commit", sha: a, capabilities: ["rate-limit"] }] };
+		expect(r.state).toEqual(expected);
+		expect(await readAuditState(git)).toEqual(expected);
+	});
 });
 
 describe("auditAndSave", () => {

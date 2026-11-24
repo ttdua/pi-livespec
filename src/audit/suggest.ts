@@ -62,7 +62,9 @@ function withCommits(s: AuditState, found: PendingAudit[]): AuditState {
 function mergeScan(latest: AuditState, before: AuditState, after: AuditState): AuditState {
 	if (latest.cursor !== before.cursor || after.cursor === before.cursor) return latest;
 	const scanned = { ...latest, ...(after.cursor === undefined ? {} : { cursor: after.cursor }) };
-	return withCommits(scanned, after.pending);
+	// Only what the scan itself found: its copy of the old pending list may hold suggestions an audit cleared since.
+	const seen = new Set(before.pending.flatMap((p) => (p.kind === "commit" ? [p.sha] : [])));
+	return withCommits(scanned, after.pending.filter((p) => p.kind !== "commit" || !seen.has(p.sha)));
 }
 
 /** The suggestions of a batch; a forge read error propagates so the caller keeps the cursor. */
