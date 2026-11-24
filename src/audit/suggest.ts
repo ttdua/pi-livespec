@@ -57,14 +57,18 @@ function withCommits(s: AuditState, found: PendingAudit[]): AuditState {
 
 /**
  * Applies a scan of `before` to the latest stored state: the cursor moves and the new commit suggestions are added,
- * keeping whatever was stored meanwhile. When another session moved the cursor first, its scan stands.
+ * keeping whatever was stored meanwhile. When another session moved the cursor first, its scan stands. A new commit
+ * the stored audited commit contains is dropped, since an audit that completed during the scan covered it.
  */
-function mergeScan(latest: AuditState, before: AuditState, after: AuditState): AuditState {
+async function mergeScan(latest: AuditState, before: AuditState, after: AuditState, isAncestor: IsAncestor): Promise<AuditState> {
 	if (latest.cursor !== before.cursor || after.cursor === before.cursor) return latest;
 	const scanned = { ...latest, ...(after.cursor === undefined ? {} : { cursor: after.cursor }) };
 	// Only what the scan itself found: its copy of the old pending list may hold suggestions an audit cleared since.
 	const seen = new Set(before.pending.flatMap((p) => (p.kind === "commit" ? [p.sha] : [])));
-	return withCommits(scanned, after.pending.filter((p) => p.kind !== "commit" || !seen.has(p.sha)));
+	const found = after.pending.filter((p) => p.kind === "commit" && !seen.has(p.sha));
+	const audited = latest.auditedCommit;
+	const covered = audited === undefined ? new Set<string>() : await coveredBy(found, audited, isAncestor);
+	return withCommits(scanned, found.filter((p) => p.kind === "commit" && !covered.has(p.sha)));
 }
 
 /** The suggestions of a batch; a forge read error propagates so the caller keeps the cursor. */
@@ -118,22 +122,18 @@ type IsAncestor = (a: string, b: string) => Promise<boolean>;
  * to the end. A commit whose ancestry cannot be read stays pending.
  */
 export async function completeAudit(s: AuditState, o: Completed, isAncestor: IsAncestor): Promise<AuditState> {
-	return applyAudit(s, o, await coveredCommits(s, o, isAncestor));
-}
-
-/** The pending commits the audited commit contains; one whose ancestry cannot be read is not covered. */
-async function coveredCommits(s: AuditState, o: Completed, isAncestor: IsAncestor): Promise<Set<string>> {
-	const covered = new Set<string>();
-	for (const p of s.pending) {
-		if (p.kind === "commit" && (await isAncestor(p.sha, o.commit).catch(() => false))) covered.add(p.sha);
-	}
-	return covered;
-}
-
-/** `completeAudit` over precomputed ancestry; a commit added after `covered` was computed stays pending. */
-function applyAudit(s: AuditState, o: Completed, covered: Set<string>): AuditState {
+	const covered = await coveredBy(s.pending, o.commit, isAncestor);
 	const pending = s.pending.filter((p) => (p.kind === "initiative" ? p.initiative !== o.posted : !covered.has(p.sha)));
 	return { ...s, ...(o.fixesRan ? { fixCursor: o.commit } : {}), auditedCommit: o.commit, pending };
+}
+
+/** The commit suggestions `commit` contains; one whose ancestry cannot be read is not covered. */
+async function coveredBy(pending: PendingAudit[], commit: string, isAncestor: IsAncestor): Promise<Set<string>> {
+	const covered = new Set<string>();
+	for (const p of pending) {
+		if (p.kind === "commit" && (await isAncestor(p.sha, commit).catch(() => false))) covered.add(p.sha);
+	}
+	return covered;
 }
 
 type Store = Pick<Git, "commonDir">;
@@ -142,7 +142,7 @@ export type StartDeps = { git: Git; forge?: Pick<Forge, "getPullRequest">; proje
 
 /**
  * Session start: a scan of the stored state against one `origin/<integration>` commit (specs and history both read at
- * it), then merged into the state stored meanwhile, under the lock. Never throws: a failure returns the state read so
+ * it), then merged into the state stored meanwhile, under the lock (with the ancestry reads against the audited commit). Never throws: a failure returns the state read so
  * far with the error, for the session to record; a scan error still stores nothing.
  */
 export async function suggestAtStart(d: StartDeps): Promise<ScanResult> {
@@ -156,7 +156,8 @@ export async function suggestAtStart(d: StartDeps): Promise<ScanResult> {
 		const scan = await scanCommits({ git: d.git, ...(d.forge === undefined ? {} : { forge: d.forge }), tip, specs }, state);
 		if (scan.error !== undefined || scan.state === state) return scan;
 		const before = state;
-		return { state: await updateAuditState(d.git, (latest) => mergeScan(latest, before, scan.state)) };
+		const isAncestor: IsAncestor = (a, b) => d.git.isAncestor(a, b);
+		return { state: await updateAuditState(d.git, (latest) => mergeScan(latest, before, scan.state, isAncestor)) };
 	} catch (error) {
 		return { state, error };
 	}
@@ -168,12 +169,11 @@ export function initiativeAndSave(git: Store, n: number): Promise<AuditState> {
 }
 
 /**
- * After a completed audit: the ancestry is read first, then the audit is applied to the latest stored state under the
- * lock, so a suggestion added meanwhile is kept.
+ * After a completed audit: applied to the latest stored state under the lock, with the ancestry read there, so every
+ * suggestion stored meanwhile is checked against the audited commit and the others are kept.
  */
-export async function auditAndSave(git: Store & Pick<Git, "isAncestor">, o: Completed): Promise<AuditState> {
-	const covered = await coveredCommits(await readAuditState(git), o, (a, b) => git.isAncestor(a, b));
-	return updateAuditState(git, (latest) => applyAudit(latest, o, covered));
+export function auditAndSave(git: Store & Pick<Git, "isAncestor">, o: Completed): Promise<AuditState> {
+	return updateAuditState(git, (latest) => completeAudit(latest, o, (a, b) => git.isAncestor(a, b)));
 }
 
 /** The card reasons of the pending suggestions, in the order they were added. */

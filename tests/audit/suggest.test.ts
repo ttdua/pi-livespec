@@ -1,6 +1,8 @@
 // drift-audit "Audit suggestions": the commit scan, the initiative suggestion and the state an audit leaves.
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { createGit } from "../../src/engine/git.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
@@ -337,23 +339,71 @@ describe("suggestAtStart", () => {
 		expect(r.state).toEqual(expected);
 		expect(await readAuditState(git)).toEqual(expected);
 	});
+
+	test("a commit the audit covers while the scan runs is not kept", async () => {
+		const { root, run, publish } = await specRepo();
+		const git = createGit(root);
+		await writeAuditState(git, { cursor: run("rev-parse", "HEAD"), pending: [] });
+		await writeIn(root, "src/limit/cap.ts", "1\n");
+		commitAll(root, "feat: cap (#41)");
+		const a = publish();
+		const forge = {
+			getPullRequest: async (n: number) => {
+				await auditAndSave(git, { ok: true, text: "", commit: a, fixesRan: false }); // the audit of `a` completes mid-scan
+				return pullRequest(n, "feature/cap", "");
+			},
+		};
+		const r = await suggestAtStart({ git, forge, project: PROJECT });
+		const expected: AuditState = { cursor: a, auditedCommit: a, pending: [] };
+		expect(r.state).toEqual(expected);
+		expect(await readAuditState(git)).toEqual(expected);
+	});
+
+	test("a commit after the audited commit found while the audit completes is kept", async () => {
+		const { root, run, publish } = await specRepo();
+		const git = createGit(root);
+		const base = run("rev-parse", "HEAD");
+		await writeAuditState(git, { cursor: base, pending: [] });
+		await writeIn(root, "src/limit/cap.ts", "1\n");
+		commitAll(root, "feat: cap (#41)");
+		const a = publish();
+		const forge = {
+			getPullRequest: async (n: number) => {
+				await auditAndSave(git, { ok: true, text: "", commit: base, fixesRan: false }); // an audit of the older `base`
+				return pullRequest(n, "feature/cap", "");
+			},
+		};
+		const r = await suggestAtStart({ git, forge, project: PROJECT });
+		const expected: AuditState = { cursor: a, auditedCommit: base, pending: [{ kind: "commit", sha: a, capabilities: ["rate-limit"] }] };
+		expect(r.state).toEqual(expected);
+		expect(await readAuditState(git)).toEqual(expected);
+	});
 });
 
 describe("auditAndSave", () => {
-	test("an initiative stored while the ancestry is read is kept", async () => {
-		const { root } = await specRepo();
+	test("ancestry is read on the latest state under the lock", async () => {
+		const { root, run, publish } = await specRepo();
 		const real = createGit(root);
-		await writeAuditState(real, { pending: [{ kind: "initiative", initiative: 30 }, { kind: "commit", sha: BBB, capabilities: ["rate-limit"] }] });
+		const base = run("rev-parse", "HEAD");
+		await writeIn(root, "src/limit/cap.ts", "1\n");
+		commitAll(root, "feat: cap");
+		const a = publish();
+		// A scan stored `base` (inside `a`) and an initiative before the audit is saved; `BBB` is unknown to git.
+		const stored: AuditState = { pending: [{ kind: "initiative", initiative: 31 }, { kind: "commit", sha: base, capabilities: ["rate-limit"] }, { kind: "commit", sha: BBB, capabilities: ["cache"] }] };
+		await writeAuditState(real, stored);
+		const lockHeld: boolean[] = [];
+		const lockDir = join(await real.commonDir(), "livespec", "audit", ".lock");
 		const git = {
 			commonDir: () => real.commonDir(),
-			isAncestor: async () => {
-				await initiativeAndSave(real, 31);
-				return true;
+			isAncestor: async (x: string, y: string) => {
+				lockHeld.push(existsSync(lockDir));
+				return real.isAncestor(x, y);
 			},
 		};
-		const next = await auditAndSave(git, { ok: true, text: "", commit: AAA, posted: 30, fixesRan: true });
-		const expected: AuditState = { fixCursor: AAA, auditedCommit: AAA, pending: [{ kind: "initiative", initiative: 31 }] };
+		const next = await auditAndSave(git, { ok: true, text: "", commit: a, posted: 30, fixesRan: true });
+		const expected: AuditState = { fixCursor: a, auditedCommit: a, pending: [{ kind: "initiative", initiative: 31 }, { kind: "commit", sha: BBB, capabilities: ["cache"] }] };
 		expect(next).toEqual(expected);
 		expect(await readAuditState(real)).toEqual(expected);
+		expect(lockHeld).toEqual([true, true]);
 	});
 });

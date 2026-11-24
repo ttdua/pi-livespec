@@ -53,7 +53,7 @@ export async function writeAuditState(git: Pick<Git, "commonDir">, s: AuditState
 
 /**
  * Read → transform → write under a lock shared by every worktree of the clone, so a concurrent update is never lost.
- * `transform` must not do slow I/O (compute it before); returning the same object skips the write. Throws when the
+ * `transform` may do short git reads (ancestry) but no slow I/O such as forge reads; returning the same object skips the write. Throws when the
  * lock cannot be taken in time.
  */
 export async function updateAuditState(git: Pick<Git, "commonDir">, transform: (s: AuditState) => AuditState | Promise<AuditState>): Promise<AuditState> {
