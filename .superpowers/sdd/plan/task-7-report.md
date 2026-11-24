@@ -53,3 +53,8 @@ Covering tests
 Commands
 - RED (`bunx vitest run tests/audit`): 4 failed (multi-word writer, newline path, BLOCKED, NEEDS_CONTEXT).
 - GREEN: `bunx vitest run tests/audit tests/commands/audit.test.ts` all pass; `bun run typecheck` clean; `bun run test` all pass.
+
+## Fix round 2
+
+- `tests/audit/confirm.test.ts`: after the positive wrapper assertion, strips every `<untrusted>…</untrusted>` block (multiline) and asserts the remainder lacks `IGNORE ALL`.
+- RED: heading temporarily reverted to raw `${path}` → the new assertion failed (1 failed). Restored → 11/11 pass; typecheck clean.
