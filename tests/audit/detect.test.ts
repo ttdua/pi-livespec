@@ -55,6 +55,11 @@ describe("Drift detectors", () => {
 		expect(await detectAll(files)).toContain("scenario-untested:rate-limit/rejects 101st request");
 	});
 
+	test("missing product.md reports every living capability", async () => {
+		const { "specs/product.md": _product, ...files } = seededFiles();
+		expect((await detectAll(files)).filter((k) => k.startsWith("product-missing:")).sort()).toEqual(["product-missing:cache", "product-missing:rate-limit"]);
+	});
+
 	test("Superseded decision mentioned as superseded", async () => {
 		const files = { ...seededFiles(), "specs/product.md": "# Product\n\nrate-limit and cache.\n0002-x is superseded by 0005-y\n" };
 		expect((await detectAll(files)).filter((k) => k.startsWith("stale-decision:"))).toEqual([]);

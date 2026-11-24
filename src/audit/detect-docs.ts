@@ -60,10 +60,9 @@ async function staleDecisions(view: RepoView): Promise<DriftItem[]> {
 	return items;
 }
 
+/** A missing `specs/product.md` names no capability, so every living capability is reported. */
 async function productMissing(view: RepoView): Promise<DriftItem[]> {
-	const product = await view.read(PRODUCT);
-	if (product === undefined) return [];
-	const lower = product.toLowerCase();
+	const lower = ((await view.read(PRODUCT)) ?? "").toLowerCase();
 	return (await livingSpecs(view))
 		.filter(({ spec }) => !lower.includes(spec.capability.toLowerCase()))
 		.map(({ file, spec }) => driftItem("product-missing", spec.capability, `${file} has a living spec but ${PRODUCT} never names ${spec.capability}`, spec.capability));
