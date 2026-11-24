@@ -45,6 +45,14 @@ describe("resultSchema", () => {
 		expect(resultSchema("verifier").required).toContain("findings");
 	});
 
+	test("scout verdicts accepted", () => {
+		const base = { status: "DONE", notes: "", discoveries: [], sources_used: [] };
+		const ok = [{ key: "dead-paths:x:src/**", verdict: "refuted", reason: "moved" }];
+		expect(checkSchema(resultSchema("scout"), { ...base, verdicts: ok }).ok).toBe(true);
+		expect(checkSchema(resultSchema("scout"), { ...base, verdicts: [{ ...ok[0], verdict: "maybe" }] }).ok).toBe(false);
+		expect(resultSchema("scout").required ?? []).not.toContain("verdicts");
+	});
+
 	test("schemas use only the executor subset", () => {
 		const allowed = new Set(["type", "enum", "properties", "items", "required", "additionalProperties"]);
 		for (const role of ROLES) {

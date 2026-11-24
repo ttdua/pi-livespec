@@ -22,6 +22,8 @@ decisions:
   durable-docs: { mode: rule }
   lane: { mode: rule, max_files: 3, max_lines: 100 }
   split: { mode: rule }
+  behavior-change: { mode: rule }
+  drift-severity: { mode: rule }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -39,7 +41,7 @@ phases:
     redirects:
       - "Write requirements into specs/<capability>/spec.md, never SPEC.md"
       - "Proposal and design go to the change issue via livespec tools, never a local file"
-    checks: [spec-format, capabilities-match-diff]   # named checks over LS-02 validators
+    checks: [spec-format, capabilities-match-diff, product-impact, glossary-terms, behavior-change]   # named checks over LS-02 validators
     gate: human
     subagents:
       - { role: scout, mode: auto, when: ["unfamiliar-code"] }
@@ -69,7 +71,7 @@ phases:
     skills:
       required: [code-review-and-quality]
       optional: [code-simplification, security-and-hardening, performance-optimization]
-    checks: [review-clean]
+    checks: [product-impact, glossary-terms, behavior-change, review-clean]
     gate: self
     subagents:
       - { role: reviewer, subject: change, mode: always, skills: [code-review-and-quality] }
