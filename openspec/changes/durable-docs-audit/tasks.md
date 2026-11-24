@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `src/docs/product-impact.ts`: pure `productImpactResults(change)` per durable-doc-checks "Product impact check" (missing, `—`, invalid, `none` with a `new` capability), with tests in `tests/docs/product-impact.test.ts`
-- [ ] 1.2 Add `src/docs/glossary-terms.ts`: pure `glossaryCandidates(addedLines, glossary, knownText)` (bold terms minus scenario keywords, capitalized non-initial words outside backticks unknown at `Base`, match ignoring case and a trailing `s`) and the `glossary-terms` check over `git diff <Base>..HEAD -- specs/`, warnings only; tests in `tests/docs/glossary-terms.test.ts`
-- [ ] 1.3 Register both checks from `src/docs/register.ts`, called by `registerBuiltinChecks` in `src/engine/checks.ts`; add the define gate payload "Glossary" section (warnings plus entries the specs diff adds to `specs/glossary.md`) through `registerGatePayload("define", …)`; test the payload in `tests/docs/glossary-terms.test.ts`
+- [x] 1.1 Add `src/docs/product-impact.ts`: pure `productImpactResults(change)` per durable-doc-checks "Product impact check" (missing, `—`, invalid, `none` with a `new` capability), with tests in `tests/docs/product-impact.test.ts`
+- [x] 1.2 Add `src/docs/glossary-terms.ts`: pure `glossaryCandidates(addedLines, glossary, knownText)` (bold terms minus scenario keywords, capitalized non-initial words outside backticks unknown at `Base`, match ignoring case and a trailing `s`) and the `glossary-terms` check over `git diff <Base>..HEAD -- specs/`, warnings only; tests in `tests/docs/glossary-terms.test.ts`
+- [x] 1.3 Register both checks from `src/docs/register.ts`, called by `registerBuiltinChecks` in `src/engine/checks.ts`; add the define gate payload "Glossary" section (warnings plus entries the specs diff adds to `specs/glossary.md`) through `registerGatePayload("define", …)`; test the payload in `tests/docs/glossary-terms.test.ts`
 
 ## 2. Behavior change rule, check and gate question
 
