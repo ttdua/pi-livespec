@@ -564,6 +564,24 @@ describe("commitPaths", () => {
 		git(root, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "merge side", "side");
 		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/cap.ts"]);
 	});
+
+	test("names with non-ASCII characters and spaces are returned unquoted, for a plain commit and a merge", async () => {
+		const { root, git: g } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		await writeIn(root, "src/limit/é.ts", "x\n");
+		await writeIn(root, "src/limit/a b.ts", "x\n");
+		commitAll(root, "odd names");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/a b.ts", "src/limit/é.ts"]);
+		expect(await g.changedPaths("HEAD")).toEqual(["src/limit/a b.ts", "src/limit/é.ts"]);
+		git(root, "switch", "-q", "-c", "side");
+		await writeIn(root, "src/limit/ü x.ts", "x\n");
+		commitAll(root, "side");
+		git(root, "switch", "-q", "main");
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "b");
+		git(root, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/ü x.ts"]);
+	});
 });
 
 describe("commonDir", () => {

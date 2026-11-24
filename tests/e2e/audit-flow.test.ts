@@ -2,12 +2,15 @@
 // `origin/main` and a memory forge; the audit runs through `/livespec audit`'s reply.
 
 import { execFileSync } from "node:child_process";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import "../../src/audit/card.ts";
 import { readAuditState } from "../../src/audit/state.ts";
 import { auditReply } from "../../src/commands/subcommands.ts";
 import { createGit } from "../../src/engine/git.ts";
-import { setSession } from "../../src/hooks/session-store.ts";
+import { ForgeError } from "../../src/forge/errors.ts";
+import type { Forge } from "../../src/forge/types.ts";
+import type { Session } from "../../src/hooks/session.ts";
+import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { cardText, cleanupHomes, harness, type Harness } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 
@@ -110,5 +113,39 @@ describe("audit suggestions", () => {
 		expect(out.error).toBe("livespec audit refused");
 		expect(await readAuditState(createGit(h.root))).toEqual(before);
 		expect(await cardText(h.pi, h.ctx)).toContain("initiative #30 closed");
+	});
+
+	test("the listener and the audit update only the Audit section: no refresh, no automatic advance", async () => {
+		const h = await harness({ files: { "specs/rate-limit/spec.md": SPEC } });
+		publish(h);
+		await h.start();
+		const session = getSession() as Session;
+		const refresh = vi.spyOn(session, "refresh");
+		const initiative = await h.world.seedIssue({ title: "initiative" });
+		await initiativeClosedListener(h)({ initiative, changes: [] });
+		expect(session.card.audit).toEqual([`initiative #${initiative} closed`]);
+		const out = await auditReply("", h.ctx as never, NO_EVENTS);
+		expect(out.error).toBeUndefined();
+		expect(session.card.audit).toBeUndefined();
+		expect(refresh).not.toHaveBeenCalled();
+	});
+
+	test("a scan error at session start is recorded and the cursor is unchanged", async () => {
+		const failing = (world: { forge: Forge }): Forge =>
+			new Proxy(world.forge, {
+				get: (target, key, receiver) =>
+					key === "getPullRequest"
+						? async () => Promise.reject(new ForgeError({ code: "unreachable", operation: "getPullRequest", message: "pull requests down" }))
+						: Reflect.get(target, key, receiver),
+			});
+		const h = await harness({ files: { "specs/rate-limit/spec.md": SPEC }, forge: failing });
+		const base = publish(h);
+		await h.start();
+		await writeIn(h.root, "src/limit/cap.ts", "export const cap = 200;\n");
+		commitAll(h.root, "feat: cap (#41)");
+		publish(h);
+		await h.start();
+		expect(getSession()?.errors.join("\n")).toContain("pull requests down");
+		expect((await readAuditState(createGit(h.root))).cursor).toBe(base);
 	});
 });

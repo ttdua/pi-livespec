@@ -218,6 +218,13 @@ export class Session {
 		return { ok: true, message: chosen.resolved.notice ?? `livespec uses \`${name}\` for this repository` };
 	}
 
+	/** Stores the audit suggestions and rewrites only the card's Audit section: no forge read, no automatic advance. */
+	showAudit(state: AuditState): void {
+		this.auditState = state;
+		const { audit: _old, ...card } = this.card;
+		this.card = { ...card, ...cardAudit(this) };
+	}
+
 	get isFirstCard(): boolean {
 		return this.first;
 	}
@@ -554,9 +561,7 @@ async function suggestAudits(session: Session): Promise<void> {
 	if (project === null) return;
 	const r = await suggestAtStart({ git: session.git, ...(session.forge === undefined ? {} : { forge: session.forge }), project });
 	if (r.error !== undefined) session.record("audit", r.error);
-	session.auditState = r.state;
-	const { audit: _old, ...card } = session.card;
-	session.card = { ...card, ...cardAudit(session) };
+	session.showAudit(r.state);
 }
 
 /** `livespec:initiative-closed` data names the closed initiative; anything else is ignored. */
@@ -565,18 +570,16 @@ const closedInitiative = (data: unknown): number | undefined => {
 	return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : undefined;
 };
 
-/** Stores the initiative suggestion and refreshes the card of the running session. Never throws. */
+/** Stores the initiative suggestion and shows it in the card's Audit section. Never throws. */
 async function onInitiativeClosed(data: unknown): Promise<void> {
 	const session = getSession();
 	const n = closedInitiative(data);
 	if (!session?.initialized || n === undefined) return;
 	try {
-		session.auditState = await initiativeAndSave(session.git, n);
+		session.showAudit(await initiativeAndSave(session.git, n));
 	} catch (error) {
 		session.record("audit", error);
-		return;
 	}
-	await session.refresh();
 }
 
 /** pi's event bus; a host without one has nothing to listen to. */

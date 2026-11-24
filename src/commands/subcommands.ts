@@ -124,13 +124,15 @@ export async function auditReply(args: string, ctx: ExtensionCommandContext, eve
 	return { customType, content: out.text, ...(await recordAudit(session, out)) };
 }
 
-/** Stores what the audit covered and refreshes the card; a failed write keeps the report and says so. */
+/**
+ * Stores what the audit covered and updates the card's Audit section only (the audit's one forge write is its
+ * `drift-report`); a failed write keeps the report and says so.
+ */
 async function recordAudit(session: Session, out: Extract<AuditOutcome, { ok: true }>): Promise<{ error?: string }> {
 	try {
-		session.auditState = await auditAndSave(session.git, out);
+		session.showAudit(await auditAndSave(session.git, out));
 	} catch (error) {
 		return { error: `livespec audit: the audit state was not saved: ${session.record("audit", error)}` };
 	}
-	await session.refresh();
 	return {};
 }

@@ -3,7 +3,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { type AuditState, readAuditState, writeAuditState } from "../../src/audit/state.ts";
+import { type AuditState, readAuditState, updateAuditState, writeAuditState } from "../../src/audit/state.ts";
 import { makeRepo } from "../helpers/repo.ts";
 
 const failRename = vi.hoisted(() => ({ on: false }));
@@ -70,5 +70,24 @@ describe("audit state", () => {
 		await expect(writeAuditState(git, STATE)).rejects.toThrow("rename failed");
 		expect(await readAuditState(git)).toEqual({ pending: [] });
 		expect(await readdir(join(dir, "livespec"))).toEqual(["audit.json"]);
+	});
+
+	test("two writes in the same process and millisecond do not share a temp file", async () => {
+		const { git } = await store();
+		const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+		try {
+			await Promise.all([writeAuditState(git, STATE), writeAuditState(git, { pending: [] })]);
+		} finally {
+			now.mockRestore();
+		}
+		expect([STATE, { pending: [] }]).toContainEqual(await readAuditState(git));
+	});
+
+	test("updateAuditState serializes read, transform and write", async () => {
+		const { git } = await store();
+		const add = (n: number) => (s: AuditState): AuditState => ({ ...s, pending: [...s.pending, { kind: "initiative", initiative: n }] });
+		await Promise.all([1, 2, 3, 4, 5].map((n) => updateAuditState(git, add(n))));
+		const stored = await readAuditState(git);
+		expect(stored.pending.map((p) => (p.kind === "initiative" ? p.initiative : 0)).sort()).toEqual([1, 2, 3, 4, 5]);
 	});
 });

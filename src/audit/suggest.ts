@@ -1,7 +1,7 @@
 // Audit suggestions (drift-audit "Audit suggestions", design D11): manual commits on the
 // integration branch under a capability's `paths`, closed initiatives, and the state an
-// audit leaves behind. The rules are pure over the given git and forge; the `…AndSave` wrappers
-// at the end read and write `audit.json` through `state.ts`.
+// audit leaves behind. The rules are pure over the given git and forge; the wrappers at the
+// end compute the slow facts first, then apply them to `audit.json` under its lock (`state.ts`).
 
 import type { AuditOutcome } from "../commands/audit.ts";
 import { matchGlob } from "../core/glob.ts";
@@ -11,14 +11,18 @@ import type { Forge } from "../forge/types.ts";
 import { pullRequestOf } from "./items.ts";
 import { capabilityPaths } from "./living-specs.ts";
 import { repoViewAt } from "./repo-view.ts";
-import { type AuditState, type PendingAudit, readAuditState, writeAuditState } from "./state.ts";
+import { type AuditState, type PendingAudit, readAuditState, updateAuditState } from "./state.ts";
 
+/** `tip` is the one `origin/<integration>` commit both the specs and the history are read at. */
 export type ScanDeps = {
-	git: Pick<Git, "remoteRef" | "firstParentCommits" | "commitPaths">;
+	git: Pick<Git, "firstParentCommits" | "commitPaths">;
 	forge?: Pick<Forge, "getPullRequest">;
-	integration: string;
+	tip: string;
 	specs: { capability: string; paths: string[] }[];
 };
+
+/** A scan's state; on an error the state is the one given, with the error for the session to record. */
+export type ScanResult = { state: AuditState; error?: unknown };
 
 /** Commits checked per scan; a longer backlog is worked off one batch per session. */
 const BATCH = 50;
@@ -26,27 +30,39 @@ const LIVESPEC_HEADS = ["livespec/", "fix/"];
 const SHORT_SHA = 7;
 
 /**
- * Checks the oldest BATCH first-parent commits of `<cursor>..origin/<integration>` (read without a fetch) and
- * suggests each one that touches a capability's `paths` and did not come through livespec, moving the cursor to the
- * last one checked. The first run only sets the cursor. Without a forge, or on a forge error, the state is unchanged.
+ * Checks the oldest BATCH first-parent commits of `<cursor>..<tip>` and suggests each one that touches a capability's
+ * `paths` and did not come through livespec, moving the cursor to the last one checked. The first run only sets the
+ * cursor. Without a forge the state is unchanged; on a git or forge error it is unchanged and the error is returned.
  */
-export async function scanCommits(deps: ScanDeps, s: AuditState): Promise<AuditState> {
-	const tip = await deps.git.remoteRef(`origin/${deps.integration}`);
-	if (tip === undefined) return s;
-	if (s.cursor === undefined) return { ...s, cursor: tip };
+export async function scanCommits(deps: ScanDeps, s: AuditState): Promise<ScanResult> {
+	if (s.cursor === undefined) return { state: { ...s, cursor: deps.tip } };
 	const forge = deps.forge;
-	if (forge === undefined) return s;
-	const batch = (await deps.git.firstParentCommits(tip, { after: s.cursor })).slice(0, BATCH);
-	const last = batch.at(-1);
-	if (last === undefined) return s;
-	let found: PendingAudit[];
+	if (forge === undefined) return { state: s };
 	try {
-		found = await manualCommits(deps, forge, batch);
-	} catch {
-		return s;
+		const batch = (await deps.git.firstParentCommits(deps.tip, { after: s.cursor })).slice(0, BATCH);
+		const last = batch.at(-1);
+		if (last === undefined) return { state: s };
+		return { state: withCommits({ ...s, cursor: last.sha }, await manualCommits(deps, forge, batch)) };
+	} catch (error) {
+		return { state: s, error };
 	}
+}
+
+/** Adds the commit suggestions not already pending. */
+function withCommits(s: AuditState, found: PendingAudit[]): AuditState {
 	const known = new Set(s.pending.flatMap((p) => (p.kind === "commit" ? [p.sha] : [])));
-	return { ...s, cursor: last.sha, pending: [...s.pending, ...found.filter((p) => p.kind === "commit" && !known.has(p.sha))] };
+	const added = found.filter((p) => p.kind === "commit" && !known.has(p.sha));
+	return added.length === 0 ? s : { ...s, pending: [...s.pending, ...added] };
+}
+
+/**
+ * Applies a scan of `before` to the latest stored state: the cursor moves and the new commit suggestions are added,
+ * keeping whatever was stored meanwhile. When another session moved the cursor first, its scan stands.
+ */
+function mergeScan(latest: AuditState, before: AuditState, after: AuditState): AuditState {
+	if (latest.cursor !== before.cursor || after.cursor === before.cursor) return latest;
+	const scanned = { ...latest, ...(after.cursor === undefined ? {} : { cursor: after.cursor }) };
+	return withCommits(scanned, after.pending);
 }
 
 /** The suggestions of a batch; a forge read error propagates so the caller keeps the cursor. */
@@ -91,21 +107,30 @@ export function addInitiative(s: AuditState, n: number): AuditState {
 	return { ...s, pending: [...s.pending, { kind: "initiative", initiative: n }] };
 }
 
+type Completed = Extract<AuditOutcome, { ok: true }>;
+type IsAncestor = (a: string, b: string) => Promise<boolean>;
+
 /**
  * The state after a completed audit: commit suggestions contained in the audited commit and the initiative it posted
  * on are cleared, the audited commit is recorded, and the fix cursor moves only when the `declared-none` detector ran
  * to the end. A commit whose ancestry cannot be read stays pending.
  */
-export async function completeAudit(
-	s: AuditState,
-	o: Extract<AuditOutcome, { ok: true }>,
-	isAncestor: (a: string, b: string) => Promise<boolean>,
-): Promise<AuditState> {
-	const pending: PendingAudit[] = [];
+export async function completeAudit(s: AuditState, o: Completed, isAncestor: IsAncestor): Promise<AuditState> {
+	return applyAudit(s, o, await coveredCommits(s, o, isAncestor));
+}
+
+/** The pending commits the audited commit contains; one whose ancestry cannot be read is not covered. */
+async function coveredCommits(s: AuditState, o: Completed, isAncestor: IsAncestor): Promise<Set<string>> {
+	const covered = new Set<string>();
 	for (const p of s.pending) {
-		if (p.kind === "initiative" ? p.initiative === o.posted : await isAncestor(p.sha, o.commit).catch(() => false)) continue;
-		pending.push(p);
+		if (p.kind === "commit" && (await isAncestor(p.sha, o.commit).catch(() => false))) covered.add(p.sha);
 	}
+	return covered;
+}
+
+/** `completeAudit` over precomputed ancestry; a commit added after `covered` was computed stays pending. */
+function applyAudit(s: AuditState, o: Completed, covered: Set<string>): AuditState {
+	const pending = s.pending.filter((p) => (p.kind === "initiative" ? p.initiative !== o.posted : !covered.has(p.sha)));
 	return { ...s, ...(o.fixesRan ? { fixCursor: o.commit } : {}), auditedCommit: o.commit, pending };
 }
 
@@ -114,38 +139,39 @@ type Store = Pick<Git, "commonDir">;
 export type StartDeps = { git: Git; forge?: Pick<Forge, "getPullRequest">; project: ProjectConfig };
 
 /**
- * Session start: the stored state, then a scan with the living specs of `origin/<integration>`, stored when it
- * changed. Never throws: a failure returns the state read so far with the error, for the session to record.
+ * Session start: a scan of the stored state against one `origin/<integration>` commit (specs and history both read at
+ * it), then merged into the state stored meanwhile, under the lock. Never throws: a failure returns the state read so
+ * far with the error, for the session to record; a scan error still stores nothing.
  */
-export async function suggestAtStart(d: StartDeps): Promise<{ state: AuditState; error?: unknown }> {
+export async function suggestAtStart(d: StartDeps): Promise<ScanResult> {
 	let state: AuditState = { pending: [] };
 	try {
 		state = await readAuditState(d.git);
 		const integration = await integrationBranch(d.project, d.git);
 		const tip = integration === undefined ? undefined : await d.git.remoteRef(`origin/${integration}`);
-		if (integration === undefined || tip === undefined) return { state };
+		if (tip === undefined) return { state };
 		const specs = await capabilityPaths(await repoViewAt(d.git, tip));
-		const next = await scanCommits({ git: d.git, ...(d.forge === undefined ? {} : { forge: d.forge }), integration, specs }, state);
-		if (next !== state) await writeAuditState(d.git, next);
-		return { state: next };
+		const scan = await scanCommits({ git: d.git, ...(d.forge === undefined ? {} : { forge: d.forge }), tip, specs }, state);
+		if (scan.error !== undefined || scan.state === state) return scan;
+		const before = state;
+		return { state: await updateAuditState(d.git, (latest) => mergeScan(latest, before, scan.state)) };
 	} catch (error) {
 		return { state, error };
 	}
 }
 
 /** `livespec:initiative-closed`: adds the initiative to the stored state. */
-export async function initiativeAndSave(git: Store, n: number): Promise<AuditState> {
-	const s = await readAuditState(git);
-	const next = addInitiative(s, n);
-	if (next !== s) await writeAuditState(git, next);
-	return next;
+export function initiativeAndSave(git: Store, n: number): Promise<AuditState> {
+	return updateAuditState(git, (s) => addInitiative(s, n));
 }
 
-/** After a completed audit: applies it to the latest stored state (a suggestion added meanwhile is kept) and stores it. */
-export async function auditAndSave(git: Store & Pick<Git, "isAncestor">, o: Extract<AuditOutcome, { ok: true }>): Promise<AuditState> {
-	const next = await completeAudit(await readAuditState(git), o, (a, b) => git.isAncestor(a, b));
-	await writeAuditState(git, next);
-	return next;
+/**
+ * After a completed audit: the ancestry is read first, then the audit is applied to the latest stored state under the
+ * lock, so a suggestion added meanwhile is kept.
+ */
+export async function auditAndSave(git: Store & Pick<Git, "isAncestor">, o: Completed): Promise<AuditState> {
+	const covered = await coveredCommits(await readAuditState(git), o, (a, b) => git.isAncestor(a, b));
+	return updateAuditState(git, (latest) => applyAudit(latest, o, covered));
 }
 
 /** The card reasons of the pending suggestions, in the order they were added. */

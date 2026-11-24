@@ -253,8 +253,11 @@ async function runMerge(run: Run, args: string[]): Promise<"ok" | "conflict"> {
 	throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
 }
 
+/** NUL-delimited `-z` names: git does not quote non-ASCII or special characters in them. */
+const nulNames = (out: string | undefined): string[] => (out ?? "").split("\0").filter((p) => p !== "");
+
 const changedPaths = async (run: Run, commit: string): Promise<string[]> =>
-	lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit]));
+	nulNames(await run(["diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "--root", END_OF_OPTIONS, commit]));
 
 const parentsOf = async (run: Run, commit: string): Promise<string[]> =>
 	(await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1);
@@ -332,7 +335,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 			(await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}:${path}`], EXIT_NO_OBJECT)) !== undefined,
 		changedPaths: (commit) => changedPaths(run, commit),
 		commitPaths: async (commit) =>
-			(await parentsOf(run, commit)).length < 2 ? changedPaths(run, commit) : lines(await run(["diff", "--name-only", END_OF_OPTIONS, `${commit}^1`, commit])),
+			(await parentsOf(run, commit)).length < 2 ? changedPaths(run, commit) : nulNames(await run(["diff", "--name-only", "-z", END_OF_OPTIONS, `${commit}^1`, commit])),
 		commonDir: async () => resolve(root, await text(run, ["rev-parse", "--git-common-dir"])),
 		parents: (commit) => parentsOf(run, commit),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
