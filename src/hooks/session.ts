@@ -7,6 +7,8 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AuditState } from "../audit/state.ts";
+import { initiativeAndSave, suggestAtStart } from "../audit/suggest.ts";
 import { messageOf } from "../core/messages.ts";
 import { formatOutcome } from "../commands/skills.ts";
 import { type LoadedConfig, loadConfig } from "../config.ts";
@@ -35,7 +37,7 @@ import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
 import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
-import { buildCardInput, cardAccount } from "./card-input.ts";
+import { buildCardInput, cardAccount, cardAudit } from "./card-input.ts";
 import { type CardInput, type FixCard, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
 import { getSession, setSession } from "./session-store.ts";
@@ -91,6 +93,8 @@ export class Session {
 	fixMemo?: { key: string; value: FixCard };
 	/** Pull request merged states read for dependency facts, keyed by the sorted versions of the issues read with them. */
 	depsMemo?: { key: string; merged: Map<number, boolean> };
+	/** The local audit suggestions, read at session start and after each audit. */
+	auditState: AuditState = { pending: [] };
 	/** The background agent-skills check started at session start. */
 	upgrade?: Promise<void>;
 	readonly skillReads = new SkillReads();
@@ -236,7 +240,7 @@ async function resolveAndSnapshot(session: Session): Promise<void> {
 		session.card = await buildCardInput({ session, first: session.isFirstCard });
 	} catch (error) {
 		const message = session.record("refresh", error);
-		session.card = { ...cardBasics(session.card), account: cardAccount(session), kind: "forge-unavailable", message };
+		session.card = { ...cardBasics(session.card), account: cardAccount(session), ...cardAudit(session), kind: "forge-unavailable", message };
 	}
 }
 
@@ -538,9 +542,50 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	await session.reconnect();
 	await pollApprovals(session);
 	await pollFeedback(session);
+	await suggestAudits(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
 	kickOffUpgrade(session, content, ctx);
+}
+
+/** Reads and advances the audit suggestions, then shows them on the card already built. Never throws. */
+async function suggestAudits(session: Session): Promise<void> {
+	const project = session.config.project;
+	if (project === null) return;
+	const r = await suggestAtStart({ git: session.git, ...(session.forge === undefined ? {} : { forge: session.forge }), project });
+	if (r.error !== undefined) session.record("audit", r.error);
+	session.auditState = r.state;
+	const { audit: _old, ...card } = session.card;
+	session.card = { ...card, ...cardAudit(session) };
+}
+
+/** `livespec:initiative-closed` data names the closed initiative; anything else is ignored. */
+const closedInitiative = (data: unknown): number | undefined => {
+	const n = (data as { initiative?: unknown } | null)?.initiative;
+	return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : undefined;
+};
+
+/** Stores the initiative suggestion and refreshes the card of the running session. Never throws. */
+async function onInitiativeClosed(data: unknown): Promise<void> {
+	const session = getSession();
+	const n = closedInitiative(data);
+	if (!session?.initialized || n === undefined) return;
+	try {
+		session.auditState = await initiativeAndSave(session.git, n);
+	} catch (error) {
+		session.record("audit", error);
+		return;
+	}
+	await session.refresh();
+}
+
+/** pi's event bus; a host without one has nothing to listen to. */
+type EventBus = { on(channel: string, handler: (data: unknown) => void): unknown };
+
+function registerAuditListener(pi: ExtensionAPI): void {
+	const events = (pi as unknown as { events?: EventBus }).events;
+	// The returned promise never rejects; pi ignores it, tests can await it.
+	events?.on("livespec:initiative-closed", (data) => onInitiativeClosed(data));
 }
 
 /** Kills running `Verify` processes, then waits until their temporary worktrees are removed. Never throws. */
@@ -564,6 +609,7 @@ async function shutdownEvidence(): Promise<void> {
 export function registerSessionHooks(pi: ExtensionAPI, d: Partial<SessionDeps> = {}): void {
 	const deps: SessionDeps = { ...defaultSessionDeps(), ...d };
 	registerResumeRenderer(pi);
+	registerAuditListener(pi);
 	// The gate memo, the evidence locks and the session are the parent's; a child's start and shutdown leave them alone.
 	pi.on("session_shutdown", async (_event, ctx) => {
 		if (!isChildSession(ctx)) await shutdownEvidence();

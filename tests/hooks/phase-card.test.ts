@@ -11,6 +11,7 @@ import { subagentsSection } from "../../src/subagents/card.ts";
 import { approvalsSection } from "../../src/interaction/card.ts";
 import { initiativeSection } from "../../src/initiatives/card.ts";
 import { parkedSection } from "../../src/deps/card.ts";
+import { auditSection } from "../../src/audit/card.ts";
 import type { PendingRequest } from "../../src/interaction/requests.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
@@ -421,5 +422,23 @@ describe("parked section", () => {
 
 	test("no section while not parked", () => {
 		expect(parkedSection(changeCard(stateFor("build")))).toBeUndefined();
+	});
+});
+
+describe("audit section", () => {
+	test("audit section", () => {
+		registerCardSection("audit", auditSection);
+		const reasons = ["commit bbb touches rate-limit", "initiative #30 closed"];
+		const line = "Audit: commit bbb touches rate-limit; initiative #30 closed — run /livespec audit";
+		expect(renderCard(changeCard(defineState(), { audit: reasons } as Partial<typeof BASE>)).split("\n")).toContain(line);
+		// The resume card renders the same input on any card kind, the change list and an offline forge included.
+		expect(renderCard({ ...BASE, audit: reasons, kind: "list", open: [] }).split("\n")).toContain(line);
+		expect(renderCard({ ...BASE, audit: reasons, kind: "forge-unavailable", message: "down" })).toContain(line);
+	});
+
+	test("nothing pending, no section", () => {
+		registerCardSection("audit", auditSection);
+		expect(renderCard({ ...BASE, audit: [], kind: "list", open: [] })).not.toContain("Audit");
+		expect(renderCard({ ...BASE, kind: "list", open: [] })).not.toContain("Audit");
 	});
 });

@@ -2,8 +2,9 @@
 // the result into a `Reply`; the extension only routes and shows replies.
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { livingSpecs } from "../audit/living-specs.ts";
-import type { RepoView } from "../audit/repo-view.ts";
+import { capabilityPaths } from "../audit/living-specs.ts";
+import { readAuditState } from "../audit/state.ts";
+import { auditAndSave } from "../audit/suggest.ts";
 import { integrationBranch } from "../engine/git.ts";
 import type { Session } from "../hooks/session.ts";
 import { forgeWritable } from "../tools/approver-for.ts";
@@ -11,7 +12,7 @@ import { defaultSubagentDeps, exclusionsOf } from "../tools/subagent-request.ts"
 import { findExecutor } from "../subagents/executor.ts";
 import type { EventsLike } from "../subagents/launch.ts";
 import { runAccountCommand } from "./account.ts";
-import { type AuditDeps, runAudit } from "./audit.ts";
+import { type AuditDeps, type AuditOutcome, runAudit } from "./audit.ts";
 import { type CommandEnv, doctorDeps, initDeps, sessionFor, skillsDeps } from "./deps.ts";
 import { formatDoctor, runDoctor } from "./doctor.ts";
 import { type InitReport, runInit } from "./init.ts";
@@ -95,9 +96,7 @@ function auditTarget(args: string): number | undefined | null {
 	return m ? Number(m[1]) : null;
 }
 
-const specPaths = async (view: RepoView) => (await livingSpecs(view)).map(({ spec }) => ({ capability: spec.capability, paths: spec.paths }));
-
-/** The audit's deps from the running session. Task 8 replaces the empty state with `audit.json`. */
+/** The audit's deps from the running session, with the suggestions stored in `audit.json`. */
 async function auditDeps(session: Session, events: EventsLike): Promise<AuditDeps> {
 	const executor = findExecutor();
 	const project = session.config.project;
@@ -106,9 +105,9 @@ async function auditDeps(session: Session, events: EventsLike): Promise<AuditDep
 		git: session.git, root: session.cwd,
 		integration: project === null ? undefined : await integrationBranch(project, session.git),
 		...(session.forge === undefined ? {} : { forge: session.forge }), writable: forgeWritable(session),
-		state: { pending: [] },
+		state: await readAuditState(session.git),
 		confirm: { ...(executor.ok ? { service: executor.service } : {}), events, git: session.git, root: session.cwd, exclusions: await exclusionsOf(session, defaultSubagentDeps) },
-		specs: specPaths,
+		specs: capabilityPaths,
 		...(severity === undefined ? {} : { severity }),
 	};
 }
@@ -121,5 +120,17 @@ export async function auditReply(args: string, ctx: ExtensionCommandContext, eve
 	const target = auditTarget(args);
 	if (target === null) return { customType, content: AUDIT_USAGE, error: "livespec audit: the target must be an issue number" };
 	const out = await runAudit(await auditDeps(session, events), target);
-	return out.ok ? { customType, content: out.text } : { customType, content: out.text, error: "livespec audit refused" };
+	if (!out.ok) return { customType, content: out.text, error: "livespec audit refused" };
+	return { customType, content: out.text, ...(await recordAudit(session, out)) };
+}
+
+/** Stores what the audit covered and refreshes the card; a failed write keeps the report and says so. */
+async function recordAudit(session: Session, out: Extract<AuditOutcome, { ok: true }>): Promise<{ error?: string }> {
+	try {
+		session.auditState = await auditAndSave(session.git, out);
+	} catch (error) {
+		return { error: `livespec audit: the audit state was not saved: ${session.record("audit", error)}` };
+	}
+	await session.refresh();
+	return {};
 }

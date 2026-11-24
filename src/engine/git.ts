@@ -1,6 +1,7 @@
 // Typed git operations for the engine over the `GitExec` runner. Only the
 // documented "not found" exits map to values; every other failure throws GitError.
 
+import { resolve } from "node:path";
 import type { ProjectConfig } from "../config.ts";
 import { defaultGitExec, type GitExec } from "./git-exec.ts";
 
@@ -70,6 +71,10 @@ export interface Git {
 	pathExistsAt(sha: string, path: string): Promise<boolean>;
 	/** `git diff-tree --no-commit-id --name-only -r --root <commit>`; empty for an empty or a merge commit. */
 	changedPaths(commit: string): Promise<string[]>;
+	/** The files a commit brought to its first parent: `changedPaths`, or `git diff --name-only <commit>^1 <commit>` for a merge. */
+	commitPaths(commit: string): Promise<string[]>;
+	/** `git rev-parse --git-common-dir`, absolute: the directory shared by every worktree of the clone. */
+	commonDir(): Promise<string>;
 	/** `git rev-list --parents -n 1 <commit>` without the commit itself: its parents, none for a root commit. */
 	parents(commit: string): Promise<string[]>;
 	/** `git check-ignore -q <path>`. */
@@ -248,6 +253,12 @@ async function runMerge(run: Run, args: string[]): Promise<"ok" | "conflict"> {
 	throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
 }
 
+const changedPaths = async (run: Run, commit: string): Promise<string[]> =>
+	lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit]));
+
+const parentsOf = async (run: Run, commit: string): Promise<string[]> =>
+	(await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1);
+
 export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 	const run = runner(root, exec);
 	return {
@@ -319,9 +330,11 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		revList: async (range) => lines(await run(["rev-list", "--reverse", END_OF_OPTIONS, range])),
 		pathExistsAt: async (sha, path) =>
 			(await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}:${path}`], EXIT_NO_OBJECT)) !== undefined,
-		changedPaths: async (commit) =>
-			lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit])),
-		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
+		changedPaths: (commit) => changedPaths(run, commit),
+		commitPaths: async (commit) =>
+			(await parentsOf(run, commit)).length < 2 ? changedPaths(run, commit) : lines(await run(["diff", "--name-only", END_OF_OPTIONS, `${commit}^1`, commit])),
+		commonDir: async () => resolve(root, await text(run, ["rev-parse", "--git-common-dir"])),
+		parents: (commit) => parentsOf(run, commit),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
 		diffNumstat: async (from, to) => parseNumstat((await run(["diff", "--numstat", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
 		listTree: async (rev) => ((await run(["ls-tree", "-r", "--name-only", "-z", END_OF_OPTIONS, rev])) ?? "").split("\0").filter((p) => p !== ""),

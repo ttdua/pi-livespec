@@ -21,6 +21,11 @@ export async function livingSpecs(view: RepoView): Promise<{ file: string; spec:
 	return specs;
 }
 
+/** Each living spec's capability and `paths`. */
+export async function capabilityPaths(view: RepoView): Promise<{ capability: string; paths: string[] }[]> {
+	return (await livingSpecs(view)).map(({ spec }) => ({ capability: spec.capability, paths: spec.paths }));
+}
+
 /** The text of every file whose path passes `keep`. */
 export async function readFiles(view: RepoView, keep: (path: string) => boolean): Promise<FileText[]> {
 	const out: FileText[] = [];

@@ -16,6 +16,8 @@ import "./evidence/card.ts";
 // The subagents card section.
 import "./subagents/card.ts";
 import "./subagents/doctor.ts";
+// The audit suggestions card section.
+import "./audit/card.ts";
 // Registers the `subagents` pack sub-schema.
 import "./subagents/policy.ts";
 import { registerDocReaders } from "./docs/readers.ts";

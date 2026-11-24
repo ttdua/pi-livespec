@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import type { ProjectConfig } from "../../src/config.ts";
 import { createGit, diffFilesOf, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
@@ -544,5 +545,35 @@ describe("firstParentCommits", () => {
 		const { root } = await committedRepo();
 		const head = git(root, "rev-parse", "HEAD");
 		expect(await createGit(root).firstParentCommits(head, { after: head })).toEqual([]);
+	});
+});
+
+describe("commitPaths", () => {
+	test("a plain commit lists its files; a merge lists what it brought to its first parent", async () => {
+		const { root, git: g } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		await writeIn(root, "a.txt", "a\n");
+		commitAll(root, "a");
+		expect(await g.commitPaths("HEAD")).toEqual(["a.txt"]);
+		git(root, "switch", "-q", "-c", "side");
+		await writeIn(root, "src/limit/cap.ts", "x\n");
+		commitAll(root, "cap");
+		git(root, "switch", "-q", "main");
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "b");
+		git(root, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/cap.ts"]);
+	});
+});
+
+describe("commonDir", () => {
+	test("absolute, and the same from a linked worktree", async () => {
+		const { root, git: g } = await committedRepo();
+		const common = await g.commonDir();
+		expect(isAbsolute(common)).toBe(true);
+		expect(realpathSync(common)).toBe(realpathSync(join(root, ".git")));
+		const linked = join(await makeRepo(), "linked");
+		git(root, "worktree", "add", "-q", "--detach", linked);
+		expect(realpathSync(await createGit(linked).commonDir())).toBe(realpathSync(common));
 	});
 });
