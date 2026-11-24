@@ -72,7 +72,7 @@
 | `detectFixes` | new | `(commits: { sha: string; subject: string }[], forge: Pick<Forge, "getPullRequest">) => Promise<DriftItem[]>` | no |
 | `severityFacts` | new | `(item: DriftItem, kept: DriftItem[]) => { type: DriftType; capabilityHasMajor: boolean }` — `src/audit/severity.ts` | no |
 | decision point `drift-severity` | new | `decisions.drift-severity: { mode: rule }`; outcome `{ severity: Severity; route: Route }`, never asks | yes (pack key) |
-| `classify` | new | `(items: DriftItem[]) => Promise<ClassifiedItem[]>` (through `decide`) | no |
+| `classify` | new | `(items: DriftItem[], config?: unknown) => Promise<ClassifiedItem[]>` (through `decide`; Task 6: optional `config` = the pack's `decisions.drift-severity`, default `{ mode: "rule" }`, so the command can pass the pack entry like `askBehaviorChanges` does) | no |
 | `ConfirmDeps` | new | `{ service?: SubagentsServiceLike; events: EventsLike; git: Git; root: string; exclusions: string[]; signal?: AbortSignal }` (`exclusions` resolved by the command with the existing `excludedPackages(configuredPackages(...), user isolation.excludePackages)` policy) — `src/audit/confirm.ts` | no |
 | `confirmItems` | new | `(items: DriftItem[], commit: string, deps: ConfirmDeps) => Promise<{ kept: DriftItem[]; refuted: { key: string; reason: string }[]; note?: string }>` | no |
 | `applyTriage` | new | `(items: ClassifiedItem[], comments: Comment[], canWrite: (login: string) => Promise<boolean>) => Promise<{ items: ClassifiedItem[]; ignored: string[]; unmatched: string[] }>` — `src/audit/triage.ts` | no |
