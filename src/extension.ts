@@ -18,6 +18,7 @@ import "./subagents/card.ts";
 import "./subagents/doctor.ts";
 // Registers the `subagents` pack sub-schema.
 import "./subagents/policy.ts";
+import { registerDocReaders } from "./docs/readers.ts";
 import { type CommandEnv } from "./commands/deps.ts";
 import { messageOf } from "./core/messages.ts";
 import {
@@ -116,6 +117,7 @@ export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> =
 	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
 	// First: a blocked call must reach no other livespec `tool_call` handler.
 	registerGuardHook(pi);
+	registerDocReaders();
 	pi.registerCommand("livespec", {
 		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, account, skills",
 		handler: (args, ctx) => handleCommand(pi, args, ctx, env),

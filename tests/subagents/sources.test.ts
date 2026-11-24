@@ -24,6 +24,11 @@ async function sourcesOf(world: World, role: Role, unit?: string, subject?: Revi
 const ids = (placed: { source: { id: string } }[]) => placed.map((p) => p.source.id);
 
 describe("manifest", () => {
+	test("Reviewer sees constraints", async () => {
+		const world = await makeWorld();
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "change"))).toContain("file:specs/constraints.md");
+	});
+
 	test("answered question included", async () => {
 		const world = await makeWorld({ body: bodyWithApiAnswer() });
 		const placed = await sourcesOf(world, "implementer", "U3");
