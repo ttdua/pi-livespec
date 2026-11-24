@@ -12,7 +12,7 @@ import { reviewed } from "../subagents/helpers.ts";
 import { agg, aggregate, mark, rebut, run, verifier } from "./review-fixtures.ts";
 
 const H = "f".repeat(40);
-const FACTS = { specsStat: "", specsFiles: [] };
+const FACTS = { specsStat: "", specsFiles: [], specsDiff: "" };
 const key = (m: { commentId: string }, i: number) => `${m.commentId}:${i}`;
 
 async function ship(marked: ReturnType<typeof run>[]) {

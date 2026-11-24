@@ -488,3 +488,14 @@ describe("park ports", () => {
 		expect(await g.parents(head)).toEqual([before]);
 	});
 });
+
+describe("listTree", () => {
+	test("lists every file path at a revision", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "a.txt", "1\n");
+		await writeIn(root, "specs/x/spec.md", "2\n");
+		await writeIn(root, "we ird/é.md", "3\n");
+		commitAll(root);
+		expect((await createGit(root).listTree("HEAD")).sort()).toEqual(["a.txt", "specs/x/spec.md", "we ird/é.md"]);
+	});
+});

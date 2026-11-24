@@ -11,7 +11,12 @@ export type SubSchema = {
 	personas?(value: unknown): string[];
 };
 
-export type CheckGit = { diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string> };
+export type CheckGit = {
+	diff(from: string, to: string, path: string): Promise<string>;
+	head(): Promise<string>;
+	showFile(rev: string, path: string): Promise<string | undefined>;
+	listTree(rev: string): Promise<string[]>;
+};
 /** `marked` are the own marked comments of the change issue, in comment order. */
 /** `phase` is the active phase id; `ship` is the ship context, built in `ship` only; `limits` is the pack's `limits`. */
 export type CheckContext = {

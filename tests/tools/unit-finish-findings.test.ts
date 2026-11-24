@@ -58,7 +58,7 @@ describe("review-findings at unit_finish", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect((await h.units())[0]?.done).toBe(true);
 		const pack = h.session.pack.ok ? h.session.pack.pack : (undefined as never);
-		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const facts = { specsStat: "", specsFiles: [], specsDiff: "", issueUrl: "https://forge.example/o/r/issues/1" };
 		const payload = gatePayload(cardState(h).state, pack, "ship", facts);
 		expect(payload.summary).toContain("unrelated module leaks");
 		expect(payload.findings).toEqual([`${id}:0`]);

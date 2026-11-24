@@ -73,6 +73,8 @@ export interface Git {
 	aliases(): Promise<Record<string, string>>;
 	/** `git diff --numstat -z -M <from>..<to>`; a rename is one entry with the new path, a binary file `binary: true` with 0/0. */
 	diffNumstat(from: string, to: string): Promise<NumstatEntry[]>;
+	/** `git ls-tree -r --name-only -z <rev>`: every file path at `rev`. */
+	listTree(rev: string): Promise<string[]>;
 	/** `git show <rev>:<path>`; undefined when the path does not exist at `rev`. */
 	showFile(rev: string, path: string): Promise<string | undefined>;
 	/** `git branch -m -- <from> <to>`. */
@@ -305,6 +307,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
 		diffNumstat: async (from, to) => parseNumstat((await run(["diff", "--numstat", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
+		listTree: async (rev) => ((await run(["ls-tree", "-r", "--name-only", "-z", END_OF_OPTIONS, rev])) ?? "").split("\0").filter((p) => p !== ""),
 		showFile: (rev, path) => run(["show", END_OF_OPTIONS, `${rev}:${path}`], EXIT_NO_OBJECT),
 		renameBranch: async (from, to) => {
 			await run(["branch", "-m", "--", from, to]);

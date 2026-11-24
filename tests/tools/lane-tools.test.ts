@@ -204,7 +204,7 @@ describe("parallel-lanes tools", () => {
 		expect(summary).toMatchObject({ advisory: false, system: "files-violation" });
 		expect(summary.findings[0]?.scope).toBe("out-of-scope");
 		const { state } = cardState(h);
-		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const facts = { specsStat: "", specsFiles: [], specsDiff: "", issueUrl: "https://forge.example/o/r/issues/1" };
 		const payload = gatePayload(state, h.session.pack.ok ? h.session.pack.pack : (undefined as never), "build", facts);
 		expect(payload.summary).toContain("Out-of-scope findings");
 		expect(payload.summary).toContain("src/other.ts");
@@ -310,7 +310,7 @@ describe("parallel-lanes tools", () => {
 		await h.merge("U2");
 		await h.commit({ "src/u2.ts": "x\n" });
 		await seedSummary(h, { unit: "U2", round: 2 });
-		const facts = { specsStat: "", specsFiles: [], issueUrl: "https://forge.example/o/r/issues/1" };
+		const facts = { specsStat: "", specsFiles: [], specsDiff: "", issueUrl: "https://forge.example/o/r/issues/1" };
 		const payload = gatePayload(cardState(h).state, h.session.pack.ok ? h.session.pack.pack : (undefined as never), "build", facts);
 		expect(payload.summary).toContain("src/other.ts");
 		expect(payload.findings).toHaveLength(1);

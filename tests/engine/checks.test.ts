@@ -15,7 +15,7 @@ import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits"];
+const BUILTIN = ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits", "product-impact", "glossary-terms"];
 const VALID_SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
 const EMPTY_SPEC = "# broken\n\n## Purpose\nNothing.\n\n## Requirements\n";
 

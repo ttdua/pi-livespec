@@ -1,6 +1,7 @@
 // Built-in named checks over the LS-02 validators, and the runner for the
 // checks the active phase lists. Later specs add checks through registerCheck.
 
+import { registerDocChecks } from "../docs/register.ts";
 import { registerRedOnBase } from "../evidence/red-on-base.ts";
 import { registerReviewPayload } from "../review/payload.ts";
 import { registerDurableDocs } from "../ship/durable-register.ts";
@@ -89,6 +90,7 @@ export function registerBuiltinChecks(): void {
 	registerReviewPayload();
 	registerDurableDocs();
 	registerSizeLimits();
+	registerDocChecks();
 }
 
 registerBuiltinChecks();
