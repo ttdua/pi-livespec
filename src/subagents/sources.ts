@@ -13,8 +13,12 @@ import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, planG
 const extra = new Map<Role, SourceProvider[]>();
 
 export function registerPacketSource(role: Role, provider: SourceProvider): void {
-	const held = extra.get(role) ?? [];
-	if (!held.includes(provider)) extra.set(role, [...held, provider]);
+	extra.set(role, [...(extra.get(role) ?? []), provider]);
+}
+
+/** Internal: appends `provider` unless this role already holds it (a reset forgets it). */
+export function registerPacketSourceOnce(role: Role, provider: SourceProvider): void {
+	if (!(extra.get(role) ?? []).includes(provider)) registerPacketSource(role, provider);
 }
 
 export function resetPacketSourcesForTests(): void {

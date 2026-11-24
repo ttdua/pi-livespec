@@ -7,7 +7,7 @@ import { parseDecision } from "../core/decision.ts";
 import { parseGlossary } from "../core/glossary.ts";
 import { joinLines } from "../core/lines.ts";
 import { declaredCapabilities, readText, sectionText, sha256 } from "../subagents/source-kit.ts";
-import { registerPacketSource } from "../subagents/sources.ts";
+import { registerPacketSourceOnce } from "../subagents/sources.ts";
 import type { PacketContext, PacketSource, SourceProvider, Target } from "../subagents/source-types.ts";
 
 const GLOSSARY_PATH = "specs/glossary.md";
@@ -60,10 +60,10 @@ export const decisionReader: SourceProvider = async (ctx) => {
 	return out;
 };
 
-/** Safe to call twice: `registerPacketSource` ignores a provider it already holds. */
+/** Safe to call twice: `registerPacketSourceOnce` skips a provider the role already holds. */
 export function registerDocReaders(): void {
 	for (const role of ["implementer", "reviewer"] as const) {
-		registerPacketSource(role, glossaryReader);
-		registerPacketSource(role, decisionReader);
+		registerPacketSourceOnce(role, glossaryReader);
+		registerPacketSourceOnce(role, decisionReader);
 	}
 }

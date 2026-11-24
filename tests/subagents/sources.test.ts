@@ -229,6 +229,38 @@ describe("manifest", () => {
 		expect(ids(await sourcesOf(world, "implementer", "U3"))).not.toContain("file:docs/x.md");
 	});
 
+	test("the same provider registered twice for one role is called twice", async () => {
+		const world = await makeWorld();
+		let calls = 0;
+		const provider = async () => { calls++; return []; };
+		registerPacketSource("reviewer", provider);
+		registerPacketSource("reviewer", provider);
+		await sourcesOf(world, "reviewer", "U3", "unit");
+		expect(calls).toBe(2);
+	});
+
+	test("the same provider registered for two roles runs for each", async () => {
+		const world = await makeWorld();
+		let calls = 0;
+		const provider = async () => { calls++; return []; };
+		registerPacketSource("reviewer", provider);
+		registerPacketSource("implementer", provider);
+		await sourcesOf(world, "reviewer", "U3", "unit");
+		await sourcesOf(world, "implementer", "U3");
+		expect(calls).toBe(2);
+	});
+
+	test("a provider can be registered again after a reset", async () => {
+		const world = await makeWorld();
+		let calls = 0;
+		const provider = async () => { calls++; return []; };
+		registerPacketSource("reviewer", provider);
+		resetPacketSourcesForTests();
+		registerPacketSource("reviewer", provider);
+		await sourcesOf(world, "reviewer", "U3", "unit");
+		expect(calls).toBe(1);
+	});
+
 	test("a failing provider names itself", async () => {
 		const world = await makeWorld();
 		registerPacketSource("reviewer", async function brokenProvider() {
