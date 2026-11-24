@@ -49,6 +49,11 @@ export interface Git {
 	remoteRef(name: string): Promise<string | undefined>;
 	/** `git rev-list --first-parent --reverse <range>`, oldest first. */
 	firstParentList(range: string): Promise<string[]>;
+	/**
+	 * `git log --first-parent --reverse --format=%H%x00%s [--since=<since>] <after>..<commit>` (or `<commit>` without
+	 * `after`): first-parent commits with their subjects, oldest first.
+	 */
+	firstParentCommits(commit: string, o: { after?: string; since?: string }): Promise<{ sha: string; subject: string }[]>;
 	/** `git worktree add --detach <dir> <sha>`. */
 	worktreeAdd(dir: string, sha: string): Promise<void>;
 	/** `git worktree add -b <branch> <dir> <at>`. */
@@ -176,6 +181,13 @@ function commitMessages(out: string | undefined): { sha: string; message: string
 /** Non-empty lines of a command's stdout. */
 const lines = (out: string | undefined): string[] => (out ?? "").split("\n").filter((l) => l !== "");
 
+/** `%H%x00%s` log lines: SHA and subject. */
+const shaSubjects = (out: string | undefined): { sha: string; subject: string }[] =>
+	lines(out).map((line) => {
+		const at = line.indexOf("\0");
+		return { sha: line.slice(0, at), subject: line.slice(at + 1) };
+	});
+
 /** `config -z --get-regexp` output: NUL-terminated entries of `<key>\n<value>`. */
 function parseAliases(out: string): Record<string, string> {
 	const entries = out
@@ -284,6 +296,11 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		treeOf: (commit) => text(run, ["rev-parse", "--verify", END_OF_OPTIONS, `${commit}^{tree}`]),
 		remoteRef: async (name) => (await run(["rev-parse", "--verify", "-q", END_OF_OPTIONS, `refs/remotes/${name}`], EXIT_NOT_FOUND))?.trim(),
 		firstParentList: async (range) => lines(await run(["rev-list", "--first-parent", "--reverse", END_OF_OPTIONS, range])),
+		firstParentCommits: async (commit, o) => {
+			const since = o.since === undefined ? [] : [`--since=${o.since}`];
+			const range = o.after === undefined ? commit : `${o.after}..${commit}`;
+			return shaSubjects(await run(["log", "--first-parent", "--reverse", "--format=%H%x00%s", ...since, END_OF_OPTIONS, range]));
+		},
 		worktreeAdd: async (dir, sha) => {
 			await run(["worktree", "add", "--quiet", "--detach", END_OF_OPTIONS, dir, sha]);
 		},

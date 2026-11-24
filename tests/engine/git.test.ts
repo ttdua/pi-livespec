@@ -499,3 +499,50 @@ describe("listTree", () => {
 		expect((await createGit(root).listTree("HEAD")).sort()).toEqual(["a.txt", "specs/x/spec.md", "we ird/é.md"]);
 	});
 });
+
+describe("firstParentCommits", () => {
+	const DAY_S = 86_400;
+	const commitAt = (root: string, message: string, daysAgo?: number): string => {
+		const env = { ...process.env };
+		if (daysAgo !== undefined) {
+			const at = `${Math.floor(Date.now() / 1000) - daysAgo * DAY_S} +0000`;
+			env.GIT_COMMITTER_DATE = at;
+			env.GIT_AUTHOR_DATE = at;
+		}
+		execFileSync("git", ["commit", "-q", "--allow-empty", "-m", message], { cwd: root, env });
+		return git(root, "rev-parse", "HEAD");
+	};
+
+	test("after a commit: first-parent commits only, oldest first, with subjects", async () => {
+		const { root } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		const start = git(root, "rev-parse", "HEAD");
+		const a = commitAt(root, "feat: a (#1)");
+		git(root, "switch", "-q", "-c", "side");
+		const side = commitAt(root, "side only");
+		git(root, "switch", "-q", "main");
+		git(root, "merge", "-q", "--no-ff", "-m", "Merge pull request #2 from x/side", "side");
+		const merge = git(root, "rev-parse", "HEAD");
+		const b = commitAt(root, "fix: b (#3)");
+		const out = await createGit(root).firstParentCommits(merge, { after: start });
+		expect(out).toEqual([
+			{ sha: a, subject: "feat: a (#1)" },
+			{ sha: merge, subject: "Merge pull request #2 from x/side" },
+		]);
+		expect(out.map((c) => c.sha)).not.toContain(side);
+		expect(out.map((c) => c.sha)).not.toContain(b);
+	});
+
+	test("since: a commit 31 days old is excluded, one 29 days old included", async () => {
+		const root = await makeRepo();
+		commitAt(root, "old", 31);
+		const recent = commitAt(root, "recent", 29);
+		expect(await createGit(root).firstParentCommits("HEAD", { since: "30.days" })).toEqual([{ sha: recent, subject: "recent" }]);
+	});
+
+	test("nothing after the commit itself", async () => {
+		const { root } = await committedRepo();
+		const head = git(root, "rev-parse", "HEAD");
+		expect(await createGit(root).firstParentCommits(head, { after: head })).toEqual([]);
+	});
+});
