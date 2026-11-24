@@ -64,7 +64,7 @@ describe("registerBuiltinChecks", () => {
 describe("review-clean", () => {
 	test("is gate-only and refuses the review gate when no round reviewed HEAD", async () => {
 		expect(isGateOnly("review-clean")).toBe(true);
-		const fake = { head: async () => "d4", diff: async () => "", diffNames: async () => [] } as unknown as Git;
+		const fake = { head: async () => "d4", diff: async () => "", diffNameStatus: async () => [] } as unknown as Git;
 		const state = stateFor("review");
 		expect(await runChecks(pack, state, { root: "/nowhere", git: fake })).toEqual([]);
 		const gated = await runChecks(pack, state, { root: "/nowhere", git: fake }, { gate: true, target: "review" });

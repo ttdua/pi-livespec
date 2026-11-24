@@ -12,7 +12,7 @@ export interface Git {
 	diff(from: string, to: string, path: string): Promise<string>;
 	/** `git diff --stat <from>..<to> -- <path>`. */
 	diffStat(from: string, to: string, path: string): Promise<string>;
-	/** `git diff --name-only <from>..<to> -- <path>`, one path per entry. */
+	/** `git diff --name-only -z <from>..<to> -- <path>`, one unquoted path per entry. */
 	diffNames(from: string, to: string, path: string): Promise<string[]>;
 	/** `git diff --name-status -z -M <from>..<to>`; a rename carries `oldPath`. */
 	diffNameStatus(from: string, to: string): Promise<DiffEntry[]>;
@@ -270,8 +270,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		isDirty: async () => (await text(run, ["status", "--porcelain"])) !== "",
 		diff: async (from, to, path) => (await run(["diff", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "",
 		diffStat: async (from, to, path) => (await run(["diff", "--stat", END_OF_OPTIONS, `${from}..${to}`, "--", path]))?.trimEnd() ?? "",
-		diffNames: async (from, to, path) =>
-			((await run(["diff", "--name-only", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "").split("\n").filter((l) => l !== ""),
+		diffNames: async (from, to, path) => nulNames(await run(["diff", "--name-only", "-z", END_OF_OPTIONS, `${from}..${to}`, "--", path])),
 		diffNameStatus: async (from, to) =>
 			parseNameStatus((await run(["diff", "--name-status", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
 		originHead: async () => {

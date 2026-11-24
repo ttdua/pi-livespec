@@ -150,6 +150,14 @@ describe("diff over specs", () => {
 		expect(await git.diffStat("HEAD", "HEAD", "specs/")).toBe("");
 		await expect(git.diffNames("0".repeat(40), "HEAD", "specs/")).rejects.toBeInstanceOf(GitError);
 	});
+
+	test("diffNames keeps a non-ASCII name with a space unquoted", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "specs/naïve cap/spec.md", "# x\n");
+		commitAll(root, "unicode");
+		expect(await git.diffNames(base, "HEAD", "specs/")).toEqual(["specs/naïve cap/spec.md"]);
+	});
 });
 
 describe("merge", () => {

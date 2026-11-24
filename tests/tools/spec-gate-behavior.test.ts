@@ -25,7 +25,7 @@ const WINDOW = "src/limits/window.ts";
 const BEHAVIOR_TITLE = "Did the behavior of rate-limit change?";
 
 type Gate = ToolHarness & { n: number };
-type Opts = { answer?: string; config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string; flow?: string };
+type Opts = { answer?: string; config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string; flow?: string; baseFiles?: Record<string, string>; renames?: [string, string][] };
 const FLOW_WITHOUT_CHECK = "extends: agent-skills\nphases:\n  - id: define\n    checks: [spec-format, capabilities-match-diff]\n";
 
 beforeEach(() => {
@@ -59,11 +59,12 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 		branch: CHANGE_BRANCH,
 		config: o.config ?? "integrationBranch: main\n",
 		ui: human(o.answer),
-		files: { ".pi/livespec/flow.yaml": o.flow ?? FLOW, "specs/rate-limit/spec.md": RATE_SPEC, "specs/auth/spec.md": AUTH_SPEC },
+		files: { ".pi/livespec/flow.yaml": o.flow ?? FLOW, "specs/rate-limit/spec.md": RATE_SPEC, "specs/auth/spec.md": AUTH_SPEC, ...o.baseFiles },
 	});
 	const base = h.git("rev-parse", "HEAD");
 	await writeIn(h.root, "specs/auth/spec.md", o.authSpec ?? `${AUTH_SPEC}\nMore context.\n`);
 	for (const file of o.code ?? [CAP]) await writeIn(h.root, file, "export const cap = 100;\n");
+	for (const [from, to] of o.renames ?? []) h.git("mv", from, to);
 	commitAll(h.root, "change");
 	const body = (o.edit ?? ((b: string) => b))(resumeBody(base).replace("modified [rate-limit]", "modified [auth]"));
 	const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", `livespec:phase/${phase}`] });
@@ -186,6 +187,24 @@ describe("spec_gate behavior-change question", () => {
 		const decisions = await behaviorDecisions(h);
 		expect(decisions).toHaveLength(2);
 		expect(decisions[1]?.data).toMatchObject({ outcome: "unchanged", files: [CAP, WINDOW] });
+	});
+
+	test("a non-ASCII name with a space is asked about", async () => {
+		const file = "src/limits/naïve cap.ts";
+		const h = await change("define", { answer: "unchanged", code: [file] });
+		const out = await h.call("spec_gate", { target: "define" });
+		expect(out.isError).toBe(false);
+		expect(behaviorTitles(h)).toHaveLength(1);
+		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "unchanged", files: [file] });
+	});
+
+	test("a rename out of the capability's paths is asked about", async () => {
+		const moved = "src/cap.ts";
+		const h = await change("define", { answer: "unchanged", code: [], baseFiles: { [CAP]: "export const cap = 100;\n" }, renames: [[CAP, moved]] });
+		const out = await h.call("spec_gate", { target: "define" });
+		expect(out.isError).toBe(false);
+		expect(behaviorTitles(h)).toHaveLength(1);
+		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "unchanged", files: [CAP] });
 	});
 
 	test("reusable record asks nothing", async () => {
