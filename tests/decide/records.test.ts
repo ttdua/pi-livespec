@@ -212,4 +212,12 @@ describe("decision records", () => {
 		expect([...latest.keys()]).toEqual(["rate-limit"]);
 		expect(latest.get("rate-limit")?.outcome).toBe("changed");
 	});
+
+	test("a newer malformed behavior record does not mask a valid one", () => {
+		const valid: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome: "unchanged", facts: { capability: "rate-limit", files: ["a.ts"] }, files: ["a.ts"], reason: "r" };
+		const noReason = { point: "behavior-change", subject: "rate-limit", source: "human", outcome: "changed" };
+		const badFiles = { ...valid, outcome: "changed", files: "a.ts" };
+		const latest = latestBehaviorRecords([marked("behavior-change.rate-limit", valid), marked("behavior-change.rate-limit", noReason), marked("behavior-change.rate-limit", badFiles)]);
+		expect(latest.get("rate-limit")).toEqual(valid);
+	});
 });

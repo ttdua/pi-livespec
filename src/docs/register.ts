@@ -2,7 +2,7 @@
 
 import { registerGatePayload } from "../engine/gates.ts";
 import { registerCheck } from "../engine/registry.ts";
-import { behaviorChangeCheck } from "./behavior-change.ts";
+import { behaviorChangeCheck } from "./behavior-check.ts";
 import { addedGlossaryEntries, glossaryTermsCheck } from "./glossary-terms.ts";
 import { productImpactResults } from "./product-impact.ts";
 

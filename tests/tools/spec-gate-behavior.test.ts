@@ -25,7 +25,8 @@ const WINDOW = "src/limits/window.ts";
 const BEHAVIOR_TITLE = "Did the behavior of rate-limit change?";
 
 type Gate = ToolHarness & { n: number };
-type Opts = { answer?: string; config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string };
+type Opts = { answer?: string; config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string; flow?: string };
+const FLOW_WITHOUT_CHECK = "extends: agent-skills\nphases:\n  - id: define\n    checks: [spec-format, capabilities-match-diff]\n";
 
 beforeEach(() => {
 	// The real check needs a worktree run per unit; the define gate here does not depend on it.
@@ -58,7 +59,7 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 		branch: CHANGE_BRANCH,
 		config: o.config ?? "integrationBranch: main\n",
 		ui: human(o.answer),
-		files: { ".pi/livespec/flow.yaml": FLOW, "specs/rate-limit/spec.md": RATE_SPEC, "specs/auth/spec.md": AUTH_SPEC },
+		files: { ".pi/livespec/flow.yaml": o.flow ?? FLOW, "specs/rate-limit/spec.md": RATE_SPEC, "specs/auth/spec.md": AUTH_SPEC },
 	});
 	const base = h.git("rev-parse", "HEAD");
 	await writeIn(h.root, "specs/auth/spec.md", o.authSpec ?? `${AUTH_SPEC}\nMore context.\n`);
@@ -194,6 +195,16 @@ describe("spec_gate behavior-change question", () => {
 		expect(out.isError).toBe(false);
 		expect(behaviorTitles(h)).toEqual([]);
 		expect(await behaviorDecisions(h)).toHaveLength(1);
+	});
+
+	test("Flow without the check", async () => {
+		const h = await change("define", { answer: "changed", flow: FLOW_WITHOUT_CHECK });
+		const out = await h.call("spec_gate", { target: "define" });
+		expect(out.isError).toBe(false);
+		expect(behaviorTitles(h)).toEqual([]);
+		expect((await ofKind(h, "request")).map(subjectOf).filter((s) => s.startsWith("decide:behavior-change"))).toEqual([]);
+		expect(await behaviorDecisions(h)).toEqual([]);
+		expect((await ofKind(h, "gate"))[0]?.data).toMatchObject({ phase: "define", outcome: "approved" });
 	});
 
 	test("read-only forge refuses before asking", async () => {

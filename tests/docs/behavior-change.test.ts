@@ -9,7 +9,8 @@ import { parseChange } from "../../src/core/change.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import "../../src/decide/builtin.ts";
 import { type DecisionAsk, decide } from "../../src/decide/seam.ts";
-import { behaviorChangeCheck, behaviorDigest, behaviorFacts, behaviorResults, type BehaviorItem } from "../../src/docs/behavior-change.ts";
+import { behaviorDigest, behaviorFacts, behaviorResults, type BehaviorItem } from "../../src/docs/behavior-change.ts";
+import { behaviorChangeCheck } from "../../src/docs/behavior-check.ts";
 import type { CheckContext } from "../../src/engine/registry.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 

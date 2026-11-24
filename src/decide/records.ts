@@ -81,6 +81,11 @@ export function decisionComment(r: DecisionRecord): string {
 	return writeMarked("decision", `${r.point}.${r.subject}`, compactFacts(r));
 }
 
+/** Every valid `decision` record, in comment order; malformed data is skipped. */
+export function validDecisions(marked: MarkedComment[]): DecisionRecord[] {
+	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [m.data] : []));
+}
+
 /** The latest valid `decision` record per id, keyed in first-seen order. */
 export function latestDecisions(marked: MarkedComment[]): Map<string, DecisionRecord> {
 	const latest = new Map<string, DecisionRecord>();

@@ -1,18 +1,17 @@
 // The `behavior-change` decision point (durable-doc-checks "Behavior change …", design D4): the facts built from
 // the change diff and the living specs' `paths`, the always-asking rule, the latest human record per capability,
-// and the check that reads the records. The check never asks; `spec_gate` asks (see `behavior-ask.ts`).
+// and the check's results over the records. Pure: git and the work tree are read in `behavior-check.ts`; the check
+// never asks, `spec_gate` does (see `behavior-ask.ts`).
 
 import { createHash } from "node:crypto";
 import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Result } from "../core/result.ts";
-import { type DecisionRecord, reusableAnswer } from "../decide/records.ts";
+import { type DecisionRecord, reusableAnswer, validDecisions } from "../decide/records.ts";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
-import type { CheckFn, CheckGit } from "../engine/registry.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { openRequestFor, readRequests } from "../interaction/requests.ts";
-import { livingSpecs } from "../ship/context.ts";
 
 export const BEHAVIOR_POINT = "behavior-change";
 
@@ -49,17 +48,10 @@ export function behaviorDigest(files: string[]): string {
 /** Per capability, the latest `behavior-change` record answered by a human that is not a proposal. */
 export function latestBehaviorRecords(marked: MarkedComment[]): Map<string, DecisionRecord> {
 	const latest = new Map<string, DecisionRecord>();
-	for (const m of marked) {
-		if (m.kind !== "decision" || !isBehaviorRecord(m.data)) continue;
-		latest.set(m.data.subject, m.data);
+	for (const r of validDecisions(marked)) {
+		if (r.point === BEHAVIOR_POINT && r.source === "human" && r.proposal !== true) latest.set(r.subject, r);
 	}
 	return latest;
-}
-
-function isBehaviorRecord(data: unknown): data is DecisionRecord {
-	if (typeof data !== "object" || data === null) return false;
-	const r = data as Partial<DecisionRecord>;
-	return r.point === BEHAVIOR_POINT && typeof r.subject === "string" && r.source === "human" && r.proposal !== true;
 }
 
 /** The rule always asks a human. */
@@ -111,13 +103,3 @@ function itemResult(item: BehaviorItem, marked: MarkedComment[], requests: Retur
 }
 
 const error = (file: string, message: string): Result => ({ code: CODE, severity: "error", file, message });
-
-/** The behavior items of `git diff <Base>..HEAD` against the living specs of the work tree; none without a Base. */
-export async function changeBehaviorItems(root: string, git: Pick<CheckGit, "diffNames">, base: string | undefined): Promise<BehaviorItem[]> {
-	if (base === undefined) return [];
-	return behaviorFacts(await git.diffNames(base, "HEAD", "."), await livingSpecs(root));
-}
-
-/** The `behavior-change` check: never asks, only reads the records. */
-export const behaviorChangeCheck: CheckFn = async ({ root, change, git, marked, phase }) =>
-	behaviorResults(await changeBehaviorItems(root, git, change.header.base), marked, phase);

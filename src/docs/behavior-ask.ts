@@ -10,7 +10,8 @@ import { displayRequestId } from "../interaction/display-ids.ts";
 import type { ApproverCtx } from "../tools/approver-for.ts";
 import { createDecisionAsker } from "../tools/decide-ask.ts";
 import type { WriteContext } from "../tools/guard.ts";
-import { BEHAVIOR_POINT, type BehaviorItem, behaviorAnswer, behaviorDigest, behaviorSubject, changeBehaviorItems } from "./behavior-change.ts";
+import { BEHAVIOR_POINT, type BehaviorItem, behaviorAnswer, behaviorDigest, behaviorSubject } from "./behavior-change.ts";
+import { changeBehaviorItems } from "./behavior-check.ts";
 
 export type BehaviorAskResult = { ok: true; asked: boolean } | { ok: false; message: string };
 
