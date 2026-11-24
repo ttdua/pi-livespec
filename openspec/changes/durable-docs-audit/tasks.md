@@ -61,10 +61,10 @@ Blocked by: 4, 5, 6
 
 Blocked by: 7
 
-- [ ] 8.1 Add `src/audit/state.ts`: read and write `<git common dir>/livespec/audit.json` atomically (temp file and rename)
-- [ ] 8.2 Add `src/audit/suggest.ts`: on `livespec:initiative-closed` add an initiative suggestion; at `session_start` check the oldest 50 first-parent commits of `<cursor>..origin/<integration>` (no fetch), classify livespec commits through the pull request head branch, add commit suggestions for manual commits under a capability's `paths`, move the cursor to the last commit checked; first run only sets the cursor; forge errors keep it
-- [ ] 8.3 Add the "Audit" card section in `src/audit/card.ts` via `registerCardSection`; hook the event listener and the `session_start` step in `src/hooks/session.ts`; a completed audit clears the covered commit suggestions and the initiative it posted on, records the audited commit, and sets the fix cursor only when `declared-none` ran to the end
-- [ ] 8.4 Tests in `tests/audit/suggest.test.ts` and an e2e test `tests/e2e/audit-flow.test.ts` (manual commit suggests an audit; livespec merge not suggested; more than 50 commits; initiative closed then audit posts on it; audit clears only covered suggestions; skipped fix detector keeps the fix cursor; fix merged during the audit)
+- [x] 8.1 Add `src/audit/state.ts`: read and write `<git common dir>/livespec/audit.json` atomically (temp file and rename)
+- [x] 8.2 Add `src/audit/suggest.ts`: on `livespec:initiative-closed` add an initiative suggestion; at `session_start` check the oldest 50 first-parent commits of `<cursor>..origin/<integration>` (no fetch), classify livespec commits through the pull request head branch, add commit suggestions for manual commits under a capability's `paths`, move the cursor to the last commit checked; first run only sets the cursor; forge errors keep it
+- [x] 8.3 Add the "Audit" card section in `src/audit/card.ts` via `registerCardSection`; hook the event listener and the `session_start` step in `src/hooks/session.ts`; a completed audit clears the covered commit suggestions and the initiative it posted on, records the audited commit, and sets the fix cursor only when `declared-none` ran to the end
+- [x] 8.4 Tests in `tests/audit/suggest.test.ts` and an e2e test `tests/e2e/audit-flow.test.ts` (manual commit suggests an audit; livespec merge not suggested; more than 50 commits; initiative closed then audit posts on it; audit clears only covered suggestions; skipped fix detector keeps the fix cursor; fix merged during the audit)
 
 ## 9. Durable documentation
 
