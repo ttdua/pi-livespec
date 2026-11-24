@@ -146,9 +146,12 @@ describe("durableDocsRule behavior record", () => {
 	const WIN = "src/limit/window.ts";
 
 	test("Behavior answered earlier", () => {
-		const r = durableDocsRule(facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }] }));
+		const f = facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }] });
+		const r = durableDocsRule(f);
 		expect(r.confirm.some((c) => c.startsWith("rate-limit:"))).toBe(false);
-		expect(ROW.status).toBe("not needed — refactor");
+		const text = confirmationSection({ ship: { durableFacts: f } } as never) ?? "";
+		expect(text).toContain("not needed — refactor");
+		expect(text).not.toContain("rate-limit: confirm");
 	});
 
 	test("Record misses a file", () => {

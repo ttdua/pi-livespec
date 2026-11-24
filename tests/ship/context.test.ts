@@ -211,12 +211,13 @@ describe("shipContext behavior records", () => {
 	test("Newer changed record wins (records)", async () => {
 		const f = await fixture();
 		const base = sh(f.work, "rev-parse", "HEAD");
-		await writeIn(f.work, "specs/rate-limit/spec.md", "# s\n\n## Purpose\nx\n");
+		await writeIn(f.work, "specs/rate-limit/spec.md", "---\npaths:\n  - src/limit/**\n---\n# rate-limit\n\n## Purpose\nx\n");
 		await writeIn(f.work, "src/limit/cap.ts", "a\n");
 		commitAll(f.work, "c3");
 		const body = `Base: ${base}\nBranch: feature\nPR: #41\nCapabilities: new [], modified []\n\n## Durable docs\n`;
 		const marked = [human("unchanged"), human("changed", { facts_hash: "h" })];
 		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body }));
 		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: ["src/limit/cap.ts"], outcome: "changed" }]);
+		expect(durableDocsRule(out.facts).confirm.some((c) => c.startsWith("rate-limit:") && c.includes("src/limit/cap.ts"))).toBe(true);
 	});
 });
