@@ -15,21 +15,20 @@ const GLOSSARY_FILE = "specs/glossary.md";
 const SCENARIO_KEYWORDS = new Set(["WHEN", "THEN", "AND", "GIVEN"]);
 const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 const GLOSSARY_ENTRY = /^- \*\*.+?\*\*:/;
+const FRONT_DELIMITER = "---";
 
-type AddedLine = { file: string; line: string };
+type AddedLine = { file: string; line: string; no: number };
 
-/** Added (`+`) lines per file of a unified diff; `keep` selects the files and `frontMatter` drops front matter lines. */
-function addedLines(diff: string, keep: (file: string) => boolean, frontMatter: boolean): AddedLine[] {
+/** Added (`+`) lines of the files `keep` selects, with their line number in the new file. */
+function addedLines(diff: string, keep: (file: string) => boolean): AddedLine[] {
 	const out: AddedLine[] = [];
 	let file = "";
 	let inHunk = false;
 	let newLine = 0;
-	let front: "open" | "closed" = "closed";
 	for (const raw of diff.split(/\r?\n/)) {
 		if (raw.startsWith("diff --git ")) {
 			file = "";
 			inHunk = false;
-			front = "closed";
 			continue;
 		}
 		if (!inHunk && raw.startsWith("+++ ")) {
@@ -43,31 +42,35 @@ function addedLines(diff: string, keep: (file: string) => boolean, frontMatter: 
 			continue;
 		}
 		if (!inHunk || raw.startsWith("-") || raw.startsWith("\\")) continue;
-		const text = raw.slice(1);
-		const added = raw.startsWith("+");
-		let inFront = false;
-		if (newLine === 1) {
-			front = text === "---" ? "open" : "closed";
-			inFront = front === "open";
-		} else if (front === "open") {
-			inFront = true;
-			if (text === "---") front = "closed";
-		}
-		inFront = frontMatter && inFront;
-		if (added && keep(file) && !inFront) out.push({ file, line: text });
+		if (raw.startsWith("+") && keep(file)) out.push({ file, line: raw.slice(1), no: newLine });
 		newLine += 1;
 	}
 	return out;
 }
 
-/** The `+` lines of `specs/<capability>/spec.md` files outside front matter. */
-export function addedSpecLines(diff: string): AddedLine[] {
-	return addedLines(diff, (f) => SPEC_FILE.test(f), true);
+/** Files under `specs/<capability>/spec.md` that the diff adds lines to, in diff order. */
+function specFilesOf(diff: string): string[] {
+	return [...new Set(addedLines(diff, (f) => SPEC_FILE.test(f)).map((a) => a.file))];
+}
+
+/** Last line number of the front matter at the start of `content` (its closing delimiter); 0 when there is none. */
+export function frontMatterEnd(content: string): number {
+	const lines = content.split(/\r?\n/);
+	if (lines[0] !== FRONT_DELIMITER) return 0;
+	const close = lines.indexOf(FRONT_DELIMITER, 1);
+	return close === -1 ? 0 : close + 1;
+}
+
+/** The `+` lines of `specs/<capability>/spec.md` files outside front matter; `frontEnds` maps each file to its `frontMatterEnd` at HEAD. */
+export function addedSpecLines(diff: string, frontEnds: Map<string, number>): { file: string; line: string }[] {
+	return addedLines(diff, (f) => SPEC_FILE.test(f))
+		.filter((a) => a.no > (frontEnds.get(a.file) ?? 0))
+		.map(({ file, line }) => ({ file, line }));
 }
 
 /** The `- **Term**: …` entries the diff adds to `specs/glossary.md`. */
 export function addedGlossaryEntries(diff: string): string[] {
-	return addedLines(diff, (f) => f === GLOSSARY_FILE, false)
+	return addedLines(diff, (f) => f === GLOSSARY_FILE)
 		.map((a) => a.line)
 		.filter((l) => GLOSSARY_ENTRY.test(l));
 }
@@ -85,16 +88,26 @@ function occursIn(term: string, text: string): boolean {
 
 const BOLD = /\*\*([^*]+)\*\*/g;
 const WORD = /[A-Za-z][\w'-]*/g;
+const HEADING = /^\s*#/;
+const LIST_ITEM = /^\s*(?:[-*+]|\d+\.)\s/;
+const SENTENCE_END = /[.!?:]\s*$/;
 
 function boldTerms(line: string): string[] {
 	return [...line.matchAll(BOLD)].map((m) => (m[1] ?? "").trim()).filter((t) => t !== "" && !SCENARIO_KEYWORDS.has(t));
 }
 
+/** True when `line` carries on the sentence of the previous line: neither ends one, neither is a heading or list item. */
+function continuesSentence(prev: string | undefined, line: string): boolean {
+	if (prev === undefined || prev.trim() === "") return false;
+	if (HEADING.test(prev) || LIST_ITEM.test(prev) || HEADING.test(line) || LIST_ITEM.test(line)) return false;
+	return !SENTENCE_END.test(prev);
+}
+
 /** Capitalized, not all-capital words that are not the first word of a sentence. */
-function properNouns(line: string): string[] {
+function properNouns(line: string, startsSentence: boolean): string[] {
 	const prose = line.replace(/`[^`]*`/g, " ").replace(BOLD, " ").replace(/^\s*(?:[-*+]|\d+\.)\s+/, "");
 	const found: string[] = [];
-	let sentenceStart = true;
+	let sentenceStart = startsSentence;
 	let last = 0;
 	for (const m of prose.matchAll(WORD)) {
 		const between = prose.slice(last, m.index);
@@ -107,7 +120,10 @@ function properNouns(line: string): string[] {
 	return found;
 }
 
-/** Candidate terms in `added` that the glossary lacks; proper nouns count only when absent from `knownAtBase`. */
+/**
+ * Candidate terms in `added` that the glossary lacks; proper nouns count only when absent from `knownAtBase`.
+ * `added` lines are consecutive; a blank separator between files keeps sentences from spanning them.
+ */
 export function glossaryCandidates(added: string[], glossary: Glossary, knownAtBase: string): string[] {
 	const known = new Set(glossary.entries.map((e) => normalise(e.term)));
 	const seen = new Set<string>();
@@ -118,10 +134,13 @@ export function glossaryCandidates(added: string[], glossary: Glossary, knownAtB
 		seen.add(key);
 		out.push(term);
 	};
+	let prev: string | undefined;
 	for (const line of added) {
-		if (line.trimStart().startsWith("#")) continue;
+		const startsSentence = !continuesSentence(prev, line);
+		prev = line;
 		boldTerms(line).forEach(take);
-		for (const noun of properNouns(line)) if (!occursIn(noun, knownAtBase)) take(noun);
+		if (HEADING.test(line)) continue;
+		for (const noun of properNouns(line, startsSentence)) if (!occursIn(noun, knownAtBase)) take(noun);
 	}
 	return out;
 }
@@ -142,19 +161,41 @@ async function specsTextAt(git: Parameters<CheckFn>[0]["git"], rev: string): Pro
 	return texts.filter((t): t is string => t !== undefined).join("\n");
 }
 
-/** `glossary-terms`: a warning per candidate the glossary lacks; never an error. */
+/** The added spec lines of `Base..HEAD`, files joined by a blank line, with front matter read from HEAD. */
+async function addedSpecText(git: Parameters<CheckFn>[0]["git"], base: string): Promise<string[]> {
+	const diff = await git.diff(base, "HEAD", SPECS_PATH);
+	const frontEnds = new Map<string, number>();
+	for (const file of specFilesOf(diff)) frontEnds.set(file, frontMatterEnd((await git.showFile("HEAD", file)) ?? ""));
+	const out: string[] = [];
+	let file: string | undefined;
+	for (const added of addedSpecLines(diff, frontEnds)) {
+		if (file !== undefined && added.file !== file) out.push("");
+		file = added.file;
+		out.push(added.line);
+	}
+	return out;
+}
+
+/** `glossary-terms`: a warning per candidate the glossary lacks; a git failure is one warning; never an error. */
 export const glossaryTermsCheck: CheckFn = async ({ root, change, git }) => {
 	const base = change.header.base;
 	if (base === undefined) return [];
 	try {
-		const added = addedSpecLines(await git.diff(base, "HEAD", SPECS_PATH)).map((a) => a.line);
-		if (added.length === 0) return [];
+		const added = await addedSpecText(git, base);
+		if (added.every((l) => l === "")) return [];
 		const [glossary, known] = await Promise.all([readGlossary(root), specsTextAt(git, base)]);
 		return glossaryCandidates(added, glossary, known).map(
 			(term): Result => ({ code: "glossary-terms", severity: "warning", file: GLOSSARY_FILE, message: `New term "${term}" has no entry in ${GLOSSARY_FILE}` }),
 		);
 	} catch (error) {
-		if (error instanceof GitError) return [];
+		if (error instanceof GitError) return [gitWarning(error)];
 		throw error;
 	}
 };
+
+const gitWarning = (error: GitError): Result => ({
+	code: "glossary-terms",
+	severity: "warning",
+	file: GLOSSARY_FILE,
+	message: `glossary-terms check skipped: ${error.message}`,
+});

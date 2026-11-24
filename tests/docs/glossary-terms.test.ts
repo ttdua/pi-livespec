@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { parseChange } from "../../src/core/change.ts";
 import { parseGlossary } from "../../src/core/glossary.ts";
-import { addedGlossaryEntries, addedSpecLines, glossaryCandidates } from "../../src/docs/glossary-terms.ts";
+import { addedGlossaryEntries, addedSpecLines, frontMatterEnd, glossaryCandidates, glossaryTermsCheck } from "../../src/docs/glossary-terms.ts";
+import { type CheckGit, type CheckContext } from "../../src/engine/registry.ts";
+import { GitError } from "../../src/engine/git.ts";
 
 const EMPTY = parseGlossary("# Glossary\n");
 const diffOf = (file: string, body: string[], start = 1) =>
@@ -28,6 +31,27 @@ describe("glossaryCandidates", () => {
 	test("punctuation after bold term", () => {
 		expect(glossaryCandidates(["See **Token bucket**, then more."], EMPTY, "")).toEqual(["Token bucket"]);
 	});
+	test("bold term in a heading warns", () => {
+		expect(glossaryCandidates(["### **Token bucket**"], EMPTY, "")).toEqual(["Token bucket"]);
+	});
+	test("sentence wrapped before a proper noun is not a sentence start", () => {
+		expect(glossaryCandidates(["Requests go through the", "Gateway first."], EMPTY, "")).toEqual(["Gateway"]);
+	});
+	test("a line ending with a period starts a new sentence", () => {
+		expect(glossaryCandidates(["Requests go through the gateway.", "Gateway first."], EMPTY, "")).toEqual([]);
+	});
+	test("a blank line starts a new sentence", () => {
+		expect(glossaryCandidates(["Requests go through the", "", "Gateway first."], EMPTY, "")).toEqual([]);
+	});
+});
+
+describe("frontMatterEnd", () => {
+	test("last line of the leading front matter", () => {
+		expect(frontMatterEnd("---\ncapability: x\n---\n\nBody")).toBe(3);
+	});
+	test("no front matter", () => {
+		expect(frontMatterEnd("# Title\n")).toBe(0);
+	});
 });
 
 describe("addedSpecLines", () => {
@@ -37,10 +61,15 @@ describe("addedSpecLines", () => {
 			diffOf("specs/glossary.md", ["- **Other**: x"]),
 			diffOf("src/a.ts", ["Hello **There**"]),
 		].join("");
-		expect(addedSpecLines(diff)).toEqual([
+		const ends = new Map([["specs/rate-limit/spec.md", 3]]);
+		expect(addedSpecLines(diff, ends)).toEqual([
 			{ file: "specs/rate-limit/spec.md", line: "" },
 			{ file: "specs/rate-limit/spec.md", line: "Each **Token bucket** refills." },
 		]);
+	});
+	test("a hunk starting inside a long front matter is skipped", () => {
+		const diff = diffOf("specs/rate/spec.md", ["description: Uses **Token bucket**"], 5);
+		expect(addedSpecLines(diff, new Map([["specs/rate/spec.md", 8]]))).toEqual([]);
 	});
 });
 
@@ -48,5 +77,42 @@ describe("addedGlossaryEntries", () => {
 	test("lists added entries", () => {
 		const diff = diffOf("specs/glossary.md", ["- **Token bucket**: a refilling request budget", "text"]);
 		expect(addedGlossaryEntries(diff)).toEqual(["- **Token bucket**: a refilling request budget"]);
+	});
+});
+
+function stubGit(overrides: Partial<CheckGit>): CheckGit {
+	return {
+		diff: async () => "",
+		head: async () => "HEAD",
+		showFile: async () => undefined,
+		listTree: async () => [],
+		...overrides,
+	};
+}
+
+const checkCtx = (git: CheckGit): CheckContext =>
+	({ root: "/nowhere", change: parseChange("Base: abc123\nCapabilities: new [rate], modified []\n"), git, marked: [] });
+
+describe("glossaryTermsCheck", () => {
+	test("hunk inside front matter at HEAD is not spec text", async () => {
+		const head = ["---", "capability: rate", "paths: [src/**]", "description: a", "more: b", "tags: c", "owner: d", "---", "", "Body"].join("\n");
+		const git = stubGit({
+			diff: async () => diffOf("specs/rate/spec.md", ["description: Uses **Token bucket**"], 5),
+			showFile: async () => head,
+		});
+		expect(await glossaryTermsCheck(checkCtx(git))).toEqual([]);
+	});
+
+	test("git failure is one warning naming the operation", async () => {
+		const failure = new GitError(["diff", "abc123", "HEAD", "--", "specs/"], 128, "fatal: bad revision");
+		const git = stubGit({
+			diff: async () => {
+				throw failure;
+			},
+		});
+		const out = await glossaryTermsCheck(checkCtx(git));
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({ code: "glossary-terms", severity: "warning" });
+		expect(out[0]?.message).toContain("git diff abc123 HEAD -- specs/ failed");
 	});
 });

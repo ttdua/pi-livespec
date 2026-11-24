@@ -34,7 +34,8 @@
 | Name | new / modified | Shape | public |
 |---|---|---|---|
 | `productImpactResults` | new | `(change: Change) => Result[]` (`code: "product-impact"`, severity `error`) — `src/docs/product-impact.ts` | no |
-| `addedSpecLines` | new | `(diff: string) => { file: string; line: string }[]` — `+` lines of `specs/<cap>/spec.md` outside front matter — `src/docs/glossary-terms.ts` | no |
+| `addedSpecLines` | new | `(diff: string, frontEnds: Map<string, number>) => { file: string; line: string }[]` — `+` lines of `specs/<cap>/spec.md` outside front matter; `frontEnds` maps each file to `frontMatterEnd` at HEAD (fix round 1: a hunk mid front matter was read as spec text) — `src/docs/glossary-terms.ts` | no |
+| `frontMatterEnd` | new | `(content: string) => number` — last line of the leading front matter, 0 when none — `src/docs/glossary-terms.ts` | no |
 | `glossaryCandidates` | new | `(added: string[], glossary: Glossary, knownAtBase: string) => string[]` — `src/docs/glossary-terms.ts` | no |
 | `addedGlossaryEntries` | new | `(diff: string) => string[]` — `+- **Term**: …` lines added to `specs/glossary.md` | no |
 | `CheckGit` | modified | `{ diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string>; showFile(rev: string, path: string): Promise<string \| undefined>; listTree(rev: string): Promise<string[]> }` — `src/engine/registry.ts` | no |
