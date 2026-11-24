@@ -49,7 +49,7 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ audit/       drift detectors · scout confirmation · drift-severity rule · report  │
 │              and triage · suggestions and local audit state                       │
 │ commands/    /livespec validate · migrate-openspec · init · doctor · next ·       │
-│              skills · audit · triage                                              │
+│              skills · audit                                                     │
 │ packs/       src/packs/agent-skills.yaml (default flow pack)                      │
 └───────────────────────────────────────────────────────────────────────────────────┘
       │ resources_discover → skill paths    │ issues, comments, PRs       │ read/write
@@ -427,9 +427,9 @@ One trigger and one check per durable file, enforced by code. The code lives in 
 
 **Report.** The report lists the audited commit, the items by severity with key, evidence and route, then the refuted and ignored items and the notes. With `#T`, or else the oldest pending initiative suggestion, and a writable forge, it is posted as a new own `drift-report` comment on that initiative (items as data plus the rendered text) and printed. Otherwise it is only printed, with the reason.
 
-**Triage.** A writer replies on the initiative with `/livespec triage <key> major|minor|ignore` (a comment, not a session command). The next audit on that initiative applies the latest command per key from authors with `write` or `admin`: `major` and `minor` set severity and route and mark the item re-triaged with the author and the rule's original severity, `ignore` moves it to "Ignored". A key that matches no item is listed as unmatched. Printed reports have no triage.
+**Triage.** A writer replies on the initiative with `/livespec triage <key> major|minor|ignore` (a comment, not a session command). The next audit on that initiative applies the latest command per key from authors with `write` or `admin`: `major` and `minor` set severity and route and mark the item re-triaged with the author and the rule's original severity, `ignore` moves it to "Ignored". A key that matches no item is listed as unmatched. Triage is not applied when there is no target initiative or the forge cannot be read; a read-only forge can still print a triaged report.
 
-**Suggestions and state.** `<git common dir>/livespec/audit.json` holds `cursor`, `fixCursor`, the last audited commit and the pending suggestions. It is local, shared by the worktrees of a clone and updated under a lock; deleting it loses at most one suggestion.
+**Suggestions and state.** `<git common dir>/livespec/audit.json` holds `cursor`, `fixCursor`, the last audited commit and the pending suggestions. It is local, shared by the worktrees of a clone and updated under a lock; deleting it drops all pending suggestions and both cursors, and commits older than the next first scan are not suggested again.
 
 - `livespec:initiative-closed` adds an initiative suggestion.
 - At `session_start`, without a fetch, the session checks the oldest 50 first-parent commits of `<cursor>..origin/<integration>` and moves the cursor to the last one checked; a longer backlog is worked off 50 per session. A commit that touches a capability's `paths` and whose subject names no pull request with a `livespec/*` or `fix/*` head becomes a commit suggestion. With no state the first run only sets the cursor; a forge error leaves it unchanged.
