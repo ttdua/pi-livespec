@@ -43,10 +43,10 @@ Blocked by: 1, 2, 6
 
 Blocked by: 2
 
-- [ ] 6.1 Add `src/audit/repo-view.ts` (files of a commit via `git ls-tree -r` and a reader via `git show <commit>:<path>`, plus an in-memory view for tests) and the `DriftItem` type (`type`, `key`, `subject`, `capability?`, `evidence`, `confirmed?`)
-- [ ] 6.2 Add pure detectors (`declared-none` finds fix pull requests from the subjects of first-parent commits of `<fixCursor>..<audited commit>`, sharing the subject parser with 8.2): `src/audit/detect-specs.ts` (`scenario-untested`, `removed-reference`, `dead-paths`), `src/audit/detect-docs.ts` (`unused-term`, `stale-decision`, `product-missing`) and `src/audit/detect-fixes.ts` (`declared-none` from merged `fix/*` pull requests and their `lane` decision blocks via `parseDecisionBlocks`)
-- [ ] 6.3 Add `src/audit/severity.ts`: `severityFacts(item, kept)` (`{ type, capabilityHasMajor }`), the `drift-severity` rule and schema, registered in `registerBuiltinRules`
-- [ ] 6.4 Seeded fixture repository in `tests/audit/seeded.ts` and tests in `tests/audit/detect.test.ts` and `tests/audit/severity.test.ts` covering every drift-detectors and drift-severity scenario
+- [x] 6.1 Add `src/audit/repo-view.ts` (files of a commit via `git ls-tree -r` and a reader via `git show <commit>:<path>`, plus an in-memory view for tests) and the `DriftItem` type (`type`, `key`, `subject`, `capability?`, `evidence`, `confirmed?`)
+- [x] 6.2 Add pure detectors (`declared-none` finds fix pull requests from the subjects of first-parent commits of `<fixCursor>..<audited commit>`, sharing the subject parser with 8.2): `src/audit/detect-specs.ts` (`scenario-untested`, `removed-reference`, `dead-paths`), `src/audit/detect-docs.ts` (`unused-term`, `stale-decision`, `product-missing`) and `src/audit/detect-fixes.ts` (`declared-none` from merged `fix/*` pull requests and their `lane` decision blocks via `parseDecisionBlocks`)
+- [x] 6.3 Add `src/audit/severity.ts`: `severityFacts(item, kept)` (`{ type, capabilityHasMajor }`), the `drift-severity` rule and schema, registered in `registerBuiltinRules`
+- [x] 6.4 Seeded fixture repository in `tests/audit/seeded.ts` and tests in `tests/audit/detect.test.ts` and `tests/audit/severity.test.ts` covering every drift-detectors and drift-severity scenario
 
 ## 7. Audit command, scout, report and triage
 
