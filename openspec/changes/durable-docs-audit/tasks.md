@@ -19,8 +19,8 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 Extend `DurableFacts` in `src/ship/durable-docs.ts` with `behavior` (per capability the latest human `behavior-change` record) and skip a capability confirmation when that record is `unchanged` and its files are a superset of the capability's changed files
-- [ ] 3.2 Build `behavior` in `src/ship/context.ts` from the change state's marked comments; tests for "Behavior answered earlier", "Record misses a file", "Newer changed record wins" and "Superset record" in `tests/ship/durable-docs.test.ts`, keeping the existing scenarios green
+- [x] 3.1 Extend `DurableFacts` in `src/ship/durable-docs.ts` with `behavior` (per capability the latest human `behavior-change` record) and skip a capability confirmation when that record is `unchanged` and its files are a superset of the capability's changed files
+- [x] 3.2 Build `behavior` in `src/ship/context.ts` from the change state's marked comments; tests for "Behavior answered earlier", "Record misses a file", "Newer changed record wins" and "Superset record" in `tests/ship/durable-docs.test.ts`, keeping the existing scenarios green
 
 ## 4. Packet readers
 
