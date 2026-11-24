@@ -86,6 +86,7 @@ describe("addedGlossaryEntries", () => {
 function stubGit(overrides: Partial<CheckGit>): CheckGit {
 	return {
 		diff: async () => "",
+		diffNames: async () => [],
 		head: async () => "HEAD",
 		showFile: async () => undefined,
 		listTree: async () => [],

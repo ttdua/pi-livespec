@@ -17,6 +17,7 @@ import type { ApprovalRequest, GateSnapshot, RequestOption, Subject } from "../i
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
+import { askBehaviorChanges } from "../docs/behavior-ask.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -26,6 +27,7 @@ import { sendRequest, withStep } from "./request-flow.ts";
 export type SpecGateParams = { target: string };
 
 const PLAN = "plan";
+const BEHAVIOR_CHECK = "behavior-change";
 const BASE36 = 36;
 const SELF_BY = "livespec";
 const NEW_STUCK_HINT = "An earlier stuck answer that chose no option does not lift the cap: send a new stuck report with spec_stuck.";
@@ -155,6 +157,34 @@ export async function sendNamedGate(w: WriteContext, state: ChangeState, i: Name
 	return sendRequest(w, checked, request, i.ctx, { tool: i.tool, retry: `run ${i.tool} again` });
 }
 
+/** The phases whose gate asks the behavior question, when the phase lists the `behavior-change` check. */
+const BEHAVIOR_TARGETS = new Set(["define", "review"]);
+
+function asksBehavior(pack: Pack, target: string): boolean {
+	return BEHAVIOR_TARGETS.has(target) && (pack.phases.find((ph) => ph.id === target)?.checks.includes(BEHAVIOR_CHECK) ?? false);
+}
+
+/**
+ * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals are evaluated with the
+ * `behavior-change` results left out, and only when none applies the unanswered items are asked. After an
+ * answer the state is re-read and `checked` is false, so the caller's full check run sees the new records.
+ */
+type BehaviorStep = { ok: true; state: ChangeState; checked: boolean } | { ok: false; message: string };
+
+async function behaviorStep(w: WriteContext, state: ChangeState, target: string, ctx: ApproverCtx): Promise<BehaviorStep> {
+	const checked = await withGateChecks(w, state, target);
+	const others = { ...checked, checks: checked.checks.filter((c) => c.check !== BEHAVIOR_CHECK) };
+	const refusal = gateRefusal(others, w.pack, target);
+	if (refusal) return { ok: false, message: refusalText(others, refusal) };
+	const asked = await askBehaviorChanges(w, state, ctx);
+	if (!asked.ok) return asked;
+	// Nothing asked: the checks already ran on this state, `behavior-change` included.
+	if (!asked.asked) return { ok: true, state: checked, checked: true };
+	await afterForgeWrite(w.session, state.issue.number);
+	const fresh = requireChange(w.session);
+	return fresh.ok ? { ok: true, state: fresh.state, checked: false } : { ok: false, message: fresh.message };
+}
+
 /** `spec_gate` cannot send a gate whose proposer builds the request with its drafts. */
 function proposerRefusal(target: string): string | undefined {
 	const proposer = namedGate(target)?.proposer;
@@ -170,7 +200,9 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	const isPhase = w.pack.phases.some((ph) => ph.id === target);
 	const byProposer = isPhase ? undefined : proposerRefusal(target);
 	if (byProposer) return toolResult(byProposer, undefined, true);
-	const state = await withGateChecks(w, change.state, target);
+	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, ctx) : { ok: true as const, state: change.state, checked: false };
+	if (!asked.ok) return toolResult(asked.message, undefined, true);
+	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
 	const plan = planGate(state, w.pack, target);

@@ -21,6 +21,7 @@ export const applyDecide: ApplyFn = async (_run, record) => {
 		reason: chosen ? `chosen by ${answer.by}` : `dismissed by ${answer.by}`,
 		request: request.id,
 		...(s.proposal === true ? { proposal: true as const } : {}),
+		...(s.files === undefined ? {} : { files: s.files }),
 	};
 	return decisionComment(decision);
 };

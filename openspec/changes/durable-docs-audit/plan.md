@@ -38,7 +38,7 @@
 | `frontMatterEnd` | new | `(content: string) => number` — last line of the leading front matter, 0 when none — `src/docs/glossary-terms.ts` | no |
 | `glossaryCandidates` | new | `(added: string[], glossary: Glossary, knownAtBase: string) => string[]` — `src/docs/glossary-terms.ts` | no |
 | `addedGlossaryEntries` | new | `(diff: string) => string[]` — `+- **Term**: …` lines added to `specs/glossary.md` | no |
-| `CheckGit` | modified | `{ diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string>; showFile(rev: string, path: string): Promise<string \| undefined>; listTree(rev: string): Promise<string[]> }` — `src/engine/registry.ts` | no |
+| `CheckGit` | modified | `{ diff(from: string, to: string, path: string): Promise<string>; diffNames(from: string, to: string, path: string): Promise<string[]>; head(): Promise<string>; showFile(rev: string, path: string): Promise<string \| undefined>; listTree(rev: string): Promise<string[]> }` (Task 2: `diffNames` added — the `behavior-change` check needs the changed file list of `Base..HEAD`, not the full patch) — `src/engine/registry.ts` | no |
 | `Git.listTree` | new | `(rev: string) => Promise<string[]>` — `git ls-tree -r --name-only -z <rev>` — `src/engine/git.ts` | no |
 | `Git.commitPaths` | new | `(commit: string) => Promise<string[]>` — non-merge: `changedPaths`; merge: `git diff --name-only <commit>^1 <commit>` — `src/engine/git.ts` | no |
 | `Git.firstParentCommits` | new | `(commit: string, o: { after?: string; since?: string }) => Promise<{ sha: string; subject: string }[]>` — `git log --first-parent --reverse --format=%H%x00%s [--since=<since>] <after>..<commit> \| <commit>`, oldest first — `src/engine/git.ts` | no |
