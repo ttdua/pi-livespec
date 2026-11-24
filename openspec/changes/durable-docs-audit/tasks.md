@@ -70,5 +70,5 @@ Blocked by: 7
 
 Blocked by: 3, 4, 8
 
-- [ ] 9.1 Update `docs/architecture.md`: module list (`docs/`, `audit/`), a "Durable docs" section (checks, behavior question, readers, ship reuse) and an "Audit" section (detectors, scout, severity, report, triage, suggestions)
-- [ ] 9.2 Add `Drift report` to `docs/glossary.md`; run `bun run typecheck` and `bun run test`
+- [x] 9.1 Update `docs/architecture.md`: module list (`docs/`, `audit/`), a "Durable docs" section (checks, behavior question, readers, ship reuse) and an "Audit" section (detectors, scout, severity, report, triage, suggestions)
+- [x] 9.2 Add `Drift report` to `docs/glossary.md`; run `bun run typecheck` and `bun run test`
