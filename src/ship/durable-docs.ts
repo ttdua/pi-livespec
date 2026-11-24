@@ -14,6 +14,8 @@ export type DurableFacts = {
 	capabilities: { new: string[]; modified: string[] };
 	specs: { capability: string; paths: string[] }[];
 	rows: { file: string; status: string }[];
+	/** The latest human `behavior-change` record per capability; `outcome` is null when it was dismissed. */
+	behavior: { capability: string; files: string[]; outcome: string | null }[];
 };
 
 export type DurableOutcome = { errors: string[]; confirm: string[]; needsRows: boolean };
@@ -35,13 +37,14 @@ export function hardCovered(facts: DurableFacts): Map<string, string> {
 }
 
 /** The facts built from the change diff, the header and the living specs read from the work tree. */
-export function durableFacts(diff: ChangeDiff, change: Change, specs: DurableFacts["specs"]): DurableFacts {
+export function durableFacts(diff: ChangeDiff, change: Change, specs: DurableFacts["specs"], behavior: DurableFacts["behavior"]): DurableFacts {
 	return {
 		files: diff.files,
 		added: diff.entries.filter((e) => e.status === "A").map((e) => e.path),
 		capabilities: change.header.capabilities ?? { new: [], modified: [] },
 		specs,
 		rows: change.durableDocs,
+		behavior,
 	};
 }
 
@@ -68,8 +71,15 @@ function capabilityCode(facts: DurableFacts): { capability: string; files: strin
 		.filter((c) => c.files.length > 0);
 }
 
+/** True when the latest human record says `unchanged` and names every changed file of the capability. */
+function answeredUnchanged(facts: DurableFacts, c: { capability: string; files: string[] }): boolean {
+	const record = facts.behavior.find((b) => b.capability === c.capability);
+	return record?.outcome === "unchanged" && c.files.every((f) => record.files.includes(f));
+}
+
 function capabilityConfirms(facts: DurableFacts): string[] {
 	return capabilityCode(facts)
+		.filter((c) => !answeredUnchanged(facts, c))
 		.filter((c) => !isUpdated(facts.rows, `${SPECS}${c.capability}/spec.md`))
 		.map((c) => `${c.capability}: confirm its behavior did not change (changed ${c.files.join(", ")})`);
 }
