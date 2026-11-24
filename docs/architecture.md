@@ -49,7 +49,7 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ audit/       drift detectors · scout confirmation · drift-severity rule · report  │
 │              and triage · suggestions and local audit state                       │
 │ commands/    /livespec validate · migrate-openspec · init · doctor · next ·       │
-│              skills · audit                                                     │
+│              skills · audit                                                       │
 │ packs/       src/packs/agent-skills.yaml (default flow pack)                      │
 └───────────────────────────────────────────────────────────────────────────────────┘
       │ resources_discover → skill paths    │ issues, comments, PRs       │ read/write
