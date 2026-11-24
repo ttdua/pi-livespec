@@ -77,7 +77,7 @@ The `behavior-change` decision point SHALL be registered with `registerRule`, co
 - **THEN** the record is not reusable and the capability is asked again
 
 ### Requirement: Behavior change question at the gate
-`spec_gate define` and `spec_gate review` SHALL first run the gate checks and the gate refusals with the `behavior-change` results left out. When that yields a refusal, `spec_gate` SHALL refuse with it, asking nothing and writing nothing. Otherwise it SHALL ask `behavior-change` through the configured approver chain for each behavior item with no reusable record, one capability at a time, then refresh the change state and run the checks and refusals again, `behavior-change` included, before it sends the gate request. An in-session answer SHALL be recorded at once; while a `decide:behavior-change.<capability>` request is pending, `spec_gate` SHALL refuse, naming the pending request, and send no gate request. An item with a reusable record MUST NOT be asked again.
+When the target phase lists the `behavior-change` check, `spec_gate define` and `spec_gate review` SHALL first run the gate checks and the gate refusals with the `behavior-change` results left out. When that yields a refusal, `spec_gate` SHALL refuse with it, asking nothing and writing nothing. Otherwise it SHALL ask `behavior-change` through the configured approver chain for each behavior item with no reusable record, one capability at a time, then refresh the change state and run the checks and refusals again, `behavior-change` included, before it sends the gate request. An in-session answer SHALL be recorded at once; while a `decide:behavior-change.<capability>` request is pending, `spec_gate` SHALL refuse, naming the pending request, and send no gate request. An item with a reusable record MUST NOT be asked again.
 
 #### Scenario: Asked once at define
 - **WHEN** `spec_gate define` runs with one behavior item and the in-session approver, and the human answers `unchanged`
@@ -90,6 +90,10 @@ The `behavior-change` decision point SHALL be registered with `registerRule`, co
 #### Scenario: Changed answer blocks the same call
 - **WHEN** the human answers `changed` for `rate-limit` during `spec_gate define`
 - **THEN** the record is posted, the re-run `behavior-change` check fails, and `spec_gate` refuses naming `specs/rate-limit/spec.md` without sending the gate request
+
+#### Scenario: Flow without the check
+- **WHEN** a project flow lists no `behavior-change` check in `define` and `spec_gate define` runs with one behavior item
+- **THEN** no `decide:behavior-change` request is written and the gate proceeds as before
 
 #### Scenario: Forge request pending
 - **WHEN** the approver chain is `[forge]` and `spec_gate define` runs with one behavior item

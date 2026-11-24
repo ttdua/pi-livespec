@@ -20,7 +20,7 @@ It MUST refuse, writing nothing, when:
 - the working tree is dirty;
 - a check that is not waivable fails.
 
-For the `define` and `review` targets, the `behavior-change` check is the one exception: `spec_gate` SHALL evaluate the refusals above with the `behavior-change` results left out, and only when none applies MAY it write the `decide:behavior-change.<capability>` requests and their `decision` records of durable-doc-checks "Behavior change question at the gate". It SHALL then run the checks again, `behavior-change` included, and refuse without sending the gate request when one that is not waivable fails.
+For the `define` and `review` targets whose phase lists the `behavior-change` check, that check is the one exception: `spec_gate` SHALL evaluate the refusals above with the `behavior-change` results left out, and only when none applies MAY it write the `decide:behavior-change.<capability>` requests and their `decision` records of durable-doc-checks "Behavior change question at the gate". It SHALL then run the checks again, `behavior-change` included, and refuse without sending the gate request when one that is not waivable fails.
 
 #### Scenario: Blocking question keeps the gate closed
 - **WHEN** Q1 is an open blocking question and `spec_gate define` runs

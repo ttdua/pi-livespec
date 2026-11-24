@@ -346,6 +346,7 @@
 - durable-doc-checks / Asked once at define → tests/tools/spec-gate-behavior.test.ts
 - durable-doc-checks / Other refusal asks nothing → tests/tools/spec-gate-behavior.test.ts
 - durable-doc-checks / Changed answer blocks the same call → tests/tools/spec-gate-behavior.test.ts
+- durable-doc-checks / Flow without the check → tests/tools/spec-gate-behavior.test.ts
 - durable-doc-checks / Forge request pending → tests/tools/spec-gate-behavior.test.ts
 - durable-doc-checks / Unanswered item names the gate → tests/docs/behavior-change.test.ts
 - durable-doc-checks / Behavior changed without a spec edit → tests/docs/behavior-change.test.ts
