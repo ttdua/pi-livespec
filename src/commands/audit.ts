@@ -18,13 +18,11 @@ import { untrusted } from "../hooks/phase-card.ts";
 
 export type AuditDeps = {
 	git: Git;
-	root: string;
 	integration: string | undefined;
 	forge?: Forge;
 	writable: boolean;
 	state: AuditState;
 	confirm: ConfirmDeps;
-	specs: (view: RepoView) => Promise<{ capability: string; paths: string[] }[]>;
 	/** The pack's `decisions.drift-severity` entry; the rule's default when absent. */
 	severity?: unknown;
 };

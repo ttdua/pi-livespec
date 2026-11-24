@@ -4,7 +4,6 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { type AuditDeps, runAudit } from "../../src/commands/audit.ts";
-import { livingSpecs } from "../../src/audit/living-specs.ts";
 import extension from "../../src/extension.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { seededFiles, laneBody } from "../audit/seeded.ts";
@@ -62,13 +61,11 @@ async function seedForge(h: ToolHarness): Promise<number> {
 function depsOf(h: ToolHarness, over: Partial<AuditDeps> = {}): AuditDeps {
 	return {
 		git: h.session.git,
-		root: h.root,
 		integration: "main",
 		forge: h.world.forge,
 		writable: true,
 		state: { pending: [] },
 		confirm: { events: { on: () => () => undefined }, git: h.session.git, root: h.root, exclusions: [] },
-		specs: async (view) => (await livingSpecs(view)).map(({ spec }) => ({ capability: spec.capability, paths: spec.paths })),
 		...over,
 	};
 }

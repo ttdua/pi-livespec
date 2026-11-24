@@ -2,7 +2,6 @@
 // the result into a `Reply`; the extension only routes and shows replies.
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { capabilityPaths } from "../audit/living-specs.ts";
 import { readAuditState } from "../audit/state.ts";
 import { auditAndSave } from "../audit/suggest.ts";
 import { integrationBranch } from "../engine/git.ts";
@@ -102,12 +101,11 @@ async function auditDeps(session: Session, events: EventsLike): Promise<AuditDep
 	const project = session.config.project;
 	const severity = session.pack.ok ? session.pack.pack.decisions["drift-severity"] : undefined;
 	return {
-		git: session.git, root: session.cwd,
+		git: session.git,
 		integration: project === null ? undefined : await integrationBranch(project, session.git),
 		...(session.forge === undefined ? {} : { forge: session.forge }), writable: forgeWritable(session),
 		state: await readAuditState(session.git),
 		confirm: { ...(executor.ok ? { service: executor.service } : {}), events, git: session.git, root: session.cwd, exclusions: await exclusionsOf(session, defaultSubagentDeps) },
-		specs: capabilityPaths,
 		...(severity === undefined ? {} : { severity }),
 	};
 }
