@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { parseGlossary } from "../../src/core/glossary.ts";
 import { addedGlossaryEntries, addedSpecLines, frontMatterEnd, glossaryCandidates, glossaryTermsCheck } from "../../src/docs/glossary-terms.ts";
-import { type CheckGit, type CheckContext } from "../../src/engine/registry.ts";
 import { GitError } from "../../src/engine/git.ts";
+import { type CheckContext, type CheckGit } from "../../src/engine/registry.ts";
 
 const EMPTY = parseGlossary("# Glossary\n");
 const diffOf = (file: string, body: string[], start = 1) =>
@@ -37,6 +37,9 @@ describe("glossaryCandidates", () => {
 	test("sentence wrapped before a proper noun is not a sentence start", () => {
 		expect(glossaryCandidates(["Requests go through the", "Gateway first."], EMPTY, "")).toEqual(["Gateway"]);
 	});
+	test("a list item continues on the indented next line", () => {
+		expect(glossaryCandidates(["- Requests go through the", "  Gateway first."], EMPTY, "")).toEqual(["Gateway"]);
+	});
 	test("a line ending with a period starts a new sentence", () => {
 		expect(glossaryCandidates(["Requests go through the gateway.", "Gateway first."], EMPTY, "")).toEqual([]);
 	});
@@ -63,8 +66,8 @@ describe("addedSpecLines", () => {
 		].join("");
 		const ends = new Map([["specs/rate-limit/spec.md", 3]]);
 		expect(addedSpecLines(diff, ends)).toEqual([
-			{ file: "specs/rate-limit/spec.md", line: "" },
-			{ file: "specs/rate-limit/spec.md", line: "Each **Token bucket** refills." },
+			{ file: "specs/rate-limit/spec.md", line: "", no: 4 },
+			{ file: "specs/rate-limit/spec.md", line: "Each **Token bucket** refills.", no: 5 },
 		]);
 	});
 	test("a hunk starting inside a long front matter is skipped", () => {
@@ -94,6 +97,22 @@ const checkCtx = (git: CheckGit): CheckContext =>
 	({ root: "/nowhere", change: parseChange("Base: abc123\nCapabilities: new [rate], modified []\n"), git, marked: [] });
 
 describe("glossaryTermsCheck", () => {
+	test("sentences do not join across hunks or unadded lines", async () => {
+		const diff = [
+			"diff --git a/specs/rate/spec.md b/specs/rate/spec.md",
+			"--- a/specs/rate/spec.md",
+			"+++ b/specs/rate/spec.md",
+			"@@ -4,0 +5,1 @@",
+			"+Requests use the cache",
+			"@@ -18,0 +20,2 @@",
+			"+Clients connect.",
+			"+Other text",
+			"",
+		].join("\n");
+		const git = stubGit({ diff: async () => diff });
+		expect(await glossaryTermsCheck(checkCtx(git))).toEqual([]);
+	});
+
 	test("hunk inside front matter at HEAD is not spec text", async () => {
 		const head = ["---", "capability: rate", "paths: [src/**]", "description: a", "more: b", "tags: c", "owner: d", "---", "", "Body"].join("\n");
 		const git = stubGit({

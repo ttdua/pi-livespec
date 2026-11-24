@@ -62,10 +62,8 @@ export function frontMatterEnd(content: string): number {
 }
 
 /** The `+` lines of `specs/<capability>/spec.md` files outside front matter; `frontEnds` maps each file to its `frontMatterEnd` at HEAD. */
-export function addedSpecLines(diff: string, frontEnds: Map<string, number>): { file: string; line: string }[] {
-	return addedLines(diff, (f) => SPEC_FILE.test(f))
-		.filter((a) => a.no > (frontEnds.get(a.file) ?? 0))
-		.map(({ file, line }) => ({ file, line }));
+export function addedSpecLines(diff: string, frontEnds: Map<string, number>): AddedLine[] {
+	return addedLines(diff, (f) => SPEC_FILE.test(f)).filter((a) => a.no > (frontEnds.get(a.file) ?? 0));
 }
 
 /** The `- **Term**: …` entries the diff adds to `specs/glossary.md`. */
@@ -90,16 +88,21 @@ const BOLD = /\*\*([^*]+)\*\*/g;
 const WORD = /[A-Za-z][\w'-]*/g;
 const HEADING = /^\s*#/;
 const LIST_ITEM = /^\s*(?:[-*+]|\d+\.)\s/;
+const INDENTED = /^\s+\S/;
 const SENTENCE_END = /[.!?:]\s*$/;
 
 function boldTerms(line: string): string[] {
 	return [...line.matchAll(BOLD)].map((m) => (m[1] ?? "").trim()).filter((t) => t !== "" && !SCENARIO_KEYWORDS.has(t));
 }
 
-/** True when `line` carries on the sentence of the previous line: neither ends one, neither is a heading or list item. */
+/**
+ * True when `line` carries on the sentence of the previous line. A list item's text continues only on an indented
+ * line; headings, list items and blank lines never continue, and a line ending with `.`, `!`, `?` or `:` ends a sentence.
+ */
 function continuesSentence(prev: string | undefined, line: string): boolean {
 	if (prev === undefined || prev.trim() === "") return false;
-	if (HEADING.test(prev) || LIST_ITEM.test(prev) || HEADING.test(line) || LIST_ITEM.test(line)) return false;
+	if (HEADING.test(prev) || HEADING.test(line) || LIST_ITEM.test(line)) return false;
+	if (LIST_ITEM.test(prev) && !INDENTED.test(line)) return false;
 	return !SENTENCE_END.test(prev);
 }
 
@@ -161,17 +164,20 @@ async function specsTextAt(git: Parameters<CheckFn>[0]["git"], rev: string): Pro
 	return texts.filter((t): t is string => t !== undefined).join("\n");
 }
 
-/** The added spec lines of `Base..HEAD`, files joined by a blank line, with front matter read from HEAD. */
+/**
+ * The added spec lines of `Base..HEAD` with front matter read from HEAD. A blank separator goes between lines that
+ * are not adjacent in the same file (another file, a new hunk, or unadded lines between), so sentences never join.
+ */
 async function addedSpecText(git: Parameters<CheckFn>[0]["git"], base: string): Promise<string[]> {
 	const diff = await git.diff(base, "HEAD", SPECS_PATH);
 	const frontEnds = new Map<string, number>();
 	for (const file of specFilesOf(diff)) frontEnds.set(file, frontMatterEnd((await git.showFile("HEAD", file)) ?? ""));
 	const out: string[] = [];
-	let file: string | undefined;
+	let prev: AddedLine | undefined;
 	for (const added of addedSpecLines(diff, frontEnds)) {
-		if (file !== undefined && added.file !== file) out.push("");
-		file = added.file;
+		if (prev !== undefined && (added.file !== prev.file || added.no !== prev.no + 1)) out.push("");
 		out.push(added.line);
+		prev = added;
 	}
 	return out;
 }
