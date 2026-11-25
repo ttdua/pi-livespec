@@ -214,7 +214,7 @@ The parent session may hand role work to subagent children. It keeps every piece
 3. **Flow**: the pack name, the pack version, the content tree commit and the role's skills. The skills reach the child as absolute `SKILL.md` paths with `skills.inherit: false`.
 4. **Task**: the unit or the review subject, its sources in manifest order, `Verify`, `Files` and the prohibitions. A footer follows with the packet hash and each source's version.
 
-**Dispatch through the executor service.** livespec does not need a particular subagent package. It reads a service from `globalThis[Symbol.for("@ttdua/pi-subagents:service")]`, and falls back to the legacy `@gotgenes/pi-subagents:service` key. It accepts the service when `spawn`, `wait`, `resume`, `abort`, `childSession` and `getAgentType` are functions, and never checks a package name or version. `subagent_dispatch <role> [unit] [subject]` runs a whole launch inside the tool:
+**Dispatch through the executor service.** livespec does not need a particular subagent package. It reads a service from `globalThis[Symbol.for("@ttdua/pi-subagents:service")]`, and falls back to the legacy `@gotgenes/pi-subagents:service` key. It accepts the service when `spawn`, `wait`, `resume`, `abort`, `childSession` and `getAgentType` are functions, and never checks a package name or version. `subagent_dispatch <role> [unit] [subject]` runs a whole launch inside the tool. An empty `unit`, `subject` or `finding` counts as omitted, and a `subject` or `finding` given for a role that does not take it is ignored with a warning at the top of the tool result (the same holds for `subagent_packet` and `subagent_record`):
 
 1. build the packet;
 2. subscribe to `subagents:child:session-created`;

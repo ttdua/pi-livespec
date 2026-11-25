@@ -6,13 +6,18 @@ import { writePacket } from "../subagents/packet-store.ts";
 import { requireChange, requireSession, requireValidPack, requireWritable, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { findingOf, packetContext, packetText } from "./subagent-request.ts";
-import { argsOf, checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
+import { argsOf, checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, refusal, withWarnings, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_packet";
 
 export async function runSubagentPacket(p: TargetParams, ctx: ToolCtx): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
+	const { params, warnings } = ignoreInapplicable(p);
+	return withWarnings(warnings, await runSubagentPacketBody(params, ctx));
+}
+
+async function runSubagentPacketBody(p: TargetParams, ctx: ToolCtx): Promise<ToolResult<undefined>> {
 	const s = requireSession();
 	if (!s.ok) return refusal(TOOL, s.message);
 	const pack = requireValidPack(s.session);
@@ -37,7 +42,7 @@ export function registerSubagentPacket(pi: ExtensionAPI): void {
 	registerLivespecTool(pi, {
 		name: TOOL,
 		label: "Build a livespec subagent packet",
-		description: "Return the packet subagent_dispatch would build for a role (and unit or subject), without launching, so the role can run inline; finish with subagent_record.",
+		description: "Return the packet subagent_dispatch would build for a role (and unit or subject), without launching, so the role can run inline; finish with subagent_record." + " " + PARAMS_BY_ROLE,
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: TARGET_PROPERTIES, required: ["role"] } as never,
 		execute: (_id, params, _signal, _update, ctx) => runSubagentPacket(params as TargetParams, ctx as never),

@@ -11,7 +11,7 @@ import { withStep } from "./request-flow.ts";
 import { interpret } from "../subagents/result.ts";
 import { outcomeOptions, resultText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchRequest, findingOf, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
-import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
+import { checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "subagent_record";
 
@@ -29,6 +29,11 @@ function checkResult(role: Parameters<typeof resultSchema>[0], value: unknown): 
 export async function runSubagentRecord(p: RecordParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
+	const { params, warnings } = ignoreInapplicable(p);
+	return withWarnings(warnings, await runSubagentRecordBody(params, ctx, deps));
+}
+
+async function runSubagentRecordBody(p: RecordParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refusal(TOOL, w.message);
 	const change = requireChange(w.session);
@@ -63,7 +68,7 @@ export function registerSubagentRecord(pi: ExtensionAPI, deps: SubagentToolDeps 
 		name: TOOL,
 		label: "Record an inline livespec subagent run",
 		description:
-			"Record the result of a role run inline (after subagent_packet) in the same shape a child submits: status, notes, discoveries, sources_used, optional reason and evidence, commits for implementer, findings for reviewer and verifier.",
+			"Record the result of a role run inline (after subagent_packet) in the same shape a child submits: status, notes, discoveries, sources_used, optional reason and evidence, commits for implementer, findings for reviewer and verifier." + " " + PARAMS_BY_ROLE,
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: { ...TARGET_PROPERTIES, result: { type: "object" } }, required: ["role", "result"] } as never,
 		execute: (_id, params, _signal, _update, ctx) => runSubagentRecord(params as RecordParams, ctx as never, deps),

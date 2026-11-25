@@ -2,6 +2,12 @@
 
 All notable changes to pi-livespec are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `subagent_dispatch`, `subagent_packet` and `subagent_record` treat an empty `unit`, `subject` or `finding` as omitted, and ignore a `subject` for a role other than `reviewer` or a `finding` for a role other than `verifier`, with a warning at the top of the tool result instead of a refusal.
+
 ## [0.1.0] - 2026-11-25
 
 First release. It covers roadmap specs LS-01 to LS-10; LS-11 (dogfood comparison with pi-superspec) is still in progress.
