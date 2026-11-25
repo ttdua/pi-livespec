@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the read-only drift audit: `/livespec audit` over the fetched integration commit, the drift detectors, scout confirmation of heuristic items, the `drift-severity` rule, the `drift-report` comment or printed report, `/livespec triage`, and the audit suggestions after an initiative closes or a commit bypasses livespec.
 
 ## Requirements
 

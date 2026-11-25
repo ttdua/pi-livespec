@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the define-time checks of durable docs: the `product-impact` check, the warning-only `glossary-terms` check with its define gate section, and the `behavior-change` facts, rule, gate question and check that record once per capability whether code under its `paths` changed its behavior.
 
 ## Requirements
 
