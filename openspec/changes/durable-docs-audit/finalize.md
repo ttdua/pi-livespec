@@ -15,8 +15,8 @@
 
 - **Branch**: `ls-10`
 - **Base branch**: `main`
-- **Final state**: `pr-updated` (feature branch pushed to `origin`; no PR existed before this push)
-- **PR URL**: `N/A` (no PR yet; the PR prompt follows the push)
+- **Final state**: `pr-updated` (feature branch pushed to `origin`; PR #48 opened after the push, as the user chose)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/48`
 
 ---
 
@@ -28,13 +28,13 @@
 Deviations from the finalize steps, per project instructions (`AGENTS.md`):
 - Worktree removed through Worktrunk instead of `git worktree remove` / `prune`.
 - Step 3 `git pull` skipped: `ls-10` had no upstream yet; `git merge --ff-only durable-docs-audit` fast-forwarded `ls-10` from `ab40e1b` to `579ccdb`.
-- Push done only after the user's explicit approval in chat.
+- Push and PR creation done only after the user's explicit approval in chat; PR body uses `Closes #10`.
 
 ---
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)` (updated after the PR prompt if a PR is opened)
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/48#issuecomment-7149479899)
 
 ---
 
