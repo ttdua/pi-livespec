@@ -95,6 +95,7 @@ describe("gates and decisions", () => {
 		commitAll(h.root, "spec");
 		let body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", h.head), "Branch", CHANGE_BRANCH);
 		body = body.replace("Capabilities: new [], modified []", "Capabilities: new [rate-limit], modified []");
+		body = body.replace("Product impact: —", "Product impact: updated");
 		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
 		await h.session.refresh();
@@ -166,6 +167,7 @@ describe("gates and decisions", () => {
 		commitAll(h.root, "spec");
 		let body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", h.head), "Branch", CHANGE_BRANCH);
 		body = body.replace("Capabilities: new [], modified []", "Capabilities: new [rate-limit], modified []");
+		body = body.replace("Product impact: —", "Product impact: updated");
 		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
 		await h.session.refresh();

@@ -4,6 +4,8 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { latestBehaviorRecords } from "../docs/behavior-change.ts";
+import type { MarkedComment } from "../forge/markers.ts";
 import { messageOf } from "../core/messages.ts";
 import { parseSpec } from "../core/spec.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
@@ -124,6 +126,11 @@ async function needsShipGate(git: Git, state: ShipInput, facts: DurableFacts): P
 	return durableDocsRule(facts).confirm.some((item) => !confirmed.has(item));
 }
 
+/** The latest human `behavior-change` record per capability, as ship facts. */
+function behaviorFacts(marked: MarkedComment[]): DurableFacts["behavior"] {
+	return [...latestBehaviorRecords(marked)].map(([capability, r]) => ({ capability, files: r.files ?? [], outcome: typeof r.outcome === "string" ? r.outcome : null }));
+}
+
 /**
  * The fetch and the change diff are memoized by HEAD; the reviewed, head-bound and re-confirmation facts are
  * recomputed on every call, since gate SHAs, the pushed head and `ship` records change without HEAD moving.
@@ -131,7 +138,7 @@ async function needsShipGate(git: Git, state: ShipInput, facts: DurableFacts): P
 export async function shipContext(session: Session, state: ShipInput): Promise<ShipContext | { refused: string }> {
 	const fetched = await fetchOnce(session, state);
 	if ("refused" in fetched) return fetched;
-	const facts = durableFacts(fetched.diff, state.change, await livingSpecs(session.cwd));
+	const facts = durableFacts(fetched.diff, state.change, await livingSpecs(session.cwd), behaviorFacts(state.marked ?? []));
 	const git = session.git;
 	const reviewed = await reviewedSafe(git, reviewedHead({ lock: state.lock ?? NO_LOCK }), state.git.head, fetched.integrationTip);
 	return {

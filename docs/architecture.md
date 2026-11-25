@@ -44,8 +44,12 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ deps/        new-dependency gate and effects · park · resume · parked state       │
 │ content/     agent-skills clone: mirror, immutable trees, compatibility check,    │
 │              upgrade policy, livespec.lock, root lock, pin, rollback, exposure    │
+│ docs/        define-time checks: product-impact, glossary-terms, behavior-change  │
+│              · packet readers (glossary, decisions)                               │
+│ audit/       drift detectors · scout confirmation · drift-severity rule · report  │
+│              and triage · suggestions and local audit state                       │
 │ commands/    /livespec validate · migrate-openspec · init · doctor · next ·       │
-│              skills                                                               │
+│              skills · audit                                                       │
 │ packs/       src/packs/agent-skills.yaml (default flow pack)                      │
 └───────────────────────────────────────────────────────────────────────────────────┘
       │ resources_discover → skill paths    │ issues, comments, PRs       │ read/write
@@ -80,7 +84,7 @@ specs/
 | Code and spec diff | One pull request that references the issue (`Refs #<change>`); the issue is closed by a tool after merge | Unit commits and `specs/` edits |
 | Review findings | Pull request review comments, plus a summary comment on the issue | Severity, location, evidence, fix, scope |
 
-**Local, and only a cache:** `~/.pi/agent/livespec/` holds the agent-skills clone, user config and an issue cache. Deleting the cache loses nothing.
+**Local, and only a cache:** `~/.pi/agent/livespec/` holds the agent-skills clone, user config and an issue cache. Deleting the cache loses nothing. `<git common dir>/livespec/` holds the packet spill files and `audit.json` ([Audit](#audit)); it is also safe to delete.
 
 **Forge writes are checked by version.** Every issue, pull request and comment the `Forge` returns carries an opaque `version`, and a body edit passes the version the caller read. A stale edit returns a conflict and writes nothing. The mechanism differs by adapter ([ADR 0007](decisions/0007-forge-concurrency-by-adapter.md)): Gitea uses `content_version` when the server sends it, GitHub (and Gitea without that field) re-reads and compares. When the forge cannot be reached, reads come from the cache marked stale and writes are refused.
 
@@ -377,6 +381,60 @@ A unit may find, during build, that it needs work outside the change. The code l
 **Park.** `change_park` runs after choice A, on the change branch, in the parent session. Each started unit with work (a lane with commits or uncommitted edits, or the change worktree) is committed to a wip branch `<Branch>--wip-<unit>` (message `wip(<unit>): parked for #<n>`) and pushed through `guardedPush`, with the refspec built from the issue's `Branch` line. A unit with no work gets no branch. Lanes are closed with outcome `parked` and their worktrees removed, the change gets the label `livespec:parked`, and a `parked` record listing the units and the dependencies it waits for is written last, so a rerun after a failed push completes the park. The parked units return to pending with a fresh attempt budget. While parked, the card says "waiting for #X to merge" and the gates refuse except `new-dependency` and `initiative`, so an abandoned prerequisite can still be removed.
 
 **Resume.** Once every waited-for dependency merged, the next step is "a human runs `change_resume #N`". On a clean change branch it runs the `change_sync` steps (merge, new `Base`, `regression` record, regressed units unticked) and then merges each wip branch with `--no-ff` in unit order. A conflict aborts, refuses and names the branch; a rerun skips wip heads already merged. It then deletes each wip branch on `origin` through the guarded delete with a lease on the recorded head; a branch already gone counts as deleted; a moved head or a record that is not this change's wip branch is kept and named; any other failure refuses and keeps the change parked, and a rerun completes it. It posts a `parked` record with `resumed: true` and removes the label. A resumed unit's partial work is already in HEAD, so its next `unit_start` accepts a green `Verify` with verdict `resumed`.
+
+## Durable docs
+
+One trigger and one check per durable file, enforced by code. The code lives in `src/docs/`; the default pack lists the three checks in `define` and `review`. None is waivable.
+
+**`product-impact`.** Reads the `Product impact` line of the change issue. The value must be `updated` or `none — <reason>` with a non-empty reason; a missing line, `—`, an empty value or anything else is an error. `none` with a `new` capability is also an error.
+
+**`glossary-terms`.** Reads the lines `git diff <Base>..HEAD -- specs/` adds to `specs/<capability>/spec.md`, outside front matter. A candidate is a bold term (not `WHEN`, `THEN`, `AND`, `GIVEN`) or a capitalized word that is not at a sentence start, not in backticks, not all capitals and found nowhere under `specs/` at `Base`. A candidate with no glossary entry (equal ignoring case and a trailing `s`) is a `warning`, never an error. The define gate payload has a "Glossary" section with the warnings and the entries the diff adds to `specs/glossary.md`; approving the gate approves those entries.
+
+**`behavior-change`.** A rule (`decisions.behavior-change: { mode: rule }`) that always asks, with the options `unchanged` and `changed`.
+
+- **Facts.** Per living spec whose `paths` match a changed non-`specs/` file in `Base..HEAD` while its `spec.md` is not in the diff: `{ capability, files }`, files sorted.
+- **Record.** A `decision` comment with subject `<capability>`, source `human`, the item as facts, a top-level `files` field (kept when the facts are compacted to `facts_hash`) and the SHA-256 of the files joined by newlines as digest. It is reusable only for the same digest and facts, so a new file under the capability asks again and re-editing the same files does not.
+- **Check.** Per item: no reusable record is an error naming `spec_gate <phase>` (or the open `decide:behavior-change.<capability>` request); a `changed` record is an error naming `specs/<capability>/spec.md`; `unchanged` passes. An item leaves the facts once its `spec.md` is in the diff.
+- **Asking.** `spec_gate define` and `spec_gate review` first run the checks and refusals without the `behavior-change` results. Any refusal returns before anything is asked or written. Otherwise each unanswered capability is asked through the approver chain, one at a time; the state is refreshed and the full check run again, so a `changed` answer refuses in the same call. A pending forge request makes `spec_gate` refuse, naming it. A flow that does not list the check asks nothing.
+
+**Ship reuse.** The ship `durable-docs` rule stays pure and never asks. `DurableFacts.behavior` holds, per capability, the latest `behavior-change` record with source `human`. A capability needs no confirmation item when that latest record is `unchanged` and its files include every file the ship diff changes under the capability's `paths` (a superset is accepted: the ship diff starts at the merge base, the records at `Base`). Without such a record the confirmation item stays, as for the small-fix lane, which has no issue.
+
+**Packet readers.** Every packet already carries a `specs/product.md` excerpt, and the first model card says to read it. `src/docs/readers.ts` adds two sources for `implementer` and `reviewer` packets: `glossary` (the entries whose term occurs in the unit text, or the `## Units` section for a reviewer; omitted when none match) and `decisions` (accepted decisions with `spine: true` or whose `capabilities` intersect the change's). Reviewer manifests also include `constraints`.
+
+## Audit
+
+`/livespec audit [#T]` finds drift between `specs/`, the code and the other durable docs. It runs outside any phase, with no change, and is read-only: it edits no file and creates no issue, branch or pull request. Its code lives in `src/audit/` and `src/commands/audit.ts`.
+
+**Snapshot.** It fetches the integration branch and audits the tree of `origin/<integration>` (the audited commit) through `git ls-tree` and `git show`, never the working tree, so the result does not depend on the current branch. When the fetch fails and a local `origin/<integration>` exists, it audits that commit and the report says the snapshot was not refreshed. With no such ref it refuses, posts nothing and leaves the state unchanged.
+
+**Detectors.** Pure functions over the files of the audited commit, each item keyed `<type>:<subject>`:
+
+| Type | Item |
+|---|---|
+| `scenario-untested` | a scenario name that occurs in no test file |
+| `removed-reference` | a backticked path that is not tracked, or an identifier found in no file outside `specs/` |
+| `dead-paths` | a living spec `paths` glob that matches no file |
+| `unused-term` | a glossary term used in no other file |
+| `stale-decision` | a line under `specs/` that names a `superseded` decision without saying so |
+| `product-missing` | a capability absent from `specs/product.md` |
+| `declared-none` | a merged `fix/*` pull request whose `lane` block declares `behavior_change: declared-none` (per listed capability) |
+
+`declared-none` reads the first-parent commits of `<fix cursor>..<audited commit>` (without a cursor, the last 30 days) whose subject names a pull request. It needs the forge; when the forge cannot be read it is skipped with a note and the other detectors still run.
+
+**Scout confirmation.** `scenario-untested` and `removed-reference` items go to one `scout` child through the dispatch API, in a temporary worktree of the audited commit (removed afterwards), with thinking `low` and no model. The packet has the protocol layer, no flow skills, the audited SHA and the items as untrusted data. The child returns a `confirmed` or `refuted` verdict per key; refuted items are listed under "Refuted by the scout" and not classified. The audit never runs the scout inline: with no capable executor, a disabled scout agent, a launch mismatch or a missing verdict, the items are kept and marked unconfirmed. No `dispatch` comment is written.
+
+**`drift-severity`.** A rule (`decisions.drift-severity: { mode: rule }`) that never asks. Facts: `{ type, capabilityHasMajor }`. `scenario-untested`, `dead-paths` and `removed-reference` are `major` (route `change`); `unused-term`, `stale-decision` and `product-missing` are `minor` (route `small-fix`); `declared-none` is `major` when another major-type item names the same capability, else `minor`. Routes are suggestions.
+
+**Report.** The report lists the audited commit, the items by severity with key, evidence and route, then the refuted and ignored items and the notes. With `#T`, or else the oldest pending initiative suggestion, and a writable forge, it is posted as a new own `drift-report` comment on that initiative (items as data plus the rendered text) and printed. Otherwise it is only printed, with the reason.
+
+**Triage.** A writer replies on the initiative with `/livespec triage <key> major|minor|ignore` (a comment, not a session command). The next audit on that initiative applies the latest command per key from authors with `write` or `admin`: `major` and `minor` set severity and route and mark the item re-triaged with the author and the rule's original severity, `ignore` moves it to "Ignored". A key that matches no item is listed as unmatched. Triage is not applied when there is no target initiative or the forge cannot be read; a read-only forge can still print a triaged report.
+
+**Suggestions and state.** `<git common dir>/livespec/audit.json` holds `cursor`, `fixCursor`, the last audited commit and the pending suggestions. It is local, shared by the worktrees of a clone and updated under a lock; deleting it drops all pending suggestions and both cursors, and commits older than the next first scan are not suggested again.
+
+- `livespec:initiative-closed` adds an initiative suggestion.
+- At `session_start`, without a fetch, the session checks the oldest 50 first-parent commits of `<cursor>..origin/<integration>` and moves the cursor to the last one checked; a longer backlog is worked off 50 per session. A commit that touches a capability's `paths` and whose subject names no pull request with a `livespec/*` or `fix/*` head becomes a commit suggestion. With no state the first run only sets the cursor; a forge error leaves it unchanged.
+- While suggestions are pending the phase and resume cards show an "Audit" section naming each reason and `/livespec audit`.
+- A completed audit clears the commit suggestions contained in the audited commit and the initiative suggestion it posted on, records the audited commit, and moves `fixCursor` to it only when `declared-none` ran to the end.
 
 ## Forge accounts
 

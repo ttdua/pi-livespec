@@ -56,6 +56,14 @@ Each role and subject SHALL have a list of required sources:
 
 Every packet SHALL also hold the relevant excerpt of `specs/product.md`, and every `reviewer` packet the rubric of its subject.
 
+Every `implementer` and `reviewer` packet SHALL also hold, as durable doc readers:
+- `specs/constraints.md`, when it exists;
+- as source `file:specs/glossary.md`, the glossary entries whose term occurs, ignoring case and on word boundaries, in the unit text (implementer, and reviewer with subject `unit`) or in the `## Units` section (other reviewer subjects); the source is left out when no term occurs;
+- each accepted decision with `spine: true`, as source `file:specs/decisions/<file>`;
+- each accepted decision whose `capabilities` names a capability the change declares, as source `file:specs/decisions/<file>`.
+
+A `superseded` decision MUST NOT be included by these readers.
+
 #### Scenario: Answered question included
 - **WHEN** Q2 is answered and mentions `src/api/limit.ts`, one of U3's `Files`
 - **THEN** U3's implementer packet holds `answer:Q2` as a required source
@@ -75,6 +83,18 @@ Every packet SHALL also hold the relevant excerpt of `specs/product.md`, and eve
 #### Scenario: Verifier of an in-change finding
 - **WHEN** a verifier packet is built for an aggregate finding at `src/util/clock.ts:4`, which no unit lists
 - **THEN** the packet holds the finding and the code at `src/util/clock.ts`, and the dispatch is not refused
+
+#### Scenario: Glossary entries for the unit
+- **WHEN** the glossary has `Token bucket` and `Receipt`, and U2's text mentions `token bucket` but not `receipt`
+- **THEN** U2's implementer packet holds `file:specs/glossary.md` with the `Token bucket` entry only
+
+#### Scenario: Spine and capability decisions
+- **WHEN** `0001-a.md` is accepted with `spine: true`, `0003-c.md` is accepted with `capabilities: [rate-limit]`, `0004-d.md` is superseded with `capabilities: [rate-limit]`, and the change declares `modified [rate-limit]`
+- **THEN** an implementer packet holds `file:specs/decisions/0001-a.md` and `file:specs/decisions/0003-c.md`, and not `0004-d.md`
+
+#### Scenario: Reviewer sees constraints
+- **WHEN** a `reviewer` packet with subject `change` is built and `specs/constraints.md` exists
+- **THEN** it lists `file:specs/constraints.md` as a required source
 
 ### Requirement: Source ids and versions
 Every source SHALL have an id of one of these forms: `issue#<n>`, `comment:<id>`, `answer:Q<n>`, `answer:<agentId>:<n>`, `pr#<n>`, `review:<id>`, `check:<sha>:<name>`, `file:<path>`, `spec:<capability>`, `diff:<from>..<to>`, `receipt:<unit>`. Each source SHALL carry a version: the forge `updatedAt` or ETag, the git blob or commit SHA, or the content hash. The packet hash SHALL be the SHA-256 of the packet text without its footer, with every spill path written as `<spill>/<file name>`, together with the role, subject, unit and every source id and version. The absolute spill directory SHALL be substituted for `<spill>` only after the hash is computed.

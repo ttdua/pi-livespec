@@ -5,6 +5,7 @@
 // `source: human`); a forge request stays pending until a `/livespec choose`.
 
 import { reusableAnswer } from "../decide/records.ts";
+import { BEHAVIOR_POINT, type BehaviorItem } from "../docs/behavior-change.ts";
 import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, DecideSnapshot, Subject } from "../interaction/approver.ts";
@@ -25,10 +26,19 @@ export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Da
 	const subject: Subject = `decide:${intent.point}.${intent.subject}`;
 	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts, ...(intent.digest === undefined ? {} : { digest: intent.digest }) };
 	if (proposal) snapshot.proposal = true;
+	const files = behaviorFilesOf(intent);
+	if (files !== undefined) snapshot.files = files;
 	const { summary, options } = intent;
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options };
+}
+
+/** The item's files of a `behavior-change` intent, kept beside the facts so they survive `facts_hash`. */
+function behaviorFilesOf(intent: DecisionAsk): string[] | undefined {
+	if (intent.point !== BEHAVIOR_POINT) return undefined;
+	const files = (intent.facts as Partial<BehaviorItem> | undefined)?.files;
+	return Array.isArray(files) ? [...files] : undefined;
 }
 
 /** A recorded human answer for the intent's unit digest and facts, as an `AskRecorded`; undefined when there is none to reuse. */

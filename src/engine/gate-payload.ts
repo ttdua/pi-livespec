@@ -13,18 +13,22 @@ import { isGateOnly } from "./registry.ts";
 import { subagentFindingsSection } from "../subagents/payload.ts";
 import type { ChangeState } from "./state-types.ts";
 
-export type ReviewFacts = { specsStat: string; specsFiles: string[]; issueUrl?: string };
+export type ReviewFacts = { specsStat: string; specsFiles: string[]; specsDiff: string; issueUrl?: string };
 export type GatePayload = { summary: string; links: string[]; files: string[]; findings: string[] };
 
 const SPECS_PATH = "specs/";
 const PROPOSAL_LINES = 5;
 const CLASSIFICATION_POINTS = ["tags", "difficulty"];
 
-/** The stat and file names of `git diff <base>..HEAD -- specs/`; empty without a `Base`. */
-export async function collectReviewFacts(git: Pick<Git, "diffStat" | "diffNames">, base: string | undefined): Promise<ReviewFacts> {
-	if (base === undefined) return { specsStat: "", specsFiles: [] };
-	const [specsStat, specsFiles] = await Promise.all([git.diffStat(base, "HEAD", SPECS_PATH), git.diffNames(base, "HEAD", SPECS_PATH)]);
-	return { specsStat, specsFiles };
+/** The stat, file names and diff of `git diff <base>..HEAD -- specs/`; empty without a `Base`. */
+export async function collectReviewFacts(git: Pick<Git, "diffStat" | "diffNames" | "diff">, base: string | undefined): Promise<ReviewFacts> {
+	if (base === undefined) return { specsStat: "", specsFiles: [], specsDiff: "" };
+	const [specsStat, specsFiles, specsDiff] = await Promise.all([
+		git.diffStat(base, "HEAD", SPECS_PATH),
+		git.diffNames(base, "HEAD", SPECS_PATH),
+		git.diff(base, "HEAD", SPECS_PATH),
+	]);
+	return { specsStat, specsFiles, specsDiff };
 }
 
 /** Raw header line `<key>: <value>` exactly as the body has it, or undefined. */

@@ -11,6 +11,8 @@ import { durableDocsRuleFn, durableDocsSchema } from "../ship/durable-docs.ts";
 import { laneRuleFn, laneSchema } from "../fix/lane.ts";
 import { splitRuleFn, splitSchema } from "../initiatives/split-rule.ts";
 import { tagsRule, tagsSchema } from "./rules/tags.ts";
+import { BEHAVIOR_POINT, behaviorChangeRule, behaviorChangeSchema } from "../docs/behavior-change.ts";
+import { DRIFT_SEVERITY_POINT, driftSeverityRule, driftSeveritySchema } from "../audit/severity.ts";
 
 export type RuleResult =
 	| { outcome: unknown; reason: string; data?: { agentAdditions?: string[] } }
@@ -94,6 +96,8 @@ export function registerBuiltinRules(): void {
 	registerRule("durable-docs", durableDocsSchema, durableDocsRuleFn);
 	registerRule("lane", laneSchema, laneRuleFn);
 	registerRule("split", splitSchema, splitRuleFn);
+	registerRule(BEHAVIOR_POINT, behaviorChangeSchema, behaviorChangeRule);
+	registerRule(DRIFT_SEVERITY_POINT, driftSeveritySchema, driftSeverityRule);
 	registerSubagentsSchema();
 }
 

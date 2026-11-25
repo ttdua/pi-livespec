@@ -3,6 +3,7 @@ import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
 import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import { behaviorDigest, latestBehaviorRecords } from "../../src/docs/behavior-change.ts";
 
 const TAGS_U3: DecisionRecord = {
 	point: "tags",
@@ -180,5 +181,43 @@ describe("decision records", () => {
 	test("malformed decision data is skipped", () => {
 		const map = latestDecisions([marked("tags.U1", TAGS_U3), marked("tags.U1", "garbage")]);
 		expect(map.get("tags.U1")).toEqual(TAGS_U3);
+	});
+
+	test("Behavior files kept with hashed facts", () => {
+		const files = Array.from({ length: 300 }, (_, i) => `src/limit/file-${String(i).padStart(3, "0")}.ts`);
+		const item = { capability: "rate-limit", files };
+		const record: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome: "unchanged", facts: item, files, reason: "chosen by alice" };
+		const data = parseMarked(decisionComment(record))?.data as DecisionRecord;
+		expect(data.facts_hash).toEqual(expect.any(String));
+		expect(data).not.toHaveProperty("facts");
+		expect(data.files).toHaveLength(300);
+		expect(reusableAnswer([marked("behavior-change.rate-limit", data)], "behavior-change", "rate-limit", behaviorDigest(files), item)).toMatchObject({ outcome: "unchanged" });
+	});
+
+	test("files that are not a string list make the record invalid", () => {
+		const bad = { point: "behavior-change", subject: "x", source: "human", outcome: "unchanged", reason: "r", files: [1] };
+		expect(latestDecisions([marked("behavior-change.x", bad)]).size).toBe(0);
+	});
+
+	test("latestBehaviorRecords keeps the latest human non-proposal record per capability", () => {
+		const base = (subject: string, outcome: string): DecisionRecord => ({ point: "behavior-change", subject, digest: "d", source: "human", outcome, facts: { capability: subject, files: ["a.ts"] }, files: ["a.ts"], reason: "r" });
+		const all = [
+			marked("behavior-change.rate-limit", base("rate-limit", "unchanged")),
+			marked("behavior-change.rate-limit", base("rate-limit", "changed")),
+			marked("behavior-change.auth", { ...base("auth", "unchanged"), source: "rule" }),
+			marked("behavior-change.api", { ...base("api", "unchanged"), proposal: true }),
+			marked("tags.U1", TAGS_U3),
+		];
+		const latest = latestBehaviorRecords(all);
+		expect([...latest.keys()]).toEqual(["rate-limit"]);
+		expect(latest.get("rate-limit")?.outcome).toBe("changed");
+	});
+
+	test("a newer malformed behavior record does not mask a valid one", () => {
+		const valid: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome: "unchanged", facts: { capability: "rate-limit", files: ["a.ts"] }, files: ["a.ts"], reason: "r" };
+		const noReason = { point: "behavior-change", subject: "rate-limit", source: "human", outcome: "changed" };
+		const badFiles = { ...valid, outcome: "changed", files: "a.ts" };
+		const latest = latestBehaviorRecords([marked("behavior-change.rate-limit", valid), marked("behavior-change.rate-limit", noReason), marked("behavior-change.rate-limit", badFiles)]);
+		expect(latest.get("rate-limit")).toEqual(valid);
 	});
 });

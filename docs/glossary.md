@@ -10,6 +10,7 @@
 - **Decision record**: a tool-written record of one decision. It holds the point, the source (`rule` or `human`), the facts, the outcome and the reason.
 - **Digest**: a hash of a unit's contract. It is locked when the plan gate is approved.
 - **Drift**: a mismatch between `specs/` and the code or other durable docs.
+- **Drift report**: the output of `/livespec audit`: the drift items found in the audited integration commit, with severity and a suggested route. It is posted as a `drift-report` comment on an initiative or printed.
 - **Durable docs**: `specs/<capability>/spec.md`, `product.md`, `glossary.md`, `constraints.md` and `decisions/`.
 - **Finding**: one review result, with severity, location, evidence, fix and scope.
 - **Flow pack**: the YAML file that declares the phases, skills, checks, gates, loop caps and subagent policy.

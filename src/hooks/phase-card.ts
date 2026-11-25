@@ -14,7 +14,14 @@ export type CardAccount = { line?: string; blocked?: string };
 /** The fix branch part of the card: the lane outcome of the committed fix diff, nothing to ship, or why the facts failed. */
 export type FixCard = { slug: string; outcome?: LaneOutcome; error?: string; empty?: true };
 
-export type CardInput = { first: boolean; constraintsTemplate: boolean; unnotedSkills: string[]; account?: CardAccount } & (
+export type CardInput = {
+	first: boolean;
+	constraintsTemplate: boolean;
+	unnotedSkills: string[];
+	account?: CardAccount;
+	/** Pending audit reasons, rendered by the `audit` section. */
+	audit?: string[];
+} & (
 	| { kind: "change"; step: NextStep; state: ChangeState }
 	| { kind: "list"; open: OpenChange[] }
 	| { kind: "pack-errors"; errors: PackError[] }

@@ -1,6 +1,7 @@
 // Typed git operations for the engine over the `GitExec` runner. Only the
 // documented "not found" exits map to values; every other failure throws GitError.
 
+import { resolve } from "node:path";
 import type { ProjectConfig } from "../config.ts";
 import { defaultGitExec, type GitExec } from "./git-exec.ts";
 
@@ -11,7 +12,7 @@ export interface Git {
 	diff(from: string, to: string, path: string): Promise<string>;
 	/** `git diff --stat <from>..<to> -- <path>`. */
 	diffStat(from: string, to: string, path: string): Promise<string>;
-	/** `git diff --name-only <from>..<to> -- <path>`, one path per entry. */
+	/** `git diff --name-only -z <from>..<to> -- <path>`, one unquoted path per entry. */
 	diffNames(from: string, to: string, path: string): Promise<string[]>;
 	/** `git diff --name-status -z -M <from>..<to>`; a rename carries `oldPath`. */
 	diffNameStatus(from: string, to: string): Promise<DiffEntry[]>;
@@ -49,6 +50,11 @@ export interface Git {
 	remoteRef(name: string): Promise<string | undefined>;
 	/** `git rev-list --first-parent --reverse <range>`, oldest first. */
 	firstParentList(range: string): Promise<string[]>;
+	/**
+	 * `git log --first-parent --reverse --format=%H%x00%s [--since=<since>] <after>..<commit>` (or `<commit>` without
+	 * `after`): first-parent commits with their subjects, oldest first.
+	 */
+	firstParentCommits(commit: string, o: { after?: string; since?: string }): Promise<{ sha: string; subject: string }[]>;
 	/** `git worktree add --detach <dir> <sha>`. */
 	worktreeAdd(dir: string, sha: string): Promise<void>;
 	/** `git worktree add -b <branch> <dir> <at>`. */
@@ -65,6 +71,10 @@ export interface Git {
 	pathExistsAt(sha: string, path: string): Promise<boolean>;
 	/** `git diff-tree --no-commit-id --name-only -r --root <commit>`; empty for an empty or a merge commit. */
 	changedPaths(commit: string): Promise<string[]>;
+	/** The files a commit brought to its first parent: `changedPaths`, or `git diff --name-only <commit>^1 <commit>` for a merge. */
+	commitPaths(commit: string): Promise<string[]>;
+	/** `git rev-parse --git-common-dir`, absolute: the directory shared by every worktree of the clone. */
+	commonDir(): Promise<string>;
 	/** `git rev-list --parents -n 1 <commit>` without the commit itself: its parents, none for a root commit. */
 	parents(commit: string): Promise<string[]>;
 	/** `git check-ignore -q <path>`. */
@@ -73,6 +83,8 @@ export interface Git {
 	aliases(): Promise<Record<string, string>>;
 	/** `git diff --numstat -z -M <from>..<to>`; a rename is one entry with the new path, a binary file `binary: true` with 0/0. */
 	diffNumstat(from: string, to: string): Promise<NumstatEntry[]>;
+	/** `git ls-tree -r --name-only -z <rev>`: every file path at `rev`. */
+	listTree(rev: string): Promise<string[]>;
 	/** `git show <rev>:<path>`; undefined when the path does not exist at `rev`. */
 	showFile(rev: string, path: string): Promise<string | undefined>;
 	/** `git branch -m -- <from> <to>`. */
@@ -174,6 +186,13 @@ function commitMessages(out: string | undefined): { sha: string; message: string
 /** Non-empty lines of a command's stdout. */
 const lines = (out: string | undefined): string[] => (out ?? "").split("\n").filter((l) => l !== "");
 
+/** `%H%x00%s` log lines: SHA and subject. */
+const shaSubjects = (out: string | undefined): { sha: string; subject: string }[] =>
+	lines(out).map((line) => {
+		const at = line.indexOf("\0");
+		return { sha: line.slice(0, at), subject: line.slice(at + 1) };
+	});
+
 /** `config -z --get-regexp` output: NUL-terminated entries of `<key>\n<value>`. */
 function parseAliases(out: string): Record<string, string> {
 	const entries = out
@@ -234,6 +253,15 @@ async function runMerge(run: Run, args: string[]): Promise<"ok" | "conflict"> {
 	throw new GitError(args, EXIT_MERGE_STOPPED, "merge stopped without unmerged paths");
 }
 
+/** NUL-delimited `-z` names: git does not quote non-ASCII or special characters in them. */
+const nulNames = (out: string | undefined): string[] => (out ?? "").split("\0").filter((p) => p !== "");
+
+const changedPaths = async (run: Run, commit: string): Promise<string[]> =>
+	nulNames(await run(["diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "--root", END_OF_OPTIONS, commit]));
+
+const parentsOf = async (run: Run, commit: string): Promise<string[]> =>
+	(await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1);
+
 export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 	const run = runner(root, exec);
 	return {
@@ -242,8 +270,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		isDirty: async () => (await text(run, ["status", "--porcelain"])) !== "",
 		diff: async (from, to, path) => (await run(["diff", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "",
 		diffStat: async (from, to, path) => (await run(["diff", "--stat", END_OF_OPTIONS, `${from}..${to}`, "--", path]))?.trimEnd() ?? "",
-		diffNames: async (from, to, path) =>
-			((await run(["diff", "--name-only", END_OF_OPTIONS, `${from}..${to}`, "--", path])) ?? "").split("\n").filter((l) => l !== ""),
+		diffNames: async (from, to, path) => nulNames(await run(["diff", "--name-only", "-z", END_OF_OPTIONS, `${from}..${to}`, "--", path])),
 		diffNameStatus: async (from, to) =>
 			parseNameStatus((await run(["diff", "--name-status", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
 		originHead: async () => {
@@ -282,6 +309,11 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		treeOf: (commit) => text(run, ["rev-parse", "--verify", END_OF_OPTIONS, `${commit}^{tree}`]),
 		remoteRef: async (name) => (await run(["rev-parse", "--verify", "-q", END_OF_OPTIONS, `refs/remotes/${name}`], EXIT_NOT_FOUND))?.trim(),
 		firstParentList: async (range) => lines(await run(["rev-list", "--first-parent", "--reverse", END_OF_OPTIONS, range])),
+		firstParentCommits: async (commit, o) => {
+			const since = o.since === undefined ? [] : [`--since=${o.since}`];
+			const range = o.after === undefined ? commit : `${o.after}..${commit}`;
+			return shaSubjects(await run(["log", "--first-parent", "--reverse", "--format=%H%x00%s", ...since, END_OF_OPTIONS, range]));
+		},
 		worktreeAdd: async (dir, sha) => {
 			await run(["worktree", "add", "--quiet", "--detach", END_OF_OPTIONS, dir, sha]);
 		},
@@ -300,11 +332,14 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		revList: async (range) => lines(await run(["rev-list", "--reverse", END_OF_OPTIONS, range])),
 		pathExistsAt: async (sha, path) =>
 			(await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}:${path}`], EXIT_NO_OBJECT)) !== undefined,
-		changedPaths: async (commit) =>
-			lines(await run(["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", END_OF_OPTIONS, commit])),
-		parents: async (commit) => (await text(run, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, commit])).split(" ").slice(1),
+		changedPaths: (commit) => changedPaths(run, commit),
+		commitPaths: async (commit) =>
+			(await parentsOf(run, commit)).length < 2 ? changedPaths(run, commit) : nulNames(await run(["diff", "--name-only", "-z", END_OF_OPTIONS, `${commit}^1`, commit])),
+		commonDir: async () => resolve(root, await text(run, ["rev-parse", "--git-common-dir"])),
+		parents: (commit) => parentsOf(run, commit),
 		isIgnored: async (path) => (await run(["check-ignore", "-q", "--", path], EXIT_NOT_IGNORED)) !== undefined,
 		diffNumstat: async (from, to) => parseNumstat((await run(["diff", "--numstat", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
+		listTree: async (rev) => ((await run(["ls-tree", "-r", "--name-only", "-z", END_OF_OPTIONS, rev])) ?? "").split("\0").filter((p) => p !== ""),
 		showFile: (rev, path) => run(["show", END_OF_OPTIONS, `${rev}:${path}`], EXIT_NO_OBJECT),
 		renameBranch: async (from, to) => {
 			await run(["branch", "-m", "--", from, to]);

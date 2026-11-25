@@ -16,13 +16,17 @@ import "./evidence/card.ts";
 // The subagents card section.
 import "./subagents/card.ts";
 import "./subagents/doctor.ts";
+// The audit suggestions card section.
+import "./audit/card.ts";
 // Registers the `subagents` pack sub-schema.
 import "./subagents/policy.ts";
+import { registerDocReaders } from "./docs/readers.ts";
 import { type CommandEnv } from "./commands/deps.ts";
 import { messageOf } from "./core/messages.ts";
 import {
 	type Reply,
 	accountReply,
+	auditReply,
 	doctorReply,
 	initReply,
 	migrateReply,
@@ -30,6 +34,7 @@ import {
 	skillsReply,
 	validateReply,
 } from "./commands/subcommands.ts";
+import type { EventsLike } from "./subagents/launch.ts";
 import { setRedOnBaseEnv } from "./evidence/red-on-base.ts";
 import { verifyEnv } from "./evidence/verify-env.ts";
 import { registerStartedUnitWorkInProgress } from "./evidence/wip.ts";
@@ -42,9 +47,9 @@ import { registerChangeTools } from "./tools/change-tools.ts";
 import { registerSpecValidate } from "./tools/spec-validate.ts";
 import { readVersion } from "./version.ts";
 
-const USAGE = "Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback>]";
+const USAGE = "Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback> | audit [#T]]";
 
-function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> | Reply {
+function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv, events: EventsLike): Promise<Reply> | Reply {
 	switch (sub) {
 		case "":
 			return { customType: "livespec-version", content: `pi-livespec ${readVersion()}` };
@@ -62,15 +67,17 @@ function route(sub: string, rest: string, ctx: ExtensionCommandContext, env: Com
 			return accountReply(rest, ctx);
 		case "skills":
 			return skillsReply(rest, ctx, env);
+		case "audit":
+			return auditReply(rest, ctx, events);
 		default:
 			return { customType: "livespec-usage", content: USAGE };
 	}
 }
 
 /** A subcommand that throws still answers, with the reason, instead of failing inside pi. */
-async function reply(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<Reply> {
+async function reply(sub: string, rest: string, ctx: ExtensionCommandContext, env: CommandEnv, events: EventsLike): Promise<Reply> {
 	try {
-		return await route(sub, rest, ctx, env);
+		return await route(sub, rest, ctx, env, events);
 	} catch (error) {
 		return { customType: "livespec-error", content: `/livespec ${sub} failed: ${messageOf(error)}`, error: `livespec ${sub} failed` };
 	}
@@ -101,11 +108,17 @@ function deliver(pi: ExtensionAPI, ctx: ExtensionCommandContext, out: Reply): vo
 	if (out.error !== undefined) safeNotify(ctx, out.error);
 }
 
+/** pi's event bus, as the dispatch watcher reads it; a host without one gets a bus that never fires. */
+function eventsOf(pi: ExtensionAPI): EventsLike {
+	const events = (pi as unknown as { events?: EventsLike }).events;
+	return events ?? { on: () => () => undefined };
+}
+
 /** Parse, route and deliver inside one boundary, so the command never rejects into pi. */
 async function handleCommand(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, env: CommandEnv): Promise<void> {
 	try {
 		const { sub, rest } = splitArgs(args);
-		deliver(pi, ctx, await reply(sub, rest, ctx, env));
+		deliver(pi, ctx, await reply(sub, rest, ctx, env, eventsOf(pi)));
 	} catch (error) {
 		safeNotify(ctx, `livespec failed: ${messageOf(error)}`);
 	}
@@ -116,8 +129,9 @@ export default function extension(pi: ExtensionAPI, deps: Partial<SessionDeps> =
 	const env: SessionDeps = { ...defaultSessionDeps(), ...deps };
 	// First: a blocked call must reach no other livespec `tool_call` handler.
 	registerGuardHook(pi);
+	registerDocReaders();
 	pi.registerCommand("livespec", {
-		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, account, skills",
+		description: "Show the pi-livespec version; subcommands: validate, migrate-openspec, init, doctor, next, account, skills, audit",
 		handler: (args, ctx) => handleCommand(pi, args, ctx, env),
 	});
 	registerSpecValidate(pi);

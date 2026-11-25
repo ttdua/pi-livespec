@@ -136,7 +136,7 @@ describe("review-clean", () => {
 	const check = async (marked: MarkedComment[], head: string) => {
 		const fn = getCheck("review-clean");
 		if (!fn) throw new Error("review-clean is not registered");
-		return fn({ root: "/", change: parseChange(FIXTURE_BODY), marked, git: { diff: async () => "", head: async () => head } });
+		return fn({ root: "/", change: parseChange(FIXTURE_BODY), marked, git: { diff: async () => "", diffNameStatus: async () => [], head: async () => head, showFile: async () => undefined, listTree: async () => [] } });
 	};
 
 	it("Clean round passes the gate", async () => {

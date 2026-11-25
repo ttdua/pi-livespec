@@ -16,6 +16,11 @@ export function registerPacketSource(role: Role, provider: SourceProvider): void
 	extra.set(role, [...(extra.get(role) ?? []), provider]);
 }
 
+/** Internal: appends `provider` unless this role already holds it (a reset forgets it). */
+export function registerPacketSourceOnce(role: Role, provider: SourceProvider): void {
+	if (!(extra.get(role) ?? []).includes(provider)) registerPacketSource(role, provider);
+}
+
 export function resetPacketSourcesForTests(): void {
 	extra.clear();
 }
@@ -24,8 +29,8 @@ const IMPLEMENTER: Provider[] = [
 	coveredRequirements, constraints, answeredQuestions(false), dispatchAnswers(false), planGateNotes, unitFindings,
 	dependencyRecords, referencedIssues, reviewComments(true),
 ];
-const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, allReceipts, changeIssue("body"), answeredQuestions(true), dispatchAnswers(true), decisionRecords, reviewComments(false), pullRequestAndChecks];
-const REVIEW_BASE: Provider[] = [changeIssue("header"), initiativeIssue, declaredSpecs, closingSummaries];
+const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, constraints, allReceipts, changeIssue("body"), answeredQuestions(true), dispatchAnswers(true), decisionRecords, reviewComments(false), pullRequestAndChecks];
+const REVIEW_BASE: Provider[] = [changeIssue("header"), initiativeIssue, declaredSpecs, constraints, closingSummaries];
 
 function manifest(role: Role, subject: ReviewSubject | undefined): Provider[] {
 	if (role === "implementer") return IMPLEMENTER;
@@ -51,7 +56,7 @@ async function runProvider(p: { name: string; run(cx: Cx): Promise<Placed[]> }, 
 function registered(role: Role): Provider[] {
 	return (extra.get(role) ?? []).map((fn, i) => ({
 		name: fn.name || `registered-${role}-${i + 1}`,
-		run: async (cx: Cx) => (await fn(cx.ctx)).map((source): Placed => ({ source, place: "inline" })),
+		run: async (cx: Cx) => (await fn(cx.ctx, cx.target)).map((source): Placed => ({ source, place: "inline" })),
 	}));
 }
 

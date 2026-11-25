@@ -29,7 +29,7 @@ import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
 const TOOL = "change_ship";
 const REMOTE = "origin";
-const NO_FACTS = { specsStat: "", specsFiles: [] };
+const NO_FACTS = { specsStat: "", specsFiles: [], specsDiff: "" };
 
 type Ship = { w: WriteContext; state: ChangeState; context: ShipContext; branch: string };
 

@@ -36,6 +36,7 @@ const NO_QUESTION = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carr
 const FACTS: ReviewFacts = {
 	specsStat: " specs/rate-limit/spec.md | 12 ++++++++++--\n 1 file changed, 10 insertions(+), 2 deletions(-)",
 	specsFiles: ["specs/rate-limit/spec.md"],
+	specsDiff: "",
 	issueUrl: "https://forge.example/o/r/issues/7",
 };
 
@@ -202,14 +203,14 @@ describe("gatePayload", () => {
 
 	test("define payload lists full spec paths when the stat truncates them", () => {
 		const long = "specs/a-very-long-capability-name-that-git-truncates/spec.md";
-		const facts = { specsStat: " .../spec.md | 3 +++\n 1 file changed, 3 insertions(+)", specsFiles: [long] };
+		const facts = { specsStat: " .../spec.md | 3 +++\n 1 file changed, 3 insertions(+)", specsFiles: [long], specsDiff: "" };
 		const summary = gatePayload(ready("define"), pack, "define", facts).summary;
 		expect(summary).toContain(`Changed spec files:\n- ${long}`);
 	});
 
 	test("long proposal is cut to its first lines", () => {
 		const long = NO_QUESTION.replace("Limit each client IP.", ["l1", "l2", "l3", "l4", "l5", "l6", "l7"].join("\n"));
-		const summary = gatePayload(ready("define", {}, long), pack, "define", { specsStat: "", specsFiles: [] }).summary;
+		const summary = gatePayload(ready("define", {}, long), pack, "define", { specsStat: "", specsFiles: [], specsDiff: "" }).summary;
 		expect(summary).toContain("Proposal:\nl1\nl2\nl3\nl4\nl5\n…\n\nSpec diff");
 	});
 

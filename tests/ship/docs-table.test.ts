@@ -9,6 +9,7 @@ const facts = (o: Partial<DurableFacts> = {}): DurableFacts => ({
 	capabilities: { new: [], modified: ["rate-limit"] },
 	specs: [],
 	rows: [],
+	behavior: [],
 	...o,
 });
 

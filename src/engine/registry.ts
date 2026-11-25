@@ -3,6 +3,7 @@ import type { Change } from "../core/change.ts";
 import type { Result } from "../core/result.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { ShipContext } from "../ship/context.ts";
+import type { DiffEntry } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import type { CheckResult } from "./state-types.ts";
 
@@ -11,7 +12,13 @@ export type SubSchema = {
 	personas?(value: unknown): string[];
 };
 
-export type CheckGit = { diff(from: string, to: string, path: string): Promise<string>; head(): Promise<string> };
+export type CheckGit = {
+	diff(from: string, to: string, path: string): Promise<string>;
+	diffNameStatus(from: string, to: string): Promise<DiffEntry[]>;
+	head(): Promise<string>;
+	showFile(rev: string, path: string): Promise<string | undefined>;
+	listTree(rev: string): Promise<string[]>;
+};
 /** `marked` are the own marked comments of the change issue, in comment order. */
 /** `phase` is the active phase id; `ship` is the ship context, built in `ship` only; `limits` is the pack's `limits`. */
 export type CheckContext = {

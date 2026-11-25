@@ -85,9 +85,9 @@ describe("livespec extension", () => {
 		expect(sendMessage).toHaveBeenCalledTimes(1);
 		const content = (sendMessage.mock.calls[0]![0] as { content: string }).content;
 		expect(content).toBe(
-			"Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback>]",
+			"Usage: /livespec [validate | migrate-openspec | init | doctor | next | account [name] | skills <status|update|pin <sha>|unpin|rollback> | audit [#T]]",
 		);
-		for (const sub of ["validate", "migrate-openspec", "init", "doctor", "next", "account [name]", "skills"]) expect(content).toContain(sub);
+		for (const sub of ["validate", "migrate-openspec", "init", "doctor", "next", "account [name]", "skills", "audit"]) expect(content).toContain(sub);
 		expect(notify).not.toHaveBeenCalled();
 		expect(snapshot(root)).toEqual(before);
 	});

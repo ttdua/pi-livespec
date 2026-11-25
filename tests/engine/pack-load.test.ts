@@ -38,7 +38,7 @@ function phase(r: LoadedPack, id: string) {
 beforeEach(() => {
 	resetRegistryForTests();
 	registerBuiltinRules();
-	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits"]) {
+	for (const name of ["spec-format", "units-format", "done-maps-scenarios", "capabilities-match-diff", "unit-classification", "verify-red-on-base", "review-clean", "durable-docs", "size-limits", "product-impact", "glossary-terms", "behavior-change"]) {
 		registerCheck(name, async () => []);
 	}
 });
@@ -79,13 +79,15 @@ describe("default pack", () => {
 		expect(define.requires).toEqual(["shape"]);
 		expect(define.skills.required).toEqual(["spec-driven-development"]);
 		expect(define.outputs).toEqual(["issue#Capabilities", "issue#Proposal", "specs-diff"]);
-		expect(define.checks).toEqual(["spec-format", "capabilities-match-diff"]);
+		expect(define.checks).toEqual(["spec-format", "capabilities-match-diff", "product-impact", "glossary-terms", "behavior-change"]);
 		expect(define.gate).toBe("human");
 		expect(phase(r, "build").per).toBe("unit");
 		expect(phase(r, "plan").checks).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base", "size-limits"]);
 		expect((okPack(r).decisions.difficulty as { mode: string }).mode).toBe("rule");
 		expect((okPack(r).decisions.progress as { mode: string }).mode).toBe("rule");
-		expect(phase(r, "review").checks).toEqual(["review-clean"]);
+		expect(phase(r, "review").checks).toEqual(["product-impact", "glossary-terms", "behavior-change", "review-clean"]);
+		expect((okPack(r).decisions["behavior-change"] as { mode: string }).mode).toBe("rule");
+		expect((okPack(r).decisions["drift-severity"] as { mode: string }).mode).toBe("rule");
 		expect(phase(r, "review").gate).toBe("self");
 		expect((okPack(r).decisions["finding-scope"] as { mode: string }).mode).toBe("rule");
 		expect(phase(r, "ship").outputs).toEqual(["issue#Durable docs"]);

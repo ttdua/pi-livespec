@@ -21,6 +21,8 @@ export type Finding = {
 	scope: "unit" | "in-change" | "out-of-scope" | "needs-decision";
 };
 
+export type ScoutVerdict = { key: string; verdict: "confirmed" | "refuted"; reason: string };
+
 export type SubagentResult = {
 	status: "DONE" | "DONE_WITH_CONCERNS" | "BLOCKED" | "NEEDS_CONTEXT";
 	notes: string;
@@ -31,6 +33,7 @@ export type SubagentResult = {
 	commits?: string[];
 	findings?: Finding[];
 	verdict?: "confirmed" | "refuted";
+	verdicts?: ScoutVerdict[];
 };
 
 /** The subset of JSON Schema the executor accepts. */
@@ -69,6 +72,13 @@ export const FINDING_SCHEMA: JsonSchema = {
 	additionalProperties: false,
 };
 
+const VERDICT_SCHEMA: JsonSchema = {
+	type: "object",
+	properties: { key: STRING, verdict: { type: "string", enum: ["confirmed", "refuted"] }, reason: STRING },
+	required: ["key", "verdict", "reason"],
+	additionalProperties: false,
+};
+
 const BASE_PROPERTIES: Record<string, JsonSchema> = {
 	status: { type: "string", enum: ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"] },
 	notes: STRING,
@@ -91,7 +101,7 @@ export function resultSchema(role: Role): JsonSchema {
 	if (role === "reviewer") {
 		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA } }, [...BASE_REQUIRED, "findings"]);
 	}
-	return object(BASE_PROPERTIES, BASE_REQUIRED);
+	return object({ ...BASE_PROPERTIES, verdicts: { type: "array", items: VERDICT_SCHEMA } }, BASE_REQUIRED);
 }
 
 function object(properties: Record<string, JsonSchema>, required: string[]): JsonSchema {

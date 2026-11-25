@@ -7,6 +7,8 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import { type ShipContext, shipContext } from "../../src/ship/context.ts";
 import { durableDocsRule } from "../../src/ship/durable-docs.ts";
+import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
+import { parseMarked } from "../../src/forge/markers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { stateFor } from "../helpers/change-state.ts";
 import { fixture, sh, upstreamCommit } from "./repo.ts";
@@ -195,5 +197,27 @@ describe("shipContext fails closed per fact", () => {
 		expect(out.reviewed.ok).toBe(false);
 		expect(out.gatesAtHead).toEqual({ review: false, ship: false });
 		expect(out.facts.files).toEqual(["src/a.ts"]);
+	});
+});
+
+describe("shipContext behavior records", () => {
+	const human = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
+		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
+		const m = parseMarked(decisionComment(r));
+		if (m === undefined) throw new Error("not marked");
+		return { ...m, commentId: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
+	};
+
+	test("Newer changed record wins (records)", async () => {
+		const f = await fixture();
+		const base = sh(f.work, "rev-parse", "HEAD");
+		await writeIn(f.work, "specs/rate-limit/spec.md", "---\npaths:\n  - src/limit/**\n---\n# rate-limit\n\n## Purpose\nx\n");
+		await writeIn(f.work, "src/limit/cap.ts", "a\n");
+		commitAll(f.work, "c3");
+		const body = `Base: ${base}\nBranch: feature\nPR: #41\nCapabilities: new [], modified []\n\n## Durable docs\n`;
+		const marked = [human("unchanged"), human("changed", { facts_hash: "h" })];
+		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body }));
+		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: ["src/limit/cap.ts"], outcome: "changed" }]);
+		expect(durableDocsRule(out.facts).confirm.some((c) => c.startsWith("rate-limit:") && c.includes("src/limit/cap.ts"))).toBe(true);
 	});
 });

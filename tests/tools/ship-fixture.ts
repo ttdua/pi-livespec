@@ -15,7 +15,7 @@ export const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [fo
 const BODY = [
 	"Depends: —",
 	"Capabilities: new [], modified []",
-	"Product impact: —",
+	"Product impact: none — test fixture",
 	"",
 	"## Proposal",
 	"Limit each client IP. Closes #12.",

@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pendingReasons } from "../audit/suggest.ts";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
 import { runChecks } from "../engine/checks.ts";
 import { createGit, type Git } from "../engine/git.ts";
@@ -27,7 +28,7 @@ import type { Session } from "./session.ts";
 const CONSTRAINTS_FILE = ["specs", "constraints.md"];
 const FORGE_NOT_CONNECTED = "the forge is not connected";
 
-type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills" | "account">;
+type Common = Pick<CardInput, "first" | "constraintsTemplate" | "unnotedSkills" | "account" | "audit">;
 
 export type RefreshFacts = (session: Session, state: ChangeState) => Promise<Partial<Pick<ChangeState, "deps" | "parked">>>;
 export type ListFacts = (session: Session, open: OpenChange[]) => Promise<OpenChange[]>;
@@ -55,6 +56,12 @@ export function cardAccount(session: Session): CardAccount | undefined {
 	const { accountNotice: line, accountBlock: blocked } = session;
 	if (line === undefined && blocked === undefined) return undefined;
 	return { ...(line !== undefined ? { line } : {}), ...(blocked !== undefined ? { blocked } : {}) };
+}
+
+/** The pending audit reasons of the session, absent when none is pending. */
+export function cardAudit(session: Session): Pick<CardInput, "audit"> {
+	const reasons = pendingReasons(session.auditState);
+	return reasons.length === 0 ? {} : { audit: reasons };
 }
 
 /** Whether `specs/constraints.md` still begins with the init template marker. A missing file is not a template. */
@@ -153,7 +160,7 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 
 export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {
 	const { session, first } = d;
-	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session) };
+	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session), ...cardAudit(session) };
 	if (!session.pack.ok) return { ...common, kind: "pack-errors", errors: session.pack.errors };
 	const pack = session.pack.pack;
 	const branch = await session.git.branch();

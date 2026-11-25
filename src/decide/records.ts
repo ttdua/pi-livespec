@@ -24,6 +24,8 @@ export type DecisionRecord = {
 	signature?: Signature;
 	/** The attempt number of a `progress` record; kept when `facts` becomes `facts_hash`. */
 	attempt?: number;
+	/** The files of a `behavior-change` record; kept when `facts` becomes `facts_hash`. */
+	files?: string[];
 };
 
 const MAX_FACTS_YAML = 2000;
@@ -34,6 +36,7 @@ const FENCE_CLOSE = /^```\s*$/;
 const isString = (v: unknown): v is string => typeof v === "string";
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const has = (o: object, key: string): boolean => Object.hasOwn(o, key);
+const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString);
 const isSignature = (v: unknown): v is Signature =>
 	isObject(v) && isString(v.hash) && Array.isArray(v.tests) && v.tests.every(isString);
 
@@ -45,7 +48,8 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	if (has(r, "proposal") && typeof r.proposal !== "boolean") return false;
 	if (has(r, "attempt") && !(typeof r.attempt === "number" && Number.isInteger(r.attempt))) return false;
 	if (has(r, "signature") && !isSignature(r.signature)) return false;
-	if (has(r, "agent_additions") && !(Array.isArray(r.agent_additions) && r.agent_additions.every(isString))) return false;
+	if (has(r, "files") && !isStringList(r.files)) return false;
+	if (has(r, "agent_additions") && !isStringList(r.agent_additions)) return false;
 	if (has(r, "overridden_by")) {
 		const o = r.overridden_by;
 		if (!isObject(o) || !isString(o.by) || !isString(o.at) || !has(o, "from")) return false;
@@ -62,7 +66,7 @@ function isRecord(v: unknown): v is DecisionRecord {
 
 /**
  * Replaces `facts` with `facts_hash` (sha256 hex of its yaml) when that yaml exceeds 2,000 characters.
- * Top-level fields such as `signature` and `attempt` are kept.
+ * Top-level fields such as `signature`, `attempt` and `files` are kept.
  */
 function compactFacts(r: DecisionRecord): DecisionRecord {
 	if (r.facts === undefined) return r;
@@ -75,6 +79,11 @@ function compactFacts(r: DecisionRecord): DecisionRecord {
 /** The `decision` marked comment body, id `<point>.<subject>`. */
 export function decisionComment(r: DecisionRecord): string {
 	return writeMarked("decision", `${r.point}.${r.subject}`, compactFacts(r));
+}
+
+/** Every valid `decision` record, in comment order; malformed data is skipped. */
+export function validDecisions(marked: MarkedComment[]): DecisionRecord[] {
+	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [m.data] : []));
 }
 
 /** The latest valid `decision` record per id, keyed in first-seen order. */

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import type { ProjectConfig } from "../../src/config.ts";
 import { createGit, diffFilesOf, type Git, GitError, integrationBranch } from "../../src/engine/git.ts";
@@ -148,6 +149,14 @@ describe("diff over specs", () => {
 		expect(await git.diffNames("HEAD", "HEAD", "specs/")).toEqual([]);
 		expect(await git.diffStat("HEAD", "HEAD", "specs/")).toBe("");
 		await expect(git.diffNames("0".repeat(40), "HEAD", "specs/")).rejects.toBeInstanceOf(GitError);
+	});
+
+	test("diffNames keeps a non-ASCII name with a space unquoted", async () => {
+		const { root, git } = await committedRepo();
+		const base = await git.head();
+		await writeIn(root, "specs/naïve cap/spec.md", "# x\n");
+		commitAll(root, "unicode");
+		expect(await git.diffNames(base, "HEAD", "specs/")).toEqual(["specs/naïve cap/spec.md"]);
 	});
 });
 
@@ -486,5 +495,111 @@ describe("park ports", () => {
 		await expect(g.commit("empty")).rejects.toBeInstanceOf(GitError);
 		const head = await g.commit("empty", { allowEmpty: true });
 		expect(await g.parents(head)).toEqual([before]);
+	});
+});
+
+describe("listTree", () => {
+	test("lists every file path at a revision", async () => {
+		const root = await makeRepo();
+		await writeIn(root, "a.txt", "1\n");
+		await writeIn(root, "specs/x/spec.md", "2\n");
+		await writeIn(root, "we ird/é.md", "3\n");
+		commitAll(root);
+		expect((await createGit(root).listTree("HEAD")).sort()).toEqual(["a.txt", "specs/x/spec.md", "we ird/é.md"]);
+	});
+});
+
+describe("firstParentCommits", () => {
+	const DAY_S = 86_400;
+	const commitAt = (root: string, message: string, daysAgo?: number): string => {
+		const env = { ...process.env };
+		if (daysAgo !== undefined) {
+			const at = `${Math.floor(Date.now() / 1000) - daysAgo * DAY_S} +0000`;
+			env.GIT_COMMITTER_DATE = at;
+			env.GIT_AUTHOR_DATE = at;
+		}
+		execFileSync("git", ["commit", "-q", "--allow-empty", "-m", message], { cwd: root, env });
+		return git(root, "rev-parse", "HEAD");
+	};
+
+	test("after a commit: first-parent commits only, oldest first, with subjects", async () => {
+		const { root } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		const start = git(root, "rev-parse", "HEAD");
+		const a = commitAt(root, "feat: a (#1)");
+		git(root, "switch", "-q", "-c", "side");
+		const side = commitAt(root, "side only");
+		git(root, "switch", "-q", "main");
+		git(root, "merge", "-q", "--no-ff", "-m", "Merge pull request #2 from x/side", "side");
+		const merge = git(root, "rev-parse", "HEAD");
+		const b = commitAt(root, "fix: b (#3)");
+		const out = await createGit(root).firstParentCommits(merge, { after: start });
+		expect(out).toEqual([
+			{ sha: a, subject: "feat: a (#1)" },
+			{ sha: merge, subject: "Merge pull request #2 from x/side" },
+		]);
+		expect(out.map((c) => c.sha)).not.toContain(side);
+		expect(out.map((c) => c.sha)).not.toContain(b);
+	});
+
+	test("since: a commit 31 days old is excluded, one 29 days old included", async () => {
+		const root = await makeRepo();
+		commitAt(root, "old", 31);
+		const recent = commitAt(root, "recent", 29);
+		expect(await createGit(root).firstParentCommits("HEAD", { since: "30.days" })).toEqual([{ sha: recent, subject: "recent" }]);
+	});
+
+	test("nothing after the commit itself", async () => {
+		const { root } = await committedRepo();
+		const head = git(root, "rev-parse", "HEAD");
+		expect(await createGit(root).firstParentCommits(head, { after: head })).toEqual([]);
+	});
+});
+
+describe("commitPaths", () => {
+	test("a plain commit lists its files; a merge lists what it brought to its first parent", async () => {
+		const { root, git: g } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		await writeIn(root, "a.txt", "a\n");
+		commitAll(root, "a");
+		expect(await g.commitPaths("HEAD")).toEqual(["a.txt"]);
+		git(root, "switch", "-q", "-c", "side");
+		await writeIn(root, "src/limit/cap.ts", "x\n");
+		commitAll(root, "cap");
+		git(root, "switch", "-q", "main");
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "b");
+		git(root, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/cap.ts"]);
+	});
+
+	test("names with non-ASCII characters and spaces are returned unquoted, for a plain commit and a merge", async () => {
+		const { root, git: g } = await committedRepo();
+		git(root, "branch", "-M", "main");
+		await writeIn(root, "src/limit/é.ts", "x\n");
+		await writeIn(root, "src/limit/a b.ts", "x\n");
+		commitAll(root, "odd names");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/a b.ts", "src/limit/é.ts"]);
+		expect(await g.changedPaths("HEAD")).toEqual(["src/limit/a b.ts", "src/limit/é.ts"]);
+		git(root, "switch", "-q", "-c", "side");
+		await writeIn(root, "src/limit/ü x.ts", "x\n");
+		commitAll(root, "side");
+		git(root, "switch", "-q", "main");
+		await writeIn(root, "b.txt", "b\n");
+		commitAll(root, "b");
+		git(root, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+		expect(await g.commitPaths("HEAD")).toEqual(["src/limit/ü x.ts"]);
+	});
+});
+
+describe("commonDir", () => {
+	test("absolute, and the same from a linked worktree", async () => {
+		const { root, git: g } = await committedRepo();
+		const common = await g.commonDir();
+		expect(isAbsolute(common)).toBe(true);
+		expect(realpathSync(common)).toBe(realpathSync(join(root, ".git")));
+		const linked = join(await makeRepo(), "linked");
+		git(root, "worktree", "add", "-q", "--detach", linked);
+		expect(realpathSync(await createGit(linked).commonDir())).toBe(realpathSync(common));
 	});
 });

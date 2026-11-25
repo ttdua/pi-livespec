@@ -66,6 +66,8 @@ export interface DecideSnapshot {
 	digest?: string;
 	/** Set by `unit_amend`: the answer becomes effective only when the amendment is approved. */
 	proposal?: true;
+	/** Point `behavior-change`: the item's files, copied to the record's top-level `files`. */
+	files?: string[];
 }
 
 export type RequestSnapshot = GateSnapshot | AmendSnapshot | QuestionSnapshot | StuckSnapshot | DecideSnapshot;

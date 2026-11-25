@@ -44,4 +44,4 @@ export type Packet = {
 
 export type PacketResult = { ok: true; packet: Packet } | { ok: false; message: string };
 
-export type SourceProvider = (ctx: PacketContext) => Promise<PacketSource[]>;
+export type SourceProvider = (ctx: PacketContext, target?: Target) => Promise<PacketSource[]>;

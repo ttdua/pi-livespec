@@ -8,6 +8,7 @@ const facts = (o: Partial<DurableFacts>): DurableFacts => ({
 	capabilities: { new: [], modified: [] },
 	specs: [],
 	rows: [],
+	behavior: [],
 	...o,
 });
 
@@ -136,5 +137,37 @@ describe("durable-docs check and payload", () => {
 		expect(text).toContain("rate-limit");
 		expect(text).toContain("not needed — refactor");
 		expect(text).toContain("specs/decisions/0007-cap.md");
+	});
+});
+
+describe("durableDocsRule behavior record", () => {
+	const ROW = { file: "specs/rate-limit/spec.md", status: "not needed — refactor" };
+	const CAP = "src/limit/cap.ts";
+	const WIN = "src/limit/window.ts";
+
+	test("Behavior answered earlier", () => {
+		const f = facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }] });
+		const r = durableDocsRule(f);
+		expect(r.confirm.some((c) => c.startsWith("rate-limit:"))).toBe(false);
+		const text = confirmationSection({ ship: { durableFacts: f } } as never) ?? "";
+		expect(text).toContain("not needed — refactor");
+		expect(text).not.toContain("rate-limit: confirm");
+	});
+
+	test("Record misses a file", () => {
+		const r = durableDocsRule(facts({ files: [CAP, WIN], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }] }));
+		expect(r.confirm).toHaveLength(1);
+		expect(r.confirm[0]).toContain(CAP);
+		expect(r.confirm[0]).toContain(WIN);
+	});
+
+	test("Newer changed record wins", () => {
+		const r = durableDocsRule(facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP], outcome: "changed" }] }));
+		expect(r.confirm.some((c) => c.startsWith("rate-limit:"))).toBe(true);
+	});
+
+	test("Superset record", () => {
+		const r = durableDocsRule(facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP, WIN], outcome: "unchanged" }] }));
+		expect(r.confirm).toEqual([]);
 	});
 });

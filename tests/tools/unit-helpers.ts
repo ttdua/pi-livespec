@@ -48,7 +48,7 @@ export function changeBody(units: UnitSpec[]): string {
 	return [
 		"Depends: —",
 		"Capabilities: new [], modified [rate-limit]",
-		"Product impact: —",
+		"Product impact: none — test fixture",
 		"",
 		"## Proposal",
 		"Limit each client IP.",
