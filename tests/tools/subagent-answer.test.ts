@@ -18,7 +18,7 @@ type H = Awaited<ReturnType<typeof subagentHarness>>;
 const required = (h: H): string[] => footerIds(h.fake.spawned.at(-1)?.prompt ?? "");
 
 async function asked(question = "Which config file?") {
-	const h = await subagentHarness({ executor: { records: [{ pendingQuestion: { text: question } }] } });
+	const h = await subagentHarness({ executor: { records: [{ pendingQuestion: question }] } });
 	const out = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 	return { h, out };
 }
@@ -81,7 +81,7 @@ describe("questions from a child", () => {
 	});
 
 	test("the child's own answer does not make its packet stale at unit_finish", async () => {
-		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: { text: "Which config file?" } }] } });
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which config file?" }] } });
 		expect((await h.start("U1")).isError).toBeFalsy();
 		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 		await h.commit({ "src/u1.ts": "x\n" });
