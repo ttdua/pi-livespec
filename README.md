@@ -1,5 +1,7 @@
 # pi-livespec
 
+**English** | [Tiếng Việt](README.vi.md)
+
 A [pi](https://github.com/earendil-works/pi) extension that keeps a coding agent on a spec-driven workflow it cannot skip. Each change lives on a forge issue (GitHub or Gitea), the living spec lives in your repository under `specs/`, and every phase ends at a gate that only a human, or a passing check, can open.
 
 > **Status: pre-release.** Every roadmap spec up to LS-10 is built. v0.1 is being dogfooded ([LS-11](https://github.com/ttdua/pi-livespec/issues/11)); until it is tagged, install from `main`.
@@ -557,7 +559,7 @@ bun run test
 bun run typecheck
 ```
 
-Repository content is in English.
+Repository content is in English. `README.vi.md` is a Vietnamese translation of this README: update it in the same pull request when you change this file.
 
 ## License
 
