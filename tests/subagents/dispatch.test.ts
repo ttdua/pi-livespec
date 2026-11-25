@@ -338,7 +338,7 @@ describe("runDispatch", () => {
 	});
 
 	test("ask posts a QUESTION record with the agent id", async () => {
-		const fake = fakeExecutor({ records: [{ pendingQuestion: { text: "Which config file?" } }] });
+		const fake = fakeExecutor({ records: [{ pendingQuestion: "Which config file?" }] });
 		const { d, posted } = deps(fake);
 		const out = await runDispatch(d, request());
 		expect(out).toEqual({ kind: "question", id: "agent-1", text: "Which config file?" });

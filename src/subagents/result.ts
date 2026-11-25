@@ -72,7 +72,7 @@ function statusDecision(result: SubagentResult, history: DispatchHistory): Resul
 
 /** Decides what the parent does with a settled run; reads nothing but its arguments. */
 export function interpret(record: RecordLike, packet: Packet, role: Role, history: DispatchHistory): ResultDecision {
-	if (record.pendingQuestion !== undefined) return { kind: "question", text: record.pendingQuestion.text };
+	if (record.pendingQuestion !== undefined) return { kind: "question", text: record.pendingQuestion };
 	const missing = missingReason(record, role);
 	if (missing !== undefined) return retryOrBlock(missing, history);
 	const result = record.structuredResult as SubagentResult;

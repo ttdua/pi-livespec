@@ -26,7 +26,8 @@ export type RecordLike = {
 	status: string;
 	result?: string;
 	error?: string;
-	pendingQuestion?: { text: string };
+	/** The question the child ended its turn with (`ask_parent`); the executor reports it as plain text. */
+	pendingQuestion?: string;
 	structuredResult?: unknown;
 	structuredResultError?: "missing" | "invalid";
 };

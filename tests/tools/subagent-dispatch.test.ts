@@ -60,7 +60,7 @@ describe("cancelling a dispatch or an answer", () => {
 	});
 
 	test("subagent_answer passes its signal to wait and aborts the child when cancelled", async () => {
-		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: { text: "Which?" } }] } });
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
 		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 		const signals: (AbortSignal | undefined)[] = [];
 		const cancel = new AbortController();
