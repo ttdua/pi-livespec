@@ -77,6 +77,7 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 Every decision of a change SHALL be recorded as a `decision` comment with id `<point>.<subject>` and these YAML fields:
 - `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`;
 - `facts`, or `facts_hash` when the facts' YAML exceeds 2,000 characters;
+- for point `behavior-change`, `files`: the item's files, kept when `facts` becomes `facts_hash`;
 - `agent_additions`;
 - `overridden_by`.
 
@@ -97,6 +98,10 @@ The latest record for an id SHALL win, except that a record with `proposal: true
 #### Scenario: Proposal record is not current
 - **WHEN** `difficulty.U1` has a rule record `low` for U1's digest followed by a human record `high` with `proposal: true` for the same digest
 - **THEN** the current `difficulty` decision of U1 is the rule record `low`
+
+#### Scenario: Behavior files kept with hashed facts
+- **WHEN** a `behavior-change` record's facts serialize to more than 2,000 characters of YAML
+- **THEN** the record holds `facts_hash`, no `facts`, and the full `files` list
 
 ### Requirement: Small-fix decision block
 The system SHALL define the small-fix pull request body format for decision records: a block whose first line is `<!-- livespec:decision:<point> -->`, followed by one fenced `yaml` block with the decision record fields. It SHALL provide a formatter and a parser that round-trip the block and ignore the rest of the body.
