@@ -13,10 +13,10 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Create `src/interaction/dialog/keys.ts` mapping input to actions through the injected `KeybindingsManager` (`tui.select.*`, `tui.input.submit`, `tui.input.newLine`) plus `1`–`9`, `n`, `Tab`/`Shift+Tab`, `←`/`→` on unit rows and `e` for tags; editor mode routes text to the field
-- [ ] 2.2 Create `src/interaction/dialog/view.ts`: pure `renderDialog(model, state, size, theme, editorLines?)` with the agreed layout (tabs, facts, briefing under its author heading, numbered entries with descriptions, note line, key hints), scrolling body above fixed entries, the 60/40-column rules and status symbols that do not rely on colour
-- [ ] 2.3 Create `src/interaction/dialog/host.ts`: the `Component` that owns the state, wraps pi-tui `Editor` behind a small text-field interface for notes and typed answers, and resolves `done` with the flow result or an explicit cancelled marker
-- [ ] 2.4 Tests in `tests/interaction/dialog/keys.test.ts`, `view.test.ts` (fixed-width snapshots at 80, 50 and 35 columns, long-payload scrolling, CJK and emoji width, escape sequences absent) and `host.test.ts` (scripted key sequences to results)
+- [x] 2.1 Create `src/interaction/dialog/keys.ts` mapping input to actions through the injected `KeybindingsManager` (`tui.select.*`, `tui.input.submit`, `tui.input.newLine`) plus `1`–`9`, `n`, `Tab`/`Shift+Tab`, `←`/`→` on unit rows and `e` for tags; editor mode routes text to the field
+- [x] 2.2 Create `src/interaction/dialog/view.ts`: pure `renderDialog(model, state, size, theme, editorLines?)` with the agreed layout (tabs, facts, briefing under its author heading, numbered entries with descriptions, note line, key hints), scrolling body above fixed entries, the 60/40-column rules and status symbols that do not rely on colour
+- [x] 2.3 Create `src/interaction/dialog/host.ts`: the `Component` that owns the state, wraps pi-tui `Editor` behind a small text-field interface for notes and typed answers, and resolves `done` with the flow result or an explicit cancelled marker
+- [x] 2.4 Tests in `tests/interaction/dialog/keys.test.ts`, `view.test.ts` (fixed-width snapshots at 80, 50 and 35 columns, long-payload scrolling, CJK and emoji width, escape sequences absent) and `host.test.ts` (scripted key sequences to results)
 
 ## 3. Adapter wiring and fallback
 
