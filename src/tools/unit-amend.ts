@@ -16,8 +16,9 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import { validateBriefing } from "../interaction/briefing.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
-import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest, type Subject } from "../interaction/approver.ts";
+import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest, type Briefing, type Subject } from "../interaction/approver.ts";
 import { allRequests, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { blockingStateRefusal } from "../engine/gates.ts";
@@ -27,8 +28,9 @@ import { createDecisionAsker, type DecisionAsker } from "./decide-ask.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest } from "./request-flow.ts";
+import { BRIEFING_SCHEMA } from "./spec-gate.ts";
 
-export type UnitAmendParams = { unit?: string; add?: boolean; drop?: boolean; replacement?: UnitInput };
+export type UnitAmendParams = { unit?: string; add?: boolean; drop?: boolean; replacement?: UnitInput; briefing?: unknown };
 
 /** The three accepted forms of a call. */
 export type AmendForm = { action: "edit"; unit: string; replacement: UnitInput } | { action: "add"; replacement: UnitInput } | { action: "drop"; unit: string };
@@ -39,6 +41,7 @@ const TOOL = "unit_amend";
 const AMEND_PREFIX = "amend:";
 const FORMS = "Call unit_amend as { unit, replacement } to edit, { add: true, replacement } to add, or { drop: true, unit } to drop.";
 
+const BRIEFING_CHOICES = ["approve", "changes", "dismiss"];
 const SIMPLIFY_TITLE = "simplify";
 
 const refusal = (message: string): { refused: string } => ({ refused: `${TOOL} refused: ${message}` });
@@ -55,6 +58,13 @@ export function amendForm(p: UnitAmendParams): AmendForm | { refused: string } {
 	if (drop && !add && unit !== undefined && !hasReplacement) return { action: "drop", unit };
 	if (!add && !drop && unit !== undefined && hasReplacement) return { action: "edit", unit, replacement: normalizeUnitInput(p.replacement) };
 	return refusal(FORMS);
+}
+
+/** The optional agent briefing, checked before any decision may be asked. */
+function amendBriefing(raw: unknown): { briefing?: Briefing } | { refused: string } {
+	if (raw === undefined) return {};
+	const checked = validateBriefing(raw, BRIEFING_CHOICES, { author: "agent" });
+	return "refused" in checked ? refusal(checked.refused) : { briefing: checked };
 }
 
 /** A unit titled `simplify` must be a refactor (unit-planning "Simplify unit kind"). */
@@ -182,11 +192,12 @@ export function amendSubject(state: ChangeState): Subject {
 }
 
 /** The light gate request: only the affected unit, with its classification overridable unless it is dropped. */
-export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, now: Date): ApprovalRequest {
+export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, now: Date, briefing?: Briefing): ApprovalRequest {
 	const subject = amendSubject(state);
-	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", head: state.git.head, body, snapshot: plan.snapshot, summary: plan.summary, now });
+	const extra = briefing === undefined ? {} : { briefing };
+	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...extra, head: state.git.head, body, snapshot: plan.snapshot, summary: plan.summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: plan.summary, links: [], files: [], mode: "blocking" };
+	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: plan.summary, links: [], files: [], mode: "blocking", ...extra };
 	if (plan.snapshot.action !== "drop") request.overridable = { units: [plan.snapshot.unit] };
 	return request;
 }
@@ -201,6 +212,8 @@ export async function runUnitAmend(p: UnitAmendParams, ctx: ApproverCtx): Promis
 	const { state } = change;
 	const form = amendForm(p);
 	if ("refused" in form) return toolResult(form.refused, undefined, true);
+	const checked = amendBriefing(p.briefing);
+	if ("refused" in checked) return toolResult(checked.refused, undefined, true);
 	const simplify = simplifyRefusal(form);
 	if (simplify) return toolResult(simplify.refused, undefined, true);
 	const blocked = stateRefusal(state);
@@ -208,7 +221,7 @@ export async function runUnitAmend(p: UnitAmendParams, ctx: ApproverCtx): Promis
 	const body = (await w.forge.getIssue(state.issue.number)).body;
 	const plan = await planAmend(state, body, form, w.pack.decisions, createDecisionAsker(w, state, ctx, { proposal: true }));
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	const request = amendRequest(state, plan, body, new Date());
+	const request = amendRequest(state, plan, body, new Date(), checked.briefing);
 	return sendRequest(w, state, request, ctx, { tool: TOOL, retry: "run unit_amend again" });
 }
 
@@ -243,11 +256,12 @@ export function registerUnitAmend(pi: ExtensionAPI): void {
 				add: { type: "boolean", description: "Add a new unit" },
 				drop: { type: "boolean", description: "Drop the unit" },
 				replacement: UNIT_INPUT_SCHEMA,
+				briefing: BRIEFING_SCHEMA,
 			},
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => {
 			const q = params as UnitAmendParams;
-			return runUnitAmend({ unit: q.unit, add: q.add, drop: q.drop, replacement: q.replacement } as UnitAmendParams, ctx as ApproverCtx);
+			return runUnitAmend({ unit: q.unit, add: q.add, drop: q.drop, replacement: q.replacement, briefing: q.briefing } as UnitAmendParams, ctx as ApproverCtx);
 		},
 	});
 }
