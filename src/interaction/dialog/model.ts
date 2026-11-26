@@ -87,10 +87,13 @@ function statusOf(r: ApprovalRequest): DialogModel["status"] {
 
 type Current = NonNullable<ApprovalRequest["overridable"]>["current"];
 
-/** The current values of `unit`: its difficulty when set and its sanitised tags. */
+/** Sanitised, trimmed, non-empty tags: the form the tags editor parses back, so an unchanged prefill is no override. */
+const cleanTags = (tags: string[]): string[] => tags.map((t) => sanitize(t).trim()).filter((t) => t !== "");
+
+/** The current values of `unit`: its difficulty when set and its cleaned tags. */
 function currentOf(current: Current, unit: string): { difficulty?: Difficulty; tags: string[] } {
 	const values = current?.[unit];
-	return { ...(values?.difficulty === undefined ? {} : { difficulty: values.difficulty }), tags: (values?.tags ?? []).map(sanitize) };
+	return { ...(values?.difficulty === undefined ? {} : { difficulty: values.difficulty }), tags: cleanTags(values?.tags ?? []) };
 }
 
 /** `unit` stays the raw id (it is the override key); only `label` is sanitised for display. */

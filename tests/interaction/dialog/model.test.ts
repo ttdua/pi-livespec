@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { ApprovalRequest, Briefing, RequestOption } from "../../../src/interaction/approver.ts";
 import { CANCELLED } from "../../../src/interaction/flow-result.ts";
 import { buildModel, toResult } from "../../../src/interaction/dialog/model.ts";
-import { initialState, type DialogState } from "../../../src/interaction/dialog/state.ts";
+import { initialState, reduce, type DialogState } from "../../../src/interaction/dialog/state.ts";
 
 function request(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
 	return {
@@ -210,6 +210,15 @@ describe("toResult", () => {
 		const m = buildModel(r);
 		const result = toResult(m, picked(m, "approve", { overrides: { U1: { difficulty: "low", tags: [] } } }), r);
 		expect(result).toEqual({ outcome: "approved", notes: "" });
+	});
+
+	test("unchanged tags prefill yields no override", () => {
+		const r = request({ overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: ["\tsec", "\x07 api", "\x1b[2J"] } } } });
+		const m = buildModel(r);
+		const prefill = m.units[0]?.tags.join(", ") ?? "";
+		const onUnits = { ...initialState(m), tab: 1 };
+		const edited = reduce(m, reduce(m, onUnits, { type: "openEditor", editor: "tags" }), { type: "closeEditor", text: prefill });
+		expect(toResult(m, { ...edited, picked: 0 }, r)).toEqual({ outcome: "approved", notes: "" });
 	});
 
 	test("Overrides discarded with request changes", () => {
