@@ -48,6 +48,7 @@
 | `spec_stuck` parameters | modified | `options: { id; label; description }[]` (description required); new required `rationale: string` | public |
 | `spec_question` parameters | modified | add optional `candidates: { label: string; description: string }[]` (2-4), `recommended?: "A"\|"B"\|"C"\|"D"`, `rationale?: string` | public |
 | `NamedGateInput` (`src/tools/spec-gate.ts`) | modified | add `briefing?: Briefing` | no |
+| `briefingStep`, `proposerBriefing`, `BRIEFING_SCHEMA` (`src/tools/spec-gate.ts`) | new (deviation, Task 4: exported helpers shared by spec_gate and proposer tools) | `briefingStep(...)`, `proposerBriefing(raw, options)`, JSON-schema literal for the `briefing` parameter | no |
 | `RuleResult.ask` (`src/decide/registry.ts`) / `DecisionAsk` (`src/decide/seam.ts`) | modified | `ask: { summary: string; options: { id; label; description? }[]; recommended?: string; rationale?: string }` | no (extension seam, in-repo only) |
 
 ---

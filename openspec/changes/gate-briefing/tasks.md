@@ -26,9 +26,9 @@ Blocked by: 2
 
 Blocked by: 3
 
-- [ ] 4.1 Add the `briefing` parameter to `spec_gate` in `src/tools/spec-gate.ts`: shape validation before checks for human targets, ignored for self gates, `approve` not recommendable while a waivable check fails (refused after `planGate` by `recommendationRefusal`), briefing passed into `gateRequest`
-- [ ] 4.2 Optional `briefing` on `initiative_propose` and `new_dependency` through `sendNamedGate`
-- [ ] 4.3 Add a valid fixture briefing to every test that runs a human `spec_gate` (`tests/tools/spec-gate*.test.ts`, `tests/tools/spec-question.test.ts`, `tests/evidence/red-on-base.test.ts`, `tests/e2e/*`, `tests/tools/change-ship.test.ts`, `tests/tools/spec-review.test.ts`) and add the new phase-gates scenarios; give the `STUCK` fixture in `tests/e2e/gates-flow.test.ts` descriptions and a rationale
+- [x] 4.1 Add the `briefing` parameter to `spec_gate` in `src/tools/spec-gate.ts`: shape validation before checks for human targets, ignored for self gates, `approve` not recommendable while a waivable check fails (refused after `planGate` by `recommendationRefusal`), briefing passed into `gateRequest`
+- [x] 4.2 Optional `briefing` on `initiative_propose` and `new_dependency` through `sendNamedGate`
+- [x] 4.3 Add a valid fixture briefing to every test that runs a human `spec_gate` (`tests/tools/spec-gate*.test.ts`, `tests/tools/spec-question.test.ts`, `tests/evidence/red-on-base.test.ts`, `tests/e2e/*`, `tests/tools/change-ship.test.ts`, `tests/tools/spec-review.test.ts`) and add the new phase-gates scenarios; give the `STUCK` fixture in `tests/e2e/gates-flow.test.ts` descriptions and a rationale
 
 ## 5. Stuck report descriptions and rationale
 
