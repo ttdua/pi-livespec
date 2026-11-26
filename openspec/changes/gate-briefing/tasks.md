@@ -18,9 +18,9 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 Add pure `menuEntries` and `titleWithBriefing` in `src/interaction/menu.ts`; rework menus in `src/interaction/in-session.ts`: title = facts then briefing, entries `<label> — <description>`, recommended first with ` (Recommended)`, no `[id]` suffix, identity through the menu table
-- [ ] 3.2 Question flow with candidates: pick a candidate, write own answer, or answer later; still ask whether the answer changes a requirement
-- [ ] 3.3 Add a shared test helper that picks a menu entry by its leading label, and move every fake UI that scripts `select` to it (`tests/interaction/in-session.test.ts`, `tests/tools/{spec-gate,spec-gate-behavior,spec-question,spec-stuck,decide-ask,plan-units,change-ship,unit-amend,initiative-propose,new-dependency}.test.ts`, `tests/e2e/{gates-flow,initiative-flow}.test.ts`), so tests keep passing with the new labels
+- [x] 3.1 Add pure `menuEntries` and `titleWithBriefing` in `src/interaction/menu.ts`; rework menus in `src/interaction/in-session.ts`: title = facts then briefing, entries `<label> — <description>`, recommended first with ` (Recommended)`, no `[id]` suffix, identity through the menu table
+- [x] 3.2 Question flow with candidates: pick a candidate, write own answer, or answer later; still ask whether the answer changes a requirement
+- [x] 3.3 Add a shared test helper that picks a menu entry by its leading label, and move every fake UI that scripts `select` to it (`tests/interaction/in-session.test.ts`, `tests/tools/{spec-gate,spec-gate-behavior,spec-question,spec-stuck,decide-ask,plan-units,change-ship,unit-amend,initiative-propose,new-dependency}.test.ts`, `tests/e2e/{gates-flow,initiative-flow}.test.ts`), so tests keep passing with the new labels
 
 ## 4. spec_gate and proposer briefings
 
