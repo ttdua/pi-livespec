@@ -17,14 +17,14 @@ const BRIEFING_HEADING: Record<Briefing["author"], string> = {
 
 // --- escaping ------------------------------------------------------------------------
 
-/** Agent text made inert for markdown: no fence, no heading at line start, no `<details>` tag. */
+/** Agent text made inert for markdown: no fence, no heading or HTML block start at line start, no `<details>` tag. */
 function inert(text: string): string {
 	return neutralise(text)
 		.replace(/(`{3,}|~{3,})/g, (fence) => fence.replace(/./g, "\\$&"))
 		.replace(/<(\/?details)/gi, "&lt;$1")
 		.split("\n")
-		// A heading may follow indentation, list markers or quote markers.
-		.map((line) => line.replace(/^([\s>*+\-\d.)]*)#/, "$1\\#"))
+		// A heading or an HTML block (CommonMark types 1-7) may follow indentation, list or quote markers.
+		.map((line) => line.replace(/^([\s>*+\-\d.)]*)#/, "$1\\#").replace(/^([\s>*+\-\d.)]*)</, "$1&lt;"))
 		.join("\n");
 }
 
@@ -138,7 +138,8 @@ function acceptedCommands(r: ApprovalRequest): string[] {
 		return [`/livespec answer ${id} <text> [--changes <capability>/Requirement: <name>] [--class blocking|non-blocking]`, `/livespec class ${id} blocking|non-blocking`, "/livespec dismiss [notes]"];
 	}
 	if (r.kind === "stuck" || r.subject.startsWith("decide:")) return ["/livespec choose <option-id> [notes]", "/livespec dismiss [notes]"];
-	const lines = ["/livespec approve [notes]", "/livespec changes <notes>", "/livespec dismiss [notes]"];
+	const approve = failingWaivableOf(r.record.snapshot).length > 0 ? [] : ["/livespec approve [notes]"];
+	const lines = [...approve, "/livespec changes <notes>", "/livespec dismiss [notes]"];
 	if ((r.options ?? []).length > 0) lines.push("/livespec choose <option-id> [notes]");
 	if (r.overridable) lines.push("/livespec set U<n> difficulty <low|medium|high>", "/livespec set U<n> tags <a,b,…>");
 	return lines;

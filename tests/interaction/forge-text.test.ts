@@ -252,6 +252,26 @@ describe("renderForgeRequest", () => {
 		expectInertFacts(renderForgeRequest(request({ ...QUESTION, summary: HOSTILE })));
 	});
 
+	test("an unclosed <script> in stuck facts cannot hide the answer table", () => {
+		const summary = "Stuck at U3.\n<script>\n  <?php x\nnever closed";
+		const text = renderForgeRequest(request({ subject: "stuck:S1", kind: "stuck", snapshot: { id: "S1" }, summary, options: [{ id: "A", label: "retry" }] }));
+		expectInertFacts(text);
+		expect(text.match(/^[> \t]*<.*$/gm)?.filter((l) => !l.startsWith("<details>") && !l.startsWith("<summary>") && !l.startsWith("</details>"))).toEqual([]);
+	});
+
+	test("an unclosed <pre> in a briefing cannot hide the answer table", () => {
+		const text = renderForgeRequest(request({ subject: "gate:define", briefing: { summary: "Look:\n<pre>\nnever closed", author: "agent" } }));
+		expectInertFacts(text);
+		expect(text).toContain("> &lt;pre>");
+	});
+
+	test("accepted commands leave out approve while a waivable check fails", () => {
+		const list = (r: ApprovalRequest) => renderForgeRequest(r).slice(renderForgeRequest(r).indexOf("<details>"));
+		expect(list(failingPlan())).not.toContain("/livespec approve");
+		expect(list(failingPlan())).toContain("/livespec choose <option-id> [notes]");
+		expect(list(request({ subject: "gate:plan" }))).toContain("/livespec approve [notes]");
+	});
+
 	test("gate facts keep livespec's own headings", () => {
 		const text = renderForgeRequest(request({ subject: "gate:define", summary: "Proposal:\n## Why\nBecause." }));
 		expect(text).toContain("\n## Why\n");
