@@ -7,7 +7,7 @@
 
 **Change**: `gate-briefing`
 **Finalized at**: `2026-11-26 03:32` (UTC)
-**Outcome**: `merge-locally` (into the feature branch; push and PR pending the user's approval)
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,14 +15,14 @@
 
 - **Branch**: `spec/gate-briefing`
 - **Base branch**: `main`
-- **Final state**: `merged` (worktree branch `gate-briefing` fast-forwarded into `spec/gate-briefing` at `ebfc6c9`; not pushed)
-- **PR URL**: `N/A` (no PR yet)
+- **Final state**: `pr-open` (worktree branch `gate-briefing` fast-forwarded into `spec/gate-briefing` at `ebfc6c9`; pushed to `origin/spec/gate-briefing`)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/53`
 
 ### Deviation from the canonical closeout (project AGENTS.md policy)
 
-The project `AGENTS.md` says: no push, merge or PR without the user's explicit permission in chat. The user approved the code review gate, which covers the local merge into the feature branch, but did not approve a push or a PR. So:
-- Step 3: `git pull` was skipped because `spec/gate-briefing` has no upstream yet.
-- Steps 10 to 12 (push, PR, reviewer comment) are not done. They are pending the user's decision.
+The project `AGENTS.md` says: no push, merge or PR without the user's explicit permission in chat. So:
+- Step 3: `git pull` was skipped because `spec/gate-briefing` had no upstream yet.
+- Steps 10 to 12 (push, PR, reviewer comment) ran only after the user approved them in chat. `gh auth status` showed account `ttdua` active, matching the remote owner, and the push went over SSH.
 - Worktree removal used Worktrunk (`wt remove gate-briefing`) instead of `git worktree remove`, as AGENTS.md requires.
 
 ---
@@ -36,7 +36,7 @@ The project `AGENTS.md` says: no push, merge or PR without the user's explicit p
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/53#issuecomment-7183306032)
 
 ---
 
@@ -58,9 +58,4 @@ The project `AGENTS.md` says: no push, merge or PR without the user's explicit p
 
 ## Next step
 
-Push and PR need the user's approval:
-1. `git push -u origin spec/gate-briefing`. Remote `ttdua/pi-livespec`: run `gh auth status` and switch accounts first if needed.
-2. Open a PR against `main` with the suggested title `feat(request-briefing): gate-briefing`, then post the code-review orientation comment.
-3. After approval, run `/opsx-archive` on this feature branch, push the archive commits, then merge the PR.
-
-Without a PR: run `/opsx-archive` on `spec/gate-briefing` now. Merging into `main` still needs explicit approval.
+Wait for PR code review (the logic pre-review has already happened through the artifact gates). After approval, run `/opsx-archive` on this feature branch (commits land here), push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or GitHub UI). That single merge lands the implementation and the archive into main. Merging needs the user's explicit approval.
