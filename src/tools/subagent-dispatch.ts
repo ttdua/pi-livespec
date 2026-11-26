@@ -12,13 +12,18 @@ import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { inlineText, outcomeOptions, outcomeText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
-import { checkTarget, childRefusal, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
+import { checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_dispatch";
 
 export async function runSubagentDispatch(pi: ExtensionAPI, p: TargetParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps, signal?: AbortSignal): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
+	const { params, warnings } = ignoreInapplicable(p);
+	return withWarnings(warnings, await runSubagentDispatchBody(pi, params, ctx, deps, signal));
+}
+
+async function runSubagentDispatchBody(pi: ExtensionAPI, p: TargetParams, ctx: ToolCtx, deps: SubagentToolDeps = defaultSubagentDeps, signal?: AbortSignal): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refusal(TOOL, w.message);
 	const change = requireChange(w.session);
@@ -55,7 +60,7 @@ export function registerSubagentDispatch(pi: ExtensionAPI, deps: SubagentToolDep
 		name: TOOL,
 		label: "Dispatch a livespec subagent",
 		description:
-			"Launch the role's subagent (scout, implementer, reviewer, verifier) with a livespec packet, wait for it and record its result. A unit id is required for implementer and the unit subject; a reviewer needs a subject. Without a capable executor it returns the packet to run inline.",
+			"Launch the role's subagent (scout, implementer, reviewer, verifier) with a livespec packet, wait for it and record its result. A unit id is required for implementer and the unit subject; a reviewer needs a subject. Without a capable executor it returns the packet to run inline." + " " + PARAMS_BY_ROLE,
 		// Plain JSON-schema literal; cast avoids a typebox dependency.
 		parameters: { type: "object", properties: TARGET_PROPERTIES, required: ["role"] } as never,
 		execute: (_id, params, signal, _update, ctx) => runSubagentDispatch(pi, params as TargetParams, ctx as never, deps, signal),
