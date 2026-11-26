@@ -22,9 +22,9 @@ Blocked by: 1
 
 Blocked by: 2
 
-- [ ] 3.1 Add the optional `dialog` entry to `ApproverUI` in `src/interaction/approver.ts`; set it in `src/tools/approver-for.ts` only when `ctx.mode === "tui"` and `ctx.ui.custom` is a function, widening `ApproverCtx` with `mode` and `ui.custom`
-- [ ] 3.2 In `src/interaction/in-session.ts`, run the dialog when `ui.dialog` is present and fall back to the existing `select`/`input` flow when it is absent or resolves `undefined` without input; keep `Answered` construction in one place
-- [ ] 3.3 Tests in `tests/interaction/in-session.test.ts` and `tests/tools/approver-for.test.ts` for TUI vs RPC selection, the `undefined` fallback, and equivalence: the same choices through the dialog and the select chain give identical answers for a define gate, a plan gate with overrides, a question with candidates, a stuck report and a rule ask
+- [x] 3.1 Add the optional `dialog` entry to `ApproverUI` in `src/interaction/approver.ts`; set it in `src/tools/approver-for.ts` only when `ctx.mode === "tui"` and `ctx.ui.custom` is a function, widening `ApproverCtx` with `mode` and `ui.custom`
+- [x] 3.2 In `src/interaction/in-session.ts`, run the dialog when `ui.dialog` is present and fall back to the existing `select`/`input` flow when it is absent or resolves `undefined` without input; keep `Answered` construction in one place
+- [x] 3.3 Tests in `tests/interaction/in-session.test.ts` and `tests/tools/approver-for.test.ts` for TUI vs RPC selection, the `undefined` fallback, and equivalence: the same choices through the dialog and the select chain give identical answers for a define gate, a plan gate with overrides, a question with candidates, a stuck report and a rule ask
 
 ## 4. Docs and changelog
 
