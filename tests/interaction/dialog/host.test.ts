@@ -1,48 +1,13 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, type Focusable, type KeybindingsManager, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, type Focusable, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, test, vi } from "vitest";
 import type { ApprovalRequest, RequestOption } from "../../../src/interaction/approver.ts";
 import { createDialog, type TextField } from "../../../src/interaction/dialog/host.ts";
 import type { DialogOutcome } from "../../../src/interaction/dialog/types.ts";
+import { FakeField, identityTheme, KEY, KEY_TABLE, stubKeybindings } from "../../helpers/dialog.ts";
 
-const KEY = { enter: "\r", escape: "\x1b", tab: "\t", down: "\x1b[B", right: "\x1b[C", backspace: "\x7f", newLine: "\x1b[13;2u" };
-const TABLE: Record<string, string[]> = {
-	"tui.select.up": ["\x1b[A"],
-	"tui.select.down": [KEY.down],
-	"tui.select.confirm": [KEY.enter],
-	"tui.select.cancel": [KEY.escape, "\x03"],
-	"tui.input.submit": [KEY.enter],
-};
-const kb = { matches: (data: string, id: string) => TABLE[id]?.includes(data) ?? false } as unknown as KeybindingsManager;
-const theme = { fg: (_color: string, s: string) => s, bold: (s: string) => s } as unknown as Theme;
-
-/** A field that types printable keys, deletes on Backspace and records every key it receives. */
-class FakeField implements TextField {
-	text = "";
-	focused = false;
-	received: string[] = [];
-	sets: string[] = [];
-	value(): string {
-		return this.text;
-	}
-	set(text: string): void {
-		this.text = text;
-		this.sets.push(text);
-	}
-	handleInput(data: string): void {
-		this.received.push(data);
-		if (data === KEY.backspace) this.text = this.text.slice(0, -1);
-		else if (data === KEY.newLine) this.text += "\n";
-		else this.text += data;
-	}
-	render(): string[] {
-		return [`[${this.text}]`];
-	}
-	invalidated = 0;
-	invalidate(): void {
-		this.invalidated += 1;
-	}
-}
+const TABLE = KEY_TABLE;
+const kb = stubKeybindings;
+const theme = identityTheme;
 
 function request(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
 	return {

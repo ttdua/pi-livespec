@@ -3,6 +3,7 @@
 // the last defined result wins; a blocking `tool_call` result stops the chain).
 
 import { vi } from "vitest";
+import type { ApproverCtx } from "../../src/tools/approver-for.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
@@ -12,17 +13,25 @@ export type SelectFn = (title: string, options: string[]) => Promise<string | un
 export type ConfirmFn = (title: string, message: string) => Promise<boolean>;
 export type InputFn = (title: string, placeholder?: string) => Promise<string | undefined>;
 
-/** Scripted dialog answers; a missing one cancels (`undefined`, or `false` for `confirm`). */
-export type FakeUI = { hasUI?: boolean; select?: SelectFn; confirm?: ConfirmFn; input?: InputFn };
+/** `ctx.ui.custom`, narrowed to what livespec passes. */
+export type CustomFn = NonNullable<ApproverCtx["ui"]["custom"]>;
+
+/**
+ * Scripted dialog answers; a missing one cancels (`undefined`, or `false` for `confirm`). `mode` and
+ * `custom` are set on the ctx only when given, as a host without them would.
+ */
+export type FakeUI = { hasUI?: boolean; mode?: "tui" | "rpc" | "json" | "print"; select?: SelectFn; confirm?: ConfirmFn; input?: InputFn; custom?: CustomFn };
 
 export type FakeCtx = {
 	cwd: string;
 	hasUI: boolean;
+	mode?: FakeUI["mode"];
 	ui: {
 		notify: ReturnType<typeof vi.fn>;
 		select: ReturnType<typeof vi.fn<SelectFn>>;
 		confirm: ReturnType<typeof vi.fn<ConfirmFn>>;
 		input: ReturnType<typeof vi.fn<InputFn>>;
+		custom?: CustomFn;
 	};
 	isProjectTrusted: () => boolean;
 	sessionManager: { getSessionId(): string; getHeader(): { type: "session"; id: string; parentSession?: string } };
@@ -84,7 +93,14 @@ export function fakeCtx(cwd: string, trusted = true, ui: FakeUI = {}): FakeCtx {
 	const select = vi.fn<SelectFn>(ui.select ?? (async () => undefined));
 	const confirm = vi.fn<ConfirmFn>(ui.confirm ?? (async () => false));
 	const input = vi.fn<InputFn>(ui.input ?? (async () => undefined));
-	return { cwd, hasUI: ui.hasUI ?? false, ui: { notify: vi.fn(), select, confirm, input }, isProjectTrusted: () => trusted, sessionManager: sessionManagerOf() };
+	return {
+		cwd,
+		hasUI: ui.hasUI ?? false,
+		...(ui.mode ? { mode: ui.mode } : {}),
+		ui: { notify: vi.fn(), select, confirm, input, ...(ui.custom ? { custom: ui.custom } : {}) },
+		isProjectTrusted: () => trusted,
+		sessionManager: sessionManagerOf(),
+	};
 }
 
 function sessionManagerOf(parentSession?: string): FakeCtx["sessionManager"] {

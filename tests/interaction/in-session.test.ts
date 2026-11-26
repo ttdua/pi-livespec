@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { ApprovalRequest, Approver, ApproverUI, Pending } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
+import { KEY, scriptedDialog, typed } from "../helpers/dialog.ts";
 import { pickByLabel } from "../helpers/menu.ts";
 import { createInSessionApprover } from "../../src/interaction/in-session.ts";
 
@@ -447,6 +448,126 @@ describe("in-session approver", () => {
 			const ui = scriptedUI(["write my own answer", "something else", "no"]);
 			const result = await createInSessionApprover(ui, login).request(withCandidates());
 			expect(result).toMatchObject({ outcome: "approved", answer: "something else" });
+		});
+	});
+});
+
+describe("in-session dialog path", () => {
+	/** `ui` with a scripted dialog; `select`/`input` throw if called without a script. */
+	const withDialog = (keys: string[], answers: (string | undefined)[] = []) => {
+		const dialog = scriptedDialog(keys);
+		const ui = Object.assign(scriptedUI(answers), { dialog });
+		return { ui, dialog };
+	};
+	const withoutAt = (a: Awaited<ReturnType<Approver["request"]>>) => {
+		if (a.status !== "answered") return a;
+		const { at: _at, ...rest } = a;
+		return rest;
+	};
+	const stuckRequest = (over: Partial<ApprovalRequest> = {}): ApprovalRequest =>
+		gateRequest({
+			kind: "stuck",
+			subject: "stuck:S1",
+			options: [
+				{ id: "A", label: "A-label", description: "A-desc" },
+				{ id: "B", label: "B-label", description: "B-desc" },
+			],
+			briefing: { summary: "B is cheaper.", recommended: "B", author: "agent" },
+			...over,
+		});
+
+	test("Dialog in the TUI", async () => {
+		const { ui, dialog } = withDialog([KEY.enter, KEY.enter]);
+		const result = await createInSessionApprover(ui, login).request(gateRequest());
+		expect(dialog.opened).toBe(1);
+		expect(ui.calls).toEqual([]);
+		expect(result).toMatchObject({ status: "answered", outcome: "approved", notes: "", by: "alice", adapter: "in-session" });
+	});
+
+	test("Fallback when the dialog draws nothing", async () => {
+		const { ui, dialog } = withDialog([], ["A-label — A-desc"]);
+		const result = await createInSessionApprover(ui, login).request(stuckRequest());
+		expect(dialog.opened).toBe(1);
+		expect(ui.calls).toHaveLength(1);
+		expect(ui.calls[0]?.method).toBe("select");
+		expect(result).toMatchObject({ status: "answered", outcome: "approved", choice: "A", adapter: "in-session" });
+	});
+
+	test("explicit cancel is not a fallback", async () => {
+		const { ui } = withDialog([KEY.escape]);
+		const result = await createInSessionApprover(ui, login).request(stuckRequest());
+		expect(ui.calls).toEqual([]);
+		expect(result).toMatchObject({ status: "answered", outcome: "dismissed", notes: "", adapter: "in-session" });
+		expect(result).not.toHaveProperty("choice");
+	});
+
+	test("answer later in the dialog is deferred", async () => {
+		const { ui } = withDialog(["2"]);
+		const result = await createInSessionApprover(ui, login).request(questionRequest());
+		expect(result).toEqual({ status: "deferred", questionClass: "non-blocking" });
+	});
+
+	test("Empty required text in the fallback", async () => {
+		const ui = scriptedUI(["request changes", ""]);
+		const result = await createInSessionApprover(ui, login).request(gateRequest());
+		expect(result).toMatchObject({ status: "answered", outcome: "dismissed", notes: "" });
+	});
+
+	describe("dialog and select chain agree", () => {
+		const candidates = (): ApprovalRequest => ({
+			...questionRequest(),
+			options: [
+				{ id: "A", label: "per-IP limits", description: "keep" },
+				{ id: "B", label: "per-user limits", description: "change" },
+			],
+		});
+		const plan = (): ApprovalRequest =>
+			gateRequest({
+				subject: "gate:plan",
+				phase: "plan",
+				overridable: { units: ["U1", "U2"], current: { U1: { difficulty: "low", tags: [] }, U2: { difficulty: "medium", tags: ["db"] } } },
+			});
+		const decide = (): ApprovalRequest =>
+			gateRequest({
+				kind: "stuck",
+				subject: "decide:behavior-change.U1",
+				options: [
+					{ id: "unchanged", label: "Behavior did not change" },
+					{ id: "changed", label: "Behavior changed; the spec must be updated" },
+				],
+			});
+		const cases: { name: string; request: () => ApprovalRequest; keys: string[]; select: string[] }[] = [
+			{ name: "define gate with a note", request: () => gateRequest(), keys: ["n", ...typed("ok"), KEY.enter, "1", KEY.enter], select: ["approve", "Add notes", "ok"] },
+			{ name: "define gate request changes", request: () => gateRequest(), keys: ["2", ...typed("split U3"), KEY.enter, KEY.tab, KEY.enter], select: ["request changes", "split U3"] },
+			{
+				name: "plan gate with overrides",
+				request: plan,
+				keys: ["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter],
+				select: ["approve", "Add notes", "ok", "Adjust Difficulty or Tags", "U1", "difficulty", "high", "done"],
+			},
+			{
+				name: "question with a candidate and a changed requirement",
+				request: candidates,
+				keys: ["2", KEY.down, KEY.enter, KEY.enter],
+				select: ["per-user limits — change", "rate-limit/Requirement: Per-IP cap"],
+			},
+			{ name: "stuck report", request: () => stuckRequest(), keys: ["1", KEY.enter], select: ["B-label — B-desc (Recommended)"] },
+			{ name: "decide ask", request: decide, keys: ["2", KEY.enter], select: ["Behavior changed; the spec must be updated"] },
+		];
+
+		test.each(cases)("$name", async ({ request, keys, select }) => {
+			const viaDialog = withDialog(keys);
+			const fromDialog = await createInSessionApprover(viaDialog.ui, login).request(request());
+			const fromSelect = await createInSessionApprover(scriptedUI(select), login).request(request());
+			expect(viaDialog.ui.calls).toEqual([]);
+			expect(fromDialog.status).toBe("answered");
+			expect(withoutAt(fromDialog)).toEqual(withoutAt(fromSelect));
+		});
+
+		test("Same answer on both paths: plan gate approve, note ok, U1 high", async () => {
+			const viaDialog = withDialog(["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter]);
+			const result = await createInSessionApprover(viaDialog.ui, login).request(plan());
+			expect(result).toMatchObject({ outcome: "approved_with_notes", notes: "ok", overrides: [{ unit: "U1", difficulty: "high" }] });
 		});
 	});
 });

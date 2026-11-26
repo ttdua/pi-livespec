@@ -4,6 +4,7 @@
 
 import type { DecisionRecord } from "../decide/records.ts";
 import { registerKind } from "../forge/markers.ts";
+import type { DialogFactory, DialogOutcome } from "./dialog/types.ts";
 
 /** Ordered list of the adapter names `interaction.adapter` accepts. */
 export const ADAPTER_NAMES = ["in-session", "forge"] as const;
@@ -157,6 +158,8 @@ export interface ApproverUI {
 	hasUI: boolean;
 	select(title: string, options: string[]): Promise<string | undefined>;
 	input(title: string, placeholder?: string): Promise<string | undefined>;
+	/** One custom dialog per request; set only where the host can draw it. `undefined` = drew nothing (fall back). */
+	dialog?: (factory: DialogFactory<DialogOutcome>) => Promise<DialogOutcome | undefined>;
 }
 
 /** Marker kind of a pending forge request: id `<subject-token>.<base36 ms>`. */
