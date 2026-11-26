@@ -1,5 +1,6 @@
 // Tests of the dispatch and finding-summary records and the queries over them.
 import { describe, expect, it } from "vitest";
+import { isDispatchData } from "../../src/subagents/validate.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import {
 	aggregateFinding,
@@ -8,18 +9,21 @@ import {
 	completedUnitRounds,
 	reviewStepDoneAt,
 	computeCompleted,
+	current,
 	dispatchComment,
 	type FindingSummaryData,
 	findingKey,
 	findingSummaryComment,
 	invalidRecords,
+	isFallbackChild,
+	pendingQuestionFor,
 	latestDispatch,
 	pendingQuestion,
 	rebuttalComment,
 	unresolvedBlocking,
 	unshownSystemFindings,
 } from "../../src/subagents/records.ts";
-import { nextRound } from "../../src/subagents/run-record.ts";
+import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/run-record.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
@@ -315,5 +319,48 @@ describe("fix round 3", () => {
 
 	it.each(["spec", "plan", "unit", "change", "persona:security"])("summary with subject %s is valid", (subject) => {
 		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), subject })])).toEqual([]);
+	});
+});
+
+describe("retry records", () => {
+	const retry = { status: "RETRY", role: "implementer", unit: "U1", agentId: "agent-1", newAgentId: "agent-2", attempt: 1, reason: "r" } as const;
+	const q = (over: object) => mark(dispatchComment({ status: "QUESTION", role: "implementer", unit: "U1", agentId: "agent-1", question: "?", ...over } as never));
+
+	it("validates RETRY and QUESTION finding", () => {
+		expect(isDispatchData(retry)).toBe(true);
+		const { newAgentId: _n, ...bare } = retry;
+		expect(isDispatchData(bare)).toBe(false);
+		expect(isDispatchData({ status: "QUESTION", role: "verifier", agentId: "a", question: "?", finding: 3 })).toBe(false);
+		expect(isDispatchData({ status: "QUESTION", role: "verifier", agentId: "a", question: "?", finding: "c1:0" })).toBe(true);
+	});
+
+	it("a retry record is not a result", () => {
+		const marked = [mark(dispatchComment(retry))];
+		expect(nextAttempt(marked, "implementer", "U1")).toBe(1);
+		expect(latestDispatch(marked, "U1")).toBeUndefined();
+		expect(needsContextCount(marked, "U1", "implementer")).toBe(0);
+	});
+
+	it("a retry closes the question of the replaced agent", () => {
+		expect(pendingQuestion([q({}), mark(dispatchComment(retry))])).toBeUndefined();
+	});
+
+	it("two retries of one unit and attempt both survive current()", () => {
+		const marked = [mark(dispatchComment(retry)), mark(dispatchComment({ ...retry, agentId: "agent-2", newAgentId: "agent-3" }))];
+		expect(current(marked)).toHaveLength(2);
+	});
+
+	it("pendingQuestionFor matches its own target", () => {
+		const marked = [q({ agentId: "a1" }), q({ unit: "U2", agentId: "a2", question: "two" })];
+		expect(pendingQuestionFor(marked, { role: "implementer", unit: "U2" })?.agentId).toBe("a2");
+		const v = [q({ role: "verifier", unit: undefined, finding: "c1:0", agentId: "v0", attempt: 1 }), q({ role: "verifier", unit: undefined, finding: "c1:1", agentId: "v1", attempt: 2 })];
+		expect(pendingQuestionFor(v, { role: "verifier", finding: "c1:0" })?.agentId).toBe("v0");
+		expect(pendingQuestionFor(v, { role: "verifier", finding: "c1:1" })?.agentId).toBe("v1");
+	});
+
+	it("isFallbackChild", () => {
+		const marked = [mark(dispatchComment(retry))];
+		expect(isFallbackChild(marked, "agent-2")).toBe(true);
+		expect(isFallbackChild(marked, "agent-1")).toBe(false);
 	});
 });
