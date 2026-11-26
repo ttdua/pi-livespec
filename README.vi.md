@@ -254,18 +254,66 @@ Chọn thứ tự trong `interaction.adapter` (ví dụ `[in-session, forge]`: d
 
 ### Trả lời trong session
 
-Với gate, tiêu đề dialog là tóm tắt request và phần thân hiển thị review payload. Menu gồm:
+Tiêu đề dialog là tóm tắt request (các fact), rồi đến briefing (xem [Briefing và đề xuất](#briefing-và-đề-xuất)). Mỗi entry của menu có dạng `<label> — <description>`; entry được đề xuất đứng đầu và kết thúc bằng ` (Recommended)`. Với gate, menu gồm:
 
 1. **approve** (bị ẩn khi có waivable check đang fail; lúc đó dùng `waive`);
 2. **request changes**, rồi gõ những gì cần đổi;
 3. **dismiss**;
-4. các option bổ sung, hiển thị dạng `<label> [<id>]` (ví dụ `waive`).
+4. các option bổ sung, ví dụ `waive`, kèm mô tả.
+
+Câu hỏi hiển thị các đáp án ứng viên (nếu agent đưa 2 đến 4), **write my own answer** và **answer later (non-blocking)**. Chọn một ứng viên là trả lời bằng label của nó.
 
 Sau approve hoặc một option, bạn chọn **No notes** hoặc **Add notes**. Ở plan gate và với amendment, bạn được hỏi thêm **Keep classification** hoặc **Adjust Difficulty or Tags**, nơi bạn có thể override từng unit.
 
+### Briefing và đề xuất
+
+Mỗi request cần con người đều kèm một **briefing** bên cạnh các fact: tóm tắt ngắn, tối đa năm điểm cần để ý, lựa chọn được đề xuất và lý do. Hãy đọc nó như lời khuyên, không phải bằng chứng:
+
+- **Fact đứng trước.** Tóm tắt, file, link và check fail do livespec viết. Briefing theo sau, gắn nhãn `Agent recommendation (agent-authored, advisory)`. Rule hỏi (`decide:`) mang briefing do rule viết, gắn nhãn `Livespec rule recommendation`.
+- **Đề xuất không phải câu trả lời.** Nó chỉ đánh dấu một lựa chọn (đứng đầu menu, `(recommended)` trên forge). Không có gì được duyệt cho đến khi bạn chọn. Đề xuất phải trỏ tới lựa chọn thực sự được đưa ra: `approve` không bao giờ được đề xuất khi còn check phải waive.
+- **Text của agent là vô hại.** livespec vô hiệu hóa `<!--` và `/livespec` ở đầu dòng trong đó, nên briefing không thể thêm lệnh hay giả marker.
+- Request tạo trước tính năng này không có briefing và vẫn hoạt động.
+
+`spec_gate` bắt buộc có briefing cho gate của con người. `unit_amend`, `initiative_propose` và `new_dependency` nhận briefing tùy chọn.
+
 ### Trả lời trên forge
 
-Đọc comment `request`: nó nêu điều được hỏi, hiển thị payload và liệt kê các lệnh được chấp nhận. Trả lời bằng một comment **mới** (sửa comment cũ không có tác dụng):
+Đọc comment `request`. Bố cục từ trên xuống: heading **Decision needed**, các fact (tóm tắt, file, link), bảng waivable check đang fail, briefing dạng blockquote, bảng **How to answer** (lựa chọn, điều xảy ra, lệnh chính xác; lựa chọn được đề xuất in đậm kèm `(recommended)`) và danh sách **All accepted commands** thu gọn. Ví dụ (plan gate có `size-limits` fail):
+
+```markdown
+## Decision needed: approve the plan gate on #7
+
+### Review (blocking)
+
+Plan: 9 units, 3 capabilities.
+
+### Failing checks
+
+These waivable checks fail; approving needs `waive`.
+
+| Check |
+| --- |
+| `size-limits` |
+
+### Agent recommendation (agent-authored, advisory)
+
+> Units are small and each has one Verify command.
+>
+> Recommended: waive
+> Rationale: the split would not make the units smaller.
+
+### How to answer
+
+Post a new comment whose first line is the command (write access required).
+
+| Choice | What happens | Command |
+| --- | --- | --- |
+| **waive** (recommended) | Approve and waive the failing checks: size-limits. | `/livespec choose waive [notes]` |
+| request changes | Send the request back with notes; nothing is approved. | `/livespec changes <notes>` |
+| dismiss | Close the request without approving it. | `/livespec dismiss [notes]` |
+```
+
+Bảng của câu hỏi liệt kê từng ứng viên với lệnh `/livespec answer Q<n> <label>` và một dòng cho câu trả lời riêng của bạn. Trả lời bằng một comment **mới** (sửa comment cũ không có tác dụng):
 
 | Lệnh | Dùng để |
 |---|---|
@@ -342,9 +390,9 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 ### Câu hỏi: trả lời điều agent không thể biết
 
-**Bạn thấy:** nội dung câu hỏi và loại của nó, `blocking` (gate giữ đóng) hoặc `non-blocking`.
+**Bạn thấy:** nội dung câu hỏi và loại của nó, `blocking` (gate giữ đóng) hoặc `non-blocking`, và tùy chọn 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), có thể có một cái được đề xuất kèm lý do.
 
-**Trả lời** bằng quyết định, và cho biết nó có đổi requirement không:
+**Trả lời** bằng cách chọn một ứng viên hoặc gõ text riêng, và cho biết nó có đổi requirement không:
 
 ```text
 /livespec answer Q2 use per-user limits, not per-IP --changes rate-limit/Requirement: Per-IP cap
@@ -354,7 +402,7 @@ Trong session bạn được hỏi "Does the answer change a requirement?" với
 
 ### Stuck report: chọn lối ra
 
-**Bạn thấy:** comment `stuck` gồm việc dừng ở đâu, đã thử những gì (kèm link), một giả thuyết, hai hoặc ba option và option được đề xuất.
+**Bạn thấy:** comment `stuck` gồm việc dừng ở đâu, đã thử những gì (kèm link), một giả thuyết, hai hoặc ba option kèm mô tả, và option được đề xuất kèm lý do (agent bắt buộc phải cung cấp cả hai).
 
 **Trả lời:** chọn một option (`/livespec choose B`, hoặc chọn trong dialog). Một lựa chọn sẽ reset ngân sách bị chặn (số lần thử unit, số vòng review hoặc số iteration). **Dismiss không gỡ giới hạn**; agent sẽ phải hỏi lại.
 

@@ -16,7 +16,7 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │ forge/       Forge interface · GitHub adapter (gh) · Gitea adapter (REST)         │
 │              · cache with version · comment markers · read-only mode              │
 │ interaction/ Approver contract · adapters: in-session (dialogs), forge (request   │
-│              comments) · adapter chain · /livespec command parser and matching    │
+│              comments) · briefing, describe-actions, forge-text, menu · adapter chain · /livespec command parser and matching    │
 │              · requests · polling · completion, one handler per subject kind      │
 │ tools/       spec_status · spec_next · spec_validate · spec_write · spec_gate ·   │
 │              spec_question · spec_stuck · plan_units · unit_amend · unit_start ·  │
@@ -143,6 +143,15 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 - **Answer.** An `answer` comment records the full request, the human's answer and the validation verdict (`valid` or `superseded`). A superseded `reason` is wrapped as untrusted where it is built and marked `reason_wrapped: true`; older answers without the mark are wrapped when shown. Validation runs once, before the answer is written: a gate checks that HEAD, the gate digest and the refusal conditions are unchanged; an amendment checks the affected units' digests and the resulting plan. The in-session adapter writes the `answer` comment directly, with no `request`.
 - **Result.** Completion applies the effects in a fixed order, each skipped when already applied (body edit, `stale` or `decision` comments, phase move), and writes the result comment (`gate`, `amendment`, `question`, `stuck` or `decision`) last. A crash leaves the request *applying*, and the next poll or livespec tool finishes it. Completion is one handler per subject kind.
 - **Derived advance.** A phase moves when its *valid gate result* (the latest own `gate` comment newer than the latest `stale` comment listing the phase, not superseded) is approved; `ship` never advances. A failed label move retries on every refresh. A gate result carries `waivers`: the waivable checks the human waived with `/livespec choose waive`, so an approved waived gate advances even though those checks still fail.
+
+**Briefing and presentation.** A request may carry a `Briefing` (`src/interaction/approver.ts`): `summary`, optional `watch`, `recommended` (an offered choice id), `rationale` and `author` (`agent` or `rule`). It is stored in the `request` comment yaml and in the `answer` record, so a completed request keeps what the human saw; a request without one (written before this) still parses and completes. Four pure modules shape what the human reads:
+
+- `briefing.ts` validates agent text (length limits, one line per watch item, `recommended` must be an offered id, `rationale` required with it) and neutralises `<!--` and a leading `/livespec`.
+- `describe-actions.ts` is the single source of offered choice ids and livespec-written descriptions for gates, amendments, stuck and rule requests (no `approve` while a waivable check fails); briefing validation and both adapters use it, so a recommendation can never name a choice that is not offered.
+- `forge-text.ts` renders the `request` comment text below the yaml: Decision needed heading, facts, failing checks, briefing blockquote, a How to answer table and a collapsed command list. The parser ignores this text.
+- `menu.ts` builds the in-session entries (`<label> — <description>`, recommended first with ` (Recommended)`) and the title (facts, then briefing).
+
+**Facts first, agent text untrusted.** livespec's own payload (summary, files, links, checks, option descriptions of built-in actions) comes before the briefing, and the briefing is labelled `agent-authored, advisory` (`Livespec rule recommendation` when `author` is `rule`). Agent text is neutralised, and escaped for markdown on the forge (no fence, heading, HTML block or `<details>` tag), so it can add neither a section nor a command. A recommendation only marks a choice; the answer still has to come from the human.
 
 **Adapter chain.** `interaction.adapter` lists `in-session` and `forge` in order; project config wins over user config, and the default is `[in-session]`. An empty list (written, or empty after unknown names are dropped) counts as unset and falls through to the next layer. The chain skips an adapter that is unavailable (in-session without a UI; forge unconnected, read-only or blocked by the account) and refuses, naming the config key, when none is left. The in-session adapter asks through pi dialogs; a cancelled dialog is `dismissed`. `/livespec doctor` names the list, its source and the adapter that would answer now.
 
