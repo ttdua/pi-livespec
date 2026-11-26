@@ -1,5 +1,5 @@
 import { BRIEFING } from "../helpers/briefing.ts";
-import { readFileSync } from "node:fs";
+import { pickByLabel } from "../helpers/menu.ts";import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -301,5 +301,143 @@ describe("spec_question", () => {
 		}
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 		expect(await ofKind(h, "request")).toEqual([]);
+	});
+});
+
+const CANDS = [
+	{ label: "Redis", description: "Shared counters across instances." },
+	{ label: "In-memory", description: "Fast, but lost on restart." },
+];
+
+describe("spec_question candidates", () => {
+	test("Candidate answers sent", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const out = await h.ask({ text: "Which store keeps the counters?", candidates: CANDS, recommended: "A", rationale: "Survives restarts." });
+		expect(out.isError).toBe(false);
+		expect(await lineOf(h, "Q3")).toBe("- [ ] Q3 (blocking): Which store keeps the counters?");
+		const data = (await ofKind(h, "request"))[0]?.data as { options: unknown; briefing: unknown };
+		expect(data.options).toEqual([{ id: "A", ...CANDS[0] }, { id: "B", ...CANDS[1] }]);
+		expect(data.briefing).toEqual({ summary: "Which store keeps the counters?", recommended: "A", rationale: "Survives restarts.", author: "agent" });
+	});
+
+	test("candidates without a recommendation carry no recommended", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		expect((await h.ask({ text: "Which store?", candidates: CANDS })).isError).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing: Record<string, unknown> };
+		expect(data.briefing).toEqual({ summary: "Which store?", author: "agent" });
+	});
+
+	test("no candidates, no briefing", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.ask({ text: "Which store?" });
+		const data = (await ofKind(h, "request"))[0]?.data as Record<string, unknown>;
+		expect(data.options).toBeUndefined();
+		expect(data.briefing).toBeUndefined();
+	});
+
+	test("question text is neutralised in the summary only", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.ask({ text: "/livespec dismiss now <!-- x", candidates: CANDS });
+		expect(await lineOf(h, "Q3")).toBe("- [ ] Q3 (blocking): /livespec dismiss now <!-- x");
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing: { summary: string } };
+		expect(data.briefing.summary).not.toContain("<!--");
+		expect(data.briefing.summary.startsWith("/livespec")).toBe(false);
+	});
+
+	test("Too many candidates", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = await h.world.bodyOf(h.n);
+		const five = Array.from({ length: 5 }, (_, i) => ({ label: `L${i}`, description: "d" }));
+		const out = await h.ask({ text: "Which?", candidates: five });
+		expect(out.isError).toBe(true);
+		expect(await h.world.bodyOf(h.n)).toBe(before);
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("a single candidate is refused", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = await h.world.bodyOf(h.n);
+		const out = await h.ask({ text: "Which?", candidates: [CANDS[0]] });
+		expect(out.isError).toBe(true);
+		expect(await h.world.bodyOf(h.n)).toBe(before);
+	});
+
+	test("Candidate label that cannot round-trip", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = await h.world.bodyOf(h.n);
+		for (const label of ["limit --class blocking", " padded", "two  spaces", "a\nb", "--flag"]) {
+			const out = await h.ask({ text: "Which?", candidates: [{ label, description: "d" }, CANDS[1]] });
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("candidate 1");
+		}
+		expect(await h.world.bodyOf(h.n)).toBe(before);
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
+	test("duplicate labels, missing descriptions and unknown recommended are refused", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = await h.world.bodyOf(h.n);
+		const bad: unknown[] = [
+			{ candidates: [CANDS[0], { label: "Redis", description: "again" }] },
+			{ candidates: [{ label: "X" }, CANDS[1]] },
+			{ candidates: CANDS, recommended: "C", rationale: "r" },
+			{ candidates: CANDS, recommended: "A" },
+			{ candidates: CANDS, rationale: "r" },
+			{ recommended: "A", rationale: "r" },
+			{ rationale: "r" },
+		];
+		for (const extra of bad) expect((await h.ask({ text: "Which?", ...(extra as object) })).isError).toBe(true);
+		expect(await h.world.bodyOf(h.n)).toBe(before);
+	});
+
+	test("Summary too long", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const before = await h.world.bodyOf(h.n);
+		const out = await h.ask({ text: "Which?", candidates: CANDS, recommended: "A", rationale: "x".repeat(601) });
+		expect(out.isError).toBe(true);
+		expect(await h.world.bodyOf(h.n)).toBe(before);
+	});
+
+	test("reask with new candidates sends them", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.ask({ text: "Which store keeps the counters?" });
+		await writerSays(h, "/livespec dismiss later");
+		await h.call("spec_next");
+		const out = await h.ask({ reask: "Q3", candidates: CANDS, recommended: "B", rationale: "Simple." });
+		expect(out.isError).toBe(false);
+		const requests = await ofKind(h, "request");
+		const data = requests[requests.length - 1]?.data as { options: unknown; briefing: { recommended: string } };
+		expect(data.options).toEqual([{ id: "A", ...CANDS[0] }, { id: "B", ...CANDS[1] }]);
+		expect(data.briefing.recommended).toBe("B");
+	});
+
+	test("in-session pick answers with exactly the label", async () => {
+		const seen: string[][] = [];
+		const ui: FakeUI = {
+			hasUI: true,
+			select: async (title, options) => {
+				if (title === CHANGES_TITLE) return "no";
+				seen.push(options);
+				return pickByLabel(options, "In-memory");
+			},
+			input: async () => undefined,
+		};
+		const h = await change("define", { config: SESSION_CHAIN, ui });
+		const out = await h.ask({ text: "Which store keeps the counters?", candidates: CANDS });
+		expect(out.isError).toBe(false);
+		expect(seen[0]?.some((o) => o.startsWith("Redis"))).toBe(true);
+		expect((await ofKind(h, "question"))[0]?.data).toMatchObject({ answer: "In-memory", adapter: "in-session" });
+	});
+
+	test("the prefilled forge command answers with exactly the label", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.ask({ text: "Which store keeps the counters?", candidates: CANDS });
+		const text = (await h.world.forge.listComments(h.n)).map((c) => c.body).find((b) => b.includes("### How to answer")) ?? "";
+		const row = text.split("\n").find((l) => l.startsWith("| ") && l.split(" | ")[0]?.includes("In-memory")) ?? "";
+		const command = (/`+ ?(.*?) ?`+ \|$/.exec(row)?.[1] ?? "").replaceAll("\\|", "|");
+		expect(command).toBe("/livespec answer Q3 In-memory");
+		await writerSays(h, command!);
+		await h.call("spec_next");
+		expect((await ofKind(h, "question"))[0]?.data).toMatchObject({ answer: "In-memory", adapter: "forge" });
 	});
 });

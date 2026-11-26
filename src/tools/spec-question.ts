@@ -14,13 +14,17 @@ import { parseSpec } from "../core/spec.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { type ApprovalRequest, isSubject, type QuestionClass, type QuestionSnapshot, type Subject } from "../interaction/approver.ts";
+import { neutralise } from "../interaction/briefing.ts";
 import { openRequestFor, prepareRequest } from "../interaction/requests.ts";
+import { type CandidateRequest, candidateRequest, candidateShape } from "./question-candidates.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest } from "./request-flow.ts";
 
-export type SpecQuestionParams = { text?: string; class?: QuestionClass; reask?: string };
+export type SpecQuestionParams = { text?: string; class?: QuestionClass; reask?: string; candidates?: { label: string; description: string }[]; recommended?: string; rationale?: string };
+
+type Resolved = { id: string; text: string; class: QuestionClass; body: string; candidates?: CandidateRequest };
 
 /** What to send: a new question to append, or an open question to ask again. */
 export type QuestionForm = { action: "ask"; text: string; class: QuestionClass } | { action: "reask"; id: string };
@@ -50,6 +54,8 @@ export function questionForm(p: SpecQuestionParams): QuestionForm | { refused: s
 	const text = typeof p.text === "string" ? p.text : undefined;
 	const reask = typeof p.reask === "string" && p.reask !== "" ? p.reask : undefined;
 	if ((text === undefined) === (reask === undefined)) return refusal("give either text (a new question) or reask (an open question id).");
+	const shape = candidateShape(p);
+	if (shape) return refusal(shape.refused);
 	if (reask !== undefined) return { action: "reask", id: reask };
 	if (/[\r\n]/.test(text!)) return refusal("the question text must be one line.");
 	if (text!.trim() === "") return refusal("the question text is empty.");
@@ -78,13 +84,13 @@ export function requirementNames(capability: string, specText: string): string[]
 }
 
 /** The prepared question request; the mode follows the class. */
-export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass }, input: { body: string; requirements: string[]; now: Date }): ApprovalRequest {
+export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass; candidates?: CandidateRequest }, input: { body: string; requirements: string[]; now: Date }): ApprovalRequest {
 	const subject = questionSubject(q.id);
 	if (subject === undefined) throw new Error(`not a question id: ${q.id}`);
 	const mode = q.class === "blocking" ? "blocking" : "async";
 	const snapshot: QuestionSnapshot = { id: q.id, text: q.text, requirements: input.requirements };
-	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${q.text}`;
-	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now });
+	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${neutralise(q.text)}`;
+	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now, ...(q.candidates ?? {}) });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	return {
 		id: record.id,
@@ -97,6 +103,7 @@ export function questionRequest(state: ChangeState, q: { id: string; text: strin
 		links: [],
 		files: [],
 		mode,
+		...(q.candidates ?? {}),
 		question: { id: q.id, class: q.class, requirements: input.requirements },
 	};
 }
@@ -140,16 +147,20 @@ function reclassifyHook(forge: CachedForge, n: number, id: string): () => Promis
 	};
 }
 
-async function resolveQuestion(w: WriteContext, state: ChangeState, form: QuestionForm): Promise<{ id: string; text: string; class: QuestionClass; body: string } | { refused: string }> {
+async function resolveQuestion(w: WriteContext, state: ChangeState, form: QuestionForm, p: SpecQuestionParams): Promise<Resolved | { refused: string }> {
 	const n = state.issue.number;
 	if (form.action === "ask") {
+		const candidates = candidateRequest(p, form.text);
+		if (candidates && "refused" in candidates) return refusal(candidates.refused);
 		const appended = await appendToBody(w.forge, n, form);
-		return "refused" in appended ? appended : { id: appended.id, text: form.text, class: form.class, body: appended.body };
+		return "refused" in appended ? appended : { id: appended.id, text: form.text, class: form.class, body: appended.body, ...(candidates ? { candidates } : {}) };
 	}
 	const body = (await w.forge.getIssue(n)).body;
 	const q = reaskTarget(parseChange(body), form.id);
 	if ("refused" in q) return q;
-	return { id: q.id, text: q.text, class: q.kind, body };
+	const candidates = candidateRequest(p, q.text);
+	if (candidates && "refused" in candidates) return refusal(candidates.refused);
+	return { id: q.id, text: q.text, class: q.kind, body, ...(candidates ? { candidates } : {}) };
 }
 
 export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
@@ -165,7 +176,7 @@ export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): 
 		const open = subject === undefined ? undefined : openRequestFor(state.requests, subject);
 		if (open) return toolResult(refusal(`a request for ${form.id} is pending (${open}): wait for its answer or end it with /livespec dismiss.`).refused, undefined, true);
 	}
-	const q = await resolveQuestion(w, state, form);
+	const q = await resolveQuestion(w, state, form, p);
 	if ("refused" in q) return toolResult(q.refused, undefined, true);
 	const requirements = await readRequirements(w.session.cwd, parseChange(q.body));
 	const request = questionRequest(state, q, { body: q.body, requirements, now: new Date() });
@@ -202,11 +213,20 @@ export function registerSpecQuestion(pi: ExtensionAPI): void {
 				text: { type: "string", description: "The question, on one line" },
 				class: { type: "string", enum: ["blocking", "non-blocking"], description: "Proposed class; blocking by default" },
 				reask: { type: "string", description: "An open question id (Q<n>) to send again" },
+				candidates: {
+					type: "array",
+					minItems: 2,
+					maxItems: 4,
+					description: "Optional candidate answers the human can pick; each label is one line without runs of spaces or words starting with --",
+					items: { type: "object", properties: { label: { type: "string" }, description: { type: "string", description: "At most 200 characters" } }, required: ["label", "description"] },
+				},
+				recommended: { type: "string", description: "With candidates: the id (A, B, C, D by position) you recommend" },
+				rationale: { type: "string", description: "With recommended: why, at most 600 characters" },
 			},
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => {
 			const q = params as SpecQuestionParams;
-			return runSpecQuestion({ text: q.text, class: q.class, reask: q.reask } as SpecQuestionParams, ctx as ApproverCtx);
+			return runSpecQuestion({ text: q.text, class: q.class, reask: q.reask, candidates: q.candidates, recommended: q.recommended, rationale: q.rationale } as SpecQuestionParams, ctx as ApproverCtx);
 		},
 	});
 }
