@@ -82,14 +82,20 @@ function factsTitle(r: ApprovalRequest): string {
 /** Question and stuck summaries carry agent text as data; gate, amendment and rule summaries are livespec's payload. */
 const AGENT_FACTS = /^(question|stuck):/;
 
-const FENCE_LINE = /^[\s>]*(`{3,}|~{3,})/;
+// An unquoted fence line: quoted lines (inside `>`) cannot open or close a top-level fence.
+const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
 
 /** `text` with a closing fence appended when it leaves one open, so later sections still render. */
 function closeFences(text: string): string {
-	const lines = text.split("\n").filter((l) => FENCE_LINE.test(l));
-	if (lines.length % 2 === 0) return text;
-	const last = FENCE_LINE.exec(lines[lines.length - 1]!)![1]!;
-	return `${text}\n${last}`;
+	let open: string | undefined;
+	for (const line of text.split("\n")) {
+		const fence = FENCE_LINE.exec(line)?.[1];
+		if (fence === undefined) continue;
+		if (open === undefined) open = fence;
+		// A fence closes only with the same character and at least the opening length.
+		else if (fence[0] === open[0] && fence.length >= open.length) open = undefined;
+	}
+	return open === undefined ? text : `${text}\n${open}`;
 }
 
 function facts(r: ApprovalRequest): string[] {
