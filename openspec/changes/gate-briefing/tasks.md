@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `Briefing` and `RequestOption.description` to `src/interaction/approver.ts`; carry `briefing` on `RequestRecord` and `ApprovalRequest`, and store it through `prepareRequest` in `src/interaction/requests.ts`
-- [ ] 1.2 Create `src/interaction/briefing.ts` with `validateBriefing`, `validateOptionTexts` (shape rules of request-briefing "Briefing shape") and `neutralise` (request-briefing "Agent text is untrusted")
-- [ ] 1.3 Unit tests in `tests/interaction/briefing.test.ts` for every shape rule, code-point counting, offered-choice check, neutralisation of `<!--` and `/livespec` lines, and tolerant reading of records without a briefing
+- [x] 1.1 Add `Briefing` and `RequestOption.description` to `src/interaction/approver.ts`; carry `briefing` on `RequestRecord` and `ApprovalRequest`, and store it through `prepareRequest` in `src/interaction/requests.ts`
+- [x] 1.2 Create `src/interaction/briefing.ts` with `validateBriefing`, `validateOptionTexts` (shape rules of request-briefing "Briefing shape") and `neutralise` (request-briefing "Agent text is untrusted")
+- [x] 1.3 Unit tests in `tests/interaction/briefing.test.ts` for every shape rule, code-point counting, offered-choice check, neutralisation of `<!--` and `/livespec` lines, and tolerant reading of records without a briefing
 
 ## 2. Forge request text and built-in action descriptions
 
