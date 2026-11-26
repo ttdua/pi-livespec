@@ -36,7 +36,7 @@
 | `openQuestions` | new | `openQuestions(marked: MarkedComment[]): QuestionData[]` (open `QUESTION`s, oldest first); `pendingQuestion` = its last | no |
 | `pendingQuestionFor` | new | `pendingQuestionFor(marked, t: QuestionTarget): PendingQuestion \| undefined` | no |
 | `isFallbackChild` | new | `isFallbackChild(marked, agentId: string): boolean` | no |
-| `ResultDecision` retry | modified | `{ kind: "retry"; reason: string }`, reason plain (untrusted wrapping at render time only) | no |
+| `ResultDecision` retry | modified | `{ kind: "retry"; reason: string; shown: string }`: `reason` plain for the RETRY record and resume message, `shown` untrusted-wrapped for parent-facing BLOCKED reasons (deviation: `shown` added in Task 2 fix round 1 so a blocked fallback keeps the original reason) | no |
 | `DispatchHistory` | modified | adds `respawned: boolean` | no |
 | `DispatchOutcome` | modified | every variant may carry `respawn?: { from: string; to: string; reason: string }` | no |
 | `DispatchDeps.onLaunch` | new | `onLaunch?(agentId: string): void` | no |
