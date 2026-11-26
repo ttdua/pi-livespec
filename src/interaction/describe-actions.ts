@@ -52,12 +52,19 @@ function approveDescription(subject: string): string {
 }
 
 function describe(id: string, r: ApprovalRequest, failing: string[]): GateChoice {
+	if (choiceKindOf(r) === "choice") return describeOption(id, r);
 	if (id === APPROVE) return { ...BUILT_INS[APPROVE]!, description: approveDescription(r.subject) };
 	const builtIn = BUILT_INS[id];
 	if (builtIn?.description !== undefined) return { ...builtIn, description: builtIn.description };
 	const option = (r.options ?? []).find((o) => o.id === id);
 	const description = id === WAIVE ? `Approve and waive the failing checks: ${failing.join(", ")}.` : (option?.description ?? "");
 	return { id, label: option?.label ?? id, description, command: `/livespec choose ${id} [notes]` };
+}
+
+/** A stuck or rule option is its own label and description, never a built-in action. */
+function describeOption(id: string, r: ApprovalRequest): GateChoice {
+	const option = (r.options ?? []).find((o) => o.id === id);
+	return { id, label: option?.label ?? id, description: option?.description ?? "", command: `/livespec choose ${id} [notes]` };
 }
 
 /** The choices `r` offers in `offeredChoiceIds` order; a question offers none (it is answered with text). */

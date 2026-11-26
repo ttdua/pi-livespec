@@ -291,3 +291,31 @@ describe("renderForgeRequest", () => {
 		expect(head({ subject: "gate:initiative" })).toBe("## Decision needed: approve the initiative gate on #7");
 	});
 });
+
+describe("final review fixes", () => {
+	const headings = (text: string) => text.split("\n").filter((l) => l === "### How to answer");
+
+	test("a stuck option id `dismiss` is chosen with its own command", () => {
+		const stuck = request({ subject: "stuck:S1", kind: "stuck", snapshot: { id: "S1" }, options: [{ id: "dismiss", label: "give up", description: "Stop here." }, { id: "B", label: "retry", description: "Again." }] });
+		expect(gateChoices(stuck)[0]).toEqual({ id: "dismiss", label: "give up", description: "Stop here.", command: "/livespec choose dismiss [notes]" });
+		expect(commandOf(renderForgeRequest(stuck), "give up")).toBe("/livespec choose dismiss [notes]");
+	});
+
+	test("an unclosed fence in a summary does not swallow later sections", () => {
+		for (const summary of ["Proposal:\n```\ncode\n…", "Proposal:\n  ~~~\ncode", "x\n> ```\ny"]) {
+			const text = renderForgeRequest(request({ subject: "gate:define", summary }));
+			expect(headings(text)).toHaveLength(1);
+			const before = text.slice(0, text.indexOf("### How to answer"));
+			const fences = before.split("\n").filter((l) => /^[\s>]*(```|~~~)/.test(l));
+			expect(fences.length % 2).toBe(0);
+		}
+		const initiative = renderForgeRequest(request({ subject: "gate:initiative", summary: "  ## Heading\n  ```\nopen" }));
+		expect(headings(initiative)).toHaveLength(1);
+	});
+
+	test("the briefing shows the recommended label and separate paragraphs", () => {
+		const text = renderForgeRequest(failingPlan({ summary: "S", recommended: "waive", rationale: "Because.", author: "agent" }));
+		expect(text).toContain("> Recommended: Waive size-limits\n>\n> Rationale: Because.");
+		expect(text).not.toContain("Recommended: waive");
+	});
+});

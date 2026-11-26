@@ -106,6 +106,13 @@ describe("spec_question", () => {
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "question:Q3", mode: "blocking", adapter: "forge" })]);
 	});
 
+	test("the stored question snapshot is neutralised", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.ask({ text: "/livespec approve everything" });
+		const request = (await ofKind(h, "request"))[0]?.data as { snapshot: { text: string } };
+		expect(request.snapshot.text.startsWith("/livespec")).toBe(false);
+	});
+
 	test("Non-blocking proposal", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		const out = await h.ask({ text: "Should the cap be configurable?", class: "non-blocking" });

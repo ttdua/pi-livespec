@@ -299,7 +299,8 @@ These waivable checks fail; approving needs `waive`.
 
 > Units are small and each has one Verify command.
 >
-> Recommended: waive
+> Recommended: Waive size-limits
+>
 > Rationale: the split would not make the units smaller.
 
 ### How to answer
@@ -308,7 +309,7 @@ Post a new comment whose first line is the command (write access required).
 
 | Choice | What happens | Command |
 | --- | --- | --- |
-| **waive** (recommended) | Approve and waive the failing checks: size-limits. | `/livespec choose waive [notes]` |
+| **Waive size-limits** (recommended) | Approve and waive the failing checks: size-limits. | `/livespec choose waive [notes]` |
 | request changes | Send the request back with notes; nothing is approved. | `/livespec changes <notes>` |
 | dismiss | Close the request without approving it. | `/livespec dismiss [notes]` |
 ```

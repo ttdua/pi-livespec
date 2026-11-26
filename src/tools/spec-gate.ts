@@ -259,7 +259,7 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 
 export const BRIEFING_SCHEMA = {
 	type: "object",
-	description: "Required for human gates, ignored for self gates. Advisory only: it informs the human and never answers or decides the gate.",
+	description: "Advisory briefing shown to the human after livespec's facts: summary, points to watch, the recommended choice and why. It is never an answer. spec_gate requires it on human gates; other tools accept it optionally.",
 	properties: {
 		summary: { type: "string", description: "what the human is deciding and what changed, at most 600 characters" },
 		watch: { type: "array", items: { type: "string" }, description: "up to 5 one-line things to check before answering" },

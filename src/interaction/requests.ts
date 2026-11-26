@@ -4,6 +4,7 @@
 
 import { gateDigest } from "../engine/locks.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
+import { neutralise } from "./briefing.ts";
 import {
 	ANSWER_KIND,
 	type Answered,
@@ -83,7 +84,7 @@ export function prepareRequest(input: PrepareInput): RequestRecord {
 		mode: input.mode,
 		head_sha: input.head,
 		snapshot: input.snapshot,
-		summary: input.summary,
+		summary: neutralise(input.summary),
 	};
 	if (input.options !== undefined) record.options = input.options;
 	if (input.briefing !== undefined) record.briefing = input.briefing;

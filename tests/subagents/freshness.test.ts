@@ -141,3 +141,11 @@ describe("stuckFor", () => {
 		expect(p.hypothesis).not.toContain("more");
 	});
 });
+
+describe("stuckFor whitespace", () => {
+	test("newlines in a stale entry are collapsed so the report validates", () => {
+		const p = stuckFor("U1", ["unreadable: boom\n\nat line 3\n\tdeep"]);
+		expect(p.hypothesis).not.toMatch(/[\r\n\t]/);
+		expect(stuckReport(p, { strict: true })).not.toHaveProperty("refused");
+	});
+});

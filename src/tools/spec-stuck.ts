@@ -51,7 +51,7 @@ function triedOf(raw: unknown): StuckTried[] | undefined {
 		const entry = (typeof t === "object" && t !== null ? t : {}) as { text?: unknown; link?: unknown };
 		if (!isText(entry.text)) return undefined;
 		const text = neutralise(entry.text);
-		out.push(isText(entry.link) ? { text, link: entry.link } : { text });
+		out.push(isText(entry.link) ? { text, link: neutralise(entry.link) } : { text });
 	}
 	return out;
 }
@@ -82,8 +82,7 @@ function strictTexts(p: SpecStuckParams, options: RequestOption[]): { hypothesis
 
 /** Lenient text rules: a stored report keeps what it has; its texts are only neutralised. */
 function lenientTexts(p: SpecStuckParams, options: RequestOption[]): { hypothesis: string; rationale?: string; options: RequestOption[] } | { refused: string } {
-	const checked = validateOptionTexts(options, { requireDescription: false });
-	if ("refused" in checked) return refusal(`${checked.refused}.`);
+	const checked = options.map((o) => ({ ...o, label: neutralise(o.label), ...(o.description === undefined ? {} : { description: neutralise(o.description) }) }));
 	const rationale = isText(p.rationale) ? neutralise(p.rationale) : undefined;
 	return { hypothesis: neutralise(p.hypothesis), ...(rationale === undefined ? {} : { rationale }), options: checked };
 }

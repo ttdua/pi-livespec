@@ -42,7 +42,8 @@ const hypothesisOf = (listed: string[], dropped: number): string => `${HYPOTHESI
 const size = (s: string): number => [...s].length;
 
 /** The hypothesis within 600 code points: whole stale entries are dropped from the end; a lone entry too long is cut. */
-function hypothesisFor(stale: string[]): string {
+function hypothesisFor(entries: string[]): string {
+	const stale = entries.map((s) => s.replace(/\s+/g, " ").trim());
 	for (let kept = stale.length; kept > 0; kept--) {
 		const text = hypothesisOf(stale.slice(0, kept), stale.length - kept);
 		if (size(text) <= HYPOTHESIS_MAX) return text;

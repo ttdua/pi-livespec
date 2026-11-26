@@ -82,9 +82,19 @@ function factsTitle(r: ApprovalRequest): string {
 /** Question and stuck summaries carry agent text as data; gate, amendment and rule summaries are livespec's payload. */
 const AGENT_FACTS = /^(question|stuck):/;
 
+const FENCE_LINE = /^[\s>]*(`{3,}|~{3,})/;
+
+/** `text` with a closing fence appended when it leaves one open, so later sections still render. */
+function closeFences(text: string): string {
+	const lines = text.split("\n").filter((l) => FENCE_LINE.test(l));
+	if (lines.length % 2 === 0) return text;
+	const last = FENCE_LINE.exec(lines[lines.length - 1]!)![1]!;
+	return `${text}\n${last}`;
+}
+
 function facts(r: ApprovalRequest): string[] {
 	const summary = AGENT_FACTS.test(r.subject) ? inert(r.summary) : neutralise(r.summary);
-	const out = [`### ${factsTitle(r)} (${r.mode})`, "", summary];
+	const out = [`### ${factsTitle(r)} (${r.mode})`, "", closeFences(summary)];
 	if (r.files.length > 0) out.push("", "Files:", ...r.files.map((f) => `- ${f}`));
 	if (r.links.length > 0) out.push("", "Links:", ...r.links.map((l) => `- ${l}`));
 	return out;
@@ -96,18 +106,25 @@ function checks(r: ApprovalRequest): string[] {
 	return ["### Failing checks", "", "These waivable checks fail; approving needs `waive`.", "", "| Check |", "| --- |", ...failing.map((c) => `| ${codeCell(c)} |`)];
 }
 
-function briefingLines(b: Briefing): string[] {
+function briefingLines(b: Briefing, recommended: string | undefined): string[] {
 	const lines = [b.summary];
 	if (b.watch !== undefined && b.watch.length > 0) lines.push("", "Watch:", ...b.watch.map((w) => `- ${w}`));
-	if (b.recommended !== undefined) lines.push("", `Recommended: ${b.recommended}`);
-	if (b.rationale !== undefined) lines.push(`Rationale: ${b.rationale}`);
+	if (recommended !== undefined) lines.push("", `Recommended: ${recommended}`);
+	if (b.rationale !== undefined) lines.push("", `Rationale: ${b.rationale}`);
 	return lines;
+}
+
+/** The label of the recommended choice (its id when no offered choice matches). */
+function recommendedLabel(r: ApprovalRequest, b: Briefing): string | undefined {
+	if (b.recommended === undefined) return undefined;
+	const rows = r.kind === "question" ? (r.options ?? []) : gateChoices(r);
+	return rows.find((c) => c.id === b.recommended)?.label ?? b.recommended;
 }
 
 function briefing(r: ApprovalRequest): string[] {
 	const b = r.briefing ?? r.record.briefing;
 	if (b === undefined) return [];
-	return [`### ${BRIEFING_HEADING[b.author] ?? BRIEFING_HEADING.agent}`, "", ...quote(inert(briefingLines(b).join("\n")))];
+	return [`### ${BRIEFING_HEADING[b.author] ?? BRIEFING_HEADING.agent}`, "", ...quote(inert(briefingLines(b, recommendedLabel(r, b)).join("\n")))];
 }
 
 function questionId(r: ApprovalRequest): string {

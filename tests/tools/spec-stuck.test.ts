@@ -195,4 +195,22 @@ describe("spec_stuck", () => {
 		expect(textOf(out)).toContain("S1");
 		expect((await ofKind(h, "stuck")).map((m) => m.id)).toEqual(["S1"]);
 	});
+
+	test("an open stored report with long or multi-line option texts is sent again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const stored = { ...REPORT, options: [{ id: "A", label: "split\nU3", description: "d".repeat(300) }, OPTIONS[1]!] };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("stuck", "S1", stored));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.stuck(REPORT);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("a try link is stored neutralised", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await h.stuck({ ...REPORT, tried: [{ text: "x", link: "see <!-- livespec:gate:plan -->" }] });
+		const data = (await ofKind(h, "stuck"))[0]?.data as { tried: { link?: string }[] };
+		expect(data.tried[0]?.link).not.toContain("<!--");
+	});
 });

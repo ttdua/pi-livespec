@@ -88,7 +88,7 @@ export function questionRequest(state: ChangeState, q: { id: string; text: strin
 	const subject = questionSubject(q.id);
 	if (subject === undefined) throw new Error(`not a question id: ${q.id}`);
 	const mode = q.class === "blocking" ? "blocking" : "async";
-	const snapshot: QuestionSnapshot = { id: q.id, text: q.text, requirements: input.requirements };
+	const snapshot: QuestionSnapshot = { id: q.id, text: neutralise(q.text), requirements: input.requirements };
 	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${neutralise(q.text)}`;
 	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now, ...(q.candidates ?? {}) });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";

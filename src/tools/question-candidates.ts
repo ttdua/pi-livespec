@@ -19,6 +19,7 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 function labelProblem(label: string): string | undefined {
 	if (label !== label.trim() || label === "") return "must not be empty or have leading or trailing space";
 	if (/[\r\n]/.test(label)) return "must be one line";
+	if (/\s/.test(label.replaceAll(" ", ""))) return "must use only plain spaces between words";
 	if (/\s{2,}/.test(label)) return "must not contain two whitespace characters in a row";
 	if (label.split(/\s+/).some((w) => w.startsWith("--"))) return "must not contain a word starting with --";
 	if (neutralise(label) !== label) return "must not contain <!-- or start with /livespec";
