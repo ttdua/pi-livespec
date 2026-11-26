@@ -33,10 +33,10 @@ export type RetryStep = { kind: "next"; run: Run; record: RecordLike; respawn?: 
 async function unsettledFallback(deps: DispatchDeps, agentId: string): Promise<DispatchOutcome | undefined> {
 	deps.service.abort(agentId);
 	const limit = deps.abortSettleMs ?? ABORT_SETTLE_MS;
-	const confirmed = await settledWithin(waitFor(deps.service, agentId, deps.signal), limit);
+	const confirmed = await settledWithin(waitFor(deps.service, agentId, deps.signal).then(() => undefined, () => new Promise<never>(() => undefined)), limit);
 	if (isCancelled(deps.signal)) return cancelledOutcome(agentId);
 	if (confirmed) return undefined;
-	return { kind: "blocked", reason: `fallback child ${agentId} was lost and did not settle within ${limit / 1000} s of the abort, so no RETRY was recorded and nothing was written to the forge` };
+	return { kind: "blocked", reason: `fallback child ${agentId} was lost and was not confirmed settled within ${limit / 1000} s of the abort (it may still run), so no RETRY was recorded and nothing was written to the forge` };
 }
 
 /** Resumes the same child; when that is refused or fails, launches one fallback child (never a second) and records the swap with a `RETRY` record. */

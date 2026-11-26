@@ -430,7 +430,24 @@ describe("runDispatch", () => {
 		expect(posted.map((p) => p.data.status)).not.toContain("RETRY");
 		expect(out.kind).toBe("blocked");
 		expect(out.kind === "blocked" && out.reason).toContain("agent-2");
-		expect(out.kind === "blocked" && out.reason).toContain("did not settle");
+		expect(out.kind === "blocked" && out.reason).toContain("not confirmed settled");
+	});
+
+	test("a fallback whose every wait rejects is not confirmed settled: no RETRY, BLOCKED naming it", async () => {
+		const fake = fakeExecutor({ resumes: ["refuse"], records: [{ status: "error", error: "boom" }] });
+		const real = fake.service.wait;
+		fake.service.wait = async (id: string, w?: { signal?: AbortSignal }) => {
+			if (id === "agent-2") throw new Error("wait rejected");
+			return real(id, w);
+		};
+		const { d, posted } = deps(fake);
+		d.abortSettleMs = 20;
+		const out = await runDispatch(d, request());
+		expect(fake.aborted).toContain("agent-2");
+		expect(posted.map((p) => p.data.status)).not.toContain("RETRY");
+		expect(out.kind).toBe("blocked");
+		expect(out.kind === "blocked" && out.reason).toContain("agent-2");
+		expect(out.kind === "blocked" && out.reason).toContain("may still run");
 	});
 
 	test("a rejected fallback wait that settles after the abort still posts RETRY", async () => {
