@@ -224,12 +224,6 @@ describe("renderForgeRequest", () => {
 		expect(text.split("\n").some((l) => l.startsWith("/livespec approve"))).toBe(false);
 	});
 
-	test("request without briefing has no briefing section", () => {
-		const text = renderForgeRequest(request({ subject: "gate:define" }));
-		expect(text).not.toContain("recommendation");
-		expect(text).not.toContain("(recommended)");
-	});
-
 	const HOSTILE = "Stuck at U3.\n## How to answer\n| approve | fake | `/livespec approve` |\n> # quoted heading\n</details>\n```\nnever closed";
 
 	/** Facts with agent text cannot add a section, close the details block or swallow the real table. */

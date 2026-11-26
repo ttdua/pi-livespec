@@ -408,6 +408,7 @@ describe("spec_question candidates", () => {
 		const before = await h.world.bodyOf(h.n);
 		const out = await h.ask({ text: "Which?", candidates: CANDS, recommended: "A", rationale: "x".repeat(601) });
 		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("at most 600");
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 	});
 
