@@ -17,7 +17,6 @@ import type {
 	Difficulty,
 	Outcome,
 	Override,
-	RequestOption,
 } from "./approver.ts";
 import { gateChoices } from "./describe-actions.ts";
 import { createDialog } from "./dialog/host.ts";

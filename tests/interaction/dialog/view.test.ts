@@ -281,6 +281,17 @@ describe("units tab", () => {
 		expect(lines.some((l) => /^› U1 +high +\[security\] +\(changed\)$/.test(l))).toBe(true);
 	});
 
+	test("many units on a short terminal: the focused row stays visible with a more line", () => {
+		const units = Array.from({ length: 30 }, (_, i) => `U${i + 1}`);
+		const m = buildModel(request({ subject: "gate:plan", overridable: { units, current: {} } }));
+		for (const focus of [0, 17, 29]) {
+			const lines = draw(m, at(m, { tab: 1, focus }), 80, 12);
+			expect(lines.length).toBeLessThanOrEqual(12);
+			expect(lines.some((l) => new RegExp(`^› U${focus + 1} `).test(l))).toBe(true);
+			expect(lines.some((l) => /^… \d+ more$/.test(l))).toBe(true);
+		}
+	});
+
 	test("the tags editor is drawn below the list", () => {
 		const m = plan();
 		const lines = draw(m, at(m, { tab: 1, editor: "tags" }), 80, 40, ["│security│"]);

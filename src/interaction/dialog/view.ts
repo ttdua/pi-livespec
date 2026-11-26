@@ -202,13 +202,13 @@ function shrinkFixed(ctx: Ctx, fixed: string[], keep: number, budget: number): s
 }
 
 /**
- * With an editor open the editor and its error are the footer and must stay whole: the entries shrink
- * to the focused row, then the blank spacer lines go. Without one the frame is returned as is.
+ * The footer (an open editor, its error, the key hints) stays whole and the fixed rows (entries, units,
+ * requirements) shrink around the focused row when they do not fit; the blank spacer lines go first.
  */
 function frameOf(a: Arranged, height: number): Frame {
 	const { ctx, layout } = a;
-	if (ctx.state.editor === undefined) return { header: a.header, fixed: layout.fixed, footer: a.footer };
 	let { header, footer } = a;
+	if (header.length + layout.fixed.length + footer.length <= height) return { header, fixed: layout.fixed, footer };
 	if (header.length + footer.length + 1 > height) [header, footer] = [noBlank(header), noBlank(footer)];
 	const fixed = shrinkFixed(ctx, layout.fixed, layout.keep, Math.max(1, height - header.length - footer.length));
 	return { header, fixed, footer };
