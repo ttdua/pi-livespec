@@ -121,7 +121,7 @@ After the lock, `unit_amend` SHALL change the plan in one of three forms:
 - `--add` with a new unit, which gets the next id;
 - `--drop U<n>`, which removes a unit that is not done.
 
-The tool SHALL re-run the `tags` and `difficulty` decisions for edited and added units, sending a rule's ask through the configured approver chain as a proposal (see "Decision seam"), and validate the whole resulting plan with the LS-02 unit validators. It MUST refuse on any error, and MUST refuse to drop a unit that a remaining unit lists in `Depends`. Otherwise it SHALL send a light gate request that shows only the affected units. On approval, the plugin SHALL:
+The tool SHALL re-run the `tags` and `difficulty` decisions for edited and added units, sending a rule's ask through the configured approver chain as a proposal (see "Decision seam"), and validate the whole resulting plan with the LS-02 unit validators. It MUST refuse on any error, and MUST refuse to drop a unit that a remaining unit lists in `Depends`. Otherwise it SHALL send a light gate request that shows only the affected units, with the briefing the agent passed as the optional `briefing` parameter (see request-briefing "Briefing shape"); without one, the request has no briefing section. The briefing SHALL be validated before the classification decisions run, and an invalid one MUST be refused before any request, including a `decide:` request, is sent. On approval, the plugin SHALL:
 1. write the body change;
 2. post decision records for edited and added units: the rule-decided ones, and for a decision answered by a human a `source: human` record of that answer without `proposal`; a record SHALL be posted unless the unit's current decision for that point and digest already has the same outcome and source, or this amendment already posted it;
 3. write an `amendment` comment with the old and new digests.
@@ -210,6 +210,10 @@ The refusals for blocking questions, stuck reports and the cap SHALL give the sa
 #### Scenario: Added unit keeps its id across an ask
 - **WHEN** the plan has U1 and U2, `unit_amend --add` asks `difficulty.U3` on the forge, the request is answered with `high`, and `unit_amend --add` runs again with the same unit
 - **THEN** the light gate request adds U3 with `Difficulty: high`, no new `decide:` request is sent, and once approved `unit-classification` reports no error for U3
+
+#### Scenario: Amendment with a briefing
+- **WHEN** the plan is locked and `unit_amend U1` runs with a valid replacement and a briefing recommending `approve`
+- **THEN** the light gate request carries that briefing and its `approve` choice is marked recommended
 
 ### Requirement: Re-planning after the lock
 After the first lock, `plan_units` MUST refuse, and every unit change SHALL go through `unit_amend`. While a lock exists, the plan gate MUST refuse when any unit is frozen or stale. When the plan gate is approved again, its comment SHALL lock the digests of every unit in the body. Status lines of unchanged units MUST be kept.
