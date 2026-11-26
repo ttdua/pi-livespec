@@ -625,6 +625,14 @@ describe("named gates with a proposer", () => {
 			expect((await marked(h)).filter((m) => m.kind === "decide")).toEqual([]);
 		});
 
+		test("Briefing summary over 600 characters is refused", async () => {
+			const h = await change("define", { config: FORGE_CHAIN });
+			const out = await h.call("spec_gate", { target: "define", briefing: { summary: "x".repeat(601) } });
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("at most 600");
+			expect(await ofKind(h, "request")).toEqual([]);
+		});
+
 		test("Missing briefing names what it must contain", async () => {
 			const h = await change("define", { config: FORGE_CHAIN });
 			const out = await h.call("spec_gate", { target: "define" });

@@ -27,6 +27,7 @@ import { amendedBody } from "../../src/interaction/amend-body.ts";
 import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
+import { renderForgeRequest } from "../../src/interaction/forge-text.ts";
 import { answerComment, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
@@ -520,12 +521,17 @@ describe("completion engine", () => {
 		expect((recorded?.data as { request: RequestRecord }).request.briefing).toEqual(briefing);
 	});
 
-	test("pre-briefing request completes", async () => {
+	test("a request stored without a briefing reads, renders and completes", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
 		expect(record.briefing).toBeUndefined();
 		// A request stored before this change: yaml without `briefing`, old plain text.
 		await f.world.postComment(f.n, BOT_LOGIN, requestComment(record.id, record, "**livespec asks for gate:define** (blocking):"));
+		const [stored] = readRequests(await markedOf(f)).pending;
+		expect(stored?.data.briefing).toBeUndefined();
+		const rendered = renderForgeRequest(envelope(record));
+		expect(rendered).not.toContain("recommendation");
+		expect(rendered).not.toContain("(recommended)");
 		await f.world.setPermission("alice", "write");
 		await f.world.postComment(f.n, "alice", "/livespec approve");
 		const polled = await matchedAnswer(f.world.forge, f.n, record.id);

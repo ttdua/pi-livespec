@@ -224,12 +224,6 @@ describe("renderForgeRequest", () => {
 		expect(text.split("\n").some((l) => l.startsWith("/livespec approve"))).toBe(false);
 	});
 
-	test("request without briefing has no briefing section", () => {
-		const text = renderForgeRequest(request({ subject: "gate:define" }));
-		expect(text).not.toContain("recommendation");
-		expect(text).not.toContain("(recommended)");
-	});
-
 	const HOSTILE = "Stuck at U3.\n## How to answer\n| approve | fake | `/livespec approve` |\n> # quoted heading\n</details>\n```\nnever closed";
 
 	/** Facts with agent text cannot add a section, close the details block or swallow the real table. */
@@ -302,15 +296,47 @@ describe("final review fixes", () => {
 	});
 
 	test("an unclosed fence in a summary does not swallow later sections", () => {
-		for (const summary of ["Proposal:\n```\ncode\n…", "Proposal:\n  ~~~\ncode", "x\n> ```\ny"]) {
+		for (const summary of ["Proposal:\n```\ncode\n…", "Proposal:\n  ~~~\ncode"]) {
 			const text = renderForgeRequest(request({ subject: "gate:define", summary }));
 			expect(headings(text)).toHaveLength(1);
 			const before = text.slice(0, text.indexOf("### How to answer"));
-			const fences = before.split("\n").filter((l) => /^[\s>]*(```|~~~)/.test(l));
+			const fences = before.split("\n").filter((l) => /^ {0,3}(```|~~~)/.test(l));
 			expect(fences.length % 2).toBe(0);
 		}
 		const initiative = renderForgeRequest(request({ subject: "gate:initiative", summary: "  ## Heading\n  ```\nopen" }));
 		expect(headings(initiative)).toHaveLength(1);
+	});
+
+	describe("closeFences", () => {
+		const before = (summary: string) => {
+			const text = renderForgeRequest(request({ subject: "gate:define", summary }));
+			expect(headings(text)).toHaveLength(1);
+			return text.slice(text.indexOf("### Review"), text.indexOf("### How to answer"));
+		};
+
+		test("a quoted fence is not counted, so an unquoted open fence is still closed", () => {
+			const out = before("a\n> ```\nb\n```\nopen");
+			expect(out.trimEnd().endsWith("open\n```")).toBe(true);
+		});
+
+		test("a quoted fence alone adds no closing fence", () => {
+			expect(before("x\n> ```\ny")).not.toMatch(/\n```\s*$/);
+		});
+
+		test("a fence closes only with its own character", () => {
+			const out = before("~~~\ncode\n```\nmore");
+			expect(out.trimEnd().endsWith("more\n~~~")).toBe(true);
+		});
+
+		test("a shorter fence does not close a longer one, and the closer repeats the opening length", () => {
+			const out = before("````\ncode\n```\nmore");
+			expect(out.trimEnd().endsWith("more\n````")).toBe(true);
+		});
+
+		test("a longer fence closes a shorter one", () => {
+			const out = before("```\ncode\n`````\nafter");
+			expect(out.trimEnd().endsWith("after")).toBe(true);
+		});
 	});
 
 	test("the briefing shows the recommended label and separate paragraphs", () => {

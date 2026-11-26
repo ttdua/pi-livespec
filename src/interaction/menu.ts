@@ -14,7 +14,7 @@ export type MenuChoice<T> = { id: string; label: string; description?: string; v
 /** `<label> — <description>`, the recommended entry first and marked; no raw ids are shown. */
 export function menuEntries<T>(choices: MenuChoice<T>[], recommended?: string): MenuEntry<T>[] {
 	const entries = choices.map((c) => {
-		const text = c.description ? `${c.label} — ${c.description}` : c.label;
+		const text = neutralise(c.description ? `${c.label} — ${c.description}` : c.label);
 		return { id: c.id, entry: [c.id === recommended ? text + RECOMMENDED : text, c.value] as const };
 	});
 	const first = entries.filter((e) => e.id === recommended);
@@ -38,5 +38,6 @@ function briefingBlock(b: Briefing, recommendedLabel: string | undefined): strin
 
 /** The facts (`summary`), a blank line, then the briefing; just the summary without a briefing. */
 export function titleWithBriefing(r: ApprovalRequest, recommendedLabel?: string): string {
-	return r.briefing ? `${r.summary}\n\n${briefingBlock(r.briefing, recommendedLabel)}` : r.summary;
+	const title = r.briefing ? `${r.summary}\n\n${briefingBlock(r.briefing, recommendedLabel)}` : r.summary;
+	return neutralise(title);
 }

@@ -132,9 +132,4 @@ describe("briefing on the record", () => {
 		expect(prepareRequest({ kind: "gate", subject: "gate:plan", mode: "blocking", head: "f".repeat(40), body: "b", snapshot: RECORD.snapshot, summary: "x", now: NOW })).not.toHaveProperty("briefing");
 	});
 
-	test("Request without a briefing still reads", () => {
-		const state = readRequests(comments(requestComment(ID, RECORD, "text")));
-		expect(state.pending).toHaveLength(1);
-		expect(state.pending[0]?.data.briefing).toBeUndefined();
-	});
 });
