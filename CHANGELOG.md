@@ -16,6 +16,10 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 - **Question candidates:** `spec_question` accepts 2 to 4 candidate answers, each a label and a description, that the human can pick in session or answer with `/livespec answer Q<n> <label>`.
 - **New gate presentation:** the forge `request` comment is a readable markdown layout (Decision needed heading, facts, failing checks, briefing, How to answer table, collapsed command list); the in-session menu shows `<label> — <description>` with the recommended entry first.
 
+### Changed
+
+- `subagent_dispatch`, `subagent_packet` and `subagent_record` treat an empty `unit`, `subject` or `finding` as omitted, and ignore a `subject` for a role other than `reviewer` or a `finding` for a role other than `verifier`, with a warning at the top of the tool result instead of a refusal.
+
 ## [0.1.0] - 2026-11-25
 
 First release. It covers roadmap specs LS-01 to LS-10; LS-11 (dogfood comparison with pi-superspec) is still in progress.

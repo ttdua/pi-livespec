@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
+import { readPacket } from "../../src/subagents/packet-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { cardState } from "./unit-helpers.ts";
 import { footerIds, subagentHarness, U1 } from "./subagent-helpers.ts";
@@ -39,6 +40,21 @@ describe("inline fallback", () => {
 		const finished = await h.finish("U1");
 		expect(finished.isError, textOf(finished)).toBeFalsy();
 		expect(await h.ofKind("receipt")).toHaveLength(1);
+	});
+
+	test("inline record ignores a finding for an implementer", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		await h.start("U1");
+		const packet = await h.call("subagent_packet", { role: "implementer", unit: "U1" });
+		const out = await h.call("subagent_record", { role: "implementer", unit: "U1", finding: "c1:0", result: done({ commits: [], sources_used: footerIds(textOf(packet)) }) });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(textOf(out).startsWith('Warning: ignored finding "c1:0": only verifier takes a finding reference.')).toBe(true);
+		const data = (await h.latest("dispatch"))?.data as Record<string, unknown>;
+		expect(data).toMatchObject({ role: "implementer", unit: "U1", status: "DONE", agentSource: "inline", attempt: 1 });
+		expect(data).not.toHaveProperty("finding");
+		expect(data).not.toHaveProperty("verifies");
+		expect(textOf(packet)).toContain(data.packet as string);
+		expect(await readPacket(h.root, "per-ip-cap", data.packet as string)).toBeDefined();
 	});
 
 	test("inline review recorded", async () => {
@@ -134,7 +150,7 @@ describe("verifier", () => {
 		expect(packet).not.toContain("refused");
 	});
 
-	test("Verifier without a finding, a finding for another role, an unknown key", async () => {
+	test("Verifier without a finding, an ignored finding for another role, an unknown key", async () => {
 		const { h, key } = await seeded();
 		const before = (await h.marked()).length;
 		for (const tool of ["subagent_dispatch", "subagent_packet"]) {
@@ -142,15 +158,15 @@ describe("verifier", () => {
 			expect(none.isError).toBe(true);
 			expect(textOf(none)).toContain("finding reference");
 		}
-		const other = await h.call("subagent_dispatch", { role: "implementer", unit: "U1", finding: key });
-		expect(other.isError).toBe(true);
-		expect(textOf(other)).toContain("only a verifier takes a finding reference");
 		const unknown = await h.call("subagent_dispatch", { role: "verifier", finding: "c999:0" });
 		expect(unknown.isError).toBe(true);
 		expect(textOf(unknown)).toContain("names no aggregate finding");
 		const rec = await h.call("subagent_record", { role: "verifier", finding: "c999:0", result: verdict() });
 		expect(textOf(rec)).toContain("names no aggregate finding");
 		expect(await h.marked()).toHaveLength(before);
+		const other = await h.call("subagent_dispatch", { role: "implementer", unit: "U1", finding: key });
+		expect(other.isError).toBeFalsy();
+		expect(textOf(other)).toMatch(/^Warning: ignored finding/);
 	});
 
 	test("Verifier without a verdict is refused on record", async () => {

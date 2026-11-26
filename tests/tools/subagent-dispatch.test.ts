@@ -132,12 +132,78 @@ describe("subagent-dispatch tools", () => {
 		[{ role: "__proto__" }, "unknown role"],
 		[{ role: "reviewer", subject: "constructor" }, "unknown subject"],
 		[{ role: "reviewer", subject: "__proto__" }, "unknown subject"],
-		[{ role: "implementer", unit: "U1", subject: "unit" }, "only a reviewer takes a subject"],
+		[{ role: "reviewer", subject: "" }, "a reviewer needs a subject"],
+		[{ role: "reviewer", subject: " " }, "unknown subject"],
+		[{ role: "planner", subject: "spec" }, "unknown role"],
+		[{ role: "reviewer", subject: "unit", unit: "" }, "a unit id is required"],
+		[{ role: "scout", unit: "U9" }, "does not exist"],
+		[{ role: "implementer", unit: "", finding: "c1:0" }, "a unit id is required"],
+		[{ role: "implementer", unit: "" }, "a unit id is required"],
+		[{ role: "verifier", finding: "" }, "a finding reference"],
 	])("refuses %o", async (params, text) => {
 		const h = await subagentHarness({ executor: {} });
 		const out = await h.call("subagent_dispatch", params);
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain(text);
+		expect(h.fake.spawned).toEqual([]);
+	});
+
+	describe("lenient target parameters", () => {
+		/** Dispatches `params` in a fresh harness; the run's prompt, metadata and dispatch record without per-run ids. */
+		async function scoutRun(params: Record<string, unknown>) {
+			const h = await subagentHarness({ executor: {} });
+			next(h, citing(h, { commits: undefined }));
+			const out = await h.call("subagent_dispatch", params);
+			// The content tree is a per-harness temp dir, and the packet hash covers it: neither is part of the comparison.
+			const { agentId: _id, packet: _hash, ...record } = ((await h.latest("dispatch"))?.data ?? {}) as Record<string, unknown>;
+			const prompt = h.fake.spawned[0]?.prompt.replace(/livespec-tree-\w+/g, "<tree>").replace(/Packet hash: \w+/, "Packet hash: <hash>");
+			return { out, spawned: h.fake.spawned.length, prompt, metadata: JSON.parse(JSON.stringify(h.fake.spawned[0]?.options.metadata ?? null).replace(/[0-9a-f]{64}/g, "<hash>")), record };
+		}
+		const sameAsOmitted = async (run: Awaited<ReturnType<typeof scoutRun>>) => {
+			const base = await scoutRun({ role: "scout" });
+			expect(run.prompt).toEqual(base.prompt);
+			expect(run.metadata).toEqual(base.metadata);
+			expect(run.record).toEqual(base.record);
+		};
+
+		test("empty parameters are omitted", async () => {
+			const run = await scoutRun({ role: "scout", unit: "", subject: "", finding: "" });
+			expect(run.out.isError).toBeFalsy();
+			expect(run.spawned).toBe(1);
+			expect(textOf(run.out)).not.toContain("Warning: ignored");
+			await sameAsOmitted(run);
+		});
+
+		test("subject for a role that takes none", async () => {
+			const run = await scoutRun({ role: "scout", subject: "spec" });
+			expect(run.spawned).toBe(1);
+			expect(textOf(run.out).startsWith('Warning: ignored subject "spec": only reviewer takes a subject.')).toBe(true);
+			await sameAsOmitted(run);
+		});
+
+		test("finding for a role that takes none", async () => {
+			const h = await subagentHarness({ executor: {} });
+			const plain = await h.call("subagent_packet", { role: "implementer", unit: "U1" });
+			const out = await h.call("subagent_packet", { role: "implementer", unit: "U1", finding: "c1:0" });
+			expect(out.isError).toBeFalsy();
+			expect(textOf(out)).toBe(`Warning: ignored finding "c1:0": only verifier takes a finding reference.\n\n${textOf(plain)}`);
+		});
+
+		test("ignored values are not validated", async () => {
+			const run = await scoutRun({ role: "scout", subject: "vibes", finding: "nope" });
+			expect(run.spawned).toBe(1);
+			expect(textOf(run.out).startsWith('Warning: ignored subject "vibes": only reviewer takes a subject.\nWarning: ignored finding "nope": only verifier takes a finding reference.')).toBe(true);
+			await sameAsOmitted(run);
+		});
+
+		test("a warning survives a later refusal", async () => {
+			const h = await subagentHarness({ executor: {} });
+			const out = await h.call("subagent_dispatch", { role: "implementer", unit: "", finding: "c1:0" });
+			expect(out.isError).toBe(true);
+			expect(textOf(out).startsWith('Warning: ignored finding "c1:0"')).toBe(true);
+			expect(textOf(out)).toContain("a unit id is required");
+			expect(h.fake.spawned).toEqual([]);
+		});
 	});
 
 	test.each(["subagent_dispatch", "subagent_answer", "subagent_packet", "subagent_record", "finding_rebut", "forge_read"])("called in a child refuses: %s", async (tool) => {
