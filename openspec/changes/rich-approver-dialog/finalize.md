@@ -7,7 +7,7 @@
 
 **Change**: `rich-approver-dialog`
 **Finalized at**: `2026-11-26 12:00` (UTC)
-**Outcome**: `merge-locally` (into the feature branch; push and PR pending the user's approval)
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,14 +15,14 @@
 
 - **Branch**: `spec/rich-approver-dialog`
 - **Base branch**: `main`
-- **Final state**: `merged` (worktree branch `rich-approver-dialog` fast-forwarded into `spec/rich-approver-dialog` at `b9a8da8`; not pushed)
-- **PR URL**: `N/A` (no PR yet)
+- **Final state**: `pr-open` (worktree branch `rich-approver-dialog` fast-forwarded into `spec/rich-approver-dialog` at `b9a8da8`; pushed to `origin/spec/rich-approver-dialog`)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/56`
 
 ### Deviation from the canonical closeout (project AGENTS.md policy)
 
-The project `AGENTS.md` says: no push, merge or PR without the user's explicit permission in chat. The user approved the code review gate, which covers the local merge into the feature branch, but did not yet approve a push or a PR. So:
-- Step 3: `git pull` was skipped because `spec/rich-approver-dialog` has no upstream yet.
-- Steps 10 to 12 (push, PR, reviewer comment) are pending the user's decision.
+The project `AGENTS.md` says: no push, merge or PR without the user's explicit permission in chat. So:
+- Step 3: `git pull` was skipped because `spec/rich-approver-dialog` had no upstream yet.
+- Steps 10 to 12 (push, PR, reviewer comment) ran only after the user approved them in chat. `gh auth status` showed account `ttdua` active, matching the remote owner, and the push went over SSH.
 - Worktree removal used Worktrunk (`wt remove rich-approver-dialog`) instead of `git worktree remove`, as AGENTS.md requires.
 
 ---
@@ -36,7 +36,7 @@ The project `AGENTS.md` says: no push, merge or PR without the user's explicit p
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/56#issuecomment-7191471837)
 
 ---
 
@@ -60,7 +60,4 @@ The project `AGENTS.md` says: no push, merge or PR without the user's explicit p
 
 ## Next step
 
-Push and PR need the user's approval:
-1. `git push -u origin spec/rich-approver-dialog` (remote `ttdua/pi-livespec`; check `gh auth status` and switch if needed).
-2. Open a PR against `main` with the suggested title `feat(approver-adapters): rich-approver-dialog`, then post the code-review orientation comment.
-3. After approval, run `/opsx-archive` on this feature branch, push the archive commits, then merge the PR.
+Wait for PR code review, including a manual check of the dialog in a real pi TUI (verify W2). After approval, run `/opsx-archive` on this feature branch, push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). Merging needs the user's explicit approval.
