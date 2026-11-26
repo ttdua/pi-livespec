@@ -10,15 +10,20 @@ import { createForgeApprover } from "../interaction/forge.ts";
 import type { DialogFactory } from "../interaction/dialog/types.ts";
 import { createInSessionApprover } from "../interaction/in-session.ts";
 
-/** The tool `ctx` subset: `hasUI`, `mode` and the dialog methods of `ctx.ui`. */
 /** pi does not re-export `ExtensionMode` from its root. */
 type ExtensionMode = ExtensionContext["mode"];
 
+/** What a waiting custom dialog reports, so terminals with program status show pi as blocked. */
+type CustomOptions = { blocked: { kind: "question"; message: string } };
+
+/** The tool `ctx` subset: `hasUI`, `mode` and the dialog methods of `ctx.ui`. */
 export type ApproverCtx = {
 	hasUI: boolean;
 	mode?: ExtensionMode;
-	ui: Omit<ApproverUI, "hasUI" | "dialog"> & { custom?: <T>(factory: DialogFactory<T>) => Promise<T | undefined> };
+	ui: Omit<ApproverUI, "hasUI" | "dialog"> & { custom?: <T>(factory: DialogFactory<T>, options?: CustomOptions) => Promise<T | undefined> };
 };
+
+const BLOCKED: CustomOptions = { blocked: { kind: "question", message: "livespec is waiting for your answer" } };
 
 export type ApproverChain = { chain: AdapterName[]; adapters: Partial<Record<AdapterName, Approver>> };
 
@@ -36,7 +41,7 @@ export function uiOf(ctx: ApproverCtx): ApproverUI {
 	};
 	if (ctx.mode === "tui" && typeof ctx.ui.custom === "function") {
 		const custom = ctx.ui.custom.bind(ctx.ui);
-		ui.dialog = (factory) => custom(factory);
+		ui.dialog = (factory) => custom(factory, BLOCKED);
 	}
 	return ui;
 }

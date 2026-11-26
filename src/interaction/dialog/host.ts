@@ -2,8 +2,8 @@
 // The open `TextField` owns the text being typed; the reducer only sees it on submit, so every
 // key but submit and cancel goes to the field while an editor is open.
 
-import { getSelectListTheme, type Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, Editor, type Focusable, type KeybindingsManager, type TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, Editor, type Focusable, type KeybindingsManager, type SelectListTheme, type TUI } from "@earendil-works/pi-tui";
 import type { ApprovalRequest } from "../approver.ts";
 import { CANCELLED } from "../flow-result.ts";
 import { keyToAction } from "./keys.ts";
@@ -19,9 +19,16 @@ export type TextField = { value(): string; set(text: string): void; handleInput(
 const RESERVED_ROWS = 4;
 const MIN_HEIGHT = 10;
 
+/** pi's select-list colours, built from the injected theme so the dialog needs no runtime import from pi-coding-agent. */
+function selectListTheme(theme: Theme): SelectListTheme {
+	const accent = (s: string) => theme.fg("accent", s);
+	const muted = (s: string) => theme.fg("muted", s);
+	return { selectedPrefix: accent, selectedText: accent, description: muted, scrollInfo: muted, noMatch: muted };
+}
+
 /** The default field: pi-tui's `Editor`; `value()` expands paste markers. */
 function editorField(tui: TUI, theme: Theme): TextField {
-	const editor = new Editor(tui, { borderColor: (s) => theme.fg("border", s), selectList: getSelectListTheme() });
+	const editor = new Editor(tui, { borderColor: (s) => theme.fg("border", s), selectList: selectListTheme(theme) });
 	return {
 		value: () => editor.getExpandedText(),
 		set: (text) => editor.setText(text),

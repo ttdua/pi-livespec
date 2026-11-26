@@ -1,4 +1,5 @@
-import { describe, expect, test, vi } from "vitest";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import type { DialogFactory, DialogOutcome } from "../../src/interaction/dialog/types.ts";
 import { type ApproverCtx, uiOf } from "../../src/tools/approver-for.ts";
 
@@ -15,7 +16,11 @@ describe("uiOf", () => {
 		const ui = uiOf(ctxOf("tui", custom));
 		expect(ui.dialog).toBeDefined();
 		expect(await ui.dialog?.(factory)).toEqual(CANCEL);
-		expect(custom).toHaveBeenCalledWith(factory);
+		expect(custom).toHaveBeenCalledWith(factory, { blocked: { kind: "question", message: "livespec is waiting for your answer" } });
+	});
+
+	test("pi's ctx is assignable to ApproverCtx without a cast", () => {
+		expectTypeOf<Pick<ExtensionContext, "hasUI" | "mode" | "ui">>().toExtend<ApproverCtx>();
 	});
 
 	test("mode rpc → no dialog", () => {
