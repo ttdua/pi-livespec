@@ -137,7 +137,7 @@ Bạn trò chuyện với agent như bình thường. livespec thêm ba thứ m�
 
 - **Phase card.** Mỗi lượt, agent thấy change, phase, các bộ đếm, các check đang fail và **đúng một bước tiếp theo**. Hỏi "bước tiếp theo là gì?" hoặc chạy `/livespec next` để tự xem cùng câu đó.
 - **Tool của livespec.** Agent gọi các tool như `change_new`, `spec_gate` hay `unit_finish`. Bạn không cần tự gõ lời gọi tool; chỉ cần nói bằng ngôn ngữ thường ("tạo change cho X", "request define gate", "ship đi"). Khi bước tiếp theo ghi *a human runs X*, livespec chờ **bạn** bảo agent làm việc đó.
-- **Yêu cầu chờ bạn.** Gate, câu hỏi, stuck report và một số quyết định chờ con người trả lời. Với adapter mặc định `in-session`, chúng hiện thành dialog của pi ngay trong lời gọi tool; với adapter `forge`, chúng hiện thành comment trên issue và bạn trả lời bằng comment `/livespec …`.
+- **Yêu cầu chờ bạn.** Gate, câu hỏi, stuck report và một số quyết định chờ con người trả lời. Với adapter mặc định `in-session`, chúng hiện thành một dialog của pi cho mỗi request ngay trong lời gọi tool; với adapter `forge`, chúng hiện thành comment trên issue và bạn trả lời bằng comment `/livespec …`.
 
 **Quy tắc nhanh:** khi agent dừng và card ghi "Wait for the human's answer to …", đó là lượt của bạn. Mọi việc khác agent tự làm được.
 
@@ -247,7 +247,7 @@ Mọi quyết định của con người đi theo cùng một vòng đời: agen
 
 | Adapter | Dùng khi | Bạn thấy gì | Cách trả lời |
 |---|---|---|---|
-| `in-session` (mặc định) | pi có UI (`hasUI`) | dialog chọn ngay trong lời gọi tool | chọn một option; bấm Esc được tính là **dismiss** |
+| `in-session` (mặc định) | pi có UI (`hasUI`) | một dialog cho mỗi request trong pi TUI; select prompt ở RPC host và các mode khác | chọn một option rồi gửi ở **Review**; Esc được tính là **dismiss** |
 | `forge` | forge đã kết nối và ghi được | comment `request` trên change issue | đăng một comment mới có **dòng đầu tiên** là lệnh `/livespec …` |
 
 Chọn thứ tự trong `interaction.adapter` (ví dụ `[in-session, forge]`: dialog khi bạn đang ngồi ở bàn phím, issue khi không, và khi ở print mode). `/livespec doctor` cho biết adapter nào sẽ trả lời lúc này.
@@ -263,7 +263,19 @@ Tiêu đề dialog là tóm tắt request (các fact), rồi đến briefing (xe
 
 Câu hỏi hiển thị các đáp án ứng viên (nếu agent đưa 2 đến 4), **write my own answer** và **answer later (non-blocking)**. Chọn một ứng viên là trả lời bằng label của nó.
 
-Sau approve hoặc một option, bạn chọn **No notes** hoặc **Add notes**. Ở plan gate và với amendment, bạn được hỏi thêm **Keep classification** hoặc **Adjust Difficulty or Tags**, nơi bạn có thể override từng unit.
+Trong pi TUI, request là một dialog với các tab **Decision**, **Adjust units** (chỉ khi unit có thể override) và **Review**. Ghi note bên trong bằng `n`; không gì được gửi cho đến khi bạn gửi ở **Review**. **answer later** và **dismiss** đóng dialog ngay, không qua Review.
+
+Ở RPC host và các mode khác, cùng các câu trả lời đó đến từ select prompt: sau approve hoặc một option, bạn chọn **No notes** hoặc **Add notes**; ở plan gate và với amendment là **Keep classification** hoặc **Adjust Difficulty or Tags**.
+
+**Phím trong dialog** (TUI):
+
+- `↑` `↓` di chuyển; `1`–`9` chọn entry có số đó.
+- `n` ghi note.
+- `Tab` / `Shift+Tab` tab kế tiếp / trước.
+- `←` / `→` đổi Difficulty; `e` sửa tags (Adjust units).
+- `PgUp` / `PgDn` cuộn fact và briefing.
+- `Enter` chọn (Decision), sang tab kế (Adjust units), gửi (Review); khi editor đang mở, lưu nó.
+- `Esc` hủy request (`dismissed`); khi editor đang mở, chỉ đóng editor.
 
 ### Briefing và đề xuất
 
