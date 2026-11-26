@@ -7,7 +7,7 @@
 
 **Change**: `lenient-subagent-target-params`
 **Finalized at**: `2026-11-26 08:06`
-**Outcome**: `merge-locally` (partial closeout: merged into the feature branch; push and PR held)
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,10 +15,10 @@
 
 - **Branch**: `spec/lenient-subagent-target-params`
 - **Base branch**: `main`
-- **Final state**: `merged` (worktree branch `lenient-subagent-target-params` fast-forwarded into the feature branch at `ba1dfd0`; the feature branch is not pushed)
-- **PR URL**: `N/A` (no PR exists; `gh pr view` reports none)
+- **Final state**: `pr-open` (worktree branch fast-forwarded into the feature branch at `ba1dfd0`; spec sync and archive committed; feature branch pushed after the user approved in chat)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/52`
 
-Deviation from the canonical git-side closeout: project `AGENTS.md` forbids push, merge or opening a PR without the user's explicit permission in chat. Steps 10 to 12 (push, PR offer, PR comment) are held until that permission is given.
+Deviation from the canonical git-side closeout: project `AGENTS.md` requires the user's explicit permission before push or PR. The user gave it in chat, and `/opsx-archive` (spec sync and archive) ran before the push, so the PR carries the implementation and the archive together. The push went over HTTPS as account `ttdua`, as `AGENTS.md` directs.
 
 ---
 
@@ -31,7 +31,7 @@ Deviation from the canonical git-side closeout: project `AGENTS.md` forbids push
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/52#issuecomment-7179654667)
 
 ---
 
@@ -54,9 +54,4 @@ Deviation from the canonical git-side closeout: project `AGENTS.md` forbids push
 
 ## Next step
 
-The user must approve pushing `spec/lenient-subagent-target-params` and opening a PR. After that:
-1. Run `/opsx-archive` on this feature branch.
-2. Push.
-3. Open the PR, wait for review, and merge.
-
-Alternatively, merge locally into `main` and then run `/opsx-archive` there.
+Wait for the PR code review. The archive and spec sync are already on this branch, so after approval merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). Then, from `main`, remove the feature worktree with `wt remove spec/lenient-subagent-target-params`.
