@@ -109,6 +109,21 @@ describe("rule ask briefing", () => {
 		await expect(run("bad-rec")).rejects.toThrow("decision `bad-rec` recommends `z`, which it does not offer");
 	});
 
+	test("a recommending rule with an over-long summary throws naming the rule", async () => {
+		registerRule("long-sum", { validate() {} }, () => ({ ask: { summary: "s".repeat(601), options: OPTIONS, recommended: "x", rationale: "why" } }));
+		await expect(run("long-sum")).rejects.toThrow(/decision `long-sum` .*600/);
+	});
+
+	test("a recommending rule with a multi-paragraph rationale throws naming the rule", async () => {
+		registerRule("blank-rat", { validate() {} }, () => ({ ask: { summary: "s", options: OPTIONS, recommended: "x", rationale: "a\n\nb" } }));
+		await expect(run("blank-rat")).rejects.toThrow(/decision `blank-rat` /);
+	});
+
+	test("a rule without a recommendation keeps a long summary", async () => {
+		registerRule("long-plain", { validate() {} }, () => ({ ask: { summary: "s".repeat(601), options: OPTIONS } }));
+		await expect(run("long-plain")).resolves.toEqual({ status: "pending", requestId: "r" });
+	});
+
 	test("a rule option description over 200 code points throws", async () => {
 		registerRule("long-desc", { validate() {} }, () => ({ ask: { summary: "s", options: [{ id: "x", label: "X", description: "d".repeat(201) }] } }));
 		await expect(run("long-desc")).rejects.toThrow(/decision `long-desc`/);
