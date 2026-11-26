@@ -49,9 +49,9 @@ Blocked by: 3, 4
 
 Blocked by: 4
 
-- [ ] 7.1 Extend `RuleResult.ask` in `src/decide/registry.ts` and `DecisionAsk` in `src/decide/seam.ts` with option descriptions, `recommended` and `rationale`; `decide` validates option texts and throws when the recommendation is not an option
-- [ ] 7.2 `decisionRequest` in `src/tools/decide-ask.ts` builds a rule-authored briefing only when the rule recommends; `behavior-change` in `src/docs/behavior-change.ts` gives option descriptions
-- [ ] 7.3 Tests in `tests/decide/seam.test.ts`, `tests/tools/decide-ask.test.ts`, `tests/docs/behavior-change.test.ts`
+- [x] 7.1 Extend `RuleResult.ask` in `src/decide/registry.ts` and `DecisionAsk` in `src/decide/seam.ts` with option descriptions, `recommended` and `rationale`; `decide` validates option texts and throws when the recommendation is not an option
+- [x] 7.2 `decisionRequest` in `src/tools/decide-ask.ts` builds a rule-authored briefing only when the rule recommends; `behavior-change` in `src/docs/behavior-change.ts` gives option descriptions
+- [x] 7.3 Tests in `tests/decide/seam.test.ts`, `tests/tools/decide-ask.test.ts`, `tests/docs/behavior-change.test.ts`
 
 ## 8. Amendment briefing
 
