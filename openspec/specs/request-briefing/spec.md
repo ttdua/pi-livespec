@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD
+Defines the briefing that every human request can carry: the agent's or a rule's summary, points to watch, recommended choice and rationale; how it is validated, neutralised and stored; and how both adapters present it after livespec's facts, with livespec-written action descriptions, the forge request layout and the in-session menu.
 
 ## Requirements
 
