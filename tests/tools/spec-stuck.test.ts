@@ -15,9 +15,9 @@ afterEach(async () => {
 const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
 const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
 const OPTIONS = [
-	{ id: "A", label: "split U3" },
-	{ id: "B", label: "re-plan" },
-	{ id: "C", label: "drop the cap" },
+	{ id: "A", label: "split U3", description: "Cut the unit in two and review each part" },
+	{ id: "B", label: "re-plan", description: "Go back to plan and rewrite the units" },
+	{ id: "C", label: "drop the cap", description: "Lift the iteration cap for this unit" },
 ];
 const REPORT = {
 	where: "U3 rate limiter keeps failing review",
@@ -25,6 +25,7 @@ const REPORT = {
 	hypothesis: "the requirement mixes two limits",
 	options: OPTIONS,
 	recommended: "A",
+	rationale: "Splitting keeps both limits testable.",
 };
 
 type Stuck = ToolHarness & { n: number; stuck(params: unknown): ReturnType<ToolHarness["call"]> };
@@ -90,6 +91,70 @@ describe("spec_stuck", () => {
 		const dup = await h.stuck({ ...REPORT, options: [OPTIONS[0]!, OPTIONS[0]!] });
 		expect(dup.isError).toBe(true);
 		expect(await marked(h)).toEqual([]);
+	});
+
+	test("Option without a description", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, options: [{ id: "A", label: "split U3" }, OPTIONS[1]!] });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("option A description is required");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("rationale is required", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const { rationale: _omit, ...without } = REPORT;
+		const out = await h.stuck(without);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("rationale");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("hypothesis over 600 code points is refused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, hypothesis: "x".repeat(601) });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("hypothesis");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("Recommended choice not offered", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, recommended: "C2" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("Option description neutralised", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const options = [{ ...OPTIONS[0]!, description: "see <!-- x --> now" }, OPTIONS[1]!];
+		await h.stuck({ ...REPORT, options });
+		const request = (await ofKind(h, "request"))[0]?.data as { options: { description: string }[]; briefing: { rationale: string; author: string } };
+		expect(request.options[0]?.description).not.toContain("<!--");
+		expect(request.briefing).toMatchObject({ rationale: REPORT.rationale, author: "agent" });
+	});
+
+	test("Old stuck report sent again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const old = { where: REPORT.where, tried: REPORT.tried, hypothesis: REPORT.hypothesis, options: [{ id: "A", label: "split U3" }, { id: "B", label: "re-plan" }], recommended: "A" };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("stuck", "S1", old));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.stuck(REPORT);
+		expect(out.isError).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { summary: string; briefing?: unknown };
+		expect(data.summary).toContain("Recommended: A");
+		expect(data.briefing).toBeUndefined();
+	});
+
+	test("Recommendation is not an answer", async () => {
+		const ui: FakeUI = { hasUI: true, select: async () => undefined };
+		const h = await change({ config: SESSION_CHAIN, ui });
+		await h.stuck(REPORT);
+		const answer = (await ofKind(h, "stuck")).find((m) => m.id === "S1-answer");
+		expect(answer?.data).toMatchObject({ outcome: "dismissed" });
+		expect((answer?.data as { choice?: string }).choice).toBe("");
 	});
 
 	test("Stuck answer lifts the cap", async () => {
