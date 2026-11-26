@@ -9,7 +9,6 @@
 // inferred from a raw request label.
 
 import type {
-	Answered,
 	ApprovalRequest,
 	Approver,
 	ApproverUI,
@@ -20,16 +19,10 @@ import type {
 	RequestOption,
 } from "./approver.ts";
 import { gateChoices } from "./describe-actions.ts";
-import { type MenuEntry, menuEntries, titleWithBriefing } from "./menu.ts";
+import { CANCELLED, type Cancelled, type Verdict } from "./flow-result.ts";
+import { ENTRY_LABELS, type MenuEntry, menuEntries, titleWithBriefing } from "./menu.ts";
 
 const DIFFICULTIES: Difficulty[] = ["low", "medium", "high"];
-
-/** Returned when the human cancels any dialog; the request turns into `dismissed`. */
-const CANCELLED = Symbol("cancelled");
-type Cancelled = typeof CANCELLED;
-
-/** The answer fields a flow decides; `by`, `at` and `adapter` are added by the adapter. */
-type Verdict = Omit<Answered, "status" | "by" | "at" | "adapter">;
 
 const DISMISSED: Verdict = { outcome: "dismissed", notes: "" };
 
@@ -181,8 +174,8 @@ async function askQuestionStep(ui: ApproverUI, r: ApprovalRequest): Promise<Ques
 	const title = titleWithBriefing(r, recommendedLabel(r, options));
 	if (options.length === 0) {
 		return choose<QuestionStep>(ui, title, [
-			["answer now", { kind: "own" }],
-			["answer later (non-blocking)", { kind: "later" }],
+			[ENTRY_LABELS.answerNow, { kind: "own" }],
+			[ENTRY_LABELS.later, { kind: "later" }],
 		]);
 	}
 	const candidates = menuEntries(
@@ -191,8 +184,8 @@ async function askQuestionStep(ui: ApproverUI, r: ApprovalRequest): Promise<Ques
 	);
 	return choose<QuestionStep>(ui, title, [
 		...candidates,
-		["write my own answer", { kind: "own" }],
-		["answer later (non-blocking)", { kind: "later" }],
+		[ENTRY_LABELS.own, { kind: "own" }],
+		[ENTRY_LABELS.later, { kind: "later" }],
 	]);
 }
 

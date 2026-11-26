@@ -9,6 +9,11 @@ export type Question = {
 	line: number;
 };
 
+const DIFFICULTIES = ["low", "medium", "high"] as const;
+
+/** Whether `v` is a Difficulty level; `Unit.difficulty` is free text until narrowed. */
+export const isDifficulty = (v: string | undefined): v is (typeof DIFFICULTIES)[number] => DIFFICULTIES.includes(v as never);
+
 export type Unit = {
 	id: string;
 	title: string;

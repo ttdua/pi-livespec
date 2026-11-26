@@ -14,7 +14,9 @@ import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/m
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
-import { sendNamedGate } from "../../src/tools/spec-gate.ts";
+import type { Pack } from "../../src/engine/pack-types.ts";
+import type { ChangeState } from "../../src/engine/state-types.ts";
+import { type GatePlan, gateRequest, sendNamedGate } from "../../src/tools/spec-gate.ts";
 import { registerSizeLimits as registerSizeLimitsCheck } from "../../src/initiatives/size-limits.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -684,5 +686,30 @@ describe("named gates with a proposer", () => {
 			expect(out.isError).toBe(true);
 			expect(await ofKind(h, "request")).toEqual([]);
 		});
+	});
+});
+
+describe("gateRequest overridable.current", () => {
+	const units = [
+		{ id: "U1", difficulty: "high", tags: ["security"] },
+		{ id: "U2", difficulty: "odd" },
+		{ id: "U3" },
+	];
+	const state = { git: { head: "abc" }, phase: { kind: "ok", id: "plan" }, issue: { number: 7 }, change: { units } } as unknown as ChangeState;
+	const plan: GatePlan = { mode: "human", isPhase: true, failingWaivable: [], options: [] };
+	const input = { body: "body", payload: { summary: "s", links: [], files: [], findings: [] }, now: new Date(0) };
+
+	test("plan gate carries the current values of every unit", () => {
+		const r = gateRequest(state, {} as Pack, "plan", plan, input);
+		expect(r.overridable?.units).toEqual(["U1", "U2", "U3"]);
+		expect(r.overridable?.current).toEqual({
+			U1: { difficulty: "high", tags: ["security"] },
+			U2: { tags: [] },
+			U3: { tags: [] },
+		});
+	});
+
+	test("other gates have no overridable units", () => {
+		expect(gateRequest(state, {} as Pack, "define", plan, input).overridable).toBeUndefined();
 	});
 });

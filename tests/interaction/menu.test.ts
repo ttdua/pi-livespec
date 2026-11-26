@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { ApprovalRequest } from "../../src/interaction/approver.ts";
-import { menuEntries, titleWithBriefing } from "../../src/interaction/menu.ts";
+import { BRIEFING_HEADING, briefingLines, ENTRY_LABELS, menuEntries, orderRecommended, titleWithBriefing } from "../../src/interaction/menu.ts";
 
 const request = (over: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
 	id: "gate-plan.abc",
@@ -82,5 +82,35 @@ describe("gate with a waive recommendation", () => {
 		await createInSessionApprover(ui, async () => "a").request(r);
 		expect(seen[0]).toMatch(/^Waive size-limits — .* \(Recommended\)$/);
 		expect(seen.some((o) => o.startsWith("approve"))).toBe(false);
+	});
+});
+
+describe("orderRecommended", () => {
+	const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+	test("moves the recommended item first, keeping the rest in order", () => {
+		expect(orderRecommended(items, "c").map((i) => i.id)).toEqual(["c", "a", "b"]);
+	});
+
+	test("an unknown or missing recommendation changes nothing", () => {
+		expect(orderRecommended(items, "zzz")).toEqual(items);
+		expect(orderRecommended(items)).toEqual(items);
+	});
+});
+
+describe("briefingLines", () => {
+	test("heading, summary, watch, recommended label and rationale", () => {
+		const lines = briefingLines({ summary: "S", watch: ["w1"], recommended: "b", rationale: "R", author: "agent" }, "Bee");
+		expect(lines).toEqual([BRIEFING_HEADING.agent, "S", "Watch:", "- w1", "Recommended: Bee", "Why: R"]);
+	});
+
+	test("a rule briefing has the rule heading and falls back to the id", () => {
+		expect(briefingLines({ summary: "S", recommended: "b", author: "rule" })).toEqual([BRIEFING_HEADING.rule, "S", "Recommended: b"]);
+	});
+});
+
+describe("ENTRY_LABELS", () => {
+	test("question entry labels", () => {
+		expect(ENTRY_LABELS).toEqual({ own: "write my own answer", later: "answer later (non-blocking)", answerNow: "answer now" });
 	});
 });

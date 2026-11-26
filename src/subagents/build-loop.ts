@@ -1,7 +1,7 @@
 // The build loop of a started unit, as next-step text: implementer, unit review, fix rounds, `spec_stuck`.
 // Pure: it reads the change state only (records after the unit's start, HEAD, policy facts).
 
-import type { Unit } from "../core/change.ts";
+import { isDifficulty, type Unit } from "../core/change.ts";
 import type { Pack, Phase } from "../engine/pack-types.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
@@ -15,7 +15,6 @@ export type LoopStep = { next: string; dispatch?: NonNullable<NextStep["dispatch
 
 const DEFAULT_REBUILDS = 2;
 const SETTLED_OK = ["DONE", "DONE_WITH_CONCERNS"];
-const LEVELS = ["low", "medium", "high"] as const;
 
 /** Everything one step of the loop reads, derived once. */
 type Loop = {
@@ -33,13 +32,11 @@ type Loop = {
 	questions: ChangeState["change"]["questions"];
 };
 
-const isLevel = (v: string | undefined): v is (typeof LEVELS)[number] => LEVELS.includes(v as never);
-
 export function policyFacts(state: ChangeState, phase: Phase, unit: Unit): PolicyFacts {
 	const { contextPercent, turnsCompleted, unfamiliar } = state.subagents;
 	return {
 		units: state.change.units.length,
-		...(isLevel(unit.difficulty) ? { difficulty: unit.difficulty } : {}),
+		...(isDifficulty(unit.difficulty) ? { difficulty: unit.difficulty } : {}),
 		tags: unit.tags ?? [],
 		unfamiliar: phase.id === "build" ? unfamiliar.units[unit.id] === true : unfamiliar.change,
 		turnsCompleted,

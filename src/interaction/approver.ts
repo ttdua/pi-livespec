@@ -109,7 +109,7 @@ export interface ApprovalRequest {
 	options?: RequestOption[];
 	briefing?: Briefing;
 	mode: RequestMode;
-	overridable?: { units: string[] };
+	overridable?: { units: string[]; current?: Record<string, { difficulty?: Difficulty; tags: string[] }> };
 	question?: { id: string; class: QuestionClass; requirements: string[] };
 }
 
