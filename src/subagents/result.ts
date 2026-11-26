@@ -15,11 +15,11 @@ export const MISSING_PREREQUISITE = "missing-prerequisite";
  * What came before this run. `needsContext` counts the unit's earlier `NEEDS_CONTEXT` dispatch records;
  * `retries` and `returns` count the steps already taken for the current dispatch.
  */
-export type DispatchHistory = { needsContext: number; retries: number; returns: number };
+export type DispatchHistory = { needsContext: number; retries: number; returns: number; respawned: boolean };
 
 export type ResultDecision =
 	| { kind: "accept"; result: SubagentResult }
-	| { kind: "retry" }
+	| { kind: "retry"; reason: string }
 	| { kind: "return"; missing: string[] }
 	| { kind: "more-context"; ids: string[]; result: SubagentResult }
 	| { kind: "question"; text: string }
@@ -35,20 +35,29 @@ export function namedSourceIds(result: SubagentResult): string[] {
 	return [...new Set([...text.matchAll(SOURCE_ID)].map((m) => (m[1] as string).replace(/[.:]$/, "")))];
 }
 
+/** Why a run left no usable result: `plain` feeds the retry, `shown` wraps child text as untrusted for the parent. */
+type Missing = { plain: string; shown: string };
+
+const same = (text: string): Missing => ({ plain: text, shown: text });
+
 /** Why the run left no usable result, or undefined when its structured result fits the role's schema. */
-function missingReason(record: RecordLike, role: Role): string | undefined {
-	if (record.structuredResultError !== undefined) return `the structured result is ${record.structuredResultError}`;
-	if (record.structuredResult === undefined) return record.error ? `the run ended with an error: ${untrusted(record.error)}` : `the run ended (${record.status}) without a structured result`;
+function missingReason(record: RecordLike, role: Role): Missing | undefined {
+	if (record.structuredResultError !== undefined) return same(`the structured result is ${record.structuredResultError}`);
+	if (record.structuredResult === undefined) {
+		if (record.error) return { plain: `the run ended with an error: ${record.error}`, shown: `the run ended with an error: ${untrusted(record.error)}` };
+		return same(`the run ended (${record.status}) without a structured result`);
+	}
 	const check = checkSchema(resultSchema(role), record.structuredResult);
-	if (!check.ok) return `the structured result does not match the ${role} schema: ${untrusted(check.errors.join("; "))}`;
+	const prefix = `the structured result does not match the ${role} schema: `;
+	if (!check.ok) return { plain: prefix + check.errors.join("; "), shown: prefix + untrusted(check.errors.join("; ")) };
 	const result = record.structuredResult as SubagentResult;
 	const needsWhy = result.status === "BLOCKED" || result.status === "NEEDS_CONTEXT";
-	if (needsWhy && (!result.reason || !result.evidence)) return `a ${result.status} result must carry reason and evidence`;
+	if (needsWhy && (!result.reason || !result.evidence)) return same(`a ${result.status} result must carry reason and evidence`);
 	return undefined;
 }
 
-function retryOrBlock(reason: string, history: DispatchHistory): ResultDecision {
-	return history.retries < MISSING_RESULT_RETRIES ? { kind: "retry" } : { kind: "blocked", reason: `no usable result after a retry: ${reason}` };
+function retryOrBlock(missing: Missing, history: DispatchHistory): ResultDecision {
+	return history.retries < MISSING_RESULT_RETRIES ? { kind: "retry", reason: missing.plain } : { kind: "blocked", reason: `no usable result after a retry: ${missing.shown}` };
 }
 
 /** Required source ids of the packet that `sources_used` omits. */

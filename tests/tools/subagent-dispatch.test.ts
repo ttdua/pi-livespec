@@ -403,4 +403,11 @@ describe("outcome text", () => {
 		expect(out.split("needs a token store")).toHaveLength(2);
 		expect(out).toContain("new_dependency U1");
 	});
+	test("a respawn is named before the outcome line", async () => {
+		const { outcomeText } = await import("../../src/tools/subagent-outcome.ts");
+		const out = outcomeText(t, { kind: "blocked", reason: "r", respawn: { from: "agent-1", to: "agent-2", reason: "boom <x>" } });
+		expect(out.indexOf("agent-1")).toBeGreaterThanOrEqual(0);
+		expect(out.indexOf("agent-2")).toBeLessThan(out.indexOf("is BLOCKED"));
+		expect(out).toContain("<untrusted>boom &lt;x></untrusted>");
+	});
 });

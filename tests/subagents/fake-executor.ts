@@ -18,6 +18,10 @@ export type FakeExecutorOptions = {
 	agent?: { name: string; source: string; filePath?: string } | null;
 	spawnError?: string;
 	resumeRefused?: boolean;
+	/** One entry per `resume` call, in order (then `resumeRefused`): `"throw"` rejects. */
+	resumes?: ("ok" | "refuse" | "throw")[];
+	/** Facts per agent id; takes precedence over `facts`. `null` emits no event. */
+	factsById?: (id: string, o: SpawnOptionsLike) => Partial<LaunchFacts> | null;
 	/** Ids `getRecord` knows; by default every spawned id. */
 	unknownIds?: string[];
 	/** Every wait settles only when its signal aborts (rejecting), as a long run the user cancels. */
@@ -36,9 +40,10 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 	/** `spawn:<id>` and `settled:<id>` in the order they happened. */
 	const log: string[] = [];
 	const records = [...(o.records ?? [])];
+	const resumes = [...(o.resumes ?? [])];
 	let n = 0;
 	const emit = (id: string, opts: SpawnOptionsLike): void => {
-		const facts = o.facts ? o.facts(opts) : applied(opts);
+		const facts = o.factsById ? o.factsById(id, opts) : o.facts ? o.facts(opts) : applied(opts);
 		if (facts === null) return;
 		events.emit(SESSION_CREATED, { agentId: id, sessionId: `s-${id}`, ...applied(opts), ...facts });
 	};
@@ -64,7 +69,9 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 		},
 		async resume(id: string, prompt: string): Promise<unknown> {
 			resumed.push({ id, prompt });
-			return o.resumeRefused ? { kind: "refused", reason: "not-resumable" } : { kind: "resumed" };
+			const step = resumes.shift() ?? (o.resumeRefused ? "refuse" : "ok");
+			if (step === "throw") throw new Error("resume exploded");
+			return step === "refuse" ? { kind: "refused", reason: "not-resumable" } : { kind: "resumed" };
 		},
 		abort(id: string): boolean {
 			aborted.push(id);

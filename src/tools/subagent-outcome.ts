@@ -66,8 +66,18 @@ function prerequisiteStuckText(t: Target, r: SubagentResult | undefined, o: Outc
 	return [head, ...resultLines(t, r, undefined).slice(1)].join("\n") + prerequisiteHint(t, r, { ...o, evidenceShown: true });
 }
 
+/** The line naming a fallback child, or nothing when the dispatch kept its child. */
+export function respawnLine(outcome: DispatchOutcome): string {
+	const r = outcome.respawn;
+	return r === undefined ? "" : `Child ${r.from} could not be resumed (${untrusted(r.reason)}), so it was replaced by ${r.to}; a RETRY record names both.\n`;
+}
+
 /** What the parent reads after a dispatch: the recorded result, the child's question, or the next step. */
 export function outcomeText(t: Target, outcome: DispatchOutcome, o: OutcomeOptions = {}): string {
+	return respawnLine(outcome) + outcomeBody(t, outcome, o);
+}
+
+function outcomeBody(t: Target, outcome: DispatchOutcome, o: OutcomeOptions): string {
 	switch (outcome.kind) {
 		case "result":
 			return resultText(t, outcome.result, outcome.sourcesNamed, false, o);

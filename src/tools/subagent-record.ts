@@ -51,7 +51,7 @@ async function runSubagentRecordBody(p: RecordParams, ctx: ToolCtx, deps: Subage
 	await writePacket(pctx.root, changeName(pctx), built.packet);
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
 	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
-	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0 });
+	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: false });
 	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,

@@ -111,3 +111,25 @@ describe("questions from a child", () => {
 		expect(h.fake.resumed).toEqual([]);
 	});
 });
+
+describe("missing result after an answer", () => {
+	test("Missing result after an answer", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }, { result: "I will stop." } as never] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		h.fake.records.push({ structuredResult: done({ sources_used: [...required(h), "answer:agent-1:1"] }) });
+		const out = await h.call("subagent_answer", { id: "agent-1", answer: "x" });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(h.fake.spawned).toHaveLength(1);
+		expect(h.fake.resumed.map((r) => r.id)).toEqual(["agent-1", "agent-1"]);
+		expect((await h.latest("dispatch"))?.data).toMatchObject({ agentId: "agent-1", status: "DONE" });
+	});
+
+	test("One fallback respawn per dispatch", async () => {
+		const h = await subagentHarness({ executor: { resumes: ["ok", "refuse"], records: [{ pendingQuestion: "Which?" }, { result: "text" } as never] } });
+		await h.seed("dispatch", "dispatch.U1.implementer.retry.agent-1", { status: "RETRY", role: "implementer", unit: "U1", agentId: "agent-0", newAgentId: "agent-1", attempt: 1, reason: "r" });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		const out = await h.call("subagent_answer", { id: "agent-1", answer: "x" });
+		expect(h.fake.spawned).toHaveLength(1);
+		expect(textOf(out)).toContain("BLOCKED");
+	});
+});
