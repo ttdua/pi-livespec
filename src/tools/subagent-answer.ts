@@ -3,7 +3,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ChangeState } from "../engine/state-types.ts";
 import { cancelledOutcome, type DispatchOutcome, isCancelled, resumedRun, settle } from "../subagents/dispatch.ts";
-import { findExecutor, type SubagentsServiceLike } from "../subagents/executor.ts";
+import { findExecutor, knows, type SubagentsServiceLike } from "../subagents/executor.ts";
+import { claim, release, targetKey, update } from "../subagents/in-flight.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
 import { readPacket } from "../subagents/packet-store.ts";
 import { dispatchComment, type DispatchQuestionData, isFallbackChild, pendingQuestionOf } from "../subagents/records.ts";
@@ -33,12 +34,6 @@ async function packetOf(w: WriteContext, state: ChangeState, q: Question): Promi
 	return built.ok ? built.packet : built.message;
 }
 
-/** `getRecord` is optional in the contract: without it, an unknown id surfaces as a resume failure. */
-function knows(service: SubagentsServiceLike, id: string): boolean {
-	const getRecord = (service as { getRecord?: unknown }).getRecord;
-	return typeof getRecord !== "function" || getRecord.call(service, id) !== undefined;
-}
-
 function serviceOf(): SubagentsServiceLike | undefined {
 	const found = findExecutor();
 	return found.ok ? found.service : undefined;
@@ -61,8 +56,25 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	const packet = await packetOf(w, state, q);
 	if (typeof packet === "string") return refusal(TOOL, packet);
 	const t = targetOf(q);
-	const request = await dispatchRequest(w, state, t, packet, deps);
-	const d = { ...dispatchDeps(pi, w, state.issue.number, service, warn(ctx)), ...(signal === undefined ? {} : { signal }) };
+	const key = targetKey(state.issue.number, t);
+	const running = claim(key);
+	if (running !== undefined) return refusal(TOOL, `${argsOf(t)} is already running as child ${running}; wait for it or answer it.`);
+	try {
+		update(key, p.id);
+		return await answerRun({ pi, w, state, service, deps, ctx, signal }, p, q, packet, key);
+	} finally {
+		release(key);
+	}
+}
+
+type AnswerEnv = { pi: ExtensionAPI; w: WriteContext; state: ChangeState; service: SubagentsServiceLike; deps: SubagentToolDeps; ctx: ToolCtx; signal: AbortSignal | undefined };
+
+/** Records the answer, resumes the child and settles its next result; a fallback respawn moves the claim to the new child. */
+async function answerRun(e: AnswerEnv, p: AnswerParams, q: Question, packet: Packet, key: string): Promise<ToolResult<undefined>> {
+	const { w, state, signal } = e;
+	const t = targetOf(q);
+	const request = await dispatchRequest(w, state, t, packet, e.deps);
+	const d = { ...dispatchDeps(e.pi, w, state.issue.number, e.service, warn(e.ctx)), onLaunch: (id: string) => update(key, id), ...(signal === undefined ? {} : { signal }) };
 	await d.post(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
 	const record = await resumeChild(d, p.id, p.answer);
 	if (isCancelled(signal)) return toolResult(withStep(w.session, outcomeText(t, cancelledOutcome(p.id))), undefined, true);
@@ -71,6 +83,7 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: isFallbackChild(state.marked, p.id) });
 	return toolResult(withStep(w.session, outcomeText(t, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
 }
+
 
 export function registerSubagentAnswer(pi: ExtensionAPI, deps: SubagentToolDeps = defaultSubagentDeps): void {
 	registerLivespecTool(pi, {

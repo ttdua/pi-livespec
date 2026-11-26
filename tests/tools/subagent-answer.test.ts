@@ -1,12 +1,14 @@
 // Tests of `subagent_answer`: a child's question survives a reload through its record, and the answer resumes the child.
 import { afterEach, describe, expect, test } from "vitest";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { claim, clearInFlight, targetKey } from "../../src/subagents/in-flight.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { footerIds, subagentHarness } from "./subagent-helpers.ts";
 import { cardState } from "./unit-helpers.ts";
 
 afterEach(async () => {
+	clearInFlight();
 	unpublish();
 	setSession(undefined);
 	await cleanupDirs();
@@ -131,5 +133,17 @@ describe("missing result after an answer", () => {
 		const out = await h.call("subagent_answer", { id: "agent-1", answer: "x" });
 		expect(h.fake.spawned).toHaveLength(1);
 		expect(textOf(out)).toContain("BLOCKED");
+	});
+});
+
+describe("one live dispatch per target", () => {
+	test("answer refuses while the same target is in flight", async () => {
+		const { h } = await asked();
+		claim(targetKey(h.n, { role: "implementer", unit: "U1" }));
+		const out = await h.call("subagent_answer", { id: "agent-1", answer: "this one" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("implementer U1");
+		expect(textOf(out)).toContain("already running");
+		expect(h.fake.resumed).toEqual([]);
 	});
 });

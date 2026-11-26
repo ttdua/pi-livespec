@@ -2,7 +2,9 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runDispatch } from "../subagents/dispatch.ts";
-import { findExecutor } from "../subagents/executor.ts";
+import { findExecutor, knows, type SubagentsServiceLike } from "../subagents/executor.ts";
+import { claim, release, targetKey, update } from "../subagents/in-flight.ts";
+import { pendingQuestionFor } from "../subagents/records.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
 import { writePacket } from "../subagents/packet-store.ts";
 import type { ChangeState } from "../engine/state-types.ts";
@@ -12,7 +14,7 @@ import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { inlineText, outcomeOptions, outcomeText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
-import { checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
+import { argsOf, checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type Target, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_dispatch";
 
@@ -38,12 +40,32 @@ async function runSubagentDispatchBody(pi: ExtensionAPI, p: TargetParams, ctx: T
 	if (!built.ok) return refusal(TOOL, built.message);
 	const executor = findExecutor();
 	if (!executor.ok) return toolResult(inlineText(target, `no capable subagent executor (missing ${executor.missing.join(", ")})`, built.packet), undefined);
-	const request = await dispatchRequest(w, state, target, built.packet, deps);
-	await writePacket(pctx.root, changeName(pctx), built.packet);
-	const d = { ...dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), ...(signal === undefined ? {} : { signal }) };
-	const outcome = await runDispatch(d, request);
-	if (outcome.kind === "sequential") await closeMovedLane(w, state, target.unit);
-	return toolResult(withStep(w.session, outcomeText(target, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
+	const guard = guardTarget(state, target, executor.service);
+	if (typeof guard !== "function") return guard;
+	try {
+		const request = await dispatchRequest(w, state, target, built.packet, deps);
+		await writePacket(pctx.root, changeName(pctx), built.packet);
+		const key = targetKey(state.issue.number, target);
+		const d = { ...dispatchDeps(pi, w, state.issue.number, executor.service, warn(ctx)), onLaunch: (id: string) => update(key, id), ...(signal === undefined ? {} : { signal }) };
+		const outcome = await runDispatch(d, request);
+		if (outcome.kind === "sequential") await closeMovedLane(w, state, target.unit);
+		return toolResult(withStep(w.session, outcomeText(target, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
+	} finally {
+		guard();
+	}
+}
+
+/** Claims the target for this dispatch; refuses while a child runs or waits on an answer. Returns the release function when claimed. */
+function guardTarget(state: ChangeState, target: Target, service: SubagentsServiceLike): ToolResult<undefined> | (() => void) {
+	const key = targetKey(state.issue.number, target);
+	const running = claim(key);
+	if (running !== undefined) return refusal(TOOL, `${argsOf(target)} is already running as child ${running}; wait for it or answer it.`);
+	const pending = pendingQuestionFor(state.marked, target);
+	if (pending !== undefined && knows(service, pending.agentId)) {
+		release(key);
+		return refusal(TOOL, `child ${pending.agentId} of ${argsOf(target)} waits on an answer: use subagent_answer ${pending.agentId} "<answer>".`);
+	}
+	return () => release(key);
 }
 
 /** A child moved out of its lane: the lane is closed and removed, so the unit re-runs in the change worktree. */
