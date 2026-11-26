@@ -99,3 +99,25 @@ describe("decide", () => {
 		await expect(decide("nope", {}, { config: {}, subject: "x" })).rejects.toThrow(/nope/);
 	});
 });
+
+describe("rule ask briefing", () => {
+	const ask = async () => ({ status: "pending" as const, requestId: "r" });
+	const run = (point: string) => decide(point, {}, { config: { mode: "rule" }, subject: "U1", ask });
+
+	test("Rule recommends an option it does not offer", async () => {
+		registerRule("bad-rec", { validate() {} }, () => ({ ask: { summary: "s", options: OPTIONS, recommended: "z", rationale: "why" } }));
+		await expect(run("bad-rec")).rejects.toThrow("decision `bad-rec` recommends `z`, which it does not offer");
+	});
+
+	test("a rule option description over 200 code points throws", async () => {
+		registerRule("long-desc", { validate() {} }, () => ({ ask: { summary: "s", options: [{ id: "x", label: "X", description: "d".repeat(201) }] } }));
+		await expect(run("long-desc")).rejects.toThrow(/decision `long-desc`/);
+	});
+
+	test("a valid recommendation reaches the asker", async () => {
+		registerRule("good-rec", { validate() {} }, () => ({ ask: { summary: "s", options: OPTIONS, recommended: "x", rationale: "why" } }));
+		const seen: DecisionAsk[] = [];
+		await decide("good-rec", {}, { config: { mode: "rule" }, subject: "U1", ask: async (i) => (seen.push(i), { status: "pending" as const, requestId: "r" }) });
+		expect(seen[0]).toMatchObject({ recommended: "x", rationale: "why" });
+	});
+});

@@ -129,6 +129,18 @@ describe("decision asker", () => {
 		expect((await marked(h)).map((m) => m.kind)).toEqual(["request"]);
 	});
 
+	test("a rule recommendation becomes a rule-authored briefing", async () => {
+		await change({ config: SESSION_CHAIN });
+		const w = await prepareWrite();
+		if (!w.ok) throw new Error(w.message);
+		const c = requireChange(w.session);
+		if (!c.ok) throw new Error(c.message);
+		const intent = { point: "pick", subject: "U1", facts: FACTS, summary: "Pick one", options: OPTIONS, recommended: "x", rationale: "because" };
+		expect(decisionRequest(c.state, intent, new Date(0)).briefing).toEqual({ summary: "Pick one", recommended: "x", rationale: "because", author: "rule" });
+		const { recommended: _r, rationale: _t, ...plain } = intent;
+		expect(decisionRequest(c.state, plain, new Date(0)).briefing).toBeUndefined();
+	});
+
 	test("a dismissed in-session dialog is recorded and does not decide", async () => {
 		const h = await change({ config: SESSION_CHAIN, ui: { hasUI: true, select: async () => undefined } });
 		await expect(decidePick(h)).rejects.toThrow(/without a choice/);

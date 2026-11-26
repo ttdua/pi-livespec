@@ -16,7 +16,7 @@ import { DRIFT_SEVERITY_POINT, driftSeverityRule, driftSeveritySchema } from "..
 
 export type RuleResult =
 	| { outcome: unknown; reason: string; data?: { agentAdditions?: string[] } }
-	| { ask: { summary: string; options: { id: string; label: string }[] } };
+	| { ask: { summary: string; options: { id: string; label: string; description?: string }[]; recommended?: string; rationale?: string } };
 
 export type RuleSchema = {
 	validate(node: Node | null, report: (n: Node, msg: string) => void): void;
