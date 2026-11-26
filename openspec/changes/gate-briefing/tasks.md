@@ -34,9 +34,9 @@ Blocked by: 3
 
 Blocked by: 3, 4
 
-- [ ] 5.1 `spec_stuck` in `src/tools/spec-stuck.ts`: required option `description` and `rationale`, hypothesis within the summary limits, briefing built from hypothesis, recommended and rationale; neutralise where, tried and hypothesis
-- [ ] 5.2 Lenient `storedReport` so a report stored before this change is re-sent without a briefing
-- [ ] 5.3 `stuckFor` in `src/subagents/finish-freshness.ts` supplies descriptions and a rationale and caps the hypothesis by code points; tests in `tests/tools/spec-stuck.test.ts` and `tests/subagents/freshness.test.ts`
+- [x] 5.1 `spec_stuck` in `src/tools/spec-stuck.ts`: required option `description` and `rationale`, hypothesis within the summary limits, briefing built from hypothesis, recommended and rationale; neutralise where, tried and hypothesis
+- [x] 5.2 Lenient `storedReport` so a report stored before this change is re-sent without a briefing
+- [x] 5.3 `stuckFor` in `src/subagents/finish-freshness.ts` supplies descriptions and a rationale and caps the hypothesis by code points; tests in `tests/tools/spec-stuck.test.ts` and `tests/subagents/freshness.test.ts`
 
 ## 6. Question candidates
 
