@@ -473,3 +473,46 @@ describe("one live dispatch per target", () => {
 		expect(h.fake.spawned).toHaveLength(2);
 	});
 });
+
+describe("guard race", () => {
+	/** Holds the first packet build (its first `whoami`) until `open`; `entered` resolves once a build is held. */
+	function holdFirstBuild(h: Awaited<ReturnType<typeof subagentHarness>>) {
+		const forge = h.session.forge as unknown as { whoami: () => Promise<unknown> };
+		const real = forge.whoami.bind(forge);
+		let open = (): void => undefined;
+		let entered = (): void => undefined;
+		const held = new Promise<void>((r) => { open = r; });
+		const inBuild = new Promise<void>((r) => { entered = r; });
+		let first = true;
+		forge.whoami = async () => {
+			if (first) {
+				first = false;
+				entered();
+				await held;
+			}
+			return real();
+		};
+		return { open, inBuild };
+	}
+
+	test("two concurrent dispatches of one target never spawn two children", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		const gate = holdFirstBuild(h);
+		const b = h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await gate.inBuild;
+		const a = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		gate.open();
+		const outs = [a, await b];
+		expect(h.fake.spawned).toHaveLength(1);
+		expect(outs.filter((o) => o.isError)).toHaveLength(1);
+		expect(textOf(outs.find((o) => o.isError) as never)).toMatch(/agent-1|already running/);
+	});
+
+	test("the claim is released when the pending-question check throws", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		(h.fake.service as { getRecord: unknown }).getRecord = () => { throw new Error("boom"); };
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }).catch(() => undefined);
+		expect(claim(targetKey(h.n, { role: "implementer", unit: "U1" }))).toBeUndefined();
+	});
+});

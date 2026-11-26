@@ -14,7 +14,7 @@ import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteCon
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { outcomeOptions, outcomeText } from "./subagent-outcome.ts";
-import { defaultSubagentDeps, dispatchDeps, dispatchRequest, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
+import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
 import { argsOf, childRefusal, refusal, type Target, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_answer";
@@ -25,9 +25,11 @@ type Question = Extract<DispatchQuestionData, { status: "QUESTION" }>;
 
 const targetOf = (q: Question): Target => ({ role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), ...(q.subject === undefined ? {} : { subject: q.subject }), ...(q.finding === undefined ? {} : { finding: q.finding }) });
 
-/** The packet the child was launched with: the stored one, else a rebuild (its hash may differ after new answers). */
+/** The packet the child was launched with: the stored one, else a rebuild with the verifier's finding (its hash may differ after new answers). */
 async function packetOf(w: WriteContext, state: ChangeState, q: Question): Promise<Packet | string> {
-	const ctx = packetContext(w, state, q.unit);
+	const found = findingOf(state, targetOf(q));
+	if (typeof found === "string") return found;
+	const ctx = packetContext(w, state, q.unit, found);
 	const stored = q.launch === undefined ? undefined : await readPacket(ctx.root, changeName(ctx), q.launch.packet);
 	if (stored !== undefined) return stored;
 	const built = await buildPacket(ctx, q.role, q.unit, q.subject);
@@ -43,28 +45,37 @@ export async function runSubagentAnswer(pi: ExtensionAPI, p: AnswerParams, ctx: 
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
 	if (typeof p.answer !== "string" || p.answer.trim() === "") return refusal(TOOL, "the answer is empty.");
-	const w = await prepareWrite();
-	if (!w.ok) return refusal(TOOL, w.message);
-	const change = requireChange(w.session);
-	if (!change.ok) return refusal(TOOL, change.message);
-	const { state } = change;
-	const q = pendingQuestionOf(state.marked, p.id);
-	if (q === undefined) return refusal(TOOL, `no child ${p.id} has a pending question in this change.`);
-	const service = serviceOf();
-	if (service === undefined) return refusal(TOOL, `no capable subagent executor is present; dispatch ${q.role} again.`);
-	if (!knows(service, p.id)) return refusal(TOOL, `the executor no longer knows child ${p.id}; dispatch ${q.role} again.`);
-	const packet = await packetOf(w, state, q);
-	if (typeof packet === "string") return refusal(TOOL, packet);
-	const t = targetOf(q);
-	const key = targetKey(state.issue.number, t);
+	const first = await changeOf(p);
+	if ("refusal" in first) return first.refusal;
+	const t = targetOf(first.q);
+	const key = targetKey(first.state.issue.number, t);
 	const running = claim(key);
 	if (running !== undefined) return refusal(TOOL, `${argsOf(t)} is already running as child ${running}; wait for it or answer it.`);
 	try {
 		update(key, p.id);
-		return await answerRun({ pi, w, state, service, deps, ctx, signal }, p, q, packet, key);
+		// Read again under the claim: a call that finished meanwhile may have answered this question.
+		const fresh = await changeOf(p);
+		if ("refusal" in fresh) return fresh.refusal;
+		const service = serviceOf();
+		if (service === undefined) return refusal(TOOL, `no capable subagent executor is present; dispatch ${fresh.q.role} again.`);
+		if (!knows(service, p.id)) return refusal(TOOL, `the executor no longer knows child ${p.id}; dispatch ${fresh.q.role} again.`);
+		const packet = await packetOf(fresh.w, fresh.state, fresh.q);
+		if (typeof packet === "string") return refusal(TOOL, packet);
+		return await answerRun({ pi, w: fresh.w, state: fresh.state, service, deps, ctx, signal }, p, fresh.q, packet, key);
 	} finally {
 		release(key);
 	}
+}
+
+/** The writable change with the child's pending question, from a refreshed session. */
+async function changeOf(p: AnswerParams): Promise<{ w: WriteContext; state: ChangeState; q: Question } | { refusal: ToolResult<undefined> }> {
+	const w = await prepareWrite();
+	if (!w.ok) return { refusal: refusal(TOOL, w.message) };
+	const change = requireChange(w.session);
+	if (!change.ok) return { refusal: refusal(TOOL, change.message) };
+	const q = pendingQuestionOf(change.state.marked, p.id);
+	if (q === undefined) return { refusal: refusal(TOOL, `no child ${p.id} has a pending question in this change.`) };
+	return { w, state: change.state, q };
 }
 
 type AnswerEnv = { pi: ExtensionAPI; w: WriteContext; state: ChangeState; service: SubagentsServiceLike; deps: SubagentToolDeps; ctx: ToolCtx; signal: AbortSignal | undefined };

@@ -147,3 +147,28 @@ describe("one live dispatch per target", () => {
 		expect(h.fake.resumed).toEqual([]);
 	});
 });
+
+describe("verifier answer", () => {
+	const AGG = {
+		role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
+		agentSource: "s", requested: { thinking: "low" }, effective: {}, aggregate: true, reviews: ["c0"],
+		findings: [{ severity: "WARNING", kind: "defect", location: "src/free.ts:4", evidence: "e", fix: "f", scope: "in-change", from: ["c0"], needsDecision: false, route: "in-change", verify: "required" }],
+	};
+
+	test("resumes after the stored packet is gone, rebuilding with the finding", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		await h.seed("finding-summary", "finding-summary.change.review.1", AGG);
+		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const out = await h.call("subagent_dispatch", { role: "verifier", finding: key });
+		expect(textOf(out)).toContain("agent-1 asks");
+		const { rmSync } = await import("node:fs");
+		const { spillDirectory } = await import("../../src/subagents/spill.ts");
+		const stored = (await h.latest("dispatch"))?.data as { launch: { packet: string } };
+		rmSync(`${await spillDirectory(h.root, "per-ip-cap", stored.launch.packet)}.packet.json`, { force: true });
+		h.fake.records.push({ structuredResult: done({ findings: [], commits: undefined, verdict: "confirmed", sources_used: [...required(h), "answer:agent-1:1"] }) });
+		const answered = await h.call("subagent_answer", { id: "agent-1", answer: "x" });
+		expect(textOf(answered)).not.toContain("a verifier packet needs the finding");
+		expect(answered.isError, textOf(answered)).toBeFalsy();
+		expect(h.fake.resumed[0]).toEqual({ id: "agent-1", prompt: "x" });
+	});
+});
