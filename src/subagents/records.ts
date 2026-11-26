@@ -118,7 +118,8 @@ function runSuffix(data: DispatchData): string {
 export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
 	if (data.status === "RETRY") return writeMarked("dispatch", `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data);
-	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : runSuffix(data);
+	// A question and its answer name their child: two children of one role and attempt (verifiers of other findings) must not supersede each other. Older comments without the child still read.
+	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}.${token(data.agentId)}` : runSuffix(data);
 	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
 }
 

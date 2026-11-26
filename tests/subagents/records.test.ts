@@ -17,6 +17,7 @@ import {
 	invalidRecords,
 	isFallbackChild,
 	pendingQuestionFor,
+	pendingQuestionOf,
 	latestDispatch,
 	pendingQuestion,
 	rebuttalComment,
@@ -353,9 +354,24 @@ describe("retry records", () => {
 	it("pendingQuestionFor matches its own target", () => {
 		const marked = [q({ agentId: "a1" }), q({ unit: "U2", agentId: "a2", question: "two" })];
 		expect(pendingQuestionFor(marked, { role: "implementer", unit: "U2" })?.agentId).toBe("a2");
-		const v = [q({ role: "verifier", unit: undefined, finding: "c1:0", agentId: "v0", attempt: 1 }), q({ role: "verifier", unit: undefined, finding: "c1:1", agentId: "v1", attempt: 2 })];
+		const v = [q({ role: "verifier", unit: undefined, finding: "c1:0", agentId: "v0", attempt: 1 }), q({ role: "verifier", unit: undefined, finding: "c1:1", agentId: "v1", attempt: 1 })];
 		expect(pendingQuestionFor(v, { role: "verifier", finding: "c1:0" })?.agentId).toBe("v0");
 		expect(pendingQuestionFor(v, { role: "verifier", finding: "c1:1" })?.agentId).toBe("v1");
+	});
+
+	it("two questions of one role and attempt keep distinct markers (verifiers of other findings, reviewers of other subjects)", () => {
+		const v = [q({ role: "verifier", unit: undefined, finding: "c1:0", agentId: "v0", attempt: 1 }), q({ role: "verifier", unit: undefined, finding: "c1:1", agentId: "v1", attempt: 1 })];
+		expect(current(v)).toHaveLength(2);
+		expect(pendingQuestionOf(v, "v0")?.finding).toBe("c1:0");
+		expect(pendingQuestionOf(v, "v1")?.finding).toBe("c1:1");
+		const r = [q({ role: "reviewer", unit: undefined, subject: "spec", agentId: "r0", attempt: 1 }), q({ role: "reviewer", unit: undefined, subject: "plan", agentId: "r1", attempt: 1 })];
+		expect(pendingQuestion(r)?.agentId).toBe("r1");
+		expect(pendingQuestionOf(r, "r0")?.subject).toBe("spec");
+	});
+
+	it("an old question marker without the agent still reads", () => {
+		const old: MarkedComment = { commentId: `c${++counter}`, kind: "dispatch", id: "dispatch.U1.implementer.1.question", author: "me", data: { status: "QUESTION", role: "implementer", unit: "U1", agentId: "agent-1", attempt: 1, question: "?" } };
+		expect(pendingQuestionOf([old], "agent-1")?.question).toBe("?");
 	});
 
 	it("isFallbackChild", () => {
