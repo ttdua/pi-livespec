@@ -9,7 +9,9 @@ Defines `spec_gate` and `registerGate`: per-phase self and human gates, the revi
 ### Requirement: Gate tool
 `spec_gate <target>` SHALL accept the current phase id or a gate registered with `registerGate(name, { checks, options })`. It SHALL run that phase's or gate's checks, including its gate-only checks, before it evaluates the refusals below, then:
 - for a `self` gate, pass when every check passes;
-- for a `human` gate, send a request through the approver chain.
+- for a `human` gate, send a request through the approver chain, with the briefing the agent passed as the `briefing` parameter.
+
+For a target whose gate is `human`, the `briefing` parameter SHALL be required, and `spec_gate` SHALL validate its shape (request-briefing "Briefing validation and storage") before it runs any check, asks any question or evaluates the refusals below. Its `recommended` choice, when set, MUST be one the request offers; `approve` MUST NOT be recommended while a waivable check fails, which SHALL be refused after the checks run. For a `self` gate the parameter SHALL be ignored, valid or not. A proposer tool MAY pass a briefing with its request; it is optional there. Scenarios in any spec that run `spec_gate` on a human gate SHALL be read as passing a valid briefing unless they say otherwise.
 
 A named gate SHALL always be a `human` gate and MUST NOT move the phase, except through an effect it registers. Its `options` SHALL be offered to the human after the `waive` option, and the chosen option id SHALL be recorded as the gate comment's `choice`. Choosing a named gate's option MUST NOT waive a failing check.
 
@@ -91,6 +93,22 @@ For the `define` and `review` targets whose phase lists the `behavior-change` ch
 #### Scenario: Behavior answer before a refusal
 - **WHEN** `spec_gate define` runs with no other refusal and one unanswered behavior item, and the human answers `changed` in session
 - **THEN** the `decision` record is written, the tool refuses naming `behavior-change`, and no `gate:define` request is sent
+
+#### Scenario: Human gate without a briefing
+- **WHEN** `spec_gate define` runs without `briefing`
+- **THEN** the tool refuses, names `briefing`, runs no check, asks nothing and sends no request
+
+#### Scenario: Self gate ignores the briefing
+- **WHEN** the change is in `shape` and `spec_gate shape` runs without `briefing`, or with a `briefing` whose `summary` is empty
+- **THEN** the self gate passes as before
+
+#### Scenario: Approve not recommended while a check must be waived
+- **WHEN** waivable check `size-limits` fails at `plan` and `spec_gate plan` runs with a briefing recommending `approve`
+- **THEN** the tool refuses, says to recommend `waive` or another action, and sends no request
+
+#### Scenario: Proposer briefing
+- **WHEN** `initiative_propose` runs with valid drafts and a briefing recommending `approve`
+- **THEN** the `initiative` request carries that briefing, and without a briefing it is sent with none
 
 ### Requirement: Gate review payload
 Every gate request SHALL carry the content the human reviews for that phase, in the dialog for in-session and in the request comment for forge:

@@ -2,6 +2,7 @@
 // the human through the configured approver chain, and the answer (in session
 // at once, or a forge command later) completes a `source: human` decision record.
 
+import { pickByLabel } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
@@ -65,11 +66,11 @@ const ofKind = async (h: Change, kind: string) => (await marked(h)).filter((m) =
 
 describe("decision asker", () => {
 	test("Rule asks: the human selects in session", async () => {
-		const ui: FakeUI = { hasUI: true, select: async (_title, options) => options.find((o) => o.endsWith("[y]")) };
+		const ui: FakeUI = { hasUI: true, select: async (_title, options) => pickByLabel(options, "Option Y") };
 		const h = await change({ config: SESSION_CHAIN, ui });
 		const r = await decidePick(h);
 		expect(r).toMatchObject({ status: "decided", outcome: "y", source: "human", facts: FACTS });
-		expect(h.ctx.ui.select).toHaveBeenCalledWith("Pick one for U1", expect.arrayContaining(["Option X [x]", "Option Y [y]"]));
+		expect(h.ctx.ui.select).toHaveBeenCalledWith("Pick one for U1", expect.arrayContaining(["Option X", "Option Y"]));
 		const [record] = await ofKind(h, "decision");
 		expect(record).toMatchObject({ id: "pick.U1", data: { point: "pick", subject: "U1", source: "human", outcome: "y", facts: FACTS } });
 		const [answer] = await ofKind(h, "answer");
@@ -126,6 +127,18 @@ describe("decision asker", () => {
 		expect(r).toEqual({ status: "pending", requestId: existing.id });
 		expect(h.ctx.ui.select).not.toHaveBeenCalled();
 		expect((await marked(h)).map((m) => m.kind)).toEqual(["request"]);
+	});
+
+	test("a rule recommendation becomes a rule-authored briefing", async () => {
+		await change({ config: SESSION_CHAIN });
+		const w = await prepareWrite();
+		if (!w.ok) throw new Error(w.message);
+		const c = requireChange(w.session);
+		if (!c.ok) throw new Error(c.message);
+		const intent = { point: "pick", subject: "U1", facts: FACTS, summary: "Pick one", options: OPTIONS, recommended: "x", rationale: "because" };
+		expect(decisionRequest(c.state, intent, new Date(0)).briefing).toEqual({ summary: "Pick one", recommended: "x", rationale: "because", author: "rule" });
+		const { recommended: _r, rationale: _t, ...plain } = intent;
+		expect(decisionRequest(c.state, plain, new Date(0)).briefing).toBeUndefined();
 	});
 
 	test("a dismissed in-session dialog is recorded and does not decide", async () => {

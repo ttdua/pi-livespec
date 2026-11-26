@@ -82,6 +82,14 @@ describe("behavior-change rule", () => {
 		expect(intent).toMatchObject({ point: "behavior-change", subject: "rate-limit", digest: behaviorDigest([CAP]), facts: ITEM });
 		expect(intent?.options.map((o) => o.id)).toEqual(["unchanged", "changed"]);
 	});
+
+	test("Rule ask carries descriptions", async () => {
+		const ask = vi.fn(async (_intent: DecisionAsk) => ({ status: "pending" as const, requestId: "r1" }));
+		await decide("behavior-change", ITEM, { config: { mode: "rule" }, subject: ITEM.capability, ask });
+		const intent = ask.mock.calls[0]?.[0];
+		expect(intent?.options.map((o) => o.description)).toEqual(["A refactor: the spec stays as it is.", "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated."]);
+		expect(intent?.recommended).toBeUndefined();
+	});
 });
 
 describe("behavior-change check", () => {

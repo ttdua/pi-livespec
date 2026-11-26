@@ -4,6 +4,18 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 ## [Unreleased]
 
+### Breaking
+
+- `spec_gate` requires a `briefing` for human gates (`define`, `plan`, `ship` and named gates). Self gates ignore it.
+- `spec_stuck` requires a `description` on every option and a `rationale` with the recommended option.
+
+### Added
+
+- **Request briefings:** every human request can carry a briefing (summary, watch points, recommended choice, rationale), shown after the facts and labelled advisory. `unit_amend`, `initiative_propose` and `new_dependency` accept an optional briefing.
+- **Rule briefings:** rule asks (`decide`) carry rule-authored option descriptions and a recommendation, labelled `Livespec rule recommendation`.
+- **Question candidates:** `spec_question` accepts 2 to 4 candidate answers, each a label and a description, that the human can pick in session or answer with `/livespec answer Q<n> <label>`.
+- **New gate presentation:** the forge `request` comment is a readable markdown layout (Decision needed heading, facts, failing checks, briefing, How to answer table, collapsed command list); the in-session menu shows `<label> — <description>` with the recommended entry first.
+
 ### Changed
 
 - `subagent_dispatch`, `subagent_packet` and `subagent_record` treat an empty `unit`, `subject` or `finding` as omitted, and ignore a `subject` for a role other than `reviewer` or a `finding` for a role other than `verifier`, with a warning at the top of the tool result instead of a refusal.

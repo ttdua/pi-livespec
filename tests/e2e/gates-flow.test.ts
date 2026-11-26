@@ -1,6 +1,8 @@
 // End-to-end gate flow over a memory forge: every human decision of LS-05
 // goes through the real tools, the approver chain and forge polling.
 
+import { BRIEFING } from "../helpers/briefing.ts";
+import { pickById, pickByLabel } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config.ts";
@@ -33,10 +35,11 @@ const STUCK = {
 	tried: [{ text: "per-IP window" }],
 	hypothesis: "the requirement mixes two limits",
 	options: [
-		{ id: "A", label: "split the change" },
-		{ id: "B", label: "keep going" },
+		{ id: "A", label: "split the change", description: "Split the change so each part has one limit." },
+		{ id: "B", label: "keep going", description: "Keep the change whole and iterate again." },
 	],
 	recommended: "A",
+	rationale: "The requirement mixes two limits, so splitting removes the churn.",
 };
 
 function unit(title: string, file: string, label: string): UnitInput {
@@ -55,7 +58,7 @@ function unit(title: string, file: string, label: string): UnitInput {
 const approveAll: SelectFn = async (title, options) => {
 	if (title === "Add notes?") return "No notes";
 	if (title === "Adjust Difficulty or Tags?") return "Keep classification";
-	return options.find((o) => o === "approve");
+	return pickByLabel(options, "approve");
 };
 
 function card(h: ToolHarness) {
@@ -101,7 +104,7 @@ describe("gates and decisions", () => {
 		await h.session.refresh();
 
 		// 2. The define gate, approved in session.
-		const define = await h.call("spec_gate", { target: "define" });
+		const define = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(define.isError, textOf(define)).toBe(false);
 		await h.call("spec_status");
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/plan"]);
@@ -112,7 +115,7 @@ describe("gates and decisions", () => {
 
 		// 4. The plan gate over the forge, approved by a writer's command.
 		await useAdapters(h, "forge");
-		const plan = await h.call("spec_gate", { target: "plan" });
+		const plan = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(plan.isError, textOf(plan)).toBe(false);
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "gate:plan", adapter: "forge" })]);
 		await writerSays(h, n, "/livespec approve");
@@ -143,7 +146,7 @@ describe("gates and decisions", () => {
 		expect(card(h).state.lock.staleUnits).toContain("U1");
 		expect(card(h).state.counters.change_iterations).toBe(1);
 
-		const capped = await h.call("spec_gate", { target: "define" });
+		const capped = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(capped.isError).toBe(true);
 		expect(textOf(capped)).toContain("spec_stuck");
 
@@ -152,7 +155,7 @@ describe("gates and decisions", () => {
 		await writerSays(h, n, "/livespec choose A");
 		expect(card(h).state.iterations.blocking).toBe(false);
 		expect(card(h).step.next).not.toContain("spec_stuck");
-		const reopened = await h.call("spec_gate", { target: "define" });
+		const reopened = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(reopened.isError, textOf(reopened)).toBe(false);
 	});
 
@@ -171,7 +174,7 @@ describe("gates and decisions", () => {
 		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
 		await h.session.refresh();
-		expect((await h.call("spec_gate", { target: "define" })).isError).toBe(false);
+		expect((await h.call("spec_gate", { target: "define", briefing: BRIEFING })).isError).toBe(false);
 		await h.call("spec_status");
 		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
 
@@ -182,10 +185,10 @@ describe("gates and decisions", () => {
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/define"]);
 		expect(card(h).state.lock.staleUnits).toContain("U1");
 
-		const define = await h.call("spec_gate", { target: "define" });
+		const define = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(define.isError, textOf(define)).toBe(false);
 		await writerSays(h, n, "/livespec approve");
-		const plan = await h.call("spec_gate", { target: "plan" });
+		const plan = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(plan.isError, textOf(plan)).toBe(false);
 		await writerSays(h, n, "/livespec approve");
 
@@ -216,13 +219,13 @@ async function shipChange(flow?: string): Promise<{ h: ToolHarness; n: number }>
 /** The in-session human waives when a waive option is offered, else approves. */
 const shipSelect: SelectFn = async (title, options) => {
 	if (title === "Add notes?") return "No notes";
-	return options.find((o) => o === "waive" || o.endsWith("[waive]")) ?? options.find((o) => o === "approve");
+	return pickById(options, "waive") ?? pickByLabel(options, "approve");
 };
 
 describe("ship gate next step", () => {
 	test("Ship approved", async () => {
 		const { h, n } = await shipChange();
-		const out = await h.call("spec_gate", { target: "ship" });
+		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
 		expect(card(h).step.next).toBe("The ship gate is approved: run change_ship.");
@@ -232,7 +235,7 @@ describe("ship gate next step", () => {
 	test("Waived ship gate stays in ship", async () => {
 		registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 		const { h, n } = await shipChange("extends: agent-skills\nphases:\n  - id: ship\n    checks: [durable-docs, size-limits]\n");
-		const out = await h.call("spec_gate", { target: "ship" });
+		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
 		expect(card(h).state.lock.gates.ship?.waivers).toEqual(["size-limits"]);

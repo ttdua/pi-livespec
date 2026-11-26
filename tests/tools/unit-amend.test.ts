@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
@@ -62,7 +63,7 @@ const U1 = unit("Counter", "src/limits/counter.ts", "c");
 const U2 = unit("Readme note", "README.md", "r");
 
 /** Every select of the in-session human: the request summary picks approve; follow-ups keep everything. */
-type Human = { summaries: string[]; pick: string | undefined };
+type Human = { summaries: string[]; pick: string | undefined; menus?: string[][] };
 
 function humanUI(human: Human): { hasUI: true; select: SelectFn } {
 	return {
@@ -71,7 +72,8 @@ function humanUI(human: Human): { hasUI: true; select: SelectFn } {
 			if (title === "Add notes?") return "No notes";
 			if (title === "Adjust Difficulty or Tags?") return "Keep classification";
 			human.summaries.push(title);
-			return options.find((o) => o === human.pick);
+			human.menus?.push(options);
+			return human.pick === undefined ? undefined : pickByLabel(options, human.pick);
 		},
 	};
 }
@@ -469,6 +471,40 @@ describe("unit_amend", () => {
 		expect((await units(h)).map((u) => u.id)).toEqual(["U1", "U2", "U3"]);
 		expect((await units(h))[2]).toMatchObject({ id: "U3", difficulty: "high" });
 		expect(await classificationErrors(h, "U3")).toEqual([]);
+	});
+});
+
+describe("Amendment with a briefing", () => {
+	const briefing = { summary: "Tightens the readme verify.", recommended: "approve", rationale: "Only the verify command changes." };
+	const edit = { unit: "U2", replacement: { ...U2, verify: "bun test readme" } };
+
+	test("request carries it and the in-session menu recommends approve", async () => {
+		const h = await planned();
+		h.human.menus = [];
+		const out = await h.amend({ ...edit, briefing });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(h.human.menus[0]?.[0]).toMatch(/^approve — .* \(Recommended\)$/);
+		const [answer] = await ofKind(h, "answer");
+		expect(answer?.data).toMatchObject({ request: { briefing: { summary: briefing.summary, author: "agent" } } });
+	});
+
+	test("without a briefing the request has none", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		await h.world.setPermission("alice", "write");
+		await h.amend(edit);
+		expect((await ofKind(h, "request"))[0]?.data).not.toHaveProperty("briefing");
+	});
+
+	test("invalid briefing refused before any decision request", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
+		await h.world.setPermission("alice", "write");
+		for (const bad of [{ summary: "s", recommended: "A", rationale: "r" }, "text"]) {
+			const out = await h.amend({ unit: "U1", replacement: U1, briefing: bad });
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("briefing");
+		}
+		expect(await ofKind(h, "request")).toEqual([]);
 	});
 });
 

@@ -252,18 +252,67 @@ Choose the order in `interaction.adapter` (for example `[in-session, forge]`: di
 
 ### Answering in session
 
-For a gate, the dialog title is the request summary and its body shows the review payload. The menu offers:
+The dialog title is the request summary (the facts), then the briefing (see [The briefing](#the-briefing-and-the-recommendation)). Each menu entry reads `<label> — <description>`; the recommended entry comes first and ends with ` (Recommended)`. For a gate the menu offers:
 
 1. **approve** (hidden while a waivable check fails; use `waive` then);
 2. **request changes**, then type what must change;
 3. **dismiss**;
-4. any extra options, shown as `<label> [<id>]` (for example `waive`).
+4. any extra options, for example `waive`, with their descriptions.
+
+A question offers its candidate answers (if the agent gave 2 to 4), **write my own answer** and **answer later (non-blocking)**. Picking a candidate answers with its label as the text.
 
 After approve or an option you choose **No notes** or **Add notes**. At the plan gate and for amendments you are then asked **Keep classification** or **Adjust Difficulty or Tags**, where you can override each unit.
 
+### The briefing and the recommendation
+
+Every human request carries a **briefing** next to the facts: a short summary, up to five watch points, a recommended choice and the reason for it. Read it as advice, not as evidence:
+
+- **Facts come first.** The summary, files, links and failing checks are written by livespec. The briefing follows and is labelled `Agent recommendation (agent-authored, advisory)`. A rule that asks (`decide:`) carries a briefing written by the rule, labelled `Livespec rule recommendation`.
+- **The recommendation is not an answer.** It only marks a choice (first in the menu, `(recommended)` on the forge). Nothing is approved until you pick. A recommendation must name a choice that is actually offered: `approve` is never recommended while a check must be waived.
+- **Agent text is inert.** livespec neutralises `<!--` and a leading `/livespec` in it, so the briefing cannot add a command or fake a marker.
+- A request written before this feature has no briefing and still works.
+
+`spec_gate` requires a briefing for human gates. `unit_amend`, `initiative_propose` and `new_dependency` accept an optional one.
+
 ### Answering on the forge
 
-Read the `request` comment: it states what is asked, shows the payload and lists the accepted commands. Reply with a **new** comment (editing an old one does nothing):
+Read the `request` comment. It is laid out top to bottom as: a **Decision needed** heading, the facts (summary, files, links), the failing waivable checks as a table, the briefing as a blockquote, a **How to answer** table (choice, what happens, the exact command; the recommended choice is bold with `(recommended)`) and a collapsed **All accepted commands** list. For example (a plan gate where `size-limits` fails):
+
+```markdown
+## Decision needed: approve the plan gate on #7
+
+### Review (blocking)
+
+Plan: 9 units, 3 capabilities.
+
+### Failing checks
+
+These waivable checks fail; approving needs `waive`.
+
+| Check |
+| --- |
+| `size-limits` |
+
+### Agent recommendation (agent-authored, advisory)
+
+> Units are small and each has one Verify command.
+>
+> Recommended: Waive size-limits
+>
+> Rationale: the split would not make the units smaller.
+
+### How to answer
+
+Post a new comment whose first line is the command (write access required).
+
+| Choice | What happens | Command |
+| --- | --- | --- |
+| **Waive size-limits** (recommended) | Approve and waive the failing checks: size-limits. | `/livespec choose waive [notes]` |
+| request changes | Send the request back with notes; nothing is approved. | `/livespec changes <notes>` |
+| dismiss | Close the request without approving it. | `/livespec dismiss [notes]` |
+```
+
+A question's table lists each candidate with the command `/livespec answer Q<n> <label>` plus a row for your own answer. Reply with a **new** comment (editing an old one does nothing):
 
 | Command | Use for |
 |---|---|
@@ -340,9 +389,9 @@ Rules that decide whether your comment counts:
 
 ### Question: answer what the agent cannot know
 
-**You see:** the question text and its class, `blocking` (gates stay closed) or `non-blocking`.
+**You see:** the question text and its class, `blocking` (gates stay closed) or `non-blocking`, and optionally 2 to 4 **candidate answers** (each a label and a description), possibly one recommended with its reason.
 
-**Answer** with the decision, and say whether it changes a requirement:
+**Answer** by picking a candidate, or with your own text, and say whether it changes a requirement:
 
 ```text
 /livespec answer Q2 use per-user limits, not per-IP --changes rate-limit/Requirement: Per-IP cap
@@ -352,7 +401,7 @@ In session you are asked "Does the answer change a requirement?" with the declar
 
 ### Stuck report: pick a way out
 
-**You see:** a `stuck` comment with where the work stopped, what was tried (with links), a hypothesis, two or three options and the recommended one.
+**You see:** a `stuck` comment with where the work stopped, what was tried (with links), a hypothesis, two or three options each with a description, and the recommended one with its rationale (both required from the agent).
 
 **Answer:** choose one option (`/livespec choose B`, or pick it in the dialog). A choice restarts the blocked budget (unit attempts, review rounds or iterations). **Dismissing does not lift the cap**; the agent will have to ask again.
 

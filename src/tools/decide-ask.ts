@@ -8,8 +8,9 @@ import { reusableAnswer } from "../decide/records.ts";
 import { BEHAVIOR_POINT, type BehaviorItem } from "../docs/behavior-change.ts";
 import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { ApprovalRequest, DecideSnapshot, Subject } from "../interaction/approver.ts";
+import type { ApprovalRequest, Briefing, DecideSnapshot, Subject } from "../interaction/approver.ts";
 import { type MarkedComment, readMarkedComments } from "../forge/markers.ts";
+import { validateBriefing } from "../interaction/briefing.ts";
 import { openRequestFor, prepareRequest, readRequests } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import type { WriteContext } from "./guard.ts";
@@ -29,9 +30,19 @@ export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Da
 	const files = behaviorFilesOf(intent);
 	if (files !== undefined) snapshot.files = files;
 	const { summary, options } = intent;
-	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now });
+	const briefing = ruleBriefing(intent);
+	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, ...(briefing ? { briefing } : {}), head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options };
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options, ...(briefing ? { briefing } : {}) };
+}
+
+/** The rule-authored briefing, only when the rule recommends an option; an invalid one is a programming error. */
+function ruleBriefing(intent: DecisionAsk): Briefing | undefined {
+	if (intent.recommended === undefined) return undefined;
+	const raw = { summary: intent.summary, recommended: intent.recommended, rationale: intent.rationale };
+	const briefing = validateBriefing(raw, intent.options.map((o) => o.id), { author: "rule" });
+	if ("refused" in briefing) throw new Error(`decision \`${intent.point}\` ${briefing.refused}`);
+	return briefing;
 }
 
 /** The item's files of a `behavior-change` intent, kept beside the facts so they survive `facts_hash`. */

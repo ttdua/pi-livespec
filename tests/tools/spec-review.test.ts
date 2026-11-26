@@ -1,4 +1,5 @@
 // End-to-end tests of `spec_review` through the registered tool, with a fake executor and the memory forge.
+import { BRIEFING } from "../helpers/briefing.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -105,7 +106,7 @@ describe("spec_review end to end", () => {
 		h.verdicts.set("src/limit.ts:1", "refuted");
 		await h.review();
 		expect(await h.marked().then((m) => m.some((x) => x.kind === "rebuild"))).toBe(false);
-		const gate = await h.call("spec_gate", { target: "review" });
+		const gate = await h.call("spec_gate", { target: "review", briefing: BRIEFING });
 		expect(gate.isError, textOf(gate)).toBeFalsy();
 		expect((await h.ofKind("gate")).at(-1)?.data).toMatchObject({ phase: "review", head_sha: h.git("rev-parse", "HEAD") });
 	});
@@ -115,7 +116,7 @@ describe("spec_review end to end", () => {
 		h.reviews.set("change", [{ ...DEFECT, location: "src/legacy.ts:1" }]);
 		await h.review();
 		expect(((await h.latestAggregate())?.data.findings[0] as AggregateFinding).route).toBe("out-of-scope");
-		const gate = await h.call("spec_gate", { target: "review" });
+		const gate = await h.call("spec_gate", { target: "review", briefing: BRIEFING });
 		expect(gate.isError, textOf(gate)).toBeFalsy();
 	});
 
@@ -270,7 +271,7 @@ describe("spec_review refusals write nothing", () => {
 
 	test("pending blocking request", async () => {
 		const h = await reviewHarness({ config: "integrationBranch: main\ninteraction: { adapter: [forge] }\n" });
-		await h.call("spec_gate", { target: "review" }).catch(() => undefined);
+		await h.call("spec_gate", { target: "review", briefing: BRIEFING }).catch(() => undefined);
 		await h.call("spec_question", { text: "Which store?" });
 		await refusedWith(h, "Q1");
 	});

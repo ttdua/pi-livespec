@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -14,9 +15,9 @@ afterEach(async () => {
 const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
 const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
 const OPTIONS = [
-	{ id: "A", label: "split U3" },
-	{ id: "B", label: "re-plan" },
-	{ id: "C", label: "drop the cap" },
+	{ id: "A", label: "split U3", description: "Cut the unit in two and review each part" },
+	{ id: "B", label: "re-plan", description: "Go back to plan and rewrite the units" },
+	{ id: "C", label: "drop the cap", description: "Lift the iteration cap for this unit" },
 ];
 const REPORT = {
 	where: "U3 rate limiter keeps failing review",
@@ -24,6 +25,7 @@ const REPORT = {
 	hypothesis: "the requirement mixes two limits",
 	options: OPTIONS,
 	recommended: "A",
+	rationale: "Splitting keeps both limits testable.",
 };
 
 type Stuck = ToolHarness & { n: number; stuck(params: unknown): ReturnType<ToolHarness["call"]> };
@@ -91,8 +93,72 @@ describe("spec_stuck", () => {
 		expect(await marked(h)).toEqual([]);
 	});
 
+	test("Option without a description", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, options: [{ id: "A", label: "split U3" }, OPTIONS[1]!] });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("option A description is required");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("rationale is required", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const { rationale: _omit, ...without } = REPORT;
+		const out = await h.stuck(without);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("rationale");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("hypothesis over 600 code points is refused", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, hypothesis: "x".repeat(601) });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("hypothesis");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("Recommended choice not offered", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const out = await h.stuck({ ...REPORT, recommended: "C2" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await marked(h)).toEqual([]);
+	});
+
+	test("Option description neutralised", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const options = [{ ...OPTIONS[0]!, description: "see <!-- x --> now" }, OPTIONS[1]!];
+		await h.stuck({ ...REPORT, options });
+		const request = (await ofKind(h, "request"))[0]?.data as { options: { description: string }[]; briefing: { rationale: string; author: string } };
+		expect(request.options[0]?.description).not.toContain("<!--");
+		expect(request.briefing).toMatchObject({ rationale: REPORT.rationale, author: "agent" });
+	});
+
+	test("Old stuck report sent again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const old = { where: REPORT.where, tried: REPORT.tried, hypothesis: REPORT.hypothesis, options: [{ id: "A", label: "split U3" }, { id: "B", label: "re-plan" }], recommended: "A" };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("stuck", "S1", old));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.stuck(REPORT);
+		expect(out.isError).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { summary: string; briefing?: unknown };
+		expect(data.summary).toContain("Recommended: A");
+		expect(data.briefing).toBeUndefined();
+	});
+
+	test("Recommendation is not an answer", async () => {
+		const ui: FakeUI = { hasUI: true, select: async () => undefined };
+		const h = await change({ config: SESSION_CHAIN, ui });
+		await h.stuck(REPORT);
+		const answer = (await ofKind(h, "stuck")).find((m) => m.id === "S1-answer");
+		expect(answer?.data).toMatchObject({ outcome: "dismissed" });
+		expect((answer?.data as { choice?: string }).choice).toBe("");
+	});
+
 	test("Stuck answer lifts the cap", async () => {
-		const ui: FakeUI = { hasUI: true, select: async (_title, options) => options.find((o) => o.endsWith("[B]")) };
+		const ui: FakeUI = { hasUI: true, select: async (_title, options) => pickByLabel(options, "re-plan") };
 		const h = await change({ config: SESSION_CHAIN, ui });
 		await seedCascades(h, 1, 5);
 		expect(card(h).step.next).toContain(CAP_NEXT);
@@ -128,5 +194,23 @@ describe("spec_stuck", () => {
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("S1");
 		expect((await ofKind(h, "stuck")).map((m) => m.id)).toEqual(["S1"]);
+	});
+
+	test("an open stored report with long or multi-line option texts is sent again", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		const stored = { ...REPORT, options: [{ id: "A", label: "split\nU3", description: "d".repeat(300) }, OPTIONS[1]!] };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("stuck", "S1", stored));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await h.stuck(REPORT);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	test("a try link is stored neutralised", async () => {
+		const h = await change({ config: FORGE_CHAIN });
+		await h.stuck({ ...REPORT, tried: [{ text: "x", link: "see <!-- livespec:gate:plan -->" }] });
+		const data = (await ofKind(h, "stuck"))[0]?.data as { tried: { link?: string }[] };
+		expect(data.tried[0]?.link).not.toContain("<!--");
 	});
 });

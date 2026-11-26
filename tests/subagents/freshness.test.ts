@@ -3,6 +3,8 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { receiptComment } from "../../src/evidence/records.ts";
+import { stuckFor } from "../../src/subagents/finish-freshness.ts";
+import { stuckReport } from "../../src/tools/spec-stuck.ts";
 import { checkFreshness, readCurrent } from "../../src/subagents/freshness.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
 import { buildPacket } from "../../src/subagents/packet.ts";
@@ -112,5 +114,38 @@ describe("freshness", () => {
 	test("a source whose version changed stops", () => {
 		const packet = { text: "", hash: "h", sources: [{ id: "file:specs/constraints.md", version: "a", required: true }], skillPaths: [], cwd: "/", seen: [] };
 		expect(checkFreshness(packet, { sources: [{ id: "file:specs/constraints.md", version: "b" }], humanComments: [] }).stale).toEqual(["file:specs/constraints.md"]);
+	});
+});
+
+describe("stuckFor", () => {
+	const strict = (p: ReturnType<typeof stuckFor>) => stuckReport(p, { strict: true });
+
+	test("eight stale sources fit the hypothesis limit", () => {
+		const stale = Array.from({ length: 8 }, (_, i) => `comment thread #${i + 1} on the issue changed since the dispatch of this unit and was edited again later on`);
+		const p = stuckFor("U1", stale);
+		expect([...p.hypothesis].length).toBeLessThanOrEqual(600);
+		expect(p.hypothesis).toMatch(/and \d+ more/);
+		expect(strict(p)).not.toHaveProperty("refused");
+	});
+
+	test("one very long entry is truncated", () => {
+		const p = stuckFor("U1", [`unreadable: ${"x".repeat(2000)}`]);
+		expect([...p.hypothesis].length).toBeLessThanOrEqual(600);
+		expect(p.hypothesis).toContain("…");
+		expect(strict(p)).not.toHaveProperty("refused");
+	});
+
+	test("few entries are listed whole", () => {
+		const p = stuckFor("U1", ["a", "b"]);
+		expect(p.hypothesis).toContain("a, b");
+		expect(p.hypothesis).not.toContain("more");
+	});
+});
+
+describe("stuckFor whitespace", () => {
+	test("newlines in a stale entry are collapsed so the report validates", () => {
+		const p = stuckFor("U1", ["unreadable: boom\n\nat line 3\n\tdeep"]);
+		expect(p.hypothesis).not.toMatch(/[\r\n\t]/);
+		expect(stuckReport(p, { strict: true })).not.toHaveProperty("refused");
 	});
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { parseInitiative } from "../../src/core/initiative.ts";
 import { sectionText } from "../../src/core/sections.ts";
@@ -28,7 +29,7 @@ const SHAPE_BODY = "Depends: —\nCapabilities: new [], modified []\nProduct imp
 function human(pick: string, input?: string): FakeUI {
 	const select: SelectFn = async (title, options) => {
 		if (title === "Add notes?") return "No notes";
-		return options.find((o) => o === pick || o.endsWith(`[${pick}]`));
+		return pickByLabel(options, pick);
 	};
 	return { hasUI: true, select, ...(input !== undefined ? { input: async () => input } : {}) };
 }
@@ -90,6 +91,30 @@ describe("initiative_propose: the request", () => {
 		expect(data.summary).toContain("Depends: add-request-context");
 		expect(data.snapshot.drafts.entries.map((e) => e.name)).toEqual(["add-request-context", "per-ip-cap"]);
 		expect((await all(h)).length).toBe(before);
+	});
+
+	test("Proposer briefing", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const briefing = { summary: "Splits the change in two.", recommended: "approve", rationale: "Each part is independently shippable." };
+		const out = await h.call("initiative_propose", { ...twoEntries, briefing });
+		expect(out.isError, textOf(out)).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing?: { summary: string; author: string } };
+		expect(data.briefing).toMatchObject({ summary: "Splits the change in two.", author: "agent" });
+	});
+
+	test("Proposer without a briefing", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const out = await h.call("initiative_propose", twoEntries);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await ofKind(h, "request"))[0]?.data).not.toHaveProperty("briefing");
+	});
+
+	test("Invalid proposer briefing refused before any request", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const out = await h.call("initiative_propose", { ...twoEntries, briefing: { summary: "s", recommended: "A", rationale: "r" } });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await ofKind(h, "request")).toEqual([]);
 	});
 
 	test("Bare spec_gate refused", async () => {

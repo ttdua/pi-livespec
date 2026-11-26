@@ -16,7 +16,7 @@ import type { ChangeState } from "../engine/state-types.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { sendNamedGate } from "./spec-gate.ts";
+import { BRIEFING_SCHEMA, proposerBriefing, sendNamedGate } from "./spec-gate.ts";
 
 /** The dependency state of every livespec issue read, so an amendment can tell an abandoned change. */
 async function statesOf(forge: Forge, referenced: Map<number, Issue | "missing">): Promise<Map<number, DepState>> {
@@ -76,13 +76,15 @@ export async function runInitiativePropose(params: unknown, ctx: ApproverCtx): P
 	if (!w.ok) return toolResult(w.message, undefined, true);
 	const change = requireChange(w.session);
 	if (!change.ok) return toolResult(change.message, undefined, true);
+	const briefed = proposerBriefing((params as { briefing?: unknown } | undefined)?.briefing, []);
+	if (!briefed.ok) return refuse(`${briefed.message}.`);
 	const input = inputOf(params);
 	const read = await readPlanCtx(w.forge, input, change.state);
 	if ("refused" in read) return refuse(read.refused);
 	const planned = planInitiative(input, change.state, read);
 	if ("refused" in planned) return refuse(planned.refused);
 	const summary = initiativeSummary(planned.drafts);
-	return sendNamedGate(w, change.state, { target: INITIATIVE_GATE, options: [], drafts: planned.drafts, summary, ctx, tool: INITIATIVE_TOOL });
+	return sendNamedGate(w, change.state, { target: INITIATIVE_GATE, options: [], drafts: planned.drafts, summary, ctx, tool: INITIATIVE_TOOL, briefing: briefed.briefing });
 }
 
 const ENTRY_SCHEMA = {
@@ -110,6 +112,7 @@ export function registerInitiativePropose(pi: ExtensionAPI): void {
 				goal: { type: "string", description: "the initiative's goal" },
 				capabilities: { type: "array", items: { type: "string" }, description: "capabilities the initiative covers" },
 				entries: { type: "array", items: ENTRY_SCHEMA, description: "one entry per change, exactly one of them the current change" },
+				briefing: BRIEFING_SCHEMA,
 				remove: { type: "array", items: { type: "string" }, description: "amendment only: #<n> removes an abandoned change's entry, #<change>:#<dep> removes an abandoned dependency" },
 			},
 			required: ["name", "goal", "capabilities", "entries"],

@@ -29,6 +29,16 @@ export type Difficulty = "low" | "medium" | "high";
 export interface RequestOption {
 	id: string;
 	label: string;
+	description?: string;
+}
+
+/** Advisory context shown with a request; text is neutralised before it is stored. */
+export interface Briefing {
+	summary: string;
+	watch?: string[];
+	recommended?: string;
+	rationale?: string;
+	author: "agent" | "rule";
 }
 
 export interface GateSnapshot {
@@ -79,6 +89,7 @@ export interface RequestRecord {
 	subject: Subject;
 	mode: RequestMode;
 	options?: RequestOption[];
+	briefing?: Briefing;
 	head_sha: string;
 	gate_digest?: string;
 	snapshot: RequestSnapshot;
@@ -96,6 +107,7 @@ export interface ApprovalRequest {
 	links: string[];
 	files: string[];
 	options?: RequestOption[];
+	briefing?: Briefing;
 	mode: RequestMode;
 	overridable?: { units: string[] };
 	question?: { id: string; class: QuestionClass; requirements: string[] };

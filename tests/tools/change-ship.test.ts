@@ -1,4 +1,6 @@
+import { BRIEFING } from "../helpers/briefing.ts";
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { gateDigest } from "../../src/engine/locks.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
@@ -226,7 +228,7 @@ describe("change_ship", () => {
 
 	test("Forge approval then ship", async () => {
 		const h = await shipReady({ noShipGate: true, config: FORGE_CHAIN });
-		const asked = await h.call("spec_gate", { target: "ship" });
+		const asked = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(asked.isError, textOf(asked)).toBeFalsy();
 		await h.world.setPermission("alice", "write");
 		await h.world.postComment(h.n, "alice", "/livespec approve");
@@ -237,9 +239,9 @@ describe("change_ship", () => {
 	});
 
 	test("in-session approval then ship", async () => {
-		const ui: FakeUI = { hasUI: true, select: async (title, options) => (title === "Add notes?" ? "No notes" : options.find((o) => o === "approve")) };
+		const ui: FakeUI = { hasUI: true, select: async (title, options) => (title === "Add notes?" ? "No notes" : pickByLabel(options, "approve")) };
 		const h = await shipReady({ noShipGate: true, ui });
-		const asked = await h.call("spec_gate", { target: "ship" });
+		const asked = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(asked.isError, textOf(asked)).toBeFalsy();
 		const out = await h.call("change_ship");
 		expect(out.isError, textOf(out)).toBeFalsy();

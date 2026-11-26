@@ -1,3 +1,4 @@
+import { BRIEFING } from "../helpers/briefing.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,7 +69,7 @@ afterEach(async () => {
 describe("verify-red-on-base", () => {
 	test("Green on base refuses the plan gate", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }, { id: "U2", verify: "true" }]);
-		const out = await h.call("spec_gate", { target: GATE });
+		const out = await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
@@ -81,7 +82,7 @@ describe("verify-red-on-base", () => {
 
 	test("Pending unit exempt", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT, files: ["tests/u1.test.ts"] }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual([]);
 		expect(text).toContain("verifier pending");
@@ -90,14 +91,14 @@ describe("verify-red-on-base", () => {
 
 	test("Refactor without a test", async () => {
 		const missing = await planChange([{ id: "U2", verify: "true", kind: "refactor", files: ["tests/u2.test.ts"] }]);
-		await missing.call("spec_gate", { target: GATE });
+		await missing.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		const first = await requestOf(missing);
 		expect(first.data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(first.text).toContain("refactor needs an existing test");
 		await cleanupDirs();
 		clearGateMemo();
 		const present = await planChange([{ id: "U2", verify: "true", kind: "refactor", files: ["tests/u2.test.ts"] }], { "tests/u2.test.ts": "x\n" });
-		await present.call("spec_gate", { target: GATE });
+		await present.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		const second = await requestOf(present);
 		expect(second.data.snapshot.failingWaivable).toEqual([]);
 		expect(second.text).not.toContain("verify-red-on-base");
@@ -105,7 +106,7 @@ describe("verify-red-on-base", () => {
 
 	test("Missing toolchain is not red", async () => {
 		const h = await planChange([{ id: "U1", verify: "nosuchtool-livespec test" }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(text).toContain("could not run");
@@ -113,7 +114,7 @@ describe("verify-red-on-base", () => {
 
 	test("Blocked Verify is never run", async () => {
 		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG && git push" }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(text).toContain("blocked");
@@ -122,31 +123,31 @@ describe("verify-red-on-base", () => {
 
 	test("Memoized", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }, { id: "U2", verify: COUNT.replace("run", "run2") }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(2);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(2);
 		// One unit changes: only it runs again.
 		const body = (await h.world.bodyOf(h.n)).replace("Verify: `echo run2 >> ", "Verify: `echo run3 >> ");
 		await h.world.editBodyBehindBack(h.n, body);
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(3);
 	});
 
 	test("memo is scoped to the session", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }, { id: "U2", verify: COUNT.replace("run", "run2") }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(2);
 		clearGateMemo();
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(4);
 	});
 
 	test("missing environment cannot be approved without a waiver", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }], {}, false);
-		const out = await h.call("spec_gate", { target: GATE });
+		const out = await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
@@ -165,7 +166,7 @@ describe("gate-only check at the gate", () => {
 	test("Gate-only check runs at the gate", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }]);
 		expect(h.runs()).toBe(0);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
 		const { text } = await requestOf(h);
 		expect(text).toContain("Units:");
@@ -174,7 +175,7 @@ describe("gate-only check at the gate", () => {
 
 	test("Forge answer completed without rerunning gate-only checks", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
 		// A new process: an empty registry and an empty memo, the check registered again.
 		resetRegistryForTests();
@@ -196,9 +197,9 @@ describe("gate-only check at the gate", () => {
 describe("memo of invalid runs", () => {
 	test("a not-runnable Verify runs once across two gates", async () => {
 		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG; exit 127" }]);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
 		const { text } = await requestOf(h);
 		expect(text).toContain("could not run");
@@ -209,13 +210,13 @@ describe("memo of invalid runs", () => {
 		const aborted = new AbortController();
 		aborted.abort();
 		setRedOnBaseEnv(() => verifyEnv(h.session, aborted.signal));
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(0);
 		setRedOnBaseEnv(() => verifyEnv(h.session));
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
 		// The result of the retry (red, so no error) is now memoized: a third gate does not run it again.
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(h.runs()).toBe(1);
 	});
 });
@@ -229,9 +230,9 @@ describe("memo of blocked runs", () => {
 			const guard = env.run.guard;
 			return { ...env, run: { ...env.run, guard: (cmd: string) => (consulted++, guard(cmd)) } };
 		});
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(consulted).toBe(1);
-		await h.call("spec_gate", { target: GATE });
+		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
 		expect(consulted).toBe(1);
 		expect(h.runs()).toBe(0);
 		expect((await requestOf(h)).text).toContain("blocked");

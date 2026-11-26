@@ -1,0 +1,86 @@
+import { describe, expect, test } from "vitest";
+import type { ApprovalRequest } from "../../src/interaction/approver.ts";
+import { menuEntries, titleWithBriefing } from "../../src/interaction/menu.ts";
+
+const request = (over: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
+	id: "gate-plan.abc",
+	kind: "gate",
+	subject: "gate:plan",
+	record: { id: "gate-plan.abc", kind: "gate", subject: "gate:plan", mode: "blocking", head_sha: "d", snapshot: { target: "plan", failingWaivable: [] }, summary: "Approve plan?" },
+	change: 1,
+	phase: "plan",
+	summary: "Approve plan?",
+	links: [],
+	files: [],
+	mode: "blocking",
+	...over,
+});
+
+describe("menuEntries", () => {
+	const choices = [
+		{ id: "a", label: "A", description: "first", value: 1 },
+		{ id: "b", label: "B", value: 2 },
+		{ id: "c", label: "C", description: "third", value: 3 },
+	];
+
+	test("labels carry the description, no id suffix", () => {
+		expect(menuEntries(choices).map(([label]) => label)).toEqual(["A — first", "B", "C — third"]);
+	});
+
+	test("the recommended entry is first and marked", () => {
+		expect(menuEntries(choices, "c")).toEqual([
+			["C — third (Recommended)", 3],
+			["A — first", 1],
+			["B", 2],
+		]);
+	});
+
+	test("an unknown recommendation changes nothing", () => {
+		expect(menuEntries(choices, "zzz").map(([label]) => label)).toEqual(["A — first", "B", "C — third"]);
+	});
+});
+
+describe("titleWithBriefing", () => {
+	test("without a briefing the title is the summary", () => {
+		expect(titleWithBriefing(request())).toBe("Approve plan?");
+	});
+
+	test("facts come before the briefing", () => {
+		const title = titleWithBriefing(
+			request({ briefing: { summary: "Looks fine.", watch: ["size"], recommended: "approve", rationale: "All green.", author: "agent" } }),
+			"approve",
+		);
+		expect(title.startsWith("Approve plan?\n\n")).toBe(true);
+		expect(title).toContain("Agent recommendation (agent-authored, advisory)");
+		expect(title).toMatch(/Looks fine\.[\s\S]*Watch:\n- size[\s\S]*Recommended: approve[\s\S]*Why: All green\./);
+	});
+
+	test("agent text is neutralised", () => {
+		const title = titleWithBriefing(request({ briefing: { summary: "<!-- x -->", author: "agent" } }));
+		expect(title).not.toContain("<!--");
+	});
+});
+
+describe("gate with a waive recommendation", () => {
+	test("waive is first and approve absent", async () => {
+		const { createInSessionApprover } = await import("../../src/interaction/in-session.ts");
+		const base = request();
+		const r = request({
+			options: [{ id: "waive", label: "Waive size-limits" }],
+			record: { ...base.record, snapshot: { target: "plan", failingWaivable: ["size-limits"] } },
+			briefing: { summary: "Accept the size.", recommended: "waive", rationale: "Known.", author: "agent" },
+		});
+		let seen: string[] = [];
+		const ui = {
+			hasUI: true,
+			select: async (_t: string, options: string[]) => {
+				seen = options;
+				return undefined;
+			},
+			input: async () => undefined,
+		};
+		await createInSessionApprover(ui, async () => "a").request(r);
+		expect(seen[0]).toMatch(/^Waive size-limits — .* \(Recommended\)$/);
+		expect(seen.some((o) => o.startsWith("approve"))).toBe(false);
+	});
+});

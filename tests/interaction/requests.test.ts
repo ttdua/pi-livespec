@@ -7,6 +7,7 @@ import {
 	newRequestId,
 	openRequestFor,
 	openRequests,
+	prepareRequest,
 	readRequests,
 	type RequestsState,
 	requestComment,
@@ -120,5 +121,20 @@ describe("subjects and typed snapshots", () => {
 	test("snapshotOf discriminates by subject", () => {
 		const kinds = (["gate:plan", "amend:1", "question:Q1", "stuck:S1", "decide:tags.U1"] as const).map((subject) => snapshotOf({ ...RECORD, subject }).kind);
 		expect(kinds).toEqual(["gate", "amend", "question", "stuck", "decide"]);
+	});
+});
+
+describe("briefing on the record", () => {
+	test("prepareRequest stores the briefing", () => {
+		const briefing = { summary: "s", author: "agent" as const };
+		const r = prepareRequest({ kind: "gate", subject: "gate:plan", mode: "blocking", head: "f".repeat(40), body: "b", snapshot: RECORD.snapshot, summary: "x", now: NOW, briefing });
+		expect(r.briefing).toEqual(briefing);
+		expect(prepareRequest({ kind: "gate", subject: "gate:plan", mode: "blocking", head: "f".repeat(40), body: "b", snapshot: RECORD.snapshot, summary: "x", now: NOW })).not.toHaveProperty("briefing");
+	});
+
+	test("Request without a briefing still reads", () => {
+		const state = readRequests(comments(requestComment(ID, RECORD, "text")));
+		expect(state.pending).toHaveLength(1);
+		expect(state.pending[0]?.data.briefing).toBeUndefined();
 	});
 });

@@ -1,7 +1,8 @@
 // The decision seam: runs the registered rule for a point and, when the rule
 // asks, hands the question to the caller's approver. It never writes anything.
 
-import { ruleFor } from "./registry.ts";
+import { validateOptionTexts } from "../interaction/briefing.ts";
+import { type RuleResult, ruleFor } from "./registry.ts";
 
 export type DecisionAsk = {
 	point: string;
@@ -9,7 +10,9 @@ export type DecisionAsk = {
 	digest?: string;
 	facts: unknown;
 	summary: string;
-	options: { id: string; label: string }[];
+	options: { id: string; label: string; description?: string }[];
+	recommended?: string;
+	rationale?: string;
 };
 
 /** Structurally compatible with the approver's `Answered` (only the fields the seam reads). */
@@ -35,6 +38,15 @@ export type Decided = {
 	data?: { agentAdditions?: string[] };
 };
 
+/** A rule's ask is a programming contract: option texts within limits, a recommendation naming an offered option. */
+function checkRuleAsk(point: string, ask: Extract<RuleResult, { ask: unknown }>["ask"]): void {
+	const texts = validateOptionTexts(ask.options, { requireDescription: false });
+	if ("refused" in texts) throw new Error(`decision \`${point}\` ${texts.refused}`);
+	if (ask.recommended !== undefined && !ask.options.some((o) => o.id === ask.recommended)) {
+		throw new Error(`decision \`${point}\` recommends \`${ask.recommended}\`, which it does not offer`);
+	}
+}
+
 /** Runs the rule for `point`; an `ask` goes to `deps.ask`. Throws on an unregistered point, a missing approver or an answer without a choice. */
 export async function decide(point: string, facts: unknown, deps: DecideDeps): Promise<Decided | AskPending> {
 	const rule = ruleFor(point);
@@ -45,6 +57,7 @@ export async function decide(point: string, facts: unknown, deps: DecideDeps): P
 		if (result.data) decided.data = result.data;
 		return decided;
 	}
+	checkRuleAsk(point, result.ask);
 	if (!deps.ask) throw new Error(`decision point \`${point}\` asks a human but no approver was given`);
 	const digest = deps.digest === undefined ? {} : { digest: deps.digest };
 	const answer = await deps.ask({ point, subject: deps.subject, facts, ...digest, ...result.ask });

@@ -14,7 +14,7 @@ import { TooManyDependencies } from "../initiatives/propose-read.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
-import { sendNamedGate } from "./spec-gate.ts";
+import { BRIEFING_SCHEMA, proposerBriefing, sendNamedGate } from "./spec-gate.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
 const refuse = (message: string): ToolResult<undefined> => toolResult(`${NEW_DEPENDENCY_TOOL} refused: ${message} Nothing was requested.`, undefined, true);
@@ -52,6 +52,8 @@ export async function runNewDependency(params: unknown, ctx: ToolCtx & ApproverC
 	const { state } = change;
 	const capped = capRefusal(state, w.pack.loops.discovered_deps);
 	if (capped) return refuse(capped);
+	const briefed = proposerBriefing((params as { briefing?: unknown } | undefined)?.briefing, offeredOptions(state));
+	if (!briefed.ok) return refuse(`${briefed.message}.`);
 	const input = inputOf(params);
 	const read = await readCtx(w.forge, state, input);
 	if ("refused" in read) return refuse(read.refused);
@@ -59,7 +61,7 @@ export async function runNewDependency(params: unknown, ctx: ToolCtx & ApproverC
 	if ("refused" in planned) return refuse(planned.refused);
 	const options = offeredOptions(state);
 	const summary = newDependencySummary(planned.drafts, state, options, read.initiative);
-	return sendNamedGate(w, state, { target: NEW_DEPENDENCY_GATE, options, drafts: planned.drafts, summary, ctx, tool: NEW_DEPENDENCY_TOOL });
+	return sendNamedGate(w, state, { target: NEW_DEPENDENCY_GATE, options, drafts: planned.drafts, summary, ctx, tool: NEW_DEPENDENCY_TOOL, briefing: briefed.briefing });
 }
 
 const NEW_CHANGE = (what: string) => ({
@@ -90,6 +92,7 @@ export function registerNewDependency(pi: ExtensionAPI): void {
 				},
 				b: { type: "object", properties: { units: { type: "array", items: { type: "string" }, description: "ids of the units to add" }, summary: { type: "string" } }, required: ["units", "summary"] },
 				c: { type: "object", properties: { summary: { type: "string", description: "the stub amendment" }, follow_up: NEW_CHANGE("follow-up change") }, required: ["summary", "follow_up"] },
+				briefing: BRIEFING_SCHEMA,
 				d: { type: "object", properties: { action: { type: "string", enum: ["shape", "drop"] }, reason: { type: "string" } }, required: ["action", "reason"] },
 			},
 			required: ["evidence", "a", "b", "c", "d"],

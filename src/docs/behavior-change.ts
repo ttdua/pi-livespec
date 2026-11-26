@@ -24,8 +24,8 @@ const SPECS_PATH = "specs/";
 const CODE = "behavior-change";
 
 export const BEHAVIOR_OPTIONS = [
-	{ id: "unchanged", label: "Behavior did not change" },
-	{ id: "changed", label: "Behavior changed; the spec must be updated" },
+	{ id: "unchanged", label: "Behavior did not change", description: "A refactor: the spec stays as it is." },
+	{ id: "changed", label: "Behavior changed; the spec must be updated", description: "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated." },
 ];
 
 const specFileOf = (capability: string): string => `${SPECS_PATH}${capability}/spec.md`;

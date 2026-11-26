@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickById } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { parseInitiative } from "../../src/core/initiative.ts";
 import { sectionText } from "../../src/core/sections.ts";
@@ -43,7 +44,7 @@ const body = (o: { done?: string[]; head?: string } = {}): string =>
 function human(pick: string): FakeUI {
 	const select: SelectFn = async (title, options) => {
 		if (title === "Add notes?") return "No notes";
-		return options.find((o) => o === pick || o.endsWith(`[${pick}]`));
+		return pickById(options, pick);
 	};
 	return { hasUI: true, select };
 }
@@ -95,6 +96,24 @@ describe("new_dependency: the request", () => {
 		expect(data.snapshot.drafts.a.name).toBe("token-store");
 		expect(data.summary).toContain("<untrusted>U3 needs a token store, which &lt;nothing> provides</untrusted>");
 		expect(data.summary).toContain("per-ip-cap-deps");
+		expect((await all(h)).length).toBe(before);
+	});
+
+	test("Proposer briefing", async () => {
+		const h = await harness();
+		const out = await h.call("new_dependency", params({ briefing: { summary: "Needs a token store.", recommended: "A", rationale: "A prerequisite change is cleanest." } }));
+		expect(out.isError, textOf(out)).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing: { recommended: string; author: string } };
+		expect(data.briefing).toMatchObject({ recommended: "A", author: "agent" });
+	});
+
+	test("Briefing recommending an option the request does not offer", async () => {
+		const h = await harness();
+		const before = (await all(h)).length;
+		const out = await h.call("new_dependency", params({ briefing: { summary: "s", recommended: "split", rationale: "r" } }));
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await ofKind(h, "request")).toEqual([]);
 		expect((await all(h)).length).toBe(before);
 	});
 
