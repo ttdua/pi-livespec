@@ -10,9 +10,9 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Create `src/interaction/describe-actions.ts`: `offeredChoiceIds`, `gateChoices` (approve hidden while a waivable check fails, `waive` listed once) and livespec-written descriptions per target (request-briefing "Built-in action descriptions")
-- [ ] 2.2 Create `src/interaction/forge-text.ts` with `renderForgeRequest` (heading, facts, checks table, briefing with author label, "How to answer" table, `<details>` command list, `|` escaping, neutralising stored text on render); replace `plainText` in `src/interaction/forge.ts`
-- [ ] 2.3 Tests in `tests/interaction/forge-text.test.ts` and `tests/interaction/forge.test.ts` for structure, order, author label, question candidate rows and the free-text row, the prefilled command parsing back through `parseCommand`, and a pre-change request rendering without a briefing
+- [x] 2.1 Create `src/interaction/describe-actions.ts`: `offeredChoiceIds`, `gateChoices` (approve hidden while a waivable check fails, `waive` listed once) and livespec-written descriptions per target (request-briefing "Built-in action descriptions")
+- [x] 2.2 Create `src/interaction/forge-text.ts` with `renderForgeRequest` (heading, facts, checks table, briefing with author label, "How to answer" table, `<details>` command list, `|` escaping, neutralising stored text on render); replace `plainText` in `src/interaction/forge.ts`
+- [x] 2.3 Tests in `tests/interaction/forge-text.test.ts` and `tests/interaction/forge.test.ts` for structure, order, author label, question candidate rows and the free-text row, the prefilled command parsing back through `parseCommand`, and a pre-change request rendering without a briefing
 
 ## 3. In-session presentation
 
