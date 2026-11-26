@@ -248,7 +248,27 @@ describe("forge adapter", () => {
 		expect(parsed?.id).toBe(r.record.id);
 		expect({ ...(parsed?.data as object), id: parsed?.id }).toEqual(r.record);
 		expect(posted?.body).toContain("/livespec choose <option-id> [notes]");
+		expect(posted?.body).toContain("`/livespec choose waive [notes]`");
+		expect(posted?.body).toContain("## Decision needed: approve the plan gate on #1");
 		expect(posted?.body).toContain("Review gate:plan");
+	});
+
+	test("Briefing stored with the request", async () => {
+		const { world, n, approver } = await setup();
+		const briefing = { summary: "Units are small.", recommended: "waive", rationale: "The size check is noisy.", author: "agent" as const };
+		const base = approval({ subject: "gate:plan", options: [{ id: "waive", label: "waive size-limits" }], snapshot: { target: "plan", failingWaivable: ["size-limits"] } });
+		const record = { ...base.record, briefing };
+		const r = { ...base, record, briefing };
+		await approver.request(r);
+		const [posted] = await world.forge.listComments(n);
+		const parsed = parseMarked(posted?.body ?? "");
+		expect(parsed?.kind).toBe("request");
+		expect(parsed?.id).toBe(r.record.id);
+		expect({ ...(parsed?.data as object), id: parsed?.id }).toEqual(r.record);
+		expect((parsed?.data as { briefing?: unknown }).briefing).toEqual(briefing);
+		expect(posted?.body).toContain("> Units are small.");
+		// Exactly one marker, livespec's own.
+		expect(posted?.body.match(/<!--/g)).toHaveLength(1);
 	});
 
 	test("an ambiguous command stays ignored after one of its targets is answered", async () => {

@@ -27,7 +27,7 @@ import { amendedBody } from "../../src/interaction/amend-body.ts";
 import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
-import { answerComment, prepareRequest, readRequests } from "../../src/interaction/requests.ts";
+import { answerComment, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
@@ -508,6 +508,31 @@ describe("completion engine", () => {
 		await completeAnswer(await ctxOf(f), record, answer());
 		const [recorded] = ofKind(await markedOf(f), "answer", record.id);
 		expect(recorded?.data).toMatchObject({ verdict: "superseded", reason_wrapped: true });
+	});
+
+	test("answer comment keeps the briefing", async () => {
+		const f = await fixture("define");
+		const briefing = { summary: "The spec is small.", recommended: "approve", rationale: "Checks pass.", author: "agent" as const };
+		const record = { ...(await prepare(f, "gate", "gate:define", gateSnapshot("define"))), briefing };
+		const polled = await forgeAnswer(f, record, "/livespec approve");
+		await completeAnswer(await ctxOf(f), record, polled);
+		const [recorded] = ofKind(await markedOf(f), "answer", record.id);
+		expect((recorded?.data as { request: RequestRecord }).request.briefing).toEqual(briefing);
+	});
+
+	test("pre-briefing request completes", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		expect(record.briefing).toBeUndefined();
+		// A request stored before this change: yaml without `briefing`, old plain text.
+		await f.world.postComment(f.n, BOT_LOGIN, requestComment(record.id, record, "**livespec asks for gate:define** (blocking):"));
+		await f.world.setPermission("alice", "write");
+		await f.world.postComment(f.n, "alice", "/livespec approve");
+		const polled = await matchedAnswer(f.world.forge, f.n, record.id);
+		if (!polled) throw new Error("not answered");
+		const out = await completeAnswer(await ctxOf(f), record, polled);
+		expect(out.status).toBe("completed");
+		expect(ofKind(await markedOf(f), "gate").at(-1)?.data).toMatchObject({ phase: "define", outcome: "approved", adapter: "forge" });
 	});
 
 	test("applying answers of every subject kind still complete", async () => {
