@@ -57,8 +57,8 @@ Blocked by: 4
 
 Blocked by: 3
 
-- [ ] 8.1 Optional `briefing` on `unit_amend` in `src/tools/unit-amend.ts`, validated before the classification decisions run, carried on the light gate request
-- [ ] 8.2 Tests in `tests/tools/unit-amend.test.ts` for "Amendment with a briefing" and refusal before any `decide:` request
+- [x] 8.1 Optional `briefing` on `unit_amend` in `src/tools/unit-amend.ts`, validated before the classification decisions run, carried on the light gate request
+- [x] 8.2 Tests in `tests/tools/unit-amend.test.ts` for "Amendment with a briefing" and refusal before any `decide:` request
 
 ## 9. Documentation
 
