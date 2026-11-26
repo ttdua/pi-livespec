@@ -32,9 +32,23 @@ function questionVerdict(entry: DialogEntry, state: DialogState, r: ApprovalRequ
 	return verdict;
 }
 
+/** The gate outcome of a picked entry: empty notes approve, notes approve with notes. */
+const gateOutcome = (state: DialogState): "approved" | "approved_with_notes" => (state.notes.trim() === "" ? "approved" : "approved_with_notes");
+
+const LABELS = { approved: "approved", approved_with_notes: "approved with notes", changes_requested: "changes requested" } as const;
+
+/** The outcome text the review tab shows; the same rule `toResult` applies. `undefined` for questions and unpicked states. */
+export function outcomeLabel(model: DialogModel, state: DialogState): string | undefined {
+	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
+	if (entry === undefined || model.kind === "question") return undefined;
+	if (entry.action.kind === "changes") return LABELS.changes_requested;
+	if (model.kind === "choice") return LABELS.approved;
+	return LABELS[gateOutcome(state)];
+}
+
 function gateVerdict(model: DialogModel, entry: DialogEntry, state: DialogState): Verdict {
 	const notes = state.notes.trim();
-	const outcome: Outcome = notes === "" ? "approved" : "approved_with_notes";
+	const outcome = gateOutcome(state);
 	const verdict: Verdict = { outcome, notes };
 	if (entry.action.kind === "option") verdict.choice = entry.action.id;
 	const overrides = overridesOf(model, state);

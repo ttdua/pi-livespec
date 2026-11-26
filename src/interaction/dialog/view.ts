@@ -5,7 +5,8 @@
 
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Override } from "../approver.ts";
-import { type DialogEntry, type DialogModel, overridesOf, type TabName } from "./model.ts";
+import { type DialogEntry, type DialogModel, outcomeLabel, overridesOf, type TabName } from "./model.ts";
+import { sanitize } from "./sanitize.ts";
 import type { DialogState, EditorName } from "./state.ts";
 
 export type DialogTheme = { accent: (s: string) => string; muted: (s: string) => string; bold: (s: string) => string };
@@ -24,9 +25,19 @@ const DESCRIPTION_INDENT = "    ";
 const MAX_NUMBERED = 9;
 
 type Ctx = { model: DialogModel; state: DialogState; width: number; full: boolean; theme: DialogTheme; editorLines: string[] };
-type Layout = { body: string[]; fixed: string[]; footer: string[] };
+/** `keep` is the index in `fixed` of the focused row, the line kept in view when `fixed` has to shrink. */
+type Layout = { body: string[]; fixed: string[]; keep: number; footer: string[] };
+type Arranged = { ctx: Ctx; header: string[]; layout: Layout; footer: string[] };
 
 const oneLine = (text: string): string => text.replaceAll("\n", " ");
+
+/** Text typed in the dialog (`state.*`), made safe to draw like the model's agent text. */
+const typed = (text: string): string => sanitize(text);
+
+/** `lead` lines, then each row's lines; `keep` is where the `focus` row starts. */
+function stack(lead: string[], rows: string[][], focus: number): Pick<Layout, "fixed" | "keep"> {
+	return { fixed: [...lead, ...rows.flat()], keep: lead.length + rows.slice(0, focus).reduce((n, row) => n + row.length, 0) };
+}
 
 /** `text` wrapped to `width`, the first line after `prefix` and the rest after `rest` (same width by default). */
 function wrapWithPrefix(prefix: string, text: string, width: number, rest = " ".repeat(visibleWidth(prefix))): string[] {
@@ -66,13 +77,14 @@ function entryLines(ctx: Ctx, entry: DialogEntry, index: number): string[] {
 }
 
 function decisionLayout(ctx: Ctx): Layout {
-	return { body: factsSection(ctx), fixed: ["", ...ctx.model.entries.flatMap((e, i) => entryLines(ctx, e, i))], footer: noteLines(ctx) };
+	const rows = ctx.model.entries.map((e, i) => entryLines(ctx, e, i));
+	return { body: factsSection(ctx), ...stack([""], rows, ctx.state.focus), footer: noteLines(ctx) };
 }
 
 /** `Note: — (n: add)` or the note's first line; only for models with notes. */
 function noteLines(ctx: Ctx): string[] {
 	if (!ctx.model.notes) return [];
-	const [first = "", ...more] = ctx.state.notes.trim().split("\n");
+	const [first = "", ...more] = typed(ctx.state.notes).trim().split("\n");
 	const text = first === "" ? "— (n: add)" : `${first}${more.length > 0 ? " …" : ""} (n: edit)`;
 	return wrapWithPrefix("Note: ", text, ctx.width);
 }
@@ -83,26 +95,23 @@ function unitsLayout(ctx: Ctx): Layout {
 	const { model, state } = ctx;
 	const changed = new Set(overridesOf(model, state).map((o) => o.unit));
 	const labelWidth = Math.max(0, ...model.units.map((u) => visibleWidth(oneLine(u.label))));
-	const rows = model.units.flatMap((u, i) => {
+	const rows = model.units.map((u, i) => {
 		const set = state.overrides[u.unit];
 		const difficulty = (set?.difficulty ?? u.difficulty ?? "—").padEnd("medium".length);
-		const tags = `[${(set?.tags ?? u.tags).map(oneLine).join(", ")}]`;
+		const tags = `[${(set?.tags ?? u.tags).map((t) => oneLine(typed(t))).join(", ")}]`;
 		const label = oneLine(u.label) + " ".repeat(labelWidth - visibleWidth(oneLine(u.label)));
 		const marker = i === state.focus ? ctx.theme.accent(FOCUS) : " ";
 		return wrapWithPrefix(`${marker} `, `${label}  ${difficulty}  ${tags}${changed.has(u.unit) ? "  (changed)" : ""}`, ctx.width, "    ");
 	});
-	return { body: [], fixed: rows, footer: [] };
+	return { body: [], ...stack([], rows, state.focus), footer: [] };
 }
 
 // --- review -----------------------------------------------------------------------------------
 
-function outcomeOf(ctx: Ctx, entry: DialogEntry): string {
-	if (entry.action.kind === "changes") return "changes requested";
-	return ctx.model.notes && ctx.state.notes.trim() !== "" ? "approved with notes" : "approved";
-}
+const outcomeText = (ctx: Ctx): string => outcomeLabel(ctx.model, ctx.state) ?? "—";
 
 function overrideText(o: Override, label: string): string {
-	const parts = [...(o.difficulty === undefined ? [] : [`difficulty ${o.difficulty}`]), ...(o.tags === undefined ? [] : [`tags [${o.tags.join(", ")}]`])];
+	const parts = [...(o.difficulty === undefined ? [] : [`difficulty ${o.difficulty}`]), ...(o.tags === undefined ? [] : [`tags [${o.tags.map((t) => oneLine(typed(t))).join(", ")}]`])];
 	return `${label}: ${parts.join(", ")}`;
 }
 
@@ -116,35 +125,35 @@ function overrideLines(ctx: Ctx, entry: DialogEntry): string[] {
 
 function answerOf(ctx: Ctx, entry: DialogEntry): string {
 	if (entry.action.kind === "candidate") return oneLine(entry.label);
-	return ctx.state.answer.trim() === "" ? "—" : ctx.state.answer.trim();
+	return ctx.state.answer.trim() === "" ? "—" : typed(ctx.state.answer.trim());
 }
 
 function reviewSummary(ctx: Ctx, entry: DialogEntry): string[] {
 	const { width } = ctx;
 	if (ctx.model.kind === "question") return wrapWithPrefix("Answer: ", answerOf(ctx, entry), width);
 	const choice = entry.action.kind === "option" ? wrapWithPrefix("Choice: ", oneLine(entry.label), width) : [];
-	return [`Outcome: ${outcomeOf(ctx, entry)}`, ...choice, ...noteLines(ctx), ...overrideLines(ctx, entry)];
+	return [`Outcome: ${outcomeText(ctx)}`, ...choice, ...noteLines(ctx), ...overrideLines(ctx, entry)];
 }
 
 /** `no`, each declared requirement, then `other`; `(•)` marks the pick. */
-function requirementRows(ctx: Ctx): string[] {
+function requirementRows(ctx: Ctx): string[][] {
 	const { model, state } = ctx;
 	const picked = state.requirement;
-	const other = picked?.kind === "other" && picked.text.trim() !== "" ? `other: ${oneLine(picked.text.trim())}` : "other";
+	const other = picked?.kind === "other" && picked.text.trim() !== "" ? `other: ${oneLine(typed(picked.text.trim()))}` : "other";
 	const rows = [
 		{ label: "no", on: picked?.kind === "none" },
 		...model.requirements.map((r) => ({ label: oneLine(r.label), on: picked?.kind === "named" && picked.name === r.id })),
 		{ label: other, on: picked?.kind === "other" },
 	];
-	return rows.flatMap((row, i) => wrapWithPrefix(`${rowPrefix(ctx, i)}(${row.on ? "•" : " "}) `, row.label, ctx.width, "      "));
+	return rows.map((row, i) => wrapWithPrefix(`${rowPrefix(ctx, i)}(${row.on ? "•" : " "}) `, row.label, ctx.width, "      "));
 }
 
 function reviewLayout(ctx: Ctx): Layout {
 	const { model, state } = ctx;
 	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
-	if (entry === undefined) return { body: wrap("Nothing picked yet — pick an answer on the Decision tab.", ctx.width), fixed: [], footer: [] };
-	const fixed = model.kind === "question" ? ["", "Does the answer change a requirement?", ...requirementRows(ctx)] : [];
-	return { body: reviewSummary(ctx, entry), fixed, footer: [] };
+	if (entry === undefined) return { body: wrap("Nothing picked yet — pick an answer on the Decision tab.", ctx.width), fixed: [], keep: 0, footer: [] };
+	const fixed = model.kind === "question" ? stack(["", "Does the answer change a requirement?"], requirementRows(ctx), state.focus) : { fixed: [], keep: 0 };
+	return { body: reviewSummary(ctx, entry), ...fixed, footer: [] };
 }
 
 // --- footer -----------------------------------------------------------------------------------
@@ -178,25 +187,79 @@ function footerLines(ctx: Ctx, tab: TabName, tabFooter: string[]): string[] {
 
 const LAYOUTS: Record<TabName, (ctx: Ctx) => Layout> = { decision: decisionLayout, units: unitsLayout, review: reviewLayout };
 
+/** What the screen holds besides the body: the header, the fixed rows and the footer. */
+type Frame = { header: string[]; fixed: string[]; footer: string[] };
+
+const noBlank = (lines: string[]): string[] => lines.filter((line) => line !== "");
+
+/** `fixed` cut to `budget` lines around the row at `keep`, with a `… N more` line when it has room. */
+function shrinkFixed(ctx: Ctx, fixed: string[], keep: number, budget: number): string[] {
+	if (fixed.length <= budget) return fixed;
+	if (budget <= 1) return fixed.slice(keep, keep + 1);
+	const start = Math.max(0, Math.min(keep, fixed.length - (budget - 1)));
+	const shown = fixed.slice(start, start + budget - 1);
+	return [...shown, ctx.theme.muted(`… ${fixed.length - shown.length} more`)];
+}
+
+/**
+ * With an editor open the editor and its error are the footer and must stay whole: the entries shrink
+ * to the focused row, then the blank spacer lines go. Without one the frame is returned as is.
+ */
+function frameOf(a: Arranged, height: number): Frame {
+	const { ctx, layout } = a;
+	if (ctx.state.editor === undefined) return { header: a.header, fixed: layout.fixed, footer: a.footer };
+	let { header, footer } = a;
+	if (header.length + footer.length + 1 > height) [header, footer] = [noBlank(header), noBlank(footer)];
+	const fixed = shrinkFixed(ctx, layout.fixed, layout.keep, Math.max(1, height - header.length - footer.length));
+	return { header, fixed, footer };
+}
+
+/** The first body line shown at the largest offset: the last page has only the "above" line. */
+function maxOffset(bodyLength: number, room: number): number {
+	return room <= 1 || bodyLength <= room ? 0 : Math.max(0, bodyLength - (room - 1));
+}
+
 /** The body cut to the rows left over, scrolled by `scroll` (clamped), with a line above and below when cut. */
-function fitHeight(ctx: Ctx, header: string[], layout: Layout, footer: string[], height: number): string[] {
-	const { body } = layout;
-	const room = height - header.length - layout.fixed.length - footer.length;
-	if (body.length <= room) return [...header, ...body, ...layout.fixed, ...footer];
-	// Entries and footer win over the body when even they do not fit.
-	if (room <= 1) return [...header, ...layout.fixed, ...footer];
-	// The last page has only the "above" line, so the offset is clamped to it.
-	const offset = Math.min(Math.max(0, ctx.state.scroll), Math.max(0, body.length - (room - 1)));
+function fitHeight(ctx: Ctx, body: string[], frame: Frame, height: number): string[] {
+	const { header, fixed, footer } = frame;
+	const room = height - header.length - fixed.length - footer.length;
+	if (body.length <= room) return [...header, ...body, ...fixed, ...footer];
+	// Entries and footer win over the body when even they do not fit; a single spare line says what is hidden.
+	if (room <= 0) return [...header, ...fixed, ...footer];
+	if (room === 1) return [...header, ctx.theme.muted(`↕ ${body.length} lines hidden (PgUp/PgDn)`), ...fixed, ...footer];
+	const offset = Math.min(Math.max(0, ctx.state.scroll), maxOffset(body.length, room));
 	const withAbove = Math.max(0, room - (offset > 0 ? 1 : 0));
 	const shown = offset + withAbove >= body.length ? withAbove : Math.max(0, withAbove - 1);
 	const below = body.length - offset - shown;
 	const above = offset > 0 ? [ctx.theme.muted(`↑ ${offset} lines above (PgUp)`)] : [];
 	const after = below > 0 ? [ctx.theme.muted(`↓ ${below} lines below (PgDn)`)] : [];
-	return [...header, ...above, ...body.slice(offset, offset + shown), ...after, ...layout.fixed, ...footer];
+	return [...header, ...above, ...body.slice(offset, offset + shown), ...after, ...fixed, ...footer];
 }
 
 /** Safety net only: wrapping keeps every line within `width`; a cut line would carry pi-tui's SGR reset. */
 const clip = (line: string, width: number): string => (visibleWidth(line) > width ? truncateToWidth(line, width, "") : line);
+
+/** The layout the size allows: full, or on a short terminal without descriptions and hints so the entries stay visible. */
+function arrange(model: DialogModel, state: DialogState, size: { width: number; height: number }, theme: DialogTheme, editorLines: string[]): Arranged {
+	const tab = model.tabs[state.tab] ?? "decision";
+	const draw = (full: boolean): Arranged => {
+		const ctx: Ctx = { model, state, width: size.width, full, theme, editorLines };
+		const layout = LAYOUTS[tab](ctx);
+		return { ctx, header: [tabStrip(ctx), ""], layout, footer: footerLines(ctx, tab, layout.footer) };
+	};
+	const wide = draw(size.width >= FULL_WIDTH);
+	return wide.header.length + wide.layout.fixed.length + wide.footer.length < size.height ? wide : draw(false);
+}
+
+const PLAIN: DialogTheme = { accent: (s) => s, muted: (s) => s, bold: (s) => s };
+
+/** The largest `state.scroll` that still moves the body: 0 when the body fits or the tab has none. Same layout as `renderDialog`. */
+export function maxScrollOf(model: DialogModel, state: DialogState, size: { width: number; height: number }): number {
+	if (size.width < MIN_WIDTH) return 0;
+	const a = arrange(model, state, size, PLAIN, []);
+	const { header, fixed, footer } = frameOf(a, size.height);
+	return maxOffset(a.layout.body.length, size.height - header.length - fixed.length - footer.length);
+}
 
 /** The dialog as lines no wider than `size.width`; `editorLines` is the open editor, drawn in the footer. */
 export function renderDialog(
@@ -208,18 +271,9 @@ export function renderDialog(
 ): string[] {
 	const { width, height } = size;
 	if (width < MIN_WIDTH) return [clip(NARROW_LINE, width)];
-	const tab = model.tabs[state.tab] ?? "decision";
-	const draw = (full: boolean) => {
-		const ctx: Ctx = { model, state, width, full, theme, editorLines };
-		const layout = LAYOUTS[tab](ctx);
-		return { ctx, header: [tabStrip(ctx), ""], layout, footer: footerLines(ctx, tab, layout.footer) };
-	};
-	const wide = draw(width >= FULL_WIDTH);
-	// On a short terminal descriptions and hints go before the body, so the entries stay visible.
-	const fits = wide.header.length + wide.layout.fixed.length + wide.footer.length < height;
-	const { ctx, header, layout, footer } = fits ? wide : draw(false);
+	const a = arrange(model, state, size, theme, editorLines);
 	// Still too tall (many entries, a tall editor): the bottom is cut so the height holds.
-	return fitHeight(ctx, header, layout, footer, height)
+	return fitHeight(a.ctx, a.layout.body, frameOf(a, height), height)
 		.slice(0, height)
 		.map((line) => clip(line, width));
 }

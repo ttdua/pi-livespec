@@ -8,12 +8,12 @@ import type { ApprovalRequest } from "../approver.ts";
 import { CANCELLED } from "../flow-result.ts";
 import { keyToAction } from "./keys.ts";
 import { buildModel, type DialogModel, toResult } from "./model.ts";
-import { type DialogState, type EditorName, initialState, reduce } from "./state.ts";
+import { type DialogAction, type DialogState, type EditorName, initialState, reduce } from "./state.ts";
 import type { DialogFactory, DialogOutcome } from "./types.ts";
-import { type DialogTheme, renderDialog } from "./view.ts";
+import { type DialogTheme, maxScrollOf, renderDialog } from "./view.ts";
 
 /** The text editor the dialog opens; it owns the typed text until the dialog reads `value()` on submit. */
-export type TextField = { value(): string; set(text: string): void; handleInput(data: string): void; render(width: number): string[]; focused: boolean };
+export type TextField = { value(): string; set(text: string): void; handleInput(data: string): void; render(width: number): string[]; invalidate?(): void; focused: boolean };
 
 /** Rows left to pi's own chrome around the dialog. */
 const RESERVED_ROWS = 4;
@@ -27,6 +27,7 @@ function editorField(tui: TUI, theme: Theme): TextField {
 		set: (text) => editor.setText(text),
 		handleInput: (data) => editor.handleInput(data),
 		render: (width) => editor.render(width),
+		invalidate: () => editor.invalidate(),
 		get focused() {
 			return editor.focused;
 		},
@@ -64,6 +65,8 @@ class DialogHost implements Component, Focusable {
 	private field: TextField | undefined;
 	private finished = false;
 	private hasFocus = false;
+	/** The width of the last render: scroll limits depend on it. */
+	private width = 80;
 	private readonly theme: DialogTheme;
 
 	constructor(
@@ -90,23 +93,36 @@ class DialogHost implements Component, Focusable {
 
 	handleInput(data: string): void {
 		if (this.finished) return;
-		const field = this.fieldOf();
-		const action = keyToAction(data, this.keybindings, this.model, this.state, field);
+		const action = keyToAction(data, this.keybindings, this.model, this.state, { value: () => this.fieldOf().value() });
 		if (action === undefined) {
-			if (this.state.editor !== undefined) field.handleInput(data);
+			if (this.state.editor !== undefined) this.fieldOf().handleInput(data);
 		} else {
-			this.apply(reduce(this.model, this.state, action));
+			this.apply(this.clamped(reduce(this.model, this.state, action), action));
 		}
 		this.tui.requestRender();
 	}
 
 	render(width: number): string[] {
-		const height = Math.max(MIN_HEIGHT, this.tui.terminal.rows - RESERVED_ROWS);
+		this.width = width;
+		const height = this.height();
 		const editorLines = this.state.editor === undefined ? undefined : this.fieldOf().render(width);
 		return renderDialog(this.model, this.state, { width, height }, this.theme, editorLines);
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		this.field?.invalidate?.();
+	}
+
+	private height(): number {
+		return Math.max(MIN_HEIGHT, this.tui.terminal.rows - RESERVED_ROWS);
+	}
+
+	/** After a scroll the offset is cut to what the view can show, so one PgUp always moves the body. */
+	private clamped(next: DialogState, action: DialogAction): DialogState {
+		if (action.type !== "scroll") return next;
+		const max = maxScrollOf(this.model, next, { width: this.width, height: this.height() });
+		return { ...next, scroll: Math.min(next.scroll, max) };
+	}
 
 	/** Moves to `next`: prefills an editor that just opened, and resolves `done` once the dialog finished. */
 	private apply(next: DialogState): void {

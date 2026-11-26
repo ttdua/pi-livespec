@@ -212,6 +212,11 @@ describe("toResult", () => {
 		expect(result).toEqual({ outcome: "approved", notes: "" });
 	});
 
+	test("current tags are trimmed, empty ones dropped and commas removed", () => {
+		const r = request({ overridable: { units: ["U1"], current: { U1: { tags: [" a ", "", "b", "c,d"] } } } });
+		expect(buildModel(r).units[0]?.tags).toEqual(["a", "b", "cd"]);
+	});
+
 	test("unchanged tags prefill yields no override", () => {
 		const r = request({ overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: ["\tsec", "\x07 api", "\x1b[2J"] } } } });
 		const m = buildModel(r);

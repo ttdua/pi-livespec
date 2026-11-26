@@ -18,6 +18,8 @@ const KEY = {
 	pageDown: "\x1b[6~",
 	backspace: "\x7f",
 	kitty3: "\x1b[51u",
+	kittyN: "\x1b[110u",
+	kittyE: "\x1b[101u",
 };
 
 // Bindings from a table, so the tests prove the injected manager is used for its ids.
@@ -74,6 +76,12 @@ describe("keyToAction without an editor", () => {
 	test("n opens the note editor only when the model has notes", () => {
 		expect(key("n", gate())).toEqual({ type: "openEditor", editor: "note" });
 		expect(key("n", stuck())).toBeUndefined();
+	});
+
+	test("n and e also work Kitty CSI-u encoded", () => {
+		const m = plan();
+		expect(key(KEY.kittyN, m)).toEqual({ type: "openEditor", editor: "note" });
+		expect(key(KEY.kittyE, m, at(m, { tab: 1 }))).toEqual({ type: "openEditor", editor: "tags" });
 	});
 
 	test("Tab and Shift+Tab switch tabs", () => {

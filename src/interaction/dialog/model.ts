@@ -33,7 +33,7 @@ export type DialogModel = {
 	notes: boolean;
 };
 
-export { overridesOf, toResult } from "./result.ts";
+export { outcomeLabel, overridesOf, toResult } from "./result.ts";
 
 /** Same classification as the select flows: questions, stuck reports and `decide:` asks, else a gate. */
 function kindOf(r: ApprovalRequest): DialogKind {
@@ -87,8 +87,8 @@ function statusOf(r: ApprovalRequest): DialogModel["status"] {
 
 type Current = NonNullable<ApprovalRequest["overridable"]>["current"];
 
-/** Sanitised, trimmed, non-empty tags: the form the tags editor parses back, so an unchanged prefill is no override. */
-const cleanTags = (tags: string[]): string[] => tags.map((t) => sanitize(t).trim()).filter((t) => t !== "");
+/** Sanitised, comma-free (a comma would be split by the tags editor), trimmed, non-empty tags: the form the tags editor parses back, so an unchanged prefill is no override. */
+const cleanTags = (tags: string[]): string[] => tags.map((t) => sanitize(t).replaceAll(",", "").trim()).filter((t) => t !== "");
 
 /** The current values of `unit`: its difficulty when set and its cleaned tags. */
 function currentOf(current: Current, unit: string): { difficulty?: Difficulty; tags: string[] } {

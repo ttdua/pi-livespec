@@ -38,6 +38,10 @@ class FakeField implements TextField {
 	render(): string[] {
 		return [`[${this.text}]`];
 	}
+	invalidated = 0;
+	invalidate(): void {
+		this.invalidated += 1;
+	}
 }
 
 function request(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
@@ -58,10 +62,10 @@ function request(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
 
 const OPTIONS: RequestOption[] = [{ id: "A", label: "Option A" }, { id: "B", label: "Option B" }];
 
-function mount(r: ApprovalRequest, rows = 30, field: TextField | undefined = new FakeField()) {
+function mount(r: ApprovalRequest, rows = 30, field: TextField | undefined = new FakeField(), makeField?: () => TextField) {
 	const tui = { requestRender: vi.fn(), terminal: { rows } } as unknown as TUI;
 	const done = vi.fn<(o: DialogOutcome) => void>();
-	const factory = field === undefined ? createDialog(r) : createDialog(r, () => field);
+	const factory = field === undefined ? createDialog(r) : createDialog(r, makeField ?? (() => field));
 	const component = factory(tui, theme, kb, done) as Component & Focusable;
 	const press = (...keys: string[]) => keys.forEach((k) => component.handleInput?.(k));
 	return { tui, done, component, press, field: field as FakeField };
@@ -158,6 +162,60 @@ describe("createDialog", () => {
 		expect(field.sets).toEqual(["a, b"]);
 		press(KEY.enter, KEY.right, KEY.right, KEY.tab, KEY.tab, "1", KEY.enter, KEY.enter);
 		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "", overrides: [{ unit: "U1", difficulty: "high" }] } });
+	});
+
+	test("no field is made until an editor opens", () => {
+		const makeField = vi.fn(() => new FakeField());
+		const { press, component } = mount(request(), 30, new FakeField(), makeField);
+		press(KEY.down, KEY.tab, "z", KEY.tab);
+		component.render(80);
+		component.invalidate();
+		expect(makeField).not.toHaveBeenCalled();
+		press("n");
+		expect(makeField).toHaveBeenCalledTimes(1);
+	});
+
+	test("invalidate is forwarded to the field", () => {
+		const { press, component, field } = mount(request());
+		press("n");
+		component.invalidate();
+		expect(field.invalidated).toBe(1);
+	});
+
+	test("scroll is bounded: many PgDn then one PgUp moves the body; units tab stays at the top", () => {
+		const summary = Array.from({ length: 60 }, (_, i) => `fact ${i + 1}`).join("\n");
+		const PAGE_DOWN = "\x1b[6~";
+		const PAGE_UP = "\x1b[5~";
+		TABLE["tui.select.pageDown"] = [PAGE_DOWN];
+		TABLE["tui.select.pageUp"] = [PAGE_UP];
+		try {
+			const { press, component } = mount(request({ summary }), 30);
+			component.render(80);
+			press(...Array.from({ length: 40 }, () => PAGE_DOWN));
+			const firstFact = () => component.render(80).find((l) => /^fact \d+$/.test(l));
+			const bottom = firstFact();
+			press(PAGE_UP);
+			expect(firstFact()).not.toBe(bottom);
+		} finally {
+			delete TABLE["tui.select.pageDown"];
+			delete TABLE["tui.select.pageUp"];
+		}
+	});
+
+	test("Ctrl+C-style cancel in an editor only closes the editor", () => {
+		const { done, press, component } = mount(request());
+		press("n", "x", KEY.escape);
+		expect(done).not.toHaveBeenCalled();
+		expect(component.render(80)).not.toContain("[x]");
+	});
+
+	test("tags with blanks in the current values: submitting them unchanged is no override", () => {
+		const r = request({ subject: "gate:plan", overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: [" a ", "", "b"] } } } });
+		const { done, press, field } = mount(r);
+		press(KEY.tab, "e");
+		expect(field.sets).toEqual(["a, b"]);
+		press(KEY.enter, KEY.tab, KEY.tab, "1", KEY.enter, KEY.enter);
+		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "" } });
 	});
 
 	test("focus propagates to the open field", () => {

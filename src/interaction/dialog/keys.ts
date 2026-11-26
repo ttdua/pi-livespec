@@ -74,8 +74,8 @@ function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel, sta
 }
 
 const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState) => DialogAction | undefined> = {
-	decision: (data, kb, model) => decisionKey(data, kb, model),
-	units: (data, kb) => unitsKey(data, kb),
+	decision: decisionKey,
+	units: unitsKey,
 	review: reviewKey,
 };
 

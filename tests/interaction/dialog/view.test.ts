@@ -3,7 +3,8 @@ import { describe, expect, test } from "vitest";
 import type { ApprovalRequest, Briefing } from "../../../src/interaction/approver.ts";
 import { buildModel, type DialogModel } from "../../../src/interaction/dialog/model.ts";
 import { type DialogState, initialState } from "../../../src/interaction/dialog/state.ts";
-import { type DialogTheme, renderDialog } from "../../../src/interaction/dialog/view.ts";
+import { toResult } from "../../../src/interaction/dialog/model.ts";
+import { type DialogTheme, maxScrollOf, renderDialog } from "../../../src/interaction/dialog/view.ts";
 
 const identity: DialogTheme = { accent: (s) => s, muted: (s) => s, bold: (s) => s };
 
@@ -175,6 +176,93 @@ describe("text safety and width", () => {
 			expect(out).not.toContain("title");
 			expect(out).not.toContain("[2J");
 		}
+	});
+});
+
+describe("short terminals and scroll limits", () => {
+	const long = (): DialogModel => buildModel(request({ summary: Array.from({ length: 40 }, (_, i) => `fact ${i + 1}`).join("\n") }));
+
+	test("maxScrollOf is the last page's offset; 0 for a body that fits or a tab without one", () => {
+		const m = long();
+		const max = maxScrollOf(m, at(m), { width: 80, height: 20 });
+		expect(max).toBeGreaterThan(0);
+		expect(draw(m, at(m, { scroll: max }), 80, 20)).toContain("fact 40");
+		expect(draw(m, at(m, { scroll: max + 1 }), 80, 20)).toEqual(draw(m, at(m, { scroll: max }), 80, 20));
+		expect(maxScrollOf(define(), at(define()), { width: 80, height: 40 })).toBe(0);
+		const p = plan();
+		expect(maxScrollOf(p, at(p, { tab: 1 }), { width: 80, height: 10 })).toBe(0);
+	});
+
+	test("an open editor keeps every editor line on a 10-line terminal", () => {
+		const m = define();
+		const editor = Array.from({ length: 7 }, (_, i) => `editor ${i}`);
+		const lines = draw(m, at(m, { editor: "note" }), 80, 10, editor);
+		for (const line of editor) expect(lines).toContain(line);
+		expect(lines.length).toBeLessThanOrEqual(10);
+	});
+
+	test("entries shrink to the focused row plus a count when an editor takes the room", () => {
+		const m = define();
+		const editor = Array.from({ length: 3 }, (_, i) => `editor ${i}`);
+		const lines = draw(m, at(m, { editor: "note", focus: 1 }), 80, 10, editor);
+		for (const line of editor) expect(lines).toContain(line);
+		expect(lines.some((l) => /^… \d+ more$/.test(l))).toBe(true);
+		expect(lines).toContain("› 2 request changes");
+		expect(lines.length).toBeLessThanOrEqual(10);
+	});
+
+	test("one spare line says how much body is hidden", () => {
+		const m = long();
+		const found = [8, 9, 10, 11, 12, 13, 14].flatMap((height) => draw(m, at(m), 80, height)).filter((l) => /^↕ \d+ lines hidden \(PgUp\/PgDn\)$/.test(l));
+		expect(found.length).toBeGreaterThan(0);
+	});
+
+	test("lines stay within width with a long editor at 20, 30 and 40 columns", () => {
+		const m = define();
+		const editor = ["x".repeat(100), "漢字".repeat(30)];
+		for (const width of [20, 30, 40, 45]) for (const line of draw(m, at(m, { editor: "note" }), width, 12, editor)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+	});
+
+	test("text typed in the dialog is sanitised in the output", () => {
+		const m = define();
+		const dirty = "bad\x07\x1b[2Jtext";
+		const out = [draw(m, at(m, { notes: dirty })), draw(m, at(m, { tab: 1, picked: 0, notes: dirty }))].flat().join("\n");
+		expect(out).not.toMatch(/[\u001b\u0007]/);
+		expect(out).toContain("badtext");
+		const q = buildModel(request({ kind: "question", subject: "question:Q2", question: { id: "Q2", class: "blocking", requirements: [] } }));
+		const review = draw(q, at(q, { tab: 1, picked: 0, answer: dirty, requirement: { kind: "other", text: dirty } })).join("\n");
+		expect(review).not.toMatch(/[\u001b\u0007]/);
+	});
+});
+
+describe("outcome label agrees with toResult", () => {
+	const shown = (m: DialogModel, over: Partial<DialogState>): string => draw(m, at(m, { tab: 1, ...over })).find((l) => l.startsWith("Outcome: ")) ?? "";
+	const OUTCOME_TEXT: Record<string, string> = { approved: "approved", approved_with_notes: "approved with notes", changes_requested: "changes requested" };
+
+	test.each([
+		["approve, no notes", "approve", ""],
+		["approve, whitespace notes", "approve", "  \n "],
+		["approve with notes", "approve", "ok"],
+		["changes", "changes", "split"],
+	])("%s", (_name, kind, notes) => {
+		const m = define();
+		const state = at(m, { tab: 1, picked: pickOf(m, kind), notes });
+		const result = toResult(m, state, request()) as { outcome: string };
+		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
+	});
+
+	test("an option on a waive gate", () => {
+		const m = failing();
+		const state = at(m, { tab: 1, picked: pickOf(m, "waive"), notes: "why" });
+		const result = toResult(m, state, request()) as { outcome: string };
+		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
+	});
+
+	test("a choice approves even with stale notes", () => {
+		const m = buildModel(request({ kind: "stuck", subject: "stuck:S1", options: [{ id: "A", label: "Option A" }] }));
+		const state = at(m, { tab: 1, picked: 0, notes: "stale" });
+		const result = toResult(m, state, request()) as { outcome: string };
+		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 });
 
