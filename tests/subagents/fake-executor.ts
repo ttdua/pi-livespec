@@ -75,6 +75,7 @@ export function fakeExecutor(o: FakeExecutorOptions = {}) {
 		},
 		abort(id: string): boolean {
 			aborted.push(id);
+			log.push(`abort:${id}`);
 			return true;
 		},
 		childSession: () => undefined,

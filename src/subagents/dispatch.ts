@@ -214,7 +214,7 @@ async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: {
 		if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 		const decision = interpret(record, request.packet, request.role, seen);
 		if (decision.kind === "retry") {
-			const step = await retryRun(deps, request, run, decision.reason, seen);
+			const step = await retryRun(deps, request, run, decision.reason, decision.shown, seen);
 			if (step.kind === "stop") return step.outcome;
 			({ run, record } = step);
 			if (step.respawn !== undefined) trace.respawn = step.respawn;

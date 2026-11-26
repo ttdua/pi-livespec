@@ -30,11 +30,12 @@ export const retryMessage = (reason: string): string =>
 export type RetryStep = { kind: "next"; run: Run; record: RecordLike; respawn?: Respawn } | { kind: "stop"; outcome: DispatchOutcome };
 
 /** Resumes the same child; when that is refused or fails, launches one fallback child (never a second) and records the swap with a `RETRY` record. */
-export async function retryRun(deps: DispatchDeps, request: DispatchRequest, run: Run, reason: string, seen: DispatchHistory): Promise<RetryStep> {
+export async function retryRun(deps: DispatchDeps, request: DispatchRequest, run: Run, reason: string, shown: string, seen: DispatchHistory): Promise<RetryStep> {
 	const resumed = await resumeChild(deps, run.agentId, retryMessage(reason));
 	if (isCancelled(deps.signal)) return { kind: "stop", outcome: cancelledOutcome(run.agentId) };
 	if (typeof resumed !== "string") return { kind: "next", run, record: resumed };
-	if (seen.respawned) return { kind: "stop", outcome: await finish(deps, runFacts(request, run), request.packet.cwd, run.facts, { kind: "blocked", reason: resumed }) };
+	if (seen.respawned) return { kind: "stop", outcome: await finish(deps, runFacts(request, run), request.packet.cwd, run.facts, { kind: "blocked", reason: `${shown}; ${resumed}` }) };
+	deps.service.abort(run.agentId);
 	const again = await launch(deps, request, run.agentSource);
 	if (again.kind === "stop") return again;
 	if (isCancelled(deps.signal)) return { kind: "stop", outcome: cancelledOutcome(again.run.agentId) };

@@ -108,7 +108,7 @@ describe("result interpretation", () => {
 	});
 
 	test("blocked without evidence treated as missing", () => {
-		expect(interpret(rec(done({ status: "BLOCKED", reason: "r" })), packet(), "implementer", h0)).toEqual({ kind: "retry", reason: expect.any(String) });
+		expect(interpret(rec(done({ status: "BLOCKED", reason: "r" })), packet(), "implementer", h0)).toEqual({ kind: "retry", reason: expect.any(String), shown: expect.any(String) });
 	});
 
 	test("missing required source returned once then BLOCKED", () => {
@@ -128,7 +128,7 @@ describe("result interpretation", () => {
 	});
 
 	test("a crash is retried once, then blocked", () => {
-		expect(interpret({ id: "a", status: "error", error: "boom" }, packet(), "implementer", h0)).toEqual({ kind: "retry", reason: expect.stringContaining("boom") });
+		expect(interpret({ id: "a", status: "error", error: "boom" }, packet(), "implementer", h0)).toEqual({ kind: "retry", reason: expect.stringContaining("boom"), shown: expect.stringContaining("<untrusted>boom</untrusted>") });
 		expect(interpret({ id: "a", status: "error", error: "boom" }, packet(), "implementer", { ...h0, retries: 1 }).kind).toBe("blocked");
 	});
 
@@ -382,6 +382,23 @@ describe("runDispatch", () => {
 		expect(posted).toEqual([]);
 	});
 
+	test("A failed wait after an accepted resume aborts the old child before the fallback", async () => {
+		const fake = fakeExecutor({ records: [{ status: "error", error: "boom" }, { structuredResult: withSources(["answer:Q2"]) }] });
+		let calls = 0;
+		const wait = fake.service.wait;
+		fake.service.wait = async (id: string, w?: { signal?: AbortSignal }) => {
+			if (++calls === 2) throw new Error("lost after resume");
+			return wait(id, w);
+		};
+		const { d, posted } = deps(fake);
+		const out = await runDispatch(d, request());
+		expect(fake.aborted).toContain("agent-1");
+		expect(fake.log.indexOf("abort:agent-1")).toBeGreaterThan(-1);
+		expect(fake.log.indexOf("abort:agent-1")).toBeLessThan(fake.log.indexOf("spawn:agent-2"));
+		expect(posted.map((p) => p.data.status)).toEqual(["RETRY", "DONE"]);
+		expect(out.kind).toBe("result");
+	});
+
 	test("Fallback mismatch leaves no RETRY", async () => {
 		const fake = fakeExecutor({ resumes: ["refuse"], records: [{ status: "error", error: "boom" }], factsById: (id, o) => (id === "agent-2" ? { inheritSkills: true } : applied(o)) });
 		const { d, posted } = deps(fake);
@@ -394,9 +411,10 @@ describe("runDispatch", () => {
 		const fake = fakeExecutor({ resumes: ["refuse"] });
 		const { d } = deps(fake);
 		const run = { agentId: "agent-1", facts: { context: "fresh", cwd: "/w/c" }, thinking: "low" as const, agentSource: "builtin" };
-		const out = await settle(d, request(), { run, record: { id: "agent-1", status: "completed", result: "text" } as never }, { ...h0Of(), respawned: true });
+		const out = await settle(d, request(), { run, record: { id: "agent-1", status: "error", error: "boom <x>" } }, { ...h0Of(), respawned: true });
 		expect(fake.spawned).toHaveLength(0);
 		expect(out.kind).toBe("blocked");
+		expect(out.kind === "blocked" && out.reason).toContain("<untrusted>boom &lt;x></untrusted>");
 	});
 
 	test("a verifier question carries its finding", async () => {

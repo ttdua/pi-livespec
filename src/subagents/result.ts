@@ -19,7 +19,8 @@ export type DispatchHistory = { needsContext: number; retries: number; returns: 
 
 export type ResultDecision =
 	| { kind: "accept"; result: SubagentResult }
-	| { kind: "retry"; reason: string }
+	/** `reason` is plain text; `shown` is the same with child text wrapped as untrusted, for the parent. */
+	| { kind: "retry"; reason: string; shown: string }
 	| { kind: "return"; missing: string[] }
 	| { kind: "more-context"; ids: string[]; result: SubagentResult }
 	| { kind: "question"; text: string }
@@ -57,7 +58,7 @@ function missingReason(record: RecordLike, role: Role): Missing | undefined {
 }
 
 function retryOrBlock(missing: Missing, history: DispatchHistory): ResultDecision {
-	return history.retries < MISSING_RESULT_RETRIES ? { kind: "retry", reason: missing.plain } : { kind: "blocked", reason: `no usable result after a retry: ${missing.shown}` };
+	return history.retries < MISSING_RESULT_RETRIES ? { kind: "retry", reason: missing.plain, shown: missing.shown } : { kind: "blocked", reason: `no usable result after a retry: ${missing.shown}` };
 }
 
 /** Required source ids of the packet that `sources_used` omits. */
