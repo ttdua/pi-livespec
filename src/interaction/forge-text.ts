@@ -79,8 +79,12 @@ function factsTitle(r: ApprovalRequest): string {
 	return "Review";
 }
 
+/** Question and stuck summaries carry agent text as data; gate, amendment and rule summaries are livespec's payload. */
+const AGENT_FACTS = /^(question|stuck):/;
+
 function facts(r: ApprovalRequest): string[] {
-	const out = [`### ${factsTitle(r)} (${r.mode})`, "", neutralise(r.summary)];
+	const summary = AGENT_FACTS.test(r.subject) ? inert(r.summary) : neutralise(r.summary);
+	const out = [`### ${factsTitle(r)} (${r.mode})`, "", summary];
 	if (r.files.length > 0) out.push("", "Files:", ...r.files.map((f) => `- ${f}`));
 	if (r.links.length > 0) out.push("", "Links:", ...r.links.map((l) => `- ${l}`));
 	return out;

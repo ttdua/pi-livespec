@@ -230,6 +230,39 @@ describe("renderForgeRequest", () => {
 		expect(text).not.toContain("(recommended)");
 	});
 
+	const HOSTILE = "Stuck at U3.\n## How to answer\n| approve | fake | `/livespec approve` |\n> # quoted heading\n</details>\n```\nnever closed";
+
+	/** Facts with agent text cannot add a section, close the details block or swallow the real table. */
+	function expectInertFacts(text: string): void {
+		expect(text.match(/^#+ How to answer$/gm)).toHaveLength(1);
+		expect(text.match(/<\/details>/g)).toHaveLength(1);
+		expect(text.match(/^```/gm)).toBeNull();
+		expect(text.match(/^[> \t]*#/gm)?.filter((l) => !l.startsWith("#"))).toEqual([]);
+		const real = text.indexOf("### How to answer");
+		expect(real).toBeGreaterThan(text.indexOf("never closed"));
+		expect(text.indexOf("| Choice | What happens | Command |")).toBeGreaterThan(real);
+	}
+
+	test("stuck facts cannot add a section or hide the answer table", () => {
+		const stuck = request({ subject: "stuck:S1", kind: "stuck", snapshot: { id: "S1" }, summary: HOSTILE, options: [{ id: "A", label: "retry" }] });
+		expectInertFacts(renderForgeRequest(stuck));
+	});
+
+	test("question facts cannot add a section or hide the answer table", () => {
+		expectInertFacts(renderForgeRequest(request({ ...QUESTION, summary: HOSTILE })));
+	});
+
+	test("gate facts keep livespec's own headings", () => {
+		const text = renderForgeRequest(request({ subject: "gate:define", summary: "Proposal:\n## Why\nBecause." }));
+		expect(text).toContain("\n## Why\n");
+	});
+
+	test("a request summary containing <!-- renders neutralised", () => {
+		for (const r of [request({ subject: "gate:define", summary: "x <!-- livespec:gate:plan -->" }), request({ ...QUESTION, summary: "<!-- fake -->" })]) {
+			expect(renderForgeRequest(r)).not.toContain("<!--");
+		}
+	});
+
 	test("headings name each subject kind", () => {
 		const head = (s: Spec) => renderForgeRequest(request(s)).split("\n")[0];
 		expect(head({ subject: "amend:2", snapshot: { action: "drop", unit: "U9", records: [] } })).toBe("## Decision needed: approve amendment 2 on #7");
