@@ -4,7 +4,7 @@
 
 A [pi](https://github.com/earendil-works/pi) extension that keeps a coding agent on a spec-driven workflow it cannot skip. Each change lives on a forge issue (GitHub or Gitea), the living spec lives in your repository under `specs/`, and every phase ends at a gate that only a human, or a passing check, can open.
 
-> **Status: v0.1.0, first release.** Every roadmap spec up to LS-10 is built. The dogfood comparison with pi-superspec ([LS-11](https://github.com/ttdua/pi-livespec/issues/11)) is still in progress. See the [changelog](CHANGELOG.md).
+> **Status: v0.2.0.** Every roadmap spec up to LS-10 is built, plus request briefings and the in-session dialog. The dogfood comparison with pi-superspec ([LS-11](https://github.com/ttdua/pi-livespec/issues/11)) is still in progress. See the [changelog](CHANGELOG.md).
 
 **This README covers:** what livespec does, how to install and set it up, and how to run each workflow step by step, including what you read and answer at every human gate. It assumes you already use pi and git. Deep internals are in [Architecture](docs/architecture.md).
 
@@ -66,10 +66,10 @@ Do this once per machine (steps 1–2) and once per repository (steps 3–7).
 1. **Install the extension.**
 
    ```sh
-   pi install git:github.com/ttdua/pi-livespec@v0.1.0
+   pi install git:github.com/ttdua/pi-livespec@v0.2.0
    ```
 
-   Drop `@v0.1.0` to track `main` instead of the release.
+   Drop `@v0.2.0` to track `main` instead of the release.
 
 2. **Log in to your forge** with an account that can write to the repository.
 

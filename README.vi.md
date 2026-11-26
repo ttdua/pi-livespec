@@ -4,7 +4,7 @@
 
 Extension cho [pi](https://github.com/earendil-works/pi) giữ coding agent đi đúng quy trình spec-driven, không cho phép bỏ bước. Mỗi change nằm trên một issue của forge (GitHub hoặc Gitea), living spec nằm trong repository dưới `specs/`, và mỗi phase kết thúc ở một gate mà chỉ con người, hoặc một check đã pass, mới mở được.
 
-> **Trạng thái: v0.1.0, bản phát hành đầu tiên.** Mọi spec trong roadmap đến LS-10 đã được xây dựng. Phần dogfood so sánh với pi-superspec ([LS-11](https://github.com/ttdua/pi-livespec/issues/11)) vẫn đang tiến hành. Xem [changelog](CHANGELOG.md) (tiếng Anh).
+> **Trạng thái: v0.2.0.** Mọi spec trong roadmap đến LS-10 đã được xây dựng, cùng với briefing cho request và dialog in-session. Phần dogfood so sánh với pi-superspec ([LS-11](https://github.com/ttdua/pi-livespec/issues/11)) vẫn đang tiến hành. Xem [changelog](CHANGELOG.md) (tiếng Anh).
 
 **README này gồm:** livespec làm gì, cách cài đặt và thiết lập, cách chạy từng luồng công việc theo từng bước, kể cả việc bạn cần đọc gì và trả lời ra sao ở mỗi human gate. Tài liệu giả định bạn đã dùng pi và git. Chi tiết bên trong xem ở [Architecture](docs/architecture.md) (tiếng Anh).
 
@@ -68,10 +68,10 @@ Bước 1–2 làm một lần mỗi máy, bước 3–7 làm một lần mỗi 
 1. **Cài extension.**
 
    ```sh
-   pi install git:github.com/ttdua/pi-livespec@v0.1.0
+   pi install git:github.com/ttdua/pi-livespec@v0.2.0
    ```
 
-   Bỏ `@v0.1.0` nếu muốn theo `main` thay vì bản release.
+   Bỏ `@v0.2.0` nếu muốn theo `main` thay vì bản release.
 
 2. **Đăng nhập forge** bằng tài khoản có quyền write vào repository.
 
