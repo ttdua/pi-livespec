@@ -42,8 +42,8 @@ Blocked by: 3, 4
 
 Blocked by: 3, 4
 
-- [ ] 6.1 `spec_question` in `src/tools/spec-question.ts`: optional `candidates` (2-4), `recommended` (`A`..`D`) and `rationale`; round-trip label rules; options `A`..`D`; nothing added to the `## Questions` line; `reask` uses the new candidates
-- [ ] 6.2 Tests in `tests/tools/spec-question.test.ts` for the questions-and-stuck "Question tool" scenarios and the in-session candidate scenarios
+- [x] 6.1 `spec_question` in `src/tools/spec-question.ts`: optional `candidates` (2-4), `recommended` (`A`..`D`) and `rationale`; round-trip label rules; options `A`..`D`; nothing added to the `## Questions` line; `reask` uses the new candidates
+- [x] 6.2 Tests in `tests/tools/spec-question.test.ts` for the questions-and-stuck "Question tool" scenarios and the in-session candidate scenarios
 
 ## 7. Rule ask briefings
 
