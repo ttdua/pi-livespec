@@ -64,5 +64,5 @@ Blocked by: 3
 
 Blocked by: 4, 5, 6, 7, 8
 
-- [ ] 9.1 Update README.md and README.vi.md "Human gates" sections (briefing, recommended option, new forge comment layout, question candidates) and the tool parameter notes
-- [ ] 9.2 Update `docs/architecture.md` (approver section) and add a CHANGELOG entry naming the breaking `spec_gate` and `spec_stuck` parameters
+- [x] 9.1 Update README.md and README.vi.md "Human gates" sections (briefing, recommended option, new forge comment layout, question candidates) and the tool parameter notes
+- [x] 9.2 Update `docs/architecture.md` (approver section) and add a CHANGELOG entry naming the breaking `spec_gate` and `spec_stuck` parameters
