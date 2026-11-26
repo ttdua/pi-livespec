@@ -197,7 +197,7 @@ export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, 
 	const extra = briefing === undefined ? {} : { briefing };
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...extra, head: state.git.head, body, snapshot: plan.snapshot, summary: plan.summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: plan.summary, links: [], files: [], mode: "blocking", ...extra };
+	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", ...extra };
 	if (plan.snapshot.action !== "drop") request.overridable = { units: [plan.snapshot.unit] };
 	return request;
 }

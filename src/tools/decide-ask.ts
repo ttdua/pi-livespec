@@ -33,7 +33,7 @@ export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Da
 	const briefing = ruleBriefing(intent);
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, ...(briefing ? { briefing } : {}), head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options, ...(briefing ? { briefing } : {}) };
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options, ...(briefing ? { briefing } : {}) };
 }
 
 /** The rule-authored briefing, only when the rule recommends an option; an invalid one is a programming error. */

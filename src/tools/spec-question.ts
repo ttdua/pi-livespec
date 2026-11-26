@@ -99,7 +99,7 @@ export function questionRequest(state: ChangeState, q: { id: string; text: strin
 		record,
 		change: state.issue.number,
 		phase,
-		summary,
+		summary: record.summary,
 		links: [],
 		files: [],
 		mode,
