@@ -14,6 +14,7 @@ import {
 	type RequestOption,
 	type RequestRecord,
 	type AmendSnapshot,
+	type Briefing,
 	type DecideSnapshot,
 	type GateSnapshot,
 	type QuestionSnapshot,
@@ -52,6 +53,7 @@ export type PrepareInput = {
 	subject: Subject;
 	mode: RequestMode;
 	options?: RequestOption[];
+	briefing?: Briefing;
 	head: string;
 	body: string;
 	snapshot: RequestSnapshot;
@@ -84,6 +86,7 @@ export function prepareRequest(input: PrepareInput): RequestRecord {
 		summary: input.summary,
 	};
 	if (input.options !== undefined) record.options = input.options;
+	if (input.briefing !== undefined) record.briefing = input.briefing;
 	if (input.kind === "gate") record.gate_digest = gateDigest(input.body);
 	return record;
 }
