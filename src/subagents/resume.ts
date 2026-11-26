@@ -2,7 +2,7 @@
 
 import { dispatchComment } from "./records.ts";
 import {
-	abortChildOnCancel, cancelledOutcome, type DispatchDeps, type DispatchOutcome, type DispatchRequest, finish, isCancelled, launch, type Respawn, type Run, runFacts, waitFor,
+	abortChildOnCancel, cancelledOutcome, type DispatchDeps, type DispatchOutcome, type DispatchRequest, ABORT_SETTLE_MS, finish, isCancelled, launch, type Respawn, type Run, runFacts, settledWithin, waitFor,
 } from "./dispatch.ts";
 import type { RecordLike } from "./executor.ts";
 import type { DispatchHistory } from "./result.ts";
@@ -29,6 +29,16 @@ export const retryMessage = (reason: string): string =>
 
 export type RetryStep = { kind: "next"; run: Run; record: RecordLike; respawn?: Respawn } | { kind: "stop"; outcome: DispatchOutcome };
 
+/** A lost wait proves nothing about the child: abort it and wait (bounded) for it to settle. Returns the outcome when it is not confirmed, or the call was cancelled. */
+async function unsettledFallback(deps: DispatchDeps, agentId: string): Promise<DispatchOutcome | undefined> {
+	deps.service.abort(agentId);
+	const limit = deps.abortSettleMs ?? ABORT_SETTLE_MS;
+	const confirmed = await settledWithin(waitFor(deps.service, agentId, deps.signal), limit);
+	if (isCancelled(deps.signal)) return cancelledOutcome(agentId);
+	if (confirmed) return undefined;
+	return { kind: "blocked", reason: `fallback child ${agentId} was lost and did not settle within ${limit / 1000} s of the abort, so no RETRY was recorded and nothing was written to the forge` };
+}
+
 /** Resumes the same child; when that is refused or fails, launches one fallback child (never a second) and records the swap with a `RETRY` record. */
 export async function retryRun(deps: DispatchDeps, request: DispatchRequest, run: Run, reason: string, shown: string, seen: DispatchHistory): Promise<RetryStep> {
 	const resumed = await resumeChild(deps, run.agentId, retryMessage(reason));
@@ -39,6 +49,8 @@ export async function retryRun(deps: DispatchDeps, request: DispatchRequest, run
 	const again = await launch(deps, request, run.agentSource);
 	if (again.kind === "stop") return again;
 	if (isCancelled(deps.signal)) return { kind: "stop", outcome: cancelledOutcome(again.run.agentId) };
+	const unsettled = again.lost === true ? await unsettledFallback(deps, again.run.agentId) : undefined;
+	if (unsettled !== undefined) return { kind: "stop", outcome: unsettled };
 	const failure = `${reason}; ${resumed}`;
 	await deps.post(dispatchComment({
 		status: "RETRY", role: request.role, ...(request.unit === undefined ? {} : { unit: request.unit }), ...(request.subject === undefined ? {} : { subject: request.subject }),

@@ -62,7 +62,8 @@ export type DispatchRequest = {
 /** One launch's identity and the facts the record needs. */
 export type Run = { agentId: string; facts: LaunchFacts; thinking: Thinking; agentSource: string };
 
-export type Launched = { kind: "settled"; run: Run; record: RecordLike } | { kind: "stop"; outcome: DispatchOutcome };
+/** `lost`: the wait rejected, so the record is made up and the child may still run. */
+export type Launched = { kind: "settled"; run: Run; record: RecordLike; lost?: true } | { kind: "stop"; outcome: DispatchOutcome };
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -142,7 +143,12 @@ export async function launch(deps: DispatchDeps, request: DispatchRequest, agent
 		const run: Run = { agentId, facts: facts ?? { context: "unknown", cwd: "unknown" }, thinking: options.thinkingLevel, agentSource };
 		const check = checkLaunch(options, facts);
 		if (!check.ok) return { kind: "stop", outcome: await mismatchOutcome(deps, request, run, check, waited) };
-		return { kind: "settled", run, record: await waited.catch((error: unknown): RecordLike => ({ id: agentId, status: "error", error: messageOf(error) })) };
+		let lost = false;
+		const record = await waited.catch((error: unknown): RecordLike => {
+			lost = true;
+			return { id: agentId, status: "error", error: messageOf(error) };
+		});
+		return { kind: "settled", run, record, ...(lost ? { lost: true as const } : {}) };
 	} finally {
 		disposeCancel();
 		watch.dispose();
@@ -153,7 +159,7 @@ export async function launch(deps: DispatchDeps, request: DispatchRequest, agent
 const mismatchEvidence = (found: Mismatch[]): string => found.map((m) => `${m.field}: requested ${m.requested}, effective ${m.effective}`).join("; ");
 
 /** True once `run` settles (a rejection counts as settled), false when `ms` pass first. */
-async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean> {
+export async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const expired = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), ms); });
 	try {

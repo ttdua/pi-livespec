@@ -407,6 +407,52 @@ describe("runDispatch", () => {
 		expect(out.kind).toBe("inline");
 	});
 
+	/** The first wait (agent-1) fails the run; the fallback's (agent-2) first wait rejects; later waits of agent-2 follow `confirm`. */
+	function lostFallback(confirm: "settles" | "hangs") {
+		const fake = fakeExecutor({ resumes: ["refuse"], records: [{ status: "error", error: "boom" }, { status: "error", error: "boom" }] });
+		const real = fake.service.wait;
+		let lost = false;
+		fake.service.wait = async (id: string, w?: { signal?: AbortSignal }) => {
+			if (id !== "agent-2") return real(id, w);
+			if (!lost) { lost = true; throw new Error("lost the fallback"); }
+			if (confirm === "hangs") return new Promise<never>(() => undefined);
+			return real(id, w);
+		};
+		return fake;
+	}
+
+	test("a rejected fallback wait that does not settle after the abort posts no RETRY", async () => {
+		const fake = lostFallback("hangs");
+		const { d, posted } = deps(fake);
+		d.abortSettleMs = 20;
+		const out = await runDispatch(d, request());
+		expect(fake.aborted).toContain("agent-2");
+		expect(posted.map((p) => p.data.status)).not.toContain("RETRY");
+		expect(out.kind).toBe("blocked");
+		expect(out.kind === "blocked" && out.reason).toContain("agent-2");
+		expect(out.kind === "blocked" && out.reason).toContain("did not settle");
+	});
+
+	test("a rejected fallback wait that settles after the abort still posts RETRY", async () => {
+		const fake = lostFallback("settles");
+		const { d, posted } = deps(fake);
+		const out = await runDispatch(d, request());
+		expect(fake.aborted).toContain("agent-2");
+		expect(posted.map((p) => p.data.status)).toEqual(["RETRY", "BLOCKED"]);
+		expect(out.kind).toBe("blocked");
+	});
+
+	test("cancelling the fallback itself posts no RETRY", async () => {
+		const fake = fakeExecutor({ resumes: ["refuse"], records: [{ status: "error", error: "boom" }], holdUntilAborted: false });
+		const { d, posted } = deps(fake);
+		const ctl = new AbortController();
+		d.signal = ctl.signal;
+		d.onLaunch = (id) => { if (id === "agent-2") queueMicrotask(() => ctl.abort()); };
+		const out = await runDispatch(d, request());
+		expect(out.kind).toBe("cancelled");
+		expect(posted.map((p) => p.data.status)).not.toContain("RETRY");
+	});
+
 	test("Fallback child is not replaced", async () => {
 		const fake = fakeExecutor({ resumes: ["refuse"] });
 		const { d } = deps(fake);
