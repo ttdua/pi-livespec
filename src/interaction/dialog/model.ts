@@ -28,8 +28,8 @@ export type DialogModel = {
 	status: { symbol: "✓" | "!" | "✗"; text: string }[];
 	briefing?: { heading: string; lines: string[] };
 	entries: DialogEntry[];
-	units: { unit: string; difficulty?: Difficulty; tags: string[] }[];
-	requirements: string[];
+	units: { unit: string; label: string; difficulty?: Difficulty; tags: string[] }[];
+	requirements: { id: string; label: string }[];
 	notes: boolean;
 };
 
@@ -85,9 +85,23 @@ function statusOf(r: ApprovalRequest): DialogModel["status"] {
 	return failingWaivableOf(r.record.snapshot).map((check) => ({ symbol: "!" as const, text: `${sanitize(check)} fails (waivable)` }));
 }
 
+type Current = NonNullable<ApprovalRequest["overridable"]>["current"];
+
+/** The current values of `unit`: its difficulty when set and its sanitised tags. */
+function currentOf(current: Current, unit: string): { difficulty?: Difficulty; tags: string[] } {
+	const values = current?.[unit];
+	return { ...(values?.difficulty === undefined ? {} : { difficulty: values.difficulty }), tags: (values?.tags ?? []).map(sanitize) };
+}
+
+/** `unit` stays the raw id (it is the override key); only `label` is sanitised for display. */
 function unitsOf(r: ApprovalRequest): DialogModel["units"] {
-	const { units = [], current = {} } = r.overridable ?? {};
-	return units.map((unit) => ({ unit: sanitize(unit), ...(current[unit]?.difficulty === undefined ? {} : { difficulty: current[unit].difficulty }), tags: (current[unit]?.tags ?? []).map(sanitize) }));
+	const { units = [], current } = r.overridable ?? {};
+	return units.map((unit) => ({ unit, label: sanitize(unit), ...currentOf(current, unit) }));
+}
+
+/** Raw names are the identity (deduped raw); only `label` is sanitised for display. */
+function requirementsOf(r: ApprovalRequest): DialogModel["requirements"] {
+	return [...new Set(r.question?.requirements ?? [])].map((id) => ({ id, label: sanitize(id) }));
 }
 
 /** The tabs, entries and units a request shows; entry order matches the select flows. */
@@ -104,7 +118,7 @@ export function buildModel(r: ApprovalRequest): DialogModel {
 		...(briefing === undefined ? {} : { briefing }),
 		entries: entriesOf(r, kind, choices),
 		units: unitsOf(r),
-		requirements: [...new Set((r.question?.requirements ?? []).map(sanitize))],
+		requirements: requirementsOf(r),
 		notes: kind === "gate",
 	};
 }

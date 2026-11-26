@@ -127,11 +127,11 @@ async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, un
 		return refusal(`${messageOf(error)}; no request was sent.`);
 	}
 	if (classified.status !== "classified") return refusal(`decision \`${classified.point}.${classified.subject}\` waits for a human answer (request ${classified.requestId}); no amendment request was sent.`);
-	const lines = renderUnit(classified.units[0]!);
+	const unit = classified.units[0]!;
+	const lines = renderUnit(unit);
 	if (existing && existing.statusText !== "") lines[lines.length - 1] = existing.statusText;
 	const snapshot: AmendSnapshot = { action: form.action, unit: id, lines, records: classified.records };
 	if (existing) Object.assign(snapshot, { oldDigest: unitDigest(existing), oldDone: existing.done });
-	const unit = classified.units[0]!;
 	return { snapshot, current: { ...(isDifficulty(unit.difficulty) ? { difficulty: unit.difficulty } : {}), tags: unit.tags } };
 }
 

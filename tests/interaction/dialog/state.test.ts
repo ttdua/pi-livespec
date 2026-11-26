@@ -29,6 +29,8 @@ function run(model: DialogModel, actions: DialogAction[], from: DialogState = in
 	return actions.reduce((s, a) => reduce(model, s, a), from);
 }
 
+const review = (m: DialogModel): DialogState => ({ ...initialState(m), tab: m.tabs.length - 1 });
+
 const deepFreeze = <T>(o: T): T => {
 	if (typeof o === "object" && o !== null) Object.values(o).forEach(deepFreeze);
 	return Object.freeze(o);
@@ -97,6 +99,14 @@ describe("pick", () => {
 		expect(run(m, [{ type: "pick", index: own }]).editor).toBe("answer");
 	});
 
+	test("pick own with an answer already typed moves on", () => {
+		const m = question();
+		const own = m.entries.findIndex((e) => e.action.kind === "own");
+		const s = run(m, [{ type: "pick", index: own }], { ...initialState(m), answer: "x" });
+		expect(s.editor).toBeUndefined();
+		expect(m.tabs[s.tab]).toBe("review");
+	});
+
 	test("pick outside the decision tab does nothing", () => {
 		const m = gate();
 		const s = run(m, [{ type: "nextTab" }]);
@@ -140,9 +150,9 @@ describe("submit and canSubmit", () => {
 
 	test("pickRequirement sets none and named; other opens the editor", () => {
 		const m = question();
-		expect(run(m, [{ type: "pickRequirement", index: 0 }]).requirement).toEqual({ kind: "none" });
-		expect(run(m, [{ type: "pickRequirement", index: 2 }]).requirement).toEqual({ kind: "named", name: "r2" });
-		const other = run(m, [{ type: "pickRequirement", index: 3 }]);
+		expect(run(m, [{ type: "pickRequirement", index: 0 }], review(m)).requirement).toEqual({ kind: "none" });
+		expect(run(m, [{ type: "pickRequirement", index: 2 }], review(m)).requirement).toEqual({ kind: "named", name: "r2" });
+		const other = run(m, [{ type: "pickRequirement", index: 3 }], review(m));
 		expect(other.requirement).toEqual({ kind: "other", text: "" });
 		expect(other.editor).toBe("requirement");
 	});
@@ -205,9 +215,47 @@ describe("cycleDifficulty", () => {
 		expect(run(m, [{ type: "nextTab" }, { type: "cycleDifficulty", delta: -1 }]).overrides.U1?.difficulty).toBe("high");
 	});
 
+	test("delta -1 from undefined: high", () => {
+		const m = plan();
+		const s = run(m, [{ type: "nextTab" }, { type: "move", delta: 1 }, { type: "cycleDifficulty", delta: -1 }]);
+		expect(s.overrides.U2?.difficulty).toBe("high");
+	});
+
 	test("only on the units tab", () => {
 		const m = plan();
 		expect(run(m, [{ type: "cycleDifficulty", delta: 1 }]).overrides).toEqual({});
+	});
+});
+
+describe("reducer guards", () => {
+	test("openEditor tags only on the units tab", () => {
+		const m = plan();
+		const s = initialState(m);
+		expect(reduce(m, s, { type: "openEditor", editor: "tags" })).toEqual(s);
+	});
+
+	test("closeEditor tags only on the units tab", () => {
+		const m = plan();
+		const s: DialogState = { ...initialState(m), editor: "tags" };
+		expect(reduce(m, s, { type: "closeEditor", text: "a" })).toEqual(s);
+	});
+
+	test("pickRequirement only on the review tab", () => {
+		const m = question();
+		const s = initialState(m);
+		expect(reduce(m, s, { type: "pickRequirement", index: 0 })).toEqual(s);
+	});
+
+	test("openEditor note only when the model has notes", () => {
+		const m = question();
+		const s = initialState(m);
+		expect(reduce(m, s, { type: "openEditor", editor: "note" })).toEqual(s);
+	});
+
+	test("re-picking other keeps the typed text", () => {
+		const m = question();
+		const s = run(m, [{ type: "pickRequirement", index: 3 }], { ...initialState(m), tab: 1, requirement: { kind: "other", text: "typed" } });
+		expect(s.requirement).toEqual({ kind: "other", text: "typed" });
 	});
 });
 

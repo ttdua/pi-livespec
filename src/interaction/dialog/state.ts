@@ -91,7 +91,7 @@ function pick(model: DialogModel, state: DialogState, index: number | undefined)
 		case "changes":
 			return state.notes.trim() === "" ? { ...next, editor: "note" } : goTo(next, state.tab + 1);
 		case "own":
-			return { ...next, editor: "answer" };
+			return state.answer.trim() === "" ? { ...next, editor: "answer" } : goTo(next, Math.min(state.tab + 1, model.tabs.length - 1));
 		default:
 			return goTo(next, Math.min(state.tab + 1, model.tabs.length - 1));
 	}
@@ -107,6 +107,7 @@ function withOverride(model: DialogModel, state: DialogState, change: { difficul
 }
 
 function closeEditor(model: DialogModel, state: DialogState, text: string): DialogState {
+	if (state.editor === "tags" && tabOf(model, state) !== "units") return state;
 	const closed: DialogState = { ...state, editor: undefined, error: undefined };
 	switch (state.editor) {
 		case "note":
@@ -122,6 +123,13 @@ function closeEditor(model: DialogModel, state: DialogState, text: string): Dial
 	}
 }
 
+/** An editor can open only where its field is shown: tags on the units tab, notes when the model has them. */
+function openEditor(model: DialogModel, state: DialogState, editor: EditorName): DialogState {
+	if (editor === "tags" && tabOf(model, state) !== "units") return state;
+	if (editor === "note" && !model.notes) return state;
+	return { ...state, editor };
+}
+
 function cycleDifficulty(model: DialogModel, state: DialogState, delta: 1 | -1): DialogState {
 	const unit = model.units[state.focus];
 	if (tabOf(model, state) !== "units" || unit === undefined) return state;
@@ -131,9 +139,9 @@ function cycleDifficulty(model: DialogModel, state: DialogState, delta: 1 | -1):
 }
 
 function pickRequirement(model: DialogModel, state: DialogState, index: number): DialogState {
-	if (model.kind !== "question" || index < 0 || index > model.requirements.length + 1) return state;
+	if (tabOf(model, state) !== "review" || model.kind !== "question" || index < 0 || index > model.requirements.length + 1) return state;
 	if (index === 0) return { ...state, requirement: { kind: "none" }, error: undefined };
-	const name = model.requirements[index - 1];
+	const name = model.requirements[index - 1]?.id;
 	if (name !== undefined) return { ...state, requirement: { kind: "named", name }, error: undefined };
 	const text = state.requirement?.kind === "other" ? state.requirement.text : "";
 	return { ...state, requirement: { kind: "other", text }, editor: "requirement", error: undefined };
@@ -162,7 +170,7 @@ export function reduce(model: DialogModel, state: DialogState, action: DialogAct
 		case "previousTab":
 			return shiftTab(model, state, -1);
 		case "openEditor":
-			return { ...state, editor: action.editor };
+			return openEditor(model, state, action.editor);
 		case "closeEditor":
 			return closeEditor(model, state, action.text);
 		case "cycleDifficulty":

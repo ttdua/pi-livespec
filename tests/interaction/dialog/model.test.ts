@@ -77,7 +77,7 @@ describe("buildModel", () => {
 	test("plan gate with overridable adds the units tab with current values", () => {
 		const m = buildModel(request({ overridable: { units: ["U1", "U2"], current: { U1: { difficulty: "high", tags: ["security"] } } } }));
 		expect(m.tabs).toEqual(["decision", "units", "review"]);
-		expect(m.units).toEqual([{ unit: "U1", difficulty: "high", tags: ["security"] }, { unit: "U2", tags: [] }]);
+		expect(m.units).toEqual([{ unit: "U1", label: "U1", difficulty: "high", tags: ["security"] }, { unit: "U2", label: "U2", tags: [] }]);
 	});
 
 	test("failing waivable check: no approve, one waive entry, a status row", () => {
@@ -93,7 +93,10 @@ describe("buildModel", () => {
 		expect(m.kind).toBe("question");
 		expect(m.entries.map((e) => e.action.kind)).toEqual(["candidate", "candidate", "own", "later"]);
 		expect(m.entries[2]?.label).toBe("write my own answer");
-		expect(m.requirements).toEqual(["rate-limit/Requirement: Per-IP cap", "auth/Requirement: Login"]);
+		expect(m.requirements).toEqual([
+			{ id: "rate-limit/Requirement: Per-IP cap", label: "rate-limit/Requirement: Per-IP cap" },
+			{ id: "auth/Requirement: Login", label: "auth/Requirement: Login" },
+		]);
 		expect(m.notes).toBe(false);
 	});
 
@@ -117,7 +120,7 @@ describe("buildModel", () => {
 	});
 
 	test("strips control characters", () => {
-		const evil = "x\x1b[2Jy\x1b]0;title\x07z\rw\u202eq\tt";
+		const evil = "x\x1b[2Jy\x1b]0;title\x07z\rw\u202eq\u2066\u009b\u007f\tt";
 		const m = buildModel(
 			request({
 				summary: evil,
@@ -127,16 +130,44 @@ describe("buildModel", () => {
 		);
 		const all = [m.facts, ...(m.briefing?.lines ?? []), ...m.entries.flatMap((e) => [e.label, e.description ?? ""])];
 		for (const text of all) {
-			expect(text).not.toMatch(/[\u001b\r\u202e\u0007]/);
+			expect(text).not.toMatch(/[\u001b\r\u202e\u0007\u2066\u009b\u007f]/);
 			expect(text).not.toContain("[2J");
 			expect(text).not.toContain("title");
 		}
 		expect(m.facts).toBe("xyzwq  t");
+		const opt = m.entries.find((e) => e.action.kind === "option");
+		expect(opt?.label).toBe("xyzwq  t");
+		expect(opt?.description).toBe("xyzwq  t");
+		expect(m.briefing?.lines.join("\n")).toContain("xyzwq  t");
 		expect(buildModel(request({ summary: "a\nb" })).facts).toBe("a\nb");
 	});
 });
 
 describe("toResult", () => {
+	test("a requirement name with control characters stays raw in changesRequirement", () => {
+		const raw = "a/Requirement: <!-- x\ty";
+		const r = question({ options: OPTIONS, question: { id: "Q2", class: "blocking", requirements: [raw, `${raw}\u202e`] } });
+		const m = buildModel(r);
+		expect(m.requirements).toHaveLength(2);
+		expect(m.requirements[0]?.label).not.toContain("\t");
+		const result = toResult(m, { ...initialState(m), picked: 0, requirement: { kind: "named", name: m.requirements[0]!.id } }, r);
+		expect(result).toMatchObject({ changesRequirement: raw });
+	});
+
+	test("a unit id stays raw in Override.unit", () => {
+		const raw = "U\t1";
+		const r = request({ overridable: { units: [raw], current: {} } });
+		const m = buildModel(r);
+		expect(m.units[0]?.label).not.toContain("\t");
+		expect(toResult(m, picked(m, "approve", { overrides: { [raw]: { difficulty: "high" } } }), r)).toMatchObject({ overrides: [{ unit: raw, difficulty: "high" }] });
+	});
+
+	test("stuck choice ignores notes and overrides", () => {
+		const r = stuck({ overridable: { units: ["U1"], current: {} } });
+		const m = buildModel(r);
+		expect(toResult(m, picked(m, "B", { notes: "x", overrides: { U1: { difficulty: "high" } } }), r)).toEqual({ outcome: "approved", notes: "", choice: "B" });
+	});
+
 	test("approve with empty notes", () => {
 		const r = request();
 		const m = buildModel(r);
