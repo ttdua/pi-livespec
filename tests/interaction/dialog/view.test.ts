@@ -103,6 +103,13 @@ describe("decision tab", () => {
 		expect(lines.some((l) => l.includes("below"))).toBe(true);
 	});
 
+	test("a short terminal drops descriptions and hints before it drops entries", () => {
+		const lines = draw(define(), undefined, 80, 10);
+		expect(lines.length).toBeLessThanOrEqual(10);
+		for (const label of ["› 1 approve (Recommended)", "  2 request changes", "  3 dismiss"]) expect(lines).toContain(label);
+		expect(lines.join("\n")).not.toContain("Accept the spec");
+	});
+
 	test("scroll past the end is clamped to the last page", () => {
 		const summary = Array.from({ length: 40 }, (_, i) => `fact ${i + 1}`).join("\n");
 		const m = buildModel(request({ summary }));

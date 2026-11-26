@@ -183,8 +183,12 @@ function fitHeight(ctx: Ctx, header: string[], layout: Layout, footer: string[],
 	const { body } = layout;
 	const room = height - header.length - layout.fixed.length - footer.length;
 	if (body.length <= room) return [...header, ...body, ...layout.fixed, ...footer];
-	const shown = Math.max(0, room - 2);
-	const offset = Math.min(Math.max(0, ctx.state.scroll), body.length - shown);
+	// Entries and footer win over the body when even they do not fit.
+	if (room <= 1) return [...header, ...layout.fixed, ...footer];
+	// The last page has only the "above" line, so the offset is clamped to it.
+	const offset = Math.min(Math.max(0, ctx.state.scroll), Math.max(0, body.length - (room - 1)));
+	const withAbove = Math.max(0, room - (offset > 0 ? 1 : 0));
+	const shown = offset + withAbove >= body.length ? withAbove : Math.max(0, withAbove - 1);
 	const below = body.length - offset - shown;
 	const above = offset > 0 ? [ctx.theme.muted(`↑ ${offset} lines above (PgUp)`)] : [];
 	const after = below > 0 ? [ctx.theme.muted(`↓ ${below} lines below (PgDn)`)] : [];
@@ -204,9 +208,18 @@ export function renderDialog(
 ): string[] {
 	const { width, height } = size;
 	if (width < MIN_WIDTH) return [clip(NARROW_LINE, width)];
-	const ctx: Ctx = { model, state, width, full: width >= FULL_WIDTH, theme, editorLines };
 	const tab = model.tabs[state.tab] ?? "decision";
-	const layout = LAYOUTS[tab](ctx);
-	const lines = fitHeight(ctx, [tabStrip(ctx), ""], layout, footerLines(ctx, tab, layout.footer), height);
-	return lines.map((line) => clip(line, width));
+	const draw = (full: boolean) => {
+		const ctx: Ctx = { model, state, width, full, theme, editorLines };
+		const layout = LAYOUTS[tab](ctx);
+		return { ctx, header: [tabStrip(ctx), ""], layout, footer: footerLines(ctx, tab, layout.footer) };
+	};
+	const wide = draw(width >= FULL_WIDTH);
+	// On a short terminal descriptions and hints go before the body, so the entries stay visible.
+	const fits = wide.header.length + wide.layout.fixed.length + wide.footer.length < height;
+	const { ctx, header, layout, footer } = fits ? wide : draw(false);
+	// Still too tall (many entries, a tall editor): the bottom is cut so the height holds.
+	return fitHeight(ctx, header, layout, footer, height)
+		.slice(0, height)
+		.map((line) => clip(line, width));
 }
