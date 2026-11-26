@@ -2,6 +2,7 @@
 // the gate", phase-gates "Gate tool"): only when no other refusal applies, one capability at a time, and the
 // re-run check refuses a `changed` answer in the same call.
 
+import { BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -93,7 +94,7 @@ describe("spec_gate behavior-change question", () => {
 	test("Asked once at define", async () => {
 		// Every unit done, so the change can be in review after define.
 		const h = await change("define", { answer: "unchanged", edit: allDone });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const [decision] = await behaviorDecisions(h);
 		expect(decision?.data).toMatchObject({ point: "behavior-change", subject: "rate-limit", source: "human", outcome: "unchanged", files: [CAP], digest: behaviorDigest([CAP]) });
@@ -109,7 +110,7 @@ describe("spec_gate behavior-change question", () => {
 		await h.forge.addLabels(h.n, ["livespec:phase/review"]);
 		await h.session.refresh();
 		const before = (await ofKind(h, "request")).length;
-		const review = await h.call("spec_gate", { target: "review" });
+		const review = await h.call("spec_gate", { target: "review", briefing: BRIEFING });
 		expect(review.isError).toBe(false);
 		expect(behaviorTitles(h)).toHaveLength(1);
 		expect((await ofKind(h, "request")).length).toBe(before);
@@ -119,7 +120,7 @@ describe("spec_gate behavior-change question", () => {
 	describe("Other refusal asks nothing", () => {
 		const refusedWithNothingWritten = async (h: Gate, reason: string): Promise<void> => {
 			const before = (await marked(h)).length;
-			const out = await h.call("spec_gate", { target: "define" });
+			const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 			expect(out.isError).toBe(true);
 			expect(textOf(out)).toContain(reason);
 			expect((await marked(h)).length).toBe(before);
@@ -145,7 +146,7 @@ describe("spec_gate behavior-change question", () => {
 
 	test("Changed answer blocks the same call", async () => {
 		const h = await change("define", { answer: "changed" });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("specs/rate-limit/spec.md");
 		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "changed" });
@@ -155,7 +156,7 @@ describe("spec_gate behavior-change question", () => {
 
 	test("Behavior answer before a refusal", async () => {
 		const h = await change("define", { answer: "changed" });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(textOf(out)).toContain("behavior-change");
 		expect(await behaviorDecisions(h)).toHaveLength(1);
 		expect(h.ctx.ui.select.mock.calls.map((c) => c[0]).filter((t) => !t.startsWith(BEHAVIOR_TITLE))).toEqual([]);
@@ -163,7 +164,7 @@ describe("spec_gate behavior-change question", () => {
 
 	test("Forge request pending", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("decide:behavior-change.rate-limit");
 		const requests = await ofKind(h, "request");
@@ -173,8 +174,8 @@ describe("spec_gate behavior-change question", () => {
 
 	test("pending forge request is not asked twice", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
-		await h.call("spec_gate", { target: "define" });
-		const again = await h.call("spec_gate", { target: "define" });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
+		const again = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(again.isError).toBe(true);
 		expect(textOf(again)).toContain("decide:behavior-change.rate-limit");
 		expect(await ofKind(h, "request")).toHaveLength(1);
@@ -183,7 +184,7 @@ describe("spec_gate behavior-change question", () => {
 	test("New file asks again at the gate", async () => {
 		const h = await change("define", { answer: "unchanged", code: [CAP, WINDOW] });
 		await seedRecord(h, [CAP], "unchanged");
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const decisions = await behaviorDecisions(h);
 		expect(decisions).toHaveLength(2);
@@ -193,7 +194,7 @@ describe("spec_gate behavior-change question", () => {
 	test("a non-ASCII name with a space is asked about", async () => {
 		const file = "src/limits/naïve cap.ts";
 		const h = await change("define", { answer: "unchanged", code: [file] });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(behaviorTitles(h)).toHaveLength(1);
 		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "unchanged", files: [file] });
@@ -202,7 +203,7 @@ describe("spec_gate behavior-change question", () => {
 	test("a rename out of the capability's paths is asked about", async () => {
 		const moved = "src/cap.ts";
 		const h = await change("define", { answer: "unchanged", code: [], baseFiles: { [CAP]: "export const cap = 100;\n" }, renames: [[CAP, moved]] });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(behaviorTitles(h)).toHaveLength(1);
 		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "unchanged", files: [CAP] });
@@ -211,7 +212,7 @@ describe("spec_gate behavior-change question", () => {
 	test("reusable record asks nothing", async () => {
 		const h = await change("define", { answer: "unchanged" });
 		await seedRecord(h, [CAP], "unchanged");
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(behaviorTitles(h)).toEqual([]);
 		expect(await behaviorDecisions(h)).toHaveLength(1);
@@ -219,7 +220,7 @@ describe("spec_gate behavior-change question", () => {
 
 	test("Flow without the check", async () => {
 		const h = await change("define", { answer: "changed", flow: FLOW_WITHOUT_CHECK });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(behaviorTitles(h)).toEqual([]);
 		expect((await ofKind(h, "request")).map(subjectOf).filter((s) => s.startsWith("decide:behavior-change"))).toEqual([]);
@@ -230,7 +231,7 @@ describe("spec_gate behavior-change question", () => {
 	test("read-only forge refuses before asking", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		await h.world.makeUnreachable();
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("read-only");
 		await h.world.restore();

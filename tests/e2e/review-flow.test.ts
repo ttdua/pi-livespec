@@ -1,5 +1,6 @@
 // End-to-end review (LS-08): a two-unit change reaches review, a seeded defect sends U2 back to build, and a clean round 2 passes the gate.
 
+import { BRIEFING } from "../helpers/briefing.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -87,7 +88,7 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 	const head = h.git("rev-parse", "HEAD");
 	expect(latestRun(await h.marked())).toMatchObject({ round: 2, head, routed: true });
 
-	const gate = await h.call("spec_gate", { target: "review" });
+	const gate = await h.call("spec_gate", { target: "review", briefing: BRIEFING });
 	expect(gate.isError, textOf(gate)).toBeFalsy();
 	expect((await h.ofKind("gate")).at(-1)?.data).toMatchObject({ phase: "review", head_sha: head });
 	expect(cardState(h).state.phase).toEqual({ kind: "ok", id: "ship" });

@@ -93,6 +93,30 @@ describe("initiative_propose: the request", () => {
 		expect((await all(h)).length).toBe(before);
 	});
 
+	test("Proposer briefing", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const briefing = { summary: "Splits the change in two.", recommended: "approve", rationale: "Each part is independently shippable." };
+		const out = await h.call("initiative_propose", { ...twoEntries, briefing });
+		expect(out.isError, textOf(out)).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing?: { summary: string; author: string } };
+		expect(data.briefing).toMatchObject({ summary: "Splits the change in two.", author: "agent" });
+	});
+
+	test("Proposer without a briefing", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const out = await h.call("initiative_propose", twoEntries);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await ofKind(h, "request"))[0]?.data).not.toHaveProperty("briefing");
+	});
+
+	test("Invalid proposer briefing refused before any request", async () => {
+		const h = await shape({ config: FORGE_CHAIN });
+		const out = await h.call("initiative_propose", { ...twoEntries, briefing: { summary: "s", recommended: "A", rationale: "r" } });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await ofKind(h, "request")).toEqual([]);
+	});
+
 	test("Bare spec_gate refused", async () => {
 		const h = await shape({ config: FORGE_CHAIN });
 		const out = await h.call("spec_gate", { target: "initiative" });

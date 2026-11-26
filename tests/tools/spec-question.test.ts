@@ -1,3 +1,4 @@
+import { BRIEFING } from "../helpers/briefing.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
@@ -124,7 +125,7 @@ describe("spec_question", () => {
 		expect(await lineOf(h, "Q3")).toBe("- [ ] Q3 (non-blocking): Which store keeps the counters?");
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "question:Q3", mode: "async" })]);
 		expect(card(h).step.next).not.toContain("question:Q3");
-		const gate = await h.call("spec_gate", { target: "define" });
+		const gate = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(gate.isError).toBe(false);
 		expect((await ofKind(h, "request")).map((m) => (m.data as { subject: string }).subject)).toEqual(["question:Q3", "gate:define"]);
 	});
@@ -181,7 +182,7 @@ describe("spec_question", () => {
 		}
 		await h.session.refresh();
 		expect(card(h).step.next).toBe("Send a stuck report with spec_stuck: change_iterations reached 5 of 5.");
-		const gate = await h.call("spec_gate", { target: "define" });
+		const gate = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(gate.isError).toBe(true);
 		expect(textOf(gate)).toContain("spec_stuck");
 	});

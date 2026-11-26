@@ -99,6 +99,24 @@ describe("new_dependency: the request", () => {
 		expect((await all(h)).length).toBe(before);
 	});
 
+	test("Proposer briefing", async () => {
+		const h = await harness();
+		const out = await h.call("new_dependency", params({ briefing: { summary: "Needs a token store.", recommended: "A", rationale: "A prerequisite change is cleanest." } }));
+		expect(out.isError, textOf(out)).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { briefing: { recommended: string; author: string } };
+		expect(data.briefing).toMatchObject({ recommended: "A", author: "agent" });
+	});
+
+	test("Briefing recommending an option the request does not offer", async () => {
+		const h = await harness();
+		const before = (await all(h)).length;
+		const out = await h.call("new_dependency", params({ briefing: { summary: "s", recommended: "split", rationale: "r" } }));
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect((await all(h)).length).toBe(before);
+	});
+
 	test("Split offered at the finished boundary", async () => {
 		const h = await harness({ done: ["U1", "U2"] });
 		const out = await h.call("new_dependency", params());

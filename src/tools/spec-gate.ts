@@ -13,7 +13,9 @@ import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import type { ApprovalRequest, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
+import type { ApprovalRequest, Briefing, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
+import { validateBriefing } from "../interaction/briefing.ts";
+import { offeredChoiceIds } from "../interaction/describe-actions.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
@@ -24,7 +26,7 @@ import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResu
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest, withStep } from "./request-flow.ts";
 
-export type SpecGateParams = { target: string };
+export type SpecGateParams = { target: string; briefing?: unknown };
 
 const PLAN = "plan";
 const BEHAVIOR_CHECK = "behavior-change";
@@ -63,6 +65,17 @@ export function refusalText(state: ChangeState, refusal: string): string {
 	return it.blocking && it.stuckOpen === undefined ? `${refusal} ${NEW_STUCK_HINT}` : refusal;
 }
 
+/** The refusal for a recommendation the plan cannot honour: `approve` while a check must be waived, or an id not offered. */
+export function recommendationRefusal(b: Briefing | undefined, plan: GatePlan): string | undefined {
+	const recommended = b?.recommended;
+	if (recommended === undefined) return undefined;
+	if (recommended === "approve" && plan.failingWaivable.length > 0) {
+		return `briefing.recommended cannot be approve while ${plan.failingWaivable.join(", ")} fails: recommend waive or another action.`;
+	}
+	const offered = offeredChoiceIds({ kind: "gate", options: plan.options, failingWaivable: plan.failingWaivable });
+	return offered.includes(recommended) ? undefined : `briefing.recommended must be one of the offered choices: ${offered.join(", ")}`;
+}
+
 function unitDigests(state: ChangeState): Record<string, string> {
 	return Object.fromEntries(state.change.units.map((u) => [u.id, unitDigest(u)]));
 }
@@ -89,7 +102,7 @@ export function gateRequest(
 	pack: Pack,
 	target: string,
 	plan: GatePlan,
-	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown },
+	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing },
 ): ApprovalRequest {
 	const snapshot: GateSnapshot = {
 		target,
@@ -99,9 +112,10 @@ export function gateRequest(
 	};
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
-	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });
+	const briefing = input.briefing === undefined ? {} : { briefing: input.briefing };
+	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, ...briefing, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: input.payload.links, files: input.payload.files, mode: "blocking", ...options };
+	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: input.payload.links, files: input.payload.files, mode: "blocking", ...options, ...briefing };
 	if (target === PLAN) request.overridable = { units: state.change.units.map((u) => u.id) };
 	return request;
 }
@@ -115,7 +129,7 @@ async function passSelf(w: WriteContext, state: ChangeState, target: string): Pr
 	return toolResult(withStep(w.session, `The ${target} self gate passed.`), undefined);
 }
 
-type RequestExtras = { drafts?: unknown; summary?: string };
+type RequestExtras = { drafts?: unknown; summary?: string; briefing?: Briefing };
 
 async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, extras: RequestExtras = {}): Promise<ApprovalRequest> {
 	const facts = await collectReviewFacts(w.session.git, state.change.header.base);
@@ -123,11 +137,11 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
 	const payload = gatePayload(state, w.pack, target, withLink);
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts });
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing });
 }
 
-async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
-	const request = await buildRequest(w, state, target, plan);
+async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, briefing: Briefing | undefined): Promise<ToolResult<undefined>> {
+	const request = await buildRequest(w, state, target, plan, { briefing });
 	// The waive rule is enforced for every adapter when the answer is validated (`validateAnswer`).
 	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again" });
 }
@@ -139,7 +153,7 @@ async function withGateChecks(w: WriteContext, state: ChangeState, target: strin
 	return { ...state, checks };
 }
 
-export type NamedGateInput = { target: string; options: RequestOption[]; drafts: unknown; summary: string; ctx: ApproverCtx; tool: string };
+export type NamedGateInput = { target: string; options: RequestOption[]; drafts: unknown; summary: string; ctx: ApproverCtx; tool: string; briefing?: Briefing };
 
 /**
  * Sends the request of a named gate with a proposer: the proposer's drafts go into the snapshot, its
@@ -153,7 +167,10 @@ export async function sendNamedGate(w: WriteContext, state: ChangeState, i: Name
 	const plan = planGate(checked, w.pack, i.target);
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
 	const waive = plan.options.filter((o) => o.id === WAIVE);
-	const request = await buildRequest(w, checked, i.target, { ...plan, options: [...waive, ...i.options] }, { drafts: i.drafts, summary: i.summary });
+	const offered = { ...plan, options: [...waive, ...i.options] };
+	const unrecommendable = recommendationRefusal(i.briefing, offered);
+	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
+	const request = await buildRequest(w, checked, i.target, offered, { drafts: i.drafts, summary: i.summary, briefing: i.briefing });
 	return sendRequest(w, checked, request, i.ctx, { tool: i.tool, retry: `run ${i.tool} again` });
 }
 
@@ -191,6 +208,31 @@ function proposerRefusal(target: string): string | undefined {
 	return proposer === undefined ? undefined : `The ${target} gate is requested by ${proposer}, which sends it with its drafts: run ${proposer} instead.`;
 }
 
+const BRIEFING_REQUIRED = "A human gate needs an agent briefing: pass `briefing` with a `summary` (required: what the human is deciding and what changed), and optionally `watch`, `recommended` and `rationale`.";
+const BUILT_IN_IDS = ["approve", "changes", "dismiss", WAIVE];
+
+type BriefingStep = { ok: true; briefing?: Briefing } | { ok: false; message: string };
+
+/** The shape of the briefing a proposer tool passes, against the ids its gate could offer; refuses a bad shape. */
+export function proposerBriefing(raw: unknown, options: RequestOption[]): BriefingStep {
+	if (raw === undefined) return { ok: true };
+	const ids = offeredChoiceIds({ kind: "gate", options: [{ id: WAIVE, label: "Waive" }, ...options] });
+	const checked = validateBriefing(raw, ids, { author: "agent" });
+	return "refused" in checked ? { ok: false, message: checked.refused } : { ok: true, briefing: checked };
+}
+
+/** Requires and validates the briefing of a human gate (a self gate ignores it); runs before any check. */
+export function briefingStep(target: string, pack: Pack, raw: unknown): BriefingStep {
+	const phase = pack.phases.find((ph) => ph.id === target);
+	const named = phase === undefined ? namedGate(target) : undefined;
+	const human = phase === undefined ? named !== undefined : phase.gate === "human";
+	if (!human) return { ok: true };
+	if (raw === undefined) return { ok: false, message: BRIEFING_REQUIRED };
+	const ids = [...BUILT_IN_IDS, ...(named?.options ?? []).map((o) => o.id)];
+	const checked = validateBriefing(raw, ids, { author: "agent" });
+	return "refused" in checked ? { ok: false, message: `${checked.refused}. ${BRIEFING_REQUIRED}` } : { ok: true, briefing: checked };
+}
+
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
@@ -200,6 +242,8 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	const isPhase = w.pack.phases.some((ph) => ph.id === target);
 	const byProposer = isPhase ? undefined : proposerRefusal(target);
 	if (byProposer) return toolResult(byProposer, undefined, true);
+	const briefed = briefingStep(target, w.pack, p.briefing);
+	if (!briefed.ok) return toolResult(briefed.message, undefined, true);
 	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, ctx) : { ok: true as const, state: change.state, checked: false };
 	if (!asked.ok) return toolResult(asked.message, undefined, true);
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
@@ -207,8 +251,23 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
 	const plan = planGate(state, w.pack, target);
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	return plan.mode === "self" ? passSelf(w, state, target) : askHuman(w, state, target, plan, ctx);
+	if (plan.mode === "self") return passSelf(w, state, target);
+	const unrecommendable = recommendationRefusal(briefed.briefing, plan);
+	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
+	return askHuman(w, state, target, plan, ctx, briefed.briefing);
 }
+
+export const BRIEFING_SCHEMA = {
+	type: "object",
+	description: "Required for human gates, ignored for self gates. Advisory only: it informs the human and never answers or decides the gate.",
+	properties: {
+		summary: { type: "string", description: "what the human is deciding and what changed, at most 600 characters" },
+		watch: { type: "array", items: { type: "string" }, description: "up to 5 one-line things to check before answering" },
+		recommended: { type: "string", description: "id of the offered choice you suggest; needs rationale" },
+		rationale: { type: "string", description: "why you suggest it, at most 600 characters" },
+	},
+	required: ["summary"],
+};
 
 export function registerSpecGate(pi: ExtensionAPI): void {
 	registerLivespecTool(pi, {
@@ -219,9 +278,9 @@ export function registerSpecGate(pi: ExtensionAPI): void {
 		// Plain JSON-schema literal; cast avoids a typebox dependency. Only `target`: no outcome or choice parameter.
 		parameters: {
 			type: "object",
-			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" } },
+			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" }, briefing: BRIEFING_SCHEMA },
 			required: ["target"],
 		} as never,
-		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target }, ctx as ApproverCtx),
+		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target, briefing: (params as SpecGateParams).briefing }, ctx as ApproverCtx),
 	});
 }

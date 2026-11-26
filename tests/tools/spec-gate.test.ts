@@ -1,3 +1,4 @@
+import { BRIEFING } from "../helpers/briefing.ts";
 import { readFileSync } from "node:fs";
 import { pickById } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -162,7 +163,7 @@ function nineUnits(body: string): string {
 describe("spec_gate", () => {
 	test("Self gate", async () => {
 		const h = await change("shape");
-		const out = await h.call("spec_gate", { target: "shape" });
+		const out = await h.call("spec_gate", { target: "shape", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
 		expect(gate).toHaveLength(1);
@@ -175,7 +176,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": `${SIZE_LIMITS_FLOW[".pi/livespec/flow.yaml"]}    gate: self\n` } });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("size-limits");
 		expect(await ofKind(h, "gate")).toEqual([]);
@@ -184,7 +185,7 @@ describe("spec_gate", () => {
 	test("Registered gate", async () => {
 		registerGate("custom-gate", { checks: [] });
 		const h = await change("build", { ui: human("approve") });
-		const out = await h.call("spec_gate", { target: "custom-gate" });
+		const out = await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
 		expect(gate).toHaveLength(1);
@@ -195,7 +196,7 @@ describe("spec_gate", () => {
 
 	test("Define approved", async () => {
 		const h = await change("define", { ui: human("approve"), edit: longProposal });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = await ofKind(h, "gate");
 		expect(gateData(gate[0])).toMatchObject({ phase: "define", outcome: "approved", adapter: "in-session" });
@@ -208,9 +209,19 @@ describe("spec_gate", () => {
 		expect(summary).toContain(`…\nFull text: ${issueUrl(h)}`);
 	});
 
+	test("Define approved shows the briefing", async () => {
+		const h = await change("define", { ui: human("approve") });
+		const briefing = { summary: "Adds a per-IP cap.", watch: ["Check the window size."], recommended: "approve", rationale: "The spec covers every unit." };
+		const out = await h.call("spec_gate", { target: "define", briefing });
+		expect(out.isError, textOf(out)).toBe(false);
+		const title = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
+		expect(title).toContain("Adds a per-IP cap.");
+		expect(title).toContain("Check the window size.");
+	});
+
 	test("forge define request links the issue for a truncated Proposal", async () => {
 		const h = await change("define", { config: FORGE_CHAIN, edit: longProposal });
-		await h.call("spec_gate", { target: "define" });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		const request = (await ofKind(h, "request"))[0];
 		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
 		expect(text).toContain(`…\nFull text: ${issueUrl(h)}`);
@@ -220,7 +231,7 @@ describe("spec_gate", () => {
 	test("Relayed approval refused", async () => {
 		const h = await change("plan", { ui: human(undefined) });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
@@ -229,8 +240,8 @@ describe("spec_gate", () => {
 	test("extra outcome parameter is ignored", async () => {
 		const h = await change("define", { ui: human(undefined) });
 		const tool = h.pi.tools.get("spec_gate");
-		expect(Object.keys((tool?.parameters as { properties: object }).properties)).toEqual(["target"]);
-		const out = await h.call("spec_gate", { target: "define", outcome: "approved", choice: "waive", answer: "yes" });
+		expect(Object.keys((tool?.parameters as { properties: object }).properties)).toEqual(["target", "briefing"]);
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING, outcome: "approved", choice: "waive", answer: "yes" });
 		expect(out.isError).toBe(false);
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ outcome: "dismissed", adapter: "in-session" });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
@@ -238,7 +249,7 @@ describe("spec_gate", () => {
 
 	test("Unavailable without UI", async () => {
 		const h = await change("define", { config: BOTH_CHAIN });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(h.ctx.ui.select).not.toHaveBeenCalled();
 		const requests = await ofKind(h, "request");
@@ -250,7 +261,7 @@ describe("spec_gate", () => {
 
 	test("No adapter available", async () => {
 		const h = await change("define");
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("interaction.adapter");
 		expect(await h.world.forge.listComments(h.n)).toEqual([]);
@@ -260,7 +271,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const h = await change("plan", { ui: human("waive"), files: SIZE_LIMITS_FLOW });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
@@ -272,7 +283,7 @@ describe("spec_gate", () => {
 		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits });
 		await seedClassification(h);
 		expect(parseChange(await h.world.bodyOf(h.n)).units).toHaveLength(9);
-		await h.call("spec_gate", { target: "plan" });
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		const request = (await ofKind(h, "request"))[0];
 		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
 		await h.world.setPermission("alice", "write");
@@ -286,7 +297,7 @@ describe("spec_gate", () => {
 	test("over the unit limit, in session approve is not offered", async () => {
 		const h = await change("plan", { ui: human("approve"), edit: nineUnits });
 		await seedClassification(h);
-		await h.call("spec_gate", { target: "plan" });
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		const options = h.ctx.ui.select.mock.calls[0]?.[1] ?? [];
 		expect(options).not.toContain("approve");
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
@@ -296,7 +307,7 @@ describe("spec_gate", () => {
 	test("Waived", async () => {
 		const h = await change("plan", { ui: human("waive"), edit: nineUnits });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
@@ -308,7 +319,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const h = await change("plan", { config: FORGE_CHAIN, files: SIZE_LIMITS_FLOW });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const request = (await ofKind(h, "request"))[0];
 		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
@@ -323,7 +334,7 @@ describe("spec_gate", () => {
 	test("Named gate option recorded", async () => {
 		registerGate("custom-gate", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
 		const h = await change("build", { ui: human("accept") });
-		const out = await h.call("spec_gate", { target: "custom-gate" });
+		const out = await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", outcome: "approved", waivers: [] });
@@ -336,7 +347,7 @@ describe("spec_gate", () => {
 		registerGate("custom-gate", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
 		const h = await change("build", { ui: human("accept"), files: flow });
-		const out = await h.call("spec_gate", { target: "custom-gate" });
+		const out = await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
 		expect(textOf(out)).toContain("choose waive");
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", superseded: true, waivers: [] });
@@ -347,7 +358,7 @@ describe("spec_gate", () => {
 		const h = await change("plan", { ui: human("approve") });
 		await seedClassification(h);
 		h.session.activeTree = "/home/u/.pi/livespec/agent-skills/trees/0123abc";
-		await h.call("spec_gate", { target: "plan" });
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		const units = parseChange(await h.world.bodyOf(h.n)).units;
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate.locked).toEqual(Object.fromEntries(units.map((u) => [u.id, unitDigest(u)])));
@@ -395,7 +406,7 @@ describe("spec_gate", () => {
 					},
 				}),
 		});
-		await h.call("spec_gate", { target: "define" });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(await ofKind(h, "gate")).toHaveLength(1);
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
 		await h.call("spec_status");
@@ -405,7 +416,7 @@ describe("spec_gate", () => {
 
 	test("ship gate is refused naming durable-docs when the ship context cannot be built", async () => {
 		const h = await change("ship", { ui: human("approve"), edit: shipReady, config: "# no integrationBranch\n" });
-		const out = await h.call("spec_gate", { target: "ship" });
+		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("durable-docs");
 		expect(await shipGates(h)).toEqual([]);
@@ -413,7 +424,7 @@ describe("spec_gate", () => {
 
 	test("Ship approved", async () => {
 		const h = await change("ship", { ui: human("approve"), edit: shipReady });
-		const out = await h.call("spec_gate", { target: "ship" });
+		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(gateData((await shipGates(h))[0])).toMatchObject({ phase: "ship", outcome: "approved" });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
@@ -422,7 +433,7 @@ describe("spec_gate", () => {
 
 	test("Changes requested", async () => {
 		const h = await change("define", { ui: human("request changes", "tighten the cap") });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ outcome: "changes_requested", notes: "tighten the cap" });
 		const stale = await ofKind(h, "stale");
 		expect(stale).toHaveLength(1);
@@ -433,7 +444,7 @@ describe("spec_gate", () => {
 
 	test("changes requested on the forge show the human's notes in the next step", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
-		await h.call("spec_gate", { target: "define" });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		await h.world.setPermission("alice", "write");
 		await h.world.postComment(h.n, "alice", "/livespec changes cover <IPv6> too");
 		const out = await h.call("spec_next");
@@ -443,14 +454,14 @@ describe("spec_gate", () => {
 
 	test("in-session changes requested show the notes in the tool result", async () => {
 		const h = await change("define", { ui: human("request changes", "tighten the cap") });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(textOf(out)).toContain(`Notes: <untrusted>tighten the cap</untrusted>`);
 	});
 
 	test("Dismissed", async () => {
 		const h = await change("plan", { ui: human("dismiss") });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/plan"]);
 		expect(textOf(out)).toContain("The plan gate was dismissed: ask the human how to proceed.");
@@ -458,7 +469,7 @@ describe("spec_gate", () => {
 
 	test("refusal writes nothing", async () => {
 		const h = await change("define", { ui: human("approve"), edit: (b) => b.replace("- [x] Q1 (blocking)", "- [ ] Q1 (blocking)") });
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("Q1");
 		expect(h.ctx.ui.select).not.toHaveBeenCalled();
@@ -471,7 +482,7 @@ describe("spec_gate", () => {
 		for (const id of ["Q3", "Q4", "Q5", "Q6", "Q7"]) await seedMarked(h, stale(id));
 		await seedMarked(h, writeMarked("stuck", "S1", { where: "x", tried: [], hypothesis: "h", options: [{ id: "A", label: "a" }], recommended: "A" }));
 		await seedMarked(h, writeMarked("stuck", "S1-answer", { request: "stuck-S1.x", outcome: "dismissed", notes: "", by: "alice", at: AT, adapter: "forge" }));
-		const out = await h.call("spec_gate", { target: "define" });
+		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("new stuck report");
 		expect(card(h).step.next).toContain("spec_stuck");
@@ -482,7 +493,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: ship\n    checks: [size-limits]\n" };
 		const h = await change("ship", { ui: human("waive"), edit: noPr, files: flow });
-		const out = await h.call("spec_gate", { target: "ship" });
+		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(gateData((await shipGates(h))[0])).toMatchObject({ phase: "ship", outcome: "approved", waivers: ["size-limits"] });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
@@ -491,7 +502,7 @@ describe("spec_gate", () => {
 
 	test("Dirty tree when the answer is read", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
-		await h.call("spec_gate", { target: "define" });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		await writeIn(h.root, "scratch.txt", "x");
 		await h.world.setPermission("alice", "write");
 		await h.world.postComment(h.n, "alice", "/livespec approve");
@@ -506,7 +517,7 @@ describe("spec_gate", () => {
 
 	test("unknown target is refused", async () => {
 		const h = await change("define", { ui: human("approve") });
-		const out = await h.call("spec_gate", { target: "deploy" });
+		const out = await h.call("spec_gate", { target: "deploy", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("neither the current phase");
 	});
@@ -517,7 +528,7 @@ describe("spec_gate gate-only checks", () => {
 		registerCheck("verify-red-on-base", async () => [{ code: "verify-red-on-base", severity: "error", message: "U1 is green on Base" }], { at: "gate", key: () => "k" });
 		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan" });
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("verify-red-on-base");
 		expect(await ofKind(h, "gate")).toEqual([]);
@@ -529,7 +540,7 @@ describe("named gate payload", () => {
 		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
 		registerGate("custom-gate", { checks: ["dep-audit"] });
 		const h = await change("build", { ui: human("approve") });
-		await h.call("spec_gate", { target: "custom-gate" });
+		await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
 		const summary = h.ctx.ui.select.mock.calls[0]?.[0] ?? "";
 		expect(summary).toContain("Gate checks:");
 		expect(summary).toContain("dep-audit (warning): left-pad is unmaintained");
@@ -540,7 +551,7 @@ describe("named gates with a proposer", () => {
 	test("Gate with a proposer", async () => {
 		registerGate("initiative", { checks: [], proposer: "initiative_propose" });
 		const h = await change("build", { config: FORGE_CHAIN });
-		const out = await h.call("spec_gate", { target: "initiative" });
+		const out = await h.call("spec_gate", { target: "initiative", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("initiative_propose");
 		expect(await ofKind(h, "request")).toEqual([]);
@@ -580,5 +591,82 @@ describe("named gates with a proposer", () => {
 		expect(again.isError).toBe(true);
 		expect(textOf(again)).toContain("pending");
 		expect(await ofKind(h, "request")).toHaveLength(1);
+	});
+
+	describe("briefing", () => {
+		test("Human gate without a briefing", async () => {
+			let ran = 0;
+			registerCheck("verify-red-on-base", async () => (ran++, []), { waivable: true, at: "gate", key: () => "stub" });
+			const h = await change("plan", { config: FORGE_CHAIN });
+			await seedClassification(h);
+			for (const briefing of [undefined, "text"]) {
+				const out = await h.call("spec_gate", { target: "plan", ...(briefing === undefined ? {} : { briefing }) });
+				expect(out.isError).toBe(true);
+				expect(textOf(out)).toContain("briefing");
+			}
+			expect(ran).toBe(0);
+			expect(await ofKind(h, "request")).toEqual([]);
+			expect((await marked(h)).filter((m) => m.kind === "decide")).toEqual([]);
+		});
+
+		test("Missing briefing names what it must contain", async () => {
+			const h = await change("define", { config: FORGE_CHAIN });
+			const out = await h.call("spec_gate", { target: "define" });
+			expect(textOf(out)).toMatch(/summary/);
+			expect(await ofKind(h, "request")).toEqual([]);
+		});
+
+		test("Rationale missing", async () => {
+			const h = await change("define", { config: FORGE_CHAIN });
+			const out = await h.call("spec_gate", { target: "define", briefing: { summary: "s", recommended: "approve" } });
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("rationale");
+			expect(await ofKind(h, "request")).toEqual([]);
+		});
+
+		test("Self gate ignores the briefing", async () => {
+			for (const briefing of [undefined, { nonsense: true }, 7]) {
+				const h = await change("shape");
+				const out = await h.call("spec_gate", { target: "shape", ...(briefing === undefined ? {} : { briefing }) });
+				expect(out.isError, textOf(out)).toBe(false);
+				expect(await ofKind(h, "gate")).toHaveLength(1);
+				await cleanupDirs();
+			}
+		});
+
+		test("Approve not recommended while a check must be waived", async () => {
+			registerSizeLimits();
+			const h = await change("plan", { config: FORGE_CHAIN, files: SIZE_LIMITS_FLOW });
+			await seedClassification(h);
+			const bad = await h.call("spec_gate", { target: "plan", briefing: { summary: "s", recommended: "approve", rationale: "r" } });
+			expect(bad.isError).toBe(true);
+			expect(textOf(bad)).toContain("waive");
+			expect(await ofKind(h, "request")).toEqual([]);
+			const good = await h.call("spec_gate", { target: "plan", briefing: { summary: "s", recommended: "waive", rationale: "r" } });
+			expect(good.isError, textOf(good)).toBe(false);
+			const request = (await ofKind(h, "request"))[0]?.data as { briefing: { recommended: string; author: string } };
+			expect(request.briefing).toMatchObject({ recommended: "waive", author: "agent" });
+		});
+
+		test("Recommend waive only when offered", async () => {
+			const h = await change("define", { config: FORGE_CHAIN });
+			const out = await h.call("spec_gate", { target: "define", briefing: { summary: "s", recommended: "waive", rationale: "r" } });
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain("approve, changes, dismiss");
+			expect(await ofKind(h, "request")).toEqual([]);
+		});
+
+		test("sendNamedGate refuses a recommendation it does not offer", async () => {
+			registerGate("new-dependency", { checks: [], proposer: "new_dependency" });
+			const h = await change("build", { config: FORGE_CHAIN });
+			const w = await prepareWrite();
+			if (!w.ok) throw new Error(w.message);
+			const state = requireChange(w.session);
+			if (!state.ok) throw new Error(state.message);
+			const briefing = { summary: "s", recommended: "C", rationale: "r", author: "agent" as const };
+			const out = await sendNamedGate(w, state.state, { target: "new-dependency", options: [{ id: "A", label: "A" }], drafts: {}, summary: "s", ctx: h.ctx as never, tool: "new_dependency", briefing });
+			expect(out.isError).toBe(true);
+			expect(await ofKind(h, "request")).toEqual([]);
+		});
 	});
 });
