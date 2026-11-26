@@ -30,5 +30,5 @@ Blocked by: 2
 
 Blocked by: 3
 
-- [ ] 4.1 Update `README.md` and `README.vi.md` (in-session adapter row, dialog keys, fallback in RPC/print), `docs/architecture.md` (interaction section: dialog modules and fallback) and `CHANGELOG.md` Unreleased (Added: in-session dialog; Changed: `@earendil-works/pi-tui` peer dependency)
-- [ ] 4.2 Run `bun run typecheck`, `bun run test` and `openspec validate --specs`; fix any failure
+- [x] 4.1 Update `README.md` and `README.vi.md` (in-session adapter row, dialog keys, fallback in RPC/print), `docs/architecture.md` (interaction section: dialog modules and fallback) and `CHANGELOG.md` Unreleased (Added: in-session dialog; Changed: `@earendil-works/pi-tui` peer dependency)
+- [x] 4.2 Run `bun run typecheck`, `bun run test` and `openspec validate --specs`; fix any failure
