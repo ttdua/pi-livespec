@@ -1,7 +1,7 @@
 // The decision seam: runs the registered rule for a point and, when the rule
 // asks, hands the question to the caller's approver. It never writes anything.
 
-import { validateOptionTexts } from "../interaction/briefing.ts";
+import { validateBriefing, validateOptionTexts } from "../interaction/briefing.ts";
 import { type RuleResult, ruleFor } from "./registry.ts";
 
 export type DecisionAsk = {
@@ -45,6 +45,9 @@ function checkRuleAsk(point: string, ask: Extract<RuleResult, { ask: unknown }>[
 	if (ask.recommended !== undefined && !ask.options.some((o) => o.id === ask.recommended)) {
 		throw new Error(`decision \`${point}\` recommends \`${ask.recommended}\`, which it does not offer`);
 	}
+	if (ask.recommended === undefined) return;
+	const briefing = validateBriefing({ summary: ask.summary, recommended: ask.recommended, rationale: ask.rationale }, ask.options.map((o) => o.id), { author: "rule" });
+	if ("refused" in briefing) throw new Error(`decision \`${point}\` ${briefing.refused}`);
 }
 
 /** Runs the rule for `point`; an `ask` goes to `deps.ask`. Throws on an unregistered point, a missing approver or an answer without a choice. */

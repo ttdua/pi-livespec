@@ -138,7 +138,7 @@ export function stuckRequest(state: ChangeState, id: string, report: StuckReport
 	const briefing = report.rationale === undefined ? undefined : { summary: report.hypothesis, recommended: report.recommended, rationale: report.rationale, author: "agent" as const };
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options: report.options, head: state.git.head, body: "", snapshot, summary, now, ...(briefing ? { briefing } : {}) });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary, links: [], files: [], mode: "blocking", options: report.options, ...(briefing ? { briefing } : {}) };
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options: report.options, ...(briefing ? { briefing } : {}) };
 }
 
 /**

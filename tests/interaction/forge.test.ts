@@ -143,6 +143,14 @@ describe("forge adapter", () => {
 		expect(out.warnings[0]).toContain("created before the request gate-define.later");
 	});
 
+	test("choose on a pending question with candidates is ignored", () => {
+		const options = [{ id: "A", label: "redis" }, { id: "B", label: "memory" }];
+		const q = pending("question:Q3", { options, snapshot: { id: "Q3", text: "which store?", requirements: [] } }, "question");
+		const out = matchThread([q], [comment("9", "alice", "/livespec choose A", LATER)], writers("alice"));
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([expect.stringContaining("no pending request it can answer")]);
+	});
+
 	test("Answer that changes a requirement", () => {
 		const q = pending("question:Q2", { snapshot: { id: "Q2", text: "limits?", requirements: [] } }, "question");
 		const body = "/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap";

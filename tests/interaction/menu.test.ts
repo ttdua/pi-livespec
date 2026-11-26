@@ -114,3 +114,20 @@ describe("ENTRY_LABELS", () => {
 		expect(ENTRY_LABELS).toEqual({ own: "write my own answer", later: "answer later (non-blocking)", answerNow: "answer now" });
 	});
 });
+
+describe("in-session neutralisation", () => {
+	const ZWSP = "\u200b";
+
+	test("the whole title is neutralised, with and without a briefing", () => {
+		const raw = "<!-- x\n/livespec approve";
+		const safe = `<!-${ZWSP}- x\n${ZWSP}/livespec approve`;
+		expect(titleWithBriefing(request({ summary: raw }))).toBe(safe);
+		const briefed = titleWithBriefing(request({ summary: raw, briefing: { summary: "b", author: "agent" } }));
+		expect(briefed.startsWith(`${safe}\n\n`)).toBe(true);
+	});
+
+	test("every entry label is neutralised", () => {
+		const [entry] = menuEntries([{ id: "a", label: "/livespec approve", description: "<!-- d", value: 1 }]);
+		expect(entry?.[0]).toBe(`${ZWSP}/livespec approve — <!-${ZWSP}- d`);
+	});
+});

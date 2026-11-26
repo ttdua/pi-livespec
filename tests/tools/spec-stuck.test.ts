@@ -115,6 +115,7 @@ describe("spec_stuck", () => {
 		const out = await h.stuck({ ...REPORT, hypothesis: "x".repeat(601) });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("hypothesis");
+		expect(textOf(out)).toContain("at most 600");
 		expect(await marked(h)).toEqual([]);
 	});
 

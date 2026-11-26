@@ -22,7 +22,7 @@ export function orderRecommended<T extends { id: string }>(choices: T[], recomme
 /** `<label> — <description>`, the recommended entry first and marked; no raw ids are shown. */
 export function menuEntries<T>(choices: MenuChoice<T>[], recommended?: string): MenuEntry<T>[] {
 	return orderRecommended(choices, recommended).map((c) => {
-		const text = c.description ? `${c.label} — ${c.description}` : c.label;
+		const text = neutralise(c.description ? `${c.label} — ${c.description}` : c.label);
 		return [c.id === recommended ? text + RECOMMENDED : text, c.value] as const;
 	});
 }
@@ -43,5 +43,6 @@ export function briefingLines(b: Briefing, recommendedLabel?: string): string[] 
 
 /** The facts (`summary`), a blank line, then the briefing; just the summary without a briefing. */
 export function titleWithBriefing(r: ApprovalRequest, recommendedLabel?: string): string {
-	return r.briefing ? `${r.summary}\n\n${neutralise(briefingLines(r.briefing, recommendedLabel).join("\n"))}` : r.summary;
+	const title = r.briefing ? `${r.summary}\n\n${briefingLines(r.briefing, recommendedLabel).join("\n")}` : r.summary;
+	return neutralise(title);
 }

@@ -327,6 +327,12 @@ describe("spec_question candidates", () => {
 		expect(data.briefing).toEqual({ summary: "Which store keeps the counters?", recommended: "A", rationale: "Survives restarts.", author: "agent" });
 	});
 
+	test("the recommended parameter is limited to the candidate ids", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		const schema = h.pi.tools.get("spec_question")?.parameters as { properties: { recommended: { enum?: string[] } } };
+		expect(schema.properties.recommended.enum).toEqual(["A", "B", "C", "D"]);
+	});
+
 	test("candidates without a recommendation carry no recommended", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		expect((await h.ask({ text: "Which store?", candidates: CANDS })).isError).toBe(false);
@@ -402,6 +408,7 @@ describe("spec_question candidates", () => {
 		const before = await h.world.bodyOf(h.n);
 		const out = await h.ask({ text: "Which?", candidates: CANDS, recommended: "A", rationale: "x".repeat(601) });
 		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("at most 600");
 		expect(await h.world.bodyOf(h.n)).toBe(before);
 	});
 
