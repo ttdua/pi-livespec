@@ -1,6 +1,7 @@
-// The in-session adapter (design D5). It asks the human through `ui.select` and
-// `ui.input`, called by livespec code, and uses only the values those calls
-// return. A cancelled dialog is `dismissed`, never an approval.
+// The in-session adapter (design D5). In the pi TUI it asks the human through one
+// custom dialog per request (`ui.dialog`); elsewhere, and when that dialog draws
+// nothing, through `ui.select` and `ui.input`. Both are called by livespec code,
+// and it uses only the values they return. A cancelled dialog is `dismissed`, never an approval.
 //
 // Every yes/no question is a `select` over explicit labels, never `ui.confirm`:
 // `confirm` returns `false` both for "no" and for a cancelled dialog, so a
@@ -9,7 +10,6 @@
 // inferred from a raw request label.
 
 import type {
-	Answered,
 	ApprovalRequest,
 	Approver,
 	ApproverUI,
@@ -17,19 +17,13 @@ import type {
 	Difficulty,
 	Outcome,
 	Override,
-	RequestOption,
 } from "./approver.ts";
 import { gateChoices } from "./describe-actions.ts";
-import { type MenuEntry, menuEntries, titleWithBriefing } from "./menu.ts";
+import { createDialog } from "./dialog/host.ts";
+import { CANCELLED, type Cancelled, type Verdict } from "./flow-result.ts";
+import { ENTRY_LABELS, type MenuEntry, menuEntries, titleWithBriefing } from "./menu.ts";
 
 const DIFFICULTIES: Difficulty[] = ["low", "medium", "high"];
-
-/** Returned when the human cancels any dialog; the request turns into `dismissed`. */
-const CANCELLED = Symbol("cancelled");
-type Cancelled = typeof CANCELLED;
-
-/** The answer fields a flow decides; `by`, `at` and `adapter` are added by the adapter. */
-type Verdict = Omit<Answered, "status" | "by" | "at" | "adapter">;
 
 const DISMISSED: Verdict = { outcome: "dismissed", notes: "" };
 
@@ -181,8 +175,8 @@ async function askQuestionStep(ui: ApproverUI, r: ApprovalRequest): Promise<Ques
 	const title = titleWithBriefing(r, recommendedLabel(r, options));
 	if (options.length === 0) {
 		return choose<QuestionStep>(ui, title, [
-			["answer now", { kind: "own" }],
-			["answer later (non-blocking)", { kind: "later" }],
+			[ENTRY_LABELS.answerNow, { kind: "own" }],
+			[ENTRY_LABELS.later, { kind: "later" }],
 		]);
 	}
 	const candidates = menuEntries(
@@ -191,8 +185,8 @@ async function askQuestionStep(ui: ApproverUI, r: ApprovalRequest): Promise<Ques
 	);
 	return choose<QuestionStep>(ui, title, [
 		...candidates,
-		["write my own answer", { kind: "own" }],
-		["answer later (non-blocking)", { kind: "later" }],
+		[ENTRY_LABELS.own, { kind: "own" }],
+		[ENTRY_LABELS.later, { kind: "later" }],
 	]);
 }
 
@@ -227,13 +221,23 @@ function flowFor(r: ApprovalRequest): (ui: ApproverUI, r: ApprovalRequest) => Pr
 	return gateFlow;
 }
 
+/**
+ * One dialog for `r` where the host draws it (design D2). An explicit cancel is `CANCELLED`; a dialog
+ * that resolves `undefined` drew nothing, so the `select` chain asks the same request instead.
+ */
+async function askHuman(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Deferred | Cancelled> {
+	const out = ui.dialog === undefined ? undefined : await ui.dialog(createDialog(r));
+	if (out === undefined) return flowFor(r)(ui, r);
+	return out.kind === "cancelled" ? CANCELLED : out.result;
+}
+
 /** `login` resolves the current forge login, recorded as `by`. */
 export function createInSessionApprover(ui: ApproverUI, login: () => Promise<string>): Approver {
 	return {
 		name: "in-session",
 		available: () => ui.hasUI,
 		async request(r) {
-			const result = await flowFor(r)(ui, r);
+			const result = await askHuman(ui, r);
 			if (result !== CANCELLED && "status" in result) return result;
 			const verdict = result === CANCELLED ? DISMISSED : result;
 			return { status: "answered", ...verdict, by: await login(), at: new Date().toISOString(), adapter: "in-session" };

@@ -11,7 +11,7 @@ import type { Subject } from "../../src/interaction/approver.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import { unitClassification } from "../../src/engine/unit-classification.ts";
-import { historyUnitIds } from "../../src/tools/unit-amend.ts";
+import { amendForm, amendRequest, historyUnitIds, planAmend } from "../../src/tools/unit-amend.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
 import { CHANGE_BRANCH } from "../hooks/helpers.ts";
@@ -518,5 +518,40 @@ describe("historyUnitIds", () => {
 			decision("difficulty.U6", { subject: "U6", source: "human" }),
 		];
 		expect(historyUnitIds(marked)).toEqual(["U5", "U6"]);
+	});
+});
+
+describe("amendment current values", () => {
+	async function plan(h: Amend, params: unknown) {
+		const card = h.session.card;
+		if (card.kind !== "change") throw new Error("no change card");
+		const form = amendForm(params as never);
+		if ("refused" in form) throw new Error(form.refused);
+		const body = await h.world.bodyOf(h.n);
+		const result = await planAmend(card.state, body, form, h.session.pack.ok ? h.session.pack.pack.decisions : {});
+		if ("refused" in result) throw new Error(result.refused);
+		return amendRequest(card.state, result, body, new Date(0));
+	}
+
+	test("edit carries the classified unit's values", async () => {
+		const h = await planned();
+		const r = await plan(h, { unit: "U1", replacement: { ...U1, extra_tags: ["docs"] } });
+		const rendered = (r.record.snapshot as { lines: string[] }).lines;
+		expect(r.overridable?.units).toEqual(["U1"]);
+		expect(rendered).toContain(`Difficulty: ${r.overridable?.current?.U1?.difficulty}`);
+		expect(r.overridable?.current?.U1?.tags).toContain("docs");
+	});
+
+	test("add carries the new unit's values", async () => {
+		const h = await planned();
+		const r = await plan(h, { add: true, replacement: unit("Burst", "src/limits/burst.ts", "b") });
+		expect(r.overridable?.units).toEqual(["U3"]);
+		expect(Object.keys(r.overridable?.current ?? {})).toEqual(["U3"]);
+		expect(r.overridable?.current?.U3?.tags).toBeInstanceOf(Array);
+	});
+
+	test("drop has no overridable", async () => {
+		const h = await planned();
+		expect((await plan(h, { drop: true, unit: "U1" })).overridable).toBeUndefined();
 	});
 });

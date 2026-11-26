@@ -7,7 +7,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { formatResults } from "../commands/validate.ts";
 import { messageOf } from "../core/messages.ts";
-import { parseChange, type Unit } from "../core/change.ts";
+import { isDifficulty, parseChange, type Unit } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import type { UnitInput } from "../core/unit-blocks.ts";
 import { renderUnit } from "../core/unit-blocks.ts";
@@ -18,7 +18,7 @@ import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { validateBriefing } from "../interaction/briefing.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
-import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest, type Briefing, type Subject } from "../interaction/approver.ts";
+import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest, type Briefing, type Difficulty, type Subject } from "../interaction/approver.ts";
 import { allRequests, prepareRequest } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { blockingStateRefusal } from "../engine/gates.ts";
@@ -35,7 +35,8 @@ export type UnitAmendParams = { unit?: string; add?: boolean; drop?: boolean; re
 /** The three accepted forms of a call. */
 export type AmendForm = { action: "edit"; unit: string; replacement: UnitInput } | { action: "add"; replacement: UnitInput } | { action: "drop"; unit: string };
 
-export type AmendPlan = { snapshot: AmendSnapshot; summary: string };
+export type AmendPlan = { snapshot: AmendSnapshot; summary: string; current?: { difficulty?: Difficulty; tags: string[] } };
+type Contract = { snapshot: AmendSnapshot; current: NonNullable<AmendPlan["current"]> };
 
 const TOOL = "unit_amend";
 const AMEND_PREFIX = "amend:";
@@ -115,7 +116,7 @@ function dropRefusal(units: Unit[], target: Unit): { refused: string } | undefin
 }
 
 /** The snapshot of an edit or add: the classified, rendered unit; an edit keeps the unit's status line. */
-async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], history: string[], decisions: Pack["decisions"], ask?: DecisionAsker): Promise<AmendSnapshot | { refused: string }> {
+async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, units: Unit[], history: string[], decisions: Pack["decisions"], ask?: DecisionAsker): Promise<Contract | { refused: string }> {
 	const existing = form.action === "edit" ? units.find((u) => u.id === form.unit) : undefined;
 	if (form.action === "edit" && !existing) return refusal(`${form.unit} is not in the body.`);
 	const id = existing?.id ?? nextUnitId(units, history);
@@ -126,11 +127,12 @@ async function contractSnapshot(form: Exclude<AmendForm, { action: "drop" }>, un
 		return refusal(`${messageOf(error)}; no request was sent.`);
 	}
 	if (classified.status !== "classified") return refusal(`decision \`${classified.point}.${classified.subject}\` waits for a human answer (request ${classified.requestId}); no amendment request was sent.`);
-	const lines = renderUnit(classified.units[0]!);
+	const unit = classified.units[0]!;
+	const lines = renderUnit(unit);
 	if (existing && existing.statusText !== "") lines[lines.length - 1] = existing.statusText;
 	const snapshot: AmendSnapshot = { action: form.action, unit: id, lines, records: classified.records };
 	if (existing) Object.assign(snapshot, { oldDigest: unitDigest(existing), oldDone: existing.done });
-	return snapshot;
+	return { snapshot, current: { ...(isDifficulty(unit.difficulty) ? { difficulty: unit.difficulty } : {}), tags: unit.tags } };
 }
 
 /** The current block of `unit`, heading to status line. */
@@ -161,7 +163,8 @@ function planErrors(body: string, s: AmendSnapshot): string | undefined {
  */
 export async function planAmend(state: ChangeState, body: string, form: AmendForm, decisions: Pack["decisions"], ask?: DecisionAsker): Promise<AmendPlan | { refused: string }> {
 	const units = parseChange(body).units;
-	let snapshot: AmendSnapshot | { refused: string };
+	let snapshot: AmendSnapshot;
+	let current: AmendPlan["current"];
 	if (form.action === "drop") {
 		const target = units.find((u) => u.id === form.unit);
 		if (!target) return refusal(`${form.unit} is not in the body.`);
@@ -169,13 +172,14 @@ export async function planAmend(state: ChangeState, body: string, form: AmendFor
 		if (refused) return refused;
 		snapshot = { action: "drop", unit: target.id, oldDigest: unitDigest(target), oldDone: target.done, records: [] };
 	} else {
-		snapshot = await contractSnapshot(form, units, historyUnitIds(state.marked), decisions, ask);
+		const contract = await contractSnapshot(form, units, historyUnitIds(state.marked), decisions, ask);
+		if ("refused" in contract) return contract;
+		({ snapshot, current } = contract);
 	}
-	if ("refused" in snapshot) return snapshot;
 	const invalid = planErrors(body, snapshot);
 	if (invalid) return { refused: invalid };
 	const target = units.find((u) => u.id === snapshot.unit);
-	return { snapshot, summary: summaryOf(state.issue.number, snapshot, target ? blockOf(body, target) : undefined) };
+	return { snapshot, summary: summaryOf(state.issue.number, snapshot, target ? blockOf(body, target) : undefined), ...(current ? { current } : {}) };
 }
 
 /**
@@ -198,7 +202,7 @@ export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, 
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...extra, head: state.git.head, body, snapshot: plan.snapshot, summary: plan.summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", ...extra };
-	if (plan.snapshot.action !== "drop") request.overridable = { units: [plan.snapshot.unit] };
+	if (plan.snapshot.action !== "drop") request.overridable = { units: [plan.snapshot.unit], ...(plan.current ? { current: { [plan.snapshot.unit]: plan.current } } : {}) };
 	return request;
 }
 

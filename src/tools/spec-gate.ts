@@ -6,6 +6,7 @@
 // `nextStep` and applied by `Session.refresh`.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isDifficulty } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { runChecks } from "../engine/checks.ts";
 import { shipFor } from "../ship/context.ts";
@@ -96,6 +97,13 @@ export function selfGateComment(state: ChangeState, target: string, now: Date, a
 	return gateComment(`self-${now.getTime().toString(BASE36)}`, input);
 }
 
+/** The Difficulty and Tags each unit has now, for the dialog's Adjust units tab. */
+function currentValues(state: ChangeState): NonNullable<ApprovalRequest["overridable"]>["current"] {
+	return Object.fromEntries(
+		state.change.units.map((u) => [u.id, { ...(isDifficulty(u.difficulty) ? { difficulty: u.difficulty } : {}), tags: u.tags ?? [] }]),
+	);
+}
+
 /** The prepared envelope of a human gate request, with the review payload. */
 export function gateRequest(
 	state: ChangeState,
@@ -116,7 +124,7 @@ export function gateRequest(
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...options, ...briefing, head: state.git.head, body: input.body, snapshot, summary: input.payload.summary, now: input.now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: input.payload.links, files: input.payload.files, mode: "blocking", ...options, ...briefing };
-	if (target === PLAN) request.overridable = { units: state.change.units.map((u) => u.id) };
+	if (target === PLAN) request.overridable = { units: state.change.units.map((u) => u.id), current: currentValues(state) };
 	return request;
 }
 

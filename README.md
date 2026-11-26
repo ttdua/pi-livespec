@@ -135,7 +135,7 @@ You talk to the agent as usual. livespec adds three things the agent and you bot
 
 - **The phase card.** Every turn the agent sees the change, the phase, counters, failing checks and **one next step**. Ask "what's next?" or run `/livespec next` to see the same sentence yourself.
 - **livespec tools.** The agent calls tools such as `change_new`, `spec_gate` or `unit_finish`. You never need to type tool calls; ask in plain language ("start a change for X", "request the define gate", "ship it"). When a next step says *a human runs X*, livespec expects **you** to tell the agent to do it.
-- **Requests that wait for you.** Gates, questions, stuck reports and some decisions wait for a human answer. With the default `in-session` adapter they appear as a pi dialog during the tool call; with the `forge` adapter they appear as a comment on the issue that you answer with a `/livespec …` comment.
+- **Requests that wait for you.** Gates, questions, stuck reports and some decisions wait for a human answer. With the default `in-session` adapter they appear as one pi dialog per request during the tool call; with the `forge` adapter they appear as a comment on the issue that you answer with a `/livespec …` comment.
 
 **Rule of thumb:** when the agent stops and the card says "Wait for the human's answer to …", it is your turn. Everything else the agent can do on its own.
 
@@ -245,7 +245,7 @@ Every human decision follows the same lifecycle: the agent asks, **you** answer,
 
 | Adapter | When it is used | What you see | How you answer |
 |---|---|---|---|
-| `in-session` (default) | pi has a UI (`hasUI`) | a select dialog during the tool call | pick an option; pressing Esc counts as **dismiss** |
+| `in-session` (default) | pi has a UI (`hasUI`) | one dialog per request in the pi TUI; select prompts in RPC hosts and other modes | pick an option and submit it on **Review**; Esc counts as **dismiss** |
 | `forge` | the forge is connected and writable | a `request` comment on the change issue | post a new comment whose **first line** is a `/livespec …` command |
 
 Choose the order in `interaction.adapter` (for example `[in-session, forge]`: dialogs while you are at the keyboard, the issue otherwise, and in print mode). `/livespec doctor` shows which adapter would answer now.
@@ -261,7 +261,19 @@ The dialog title is the request summary (the facts), then the briefing (see [The
 
 A question offers its candidate answers (if the agent gave 2 to 4), **write my own answer** and **answer later (non-blocking)**. Picking a candidate answers with its label as the text.
 
-After approve or an option you choose **No notes** or **Add notes**. At the plan gate and for amendments you are then asked **Keep classification** or **Adjust Difficulty or Tags**, where you can override each unit.
+In the pi TUI the request is one dialog with the tabs **Decision**, **Adjust units** (only when units can be overridden) and **Review**. Notes are written inside it with `n`, and nothing is sent until you submit on **Review**. **answer later** and **dismiss** end the dialog at once, without Review.
+
+In RPC hosts and other modes the same answers come from select prompts: after approve or an option you choose **No notes** or **Add notes**, and at the plan gate and for amendments **Keep classification** or **Adjust Difficulty or Tags**.
+
+**Dialog keys** (TUI):
+
+- `↑` `↓` move; `1`–`9` pick the entry with that number.
+- `n` write a note.
+- `Tab` / `Shift+Tab` next / previous tab.
+- `←` / `→` change Difficulty; `e` edit tags (Adjust units).
+- `PgUp` / `PgDn` scroll the facts and briefing.
+- `Enter` pick (Decision), next tab (Adjust units), submit (Review); in an open editor, save it.
+- `Esc` cancel the request (`dismissed`); with an editor open, close only the editor.
 
 ### The briefing and the recommendation
 
