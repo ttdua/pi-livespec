@@ -124,6 +124,12 @@ describe("submit and canSubmit", () => {
 		expect(after.error).toBeDefined();
 	});
 
+	test("opening an editor clears a stale submit error", () => {
+		const m = gate();
+		const s: DialogState = { ...initialState(m), picked: 1, notes: "", tab: 1, error: "A note is required" };
+		expect(reduce(m, s, { type: "openEditor", editor: "note" }).error).toBeUndefined();
+	});
+
 	test("submit only on the review tab", () => {
 		const m = gate();
 		const s: DialogState = { ...initialState(m), picked: 0 };

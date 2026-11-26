@@ -10,7 +10,7 @@ const TABLE: Record<string, string[]> = {
 	"tui.select.up": ["\x1b[A"],
 	"tui.select.down": [KEY.down],
 	"tui.select.confirm": [KEY.enter],
-	"tui.select.cancel": [KEY.escape],
+	"tui.select.cancel": [KEY.escape, "\x03"],
 	"tui.input.submit": [KEY.enter],
 };
 const kb = { matches: (data: string, id: string) => TABLE[id]?.includes(data) ?? false } as unknown as KeybindingsManager;
@@ -202,9 +202,29 @@ describe("createDialog", () => {
 		}
 	});
 
-	test("Ctrl+C-style cancel in an editor only closes the editor", () => {
+	test("after the terminal widens, one PgUp still moves the body", () => {
+		const summary = Array.from({ length: 40 }, (_, i) => `fact ${i + 1} ${"x".repeat(90)}`).join("\n");
+		const PAGE_DOWN = "\x1b[6~";
+		const PAGE_UP = "\x1b[5~";
+		TABLE["tui.select.pageDown"] = [PAGE_DOWN];
+		TABLE["tui.select.pageUp"] = [PAGE_UP];
+		try {
+			const { press, component } = mount(request({ summary }), 30);
+			component.render(60);
+			press(...Array.from({ length: 40 }, () => PAGE_DOWN));
+			const firstFact = () => component.render(200).find((l) => /^fact \d+ /.test(l));
+			const before = firstFact();
+			press(PAGE_UP);
+			expect(firstFact()).not.toBe(before);
+		} finally {
+			delete TABLE["tui.select.pageDown"];
+			delete TABLE["tui.select.pageUp"];
+		}
+	});
+
+	test("Ctrl+C in an editor only closes the editor", () => {
 		const { done, press, component } = mount(request());
-		press("n", "x", KEY.escape);
+		press("n", "x", "\x03");
 		expect(done).not.toHaveBeenCalled();
 		expect(component.render(80)).not.toContain("[x]");
 	});

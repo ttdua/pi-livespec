@@ -127,7 +127,7 @@ function closeEditor(model: DialogModel, state: DialogState, text: string): Dial
 function openEditor(model: DialogModel, state: DialogState, editor: EditorName): DialogState {
 	if (editor === "tags" && tabOf(model, state) !== "units") return state;
 	if (editor === "note" && !model.notes) return state;
-	return { ...state, editor };
+	return { ...state, editor, error: undefined };
 }
 
 function cycleDifficulty(model: DialogModel, state: DialogState, delta: 1 | -1): DialogState {

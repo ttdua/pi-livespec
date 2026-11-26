@@ -121,7 +121,9 @@ class DialogHost implements Component, Focusable {
 	private clamped(next: DialogState, action: DialogAction): DialogState {
 		if (action.type !== "scroll") return next;
 		const max = maxScrollOf(this.model, next, { width: this.width, height: this.height() });
-		return { ...next, scroll: Math.min(next.scroll, max) };
+		// Clamp the previous offset first: after a widen it may sit above the new max.
+		const from = Math.min(this.state.scroll, max);
+		return { ...next, scroll: Math.max(0, Math.min(from + action.delta, max)) };
 	}
 
 	/** Moves to `next`: prefills an editor that just opened, and resolves `done` once the dialog finished. */
