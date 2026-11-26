@@ -19,7 +19,8 @@ import type {
 	Override,
 	RequestOption,
 } from "./approver.ts";
-import { failingWaivableOf } from "./waive-rule.ts";
+import { gateChoices } from "./describe-actions.ts";
+import { type MenuEntry, menuEntries, titleWithBriefing } from "./menu.ts";
 
 const DIFFICULTIES: Difficulty[] = ["low", "medium", "high"];
 
@@ -31,9 +32,6 @@ type Cancelled = typeof CANCELLED;
 type Verdict = Omit<Answered, "status" | "by" | "at" | "adapter">;
 
 const DISMISSED: Verdict = { outcome: "dismissed", notes: "" };
-
-/** One select entry: the label shown to the human and the value it stands for. */
-type MenuEntry<T> = readonly [label: string, value: T];
 
 /**
  * Shows `entries` and returns the value of the picked label. A cancel, or a label
@@ -58,11 +56,6 @@ function displayTable<T>(entries: readonly MenuEntry<T>[]): Map<string, T> {
 		table.set(display, value);
 	}
 	return table;
-}
-
-/** Request options are shown as `<label> [<id>]`; `choose` makes any remaining collision unique by position. */
-function optionEntries<T>(options: RequestOption[], wrap: (o: RequestOption) => T): MenuEntry<T>[] {
-	return options.map((o) => [`${o.label} [${o.id}]`, wrap(o)] as const);
 }
 
 /** Entries whose label is the value itself, deduplicated. */
@@ -126,9 +119,13 @@ async function askOverrideField(
 
 type GateAction = { action: "approve" } | { action: "changes" } | { action: "dismiss" } | { action: "option"; id: string };
 
-/** Failing waivable checks of a gate request; a plain approve cannot pass them, only `waive`. */
-function failingWaivable(r: ApprovalRequest): string[] {
-	return r.kind === "gate" ? failingWaivableOf(r.record.snapshot) : [];
+/** The recommended choice's label, so the title can name what the briefing recommends. */
+function recommendedLabel(r: ApprovalRequest, choices: { id: string; label: string }[]): string | undefined {
+	return choices.find((c) => c.id === r.briefing?.recommended)?.label;
+}
+
+function gateAction(id: string): GateAction {
+	return id === "approve" || id === "changes" || id === "dismiss" ? { action: id } : { action: "option", id };
 }
 
 /**
@@ -136,13 +133,12 @@ function failingWaivable(r: ApprovalRequest): string[] {
  * `waive`). Plain approve is not offered while waivable checks fail.
  */
 async function gateFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Cancelled> {
-	const approve: MenuEntry<GateAction>[] = failingWaivable(r).length > 0 ? [] : [["approve", { action: "approve" }]];
-	const selected = await choose<GateAction>(ui, r.summary, [
-		...approve,
-		["request changes", { action: "changes" }],
-		["dismiss", { action: "dismiss" }],
-		...optionEntries<GateAction>(r.options ?? [], (o) => ({ action: "option", id: o.id })),
-	]);
+	const choices = gateChoices(r);
+	const entries = menuEntries(
+		choices.map((c) => ({ ...c, value: gateAction(c.id) })),
+		r.briefing?.recommended,
+	);
+	const selected = await choose<GateAction>(ui, titleWithBriefing(r, recommendedLabel(r, choices)), entries);
 	if (selected === CANCELLED || selected.action === "dismiss") return CANCELLED;
 	if (selected.action === "changes") {
 		const notes = await ask(ui, "Requested changes");
@@ -177,14 +173,34 @@ async function askChangedRequirement(ui: ApproverUI, requirements: string[]): Pr
 	return typed === CANCELLED || typed === "" ? CANCELLED : typed;
 }
 
-async function questionFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Deferred | Cancelled> {
-	const answerNow = await choose(ui, r.summary, [
-		["answer now", true],
-		["answer later (non-blocking)", false],
+/** What the human does with a question: pick a candidate, type an answer, or answer later. */
+type QuestionStep = { kind: "candidate"; label: string } | { kind: "own" } | { kind: "later" };
+
+async function askQuestionStep(ui: ApproverUI, r: ApprovalRequest): Promise<QuestionStep | Cancelled> {
+	const options = r.options ?? [];
+	const title = titleWithBriefing(r, recommendedLabel(r, options));
+	if (options.length === 0) {
+		return choose<QuestionStep>(ui, title, [
+			["answer now", { kind: "own" }],
+			["answer later (non-blocking)", { kind: "later" }],
+		]);
+	}
+	const candidates = menuEntries(
+		options.map((o) => ({ ...o, value: { kind: "candidate", label: o.label } as QuestionStep })),
+		r.briefing?.recommended,
+	);
+	return choose<QuestionStep>(ui, title, [
+		...candidates,
+		["write my own answer", { kind: "own" }],
+		["answer later (non-blocking)", { kind: "later" }],
 	]);
-	if (answerNow === CANCELLED) return CANCELLED;
-	if (!answerNow) return { status: "deferred", questionClass: "non-blocking" };
-	const answer = await ask(ui, "Answer");
+}
+
+async function questionFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Deferred | Cancelled> {
+	const step = await askQuestionStep(ui, r);
+	if (step === CANCELLED) return CANCELLED;
+	if (step.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
+	const answer = step.kind === "candidate" ? step.label : await ask(ui, "Answer");
 	if (answer === CANCELLED || answer === "") return CANCELLED;
 	const changed = await askChangedRequirement(ui, r.question?.requirements ?? []);
 	if (changed === CANCELLED) return CANCELLED;
@@ -196,7 +212,12 @@ async function questionFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict
 
 /** Stuck and decide requests: a choice among the request's options. */
 async function choiceFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Cancelled> {
-	const id = await choose(ui, r.summary, optionEntries(r.options ?? [], (o) => o.id));
+	const options = r.options ?? [];
+	const entries = menuEntries(
+		options.map((o) => ({ ...o, value: o.id })),
+		r.briefing?.recommended,
+	);
+	const id = await choose(ui, titleWithBriefing(r, recommendedLabel(r, options)), entries);
 	return id === CANCELLED ? CANCELLED : { outcome: "approved", notes: "", choice: id };
 }
 

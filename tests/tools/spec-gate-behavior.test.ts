@@ -2,6 +2,7 @@
 // the gate", phase-gates "Gate tool"): only when no other refusal applies, one capability at a time, and the
 // re-run check refuses a `changed` answer in the same call.
 
+import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
@@ -45,7 +46,7 @@ function human(answer: string | undefined): FakeUI {
 		if (title === "Add notes?") return "No notes";
 		const pick = title.startsWith(BEHAVIOR_TITLE) ? answer : "approve";
 		if (pick === undefined) return undefined;
-		return options.find((o) => o === pick || o.endsWith(`[${pick}]`));
+		return pickById(options, pick);
 	};
 	return { hasUI: true, select };
 }

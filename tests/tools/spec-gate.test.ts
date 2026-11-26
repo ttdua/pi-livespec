@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { pickById } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -110,7 +111,7 @@ function human(pick: string | undefined, input?: string): FakeUI {
 		if (title === "Add notes?") return "No notes";
 		if (title === "Adjust Difficulty or Tags?") return "Keep classification";
 		if (pick === undefined) return undefined;
-		return options.find((o) => o === pick || o.endsWith(`[${pick}]`));
+		return pickById(options, pick);
 	};
 	return { hasUI: true, select, ...(input !== undefined ? { input: async () => input } : {}) };
 }

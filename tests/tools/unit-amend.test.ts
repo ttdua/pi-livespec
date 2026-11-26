@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
@@ -71,7 +72,7 @@ function humanUI(human: Human): { hasUI: true; select: SelectFn } {
 			if (title === "Add notes?") return "No notes";
 			if (title === "Adjust Difficulty or Tags?") return "Keep classification";
 			human.summaries.push(title);
-			return options.find((o) => o === human.pick);
+			return human.pick === undefined ? undefined : pickByLabel(options, human.pick);
 		},
 	};
 }

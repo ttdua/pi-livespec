@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { gateDigest } from "../../src/engine/locks.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
@@ -237,7 +238,7 @@ describe("change_ship", () => {
 	});
 
 	test("in-session approval then ship", async () => {
-		const ui: FakeUI = { hasUI: true, select: async (title, options) => (title === "Add notes?" ? "No notes" : options.find((o) => o === "approve")) };
+		const ui: FakeUI = { hasUI: true, select: async (title, options) => (title === "Add notes?" ? "No notes" : pickByLabel(options, "approve")) };
 		const h = await shipReady({ noShipGate: true, ui });
 		const asked = await h.call("spec_gate", { target: "ship" });
 		expect(asked.isError, textOf(asked)).toBeFalsy();

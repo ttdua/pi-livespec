@@ -1,6 +1,7 @@
 // End-to-end gate flow over a memory forge: every human decision of LS-05
 // goes through the real tools, the approver chain and forge polling.
 
+import { pickById, pickByLabel } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config.ts";
@@ -55,7 +56,7 @@ function unit(title: string, file: string, label: string): UnitInput {
 const approveAll: SelectFn = async (title, options) => {
 	if (title === "Add notes?") return "No notes";
 	if (title === "Adjust Difficulty or Tags?") return "Keep classification";
-	return options.find((o) => o === "approve");
+	return pickByLabel(options, "approve");
 };
 
 function card(h: ToolHarness) {
@@ -216,7 +217,7 @@ async function shipChange(flow?: string): Promise<{ h: ToolHarness; n: number }>
 /** The in-session human waives when a waive option is offered, else approves. */
 const shipSelect: SelectFn = async (title, options) => {
 	if (title === "Add notes?") return "No notes";
-	return options.find((o) => o === "waive" || o.endsWith("[waive]")) ?? options.find((o) => o === "approve");
+	return pickById(options, "waive") ?? pickByLabel(options, "approve");
 };
 
 describe("ship gate next step", () => {

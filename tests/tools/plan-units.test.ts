@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
@@ -438,7 +439,8 @@ const LEVELS = [
 	{ id: "high", label: "High" },
 ];
 const NO_SCHEMA = { validate() {} };
-const selectingId = (id: string): FakeUI => ({ hasUI: true, select: async (_t, options) => options.find((o) => o.endsWith(`[${id}]`)) });
+const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", x: "X" };
+const selectingId = (id: string): FakeUI => ({ hasUI: true, select: async (_t, options) => pickByLabel(options, LEVEL_LABEL[id] ?? id) });
 
 /** Makes `point` ask a human instead of deciding by rule. */
 function askingRule(point: string, options = LEVELS): void {

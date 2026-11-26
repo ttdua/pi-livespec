@@ -1,6 +1,7 @@
 // End-to-end initiative and discovered-dependency flows (issue #34 "Done when"): every human decision goes through
 // the real tools and an in-session approver over a memory forge with a real bare origin.
 
+import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import "../../src/initiatives/facts.ts";
@@ -46,7 +47,7 @@ function human(pick: { current: string }): FakeUI {
 	const select: SelectFn = async (title, options) => {
 		if (title === "Add notes?") return "No notes";
 		if (title === "Adjust Difficulty or Tags?") return "Keep classification";
-		return options.find((o) => o === pick.current || o.endsWith(`[${pick.current}]`));
+		return pickById(options, pick.current);
 	};
 	return { hasUI: true, select };
 }
@@ -106,7 +107,7 @@ describe("initiatives and discovered dependencies", () => {
 		ok(await h.call("spec_gate", { target: "plan" }), "plan gate over the limits");
 		const offered = (h.ctx.ui.select.mock.calls[0]?.[1] ?? []) as string[];
 		expect(offered).not.toContain("approve");
-		expect(offered.some((o) => o.endsWith("[waive]") || o === "waive")).toBe(true);
+		expect(offered.some((o) => o.startsWith("Waive size-limits"))).toBe(true);
 		expect(await latestGate(h)).toMatchObject({ phase: "plan", outcome: "dismissed" });
 		expect(await phaseOf(h)).toEqual(["livespec:phase/plan"]);
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -92,7 +93,7 @@ describe("spec_stuck", () => {
 	});
 
 	test("Stuck answer lifts the cap", async () => {
-		const ui: FakeUI = { hasUI: true, select: async (_title, options) => options.find((o) => o.endsWith("[B]")) };
+		const ui: FakeUI = { hasUI: true, select: async (_title, options) => pickByLabel(options, "re-plan") };
 		const h = await change({ config: SESSION_CHAIN, ui });
 		await seedCascades(h, 1, 5);
 		expect(card(h).step.next).toContain(CAP_NEXT);

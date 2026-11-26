@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { parseInitiative } from "../../src/core/initiative.ts";
 import { sectionText } from "../../src/core/sections.ts";
@@ -28,7 +29,7 @@ const SHAPE_BODY = "Depends: —\nCapabilities: new [], modified []\nProduct imp
 function human(pick: string, input?: string): FakeUI {
 	const select: SelectFn = async (title, options) => {
 		if (title === "Add notes?") return "No notes";
-		return options.find((o) => o === pick || o.endsWith(`[${pick}]`));
+		return pickByLabel(options, pick);
 	};
 	return { hasUI: true, select, ...(input !== undefined ? { input: async () => input } : {}) };
 }
