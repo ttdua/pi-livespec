@@ -172,3 +172,20 @@ describe("verifier answer", () => {
 		expect(h.fake.resumed[0]).toEqual({ id: "agent-1", prompt: "x" });
 	});
 });
+
+describe("fallback contract end to end", () => {
+	test("a fallback asks, is answered, ends without a result and is not replaced", async () => {
+		const h = await subagentHarness({ executor: { resumes: ["refuse", "ok", "refuse"], records: [{ result: "text" } as never, { pendingQuestion: "Which?" }, { result: "text" } as never] } });
+		const asked = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(textOf(asked)).toContain("agent-1");
+		expect(textOf(asked)).toContain("agent-2");
+		expect(textOf(asked)).toContain("Which?");
+		const retry = (await h.ofKind("dispatch")).map((m) => m.data as Record<string, unknown>).find((d) => d.status === "RETRY");
+		expect(retry).toMatchObject({ agentId: "agent-1", newAgentId: "agent-2" });
+		expect(h.fake.spawned[0]?.options.metadata.packet).toBe(h.fake.spawned[1]?.options.metadata.packet);
+		const out = await h.call("subagent_answer", { id: "agent-2", answer: "x" });
+		expect(textOf(out)).toContain("BLOCKED");
+		expect(h.fake.spawned).toHaveLength(2);
+		expect((await h.latest("dispatch"))?.data).toMatchObject({ status: "BLOCKED", agentId: "agent-2" });
+	});
+});

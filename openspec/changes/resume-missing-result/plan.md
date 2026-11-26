@@ -31,7 +31,7 @@
 | Name | new / modified | Shape | public |
 |---|---|---|---|
 | `dispatch` marker data, `RETRY` variant | modified (additive) | `{ status: "RETRY"; role: Role; unit?: string; subject?: ReviewSubject; finding?: string; agentId: string; newAgentId: string; attempt: number; reason: string }`; marker id `dispatch.<scope>.<role>.retry.<newAgentId>`; `reason` is plain text | no (own forge record format) |
-| `dispatch` marker data, `QUESTION` variant | modified | adds optional `finding?: string` | no |
+| `dispatch` marker data, `QUESTION` variant | modified | adds optional `finding?: string`; marker ids of `QUESTION`/`ANSWERED` become `dispatch.<scope>.<role>.<attempt>.<question\|answered>.<agentId>` (deviation: the agent id keeps two children of one role and attempt, e.g. verifiers of different findings, from superseding each other; comments with the old id, without the agent, still read: ids only drive supersession) | no |
 | `QuestionTarget` | new | `{ role: Role; unit?: string; subject?: ReviewSubject; finding?: string }` in `src/subagents/records.ts` | no |
 | `openQuestions` | new | `openQuestions(marked: MarkedComment[]): QuestionData[]` (open `QUESTION`s, oldest first); `pendingQuestion` = its last | no |
 | `pendingQuestionFor` | new | `pendingQuestionFor(marked, t: QuestionTarget): PendingQuestion \| undefined` | no |
