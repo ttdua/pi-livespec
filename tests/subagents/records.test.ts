@@ -19,6 +19,7 @@ import {
 	unresolvedBlocking,
 	unshownSystemFindings,
 } from "../../src/subagents/records.ts";
+import { isSummaryData } from "../../src/subagents/validate.ts";
 import { nextRound } from "../../src/subagents/run-record.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
@@ -315,5 +316,15 @@ describe("fix round 3", () => {
 
 	it.each(["spec", "plan", "unit", "change", "persona:security"])("summary with subject %s is valid", (subject) => {
 		expect(invalidRecords([raw("finding-summary", "f", { ...(summary().data as object), subject })])).toEqual([]);
+	});
+});
+
+describe("finding summary why fields", () => {
+	const summary = { role: "reviewer", subject: "unit", round: 1, status: "DONE", advisory: false, head: "h", packet: "p", sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [] };
+	it("older summary still valid", () => {
+		expect(isSummaryData(summary)).toBe(true);
+		expect(isSummaryData({ ...summary, notes: "n", reason: "r", evidence: "e" })).toBe(true);
+		expect(isSummaryData({ ...summary, notes: 1 })).toBe(false);
+		expect(isSummaryData({ ...summary, evidence: 1 })).toBe(false);
 	});
 });

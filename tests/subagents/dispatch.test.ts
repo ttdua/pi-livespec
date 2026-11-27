@@ -361,6 +361,38 @@ describe("runDispatch", () => {
 		expect(posted[0]?.data).toMatchObject({ agentId: "agent-1", round: 1, completed: true, required: ["answer:Q2"], head: "h".repeat(40) });
 	});
 
+	describe("why of a run kept", () => {
+		const review = (over = {}) => JSON.parse(JSON.stringify({ ...done(over), commits: undefined, findings: [] }));
+		const reviewer = () => request({ role: "reviewer", subject: "unit" });
+
+		test("why of a run kept", async () => {
+			const first = fakeExecutor({ records: [{ structuredResult: review({ status: "DONE_WITH_CONCERNS", sources_used: ["answer:Q2"], notes: "checked the retry path" }) }] });
+			const a = deps(first);
+			await runDispatch(a.d, reviewer());
+			expect(a.posted[0]?.data.notes).toBe("checked the retry path");
+			const second = fakeExecutor({ records: [{ structuredResult: review({ status: "BLOCKED", sources_used: ["answer:Q2"], reason: "no diff", evidence: "empty range" }) }] });
+			const b = deps(second);
+			await runDispatch(b.d, reviewer());
+			expect(b.posted[0]?.data).toMatchObject({ reason: "no diff", evidence: "empty range" });
+		});
+
+		test("parent-written block names omitted ids", async () => {
+			const fake = fakeExecutor({ records: [{ structuredResult: review({ sources_used: [] }) }, { structuredResult: review({ sources_used: [] }) }] });
+			const { d, posted } = deps(fake);
+			await runDispatch(d, reviewer());
+			expect(posted[0]?.data).toMatchObject({ status: "BLOCKED", evidence: "recorded by the parent" });
+			expect(String(posted[0]?.data.reason)).toContain("answer:Q2");
+			expect(String(posted[0]?.data.notes)).toContain("answer:Q2");
+		});
+
+		test("empty notes are not recorded", async () => {
+			const fake = fakeExecutor({ records: [{ structuredResult: review({ sources_used: ["answer:Q2"], notes: "" }) }] });
+			const { d, posted } = deps(fake);
+			await runDispatch(d, reviewer());
+			expect(posted[0]?.data).not.toHaveProperty("notes");
+		});
+	});
+
 	test("a unit review posts one finding-summary holding both findings", async () => {
 		const found = (location: string) => ({ severity: "WARNING", kind: "defect", location, evidence: "e", fix: "f", scope: "unit" });
 		const result = { ...withSources(["answer:Q2"]), commits: undefined, findings: [found("a.ts:1"), found("b.ts:2")] };

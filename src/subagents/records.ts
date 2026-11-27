@@ -70,6 +70,9 @@ export type FindingSummaryData = {
 	verifies?: string;
 	verdict?: "confirmed" | "refuted";
 	reason?: string;
+	/** The run's own notes and evidence, kept for every role; absent when empty. */
+	notes?: string;
+	evidence?: string;
 	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
 	aggregate?: true;
 	reviews?: string[];

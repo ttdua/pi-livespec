@@ -90,14 +90,19 @@ function summaryData(run: RunFacts, result: SubagentResult, head: string): Findi
 		round: run.round, status: result.status, advisory: run.advisory, head, packet: run.packet.hash,
 		sources_used: result.sources_used, required, completed: computeCompleted(result, required),
 		agentSource: run.agentSource, requested: run.requested, effective: run.effective, findings: result.findings ?? [],
-		...contextRequestOf(run, result), ...verifierFields(run, result),
+		...whyFields(result), ...contextRequestOf(run, result), ...verifierFields(run, result),
 	};
 }
 
-/** `verifies`, `verdict` and `reason` of a verifier record. */
+/** The run's own `notes`, `reason` and `evidence`; empty ones are left out. */
+const whyFields = (result: SubagentResult): Partial<FindingSummaryData> => ({
+	...optional("notes", result.notes || undefined), ...optional("reason", result.reason || undefined), ...optional("evidence", result.evidence || undefined),
+});
+
+/** `verifies` and `verdict` of a verifier record. */
 function verifierFields(run: RunFacts, result: SubagentResult): Partial<FindingSummaryData> {
 	if (run.role !== "verifier") return {};
-	return { ...optional("verifies", run.finding), ...optional("verdict", result.verdict), ...optional("reason", result.reason) };
+	return { ...optional("verifies", run.finding), ...optional("verdict", result.verdict) };
 }
 
 /** The comment body that records `result`; `head` is the reviewed commit of a review run. */
