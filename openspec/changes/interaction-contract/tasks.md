@@ -9,10 +9,10 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 `spec_question`: drop `class` from the schema and refuse it; require 2 to 4 candidates plus `recommended` and `rationale` on new questions and `reask`; keep an internal non-blocking origin for code (`src/tools/spec-question.ts`, `src/tools/question-candidates.ts`; questions-and-stuck "Question tool", design D5)
-- [ ] 2.2 Finding routing raises its question non-blocking with the two fixed candidates, the first recommended (`src/review/effects.ts`, `src/review/stages.ts`; finding-routing "Route effects")
-- [ ] 2.3 Remove `class` and `--class` from the command grammar so they are reported unparseable; stop applying and recording `class` commands and ignore stored `class` markers (`src/interaction/commands.ts`, `forge-match.ts`, `poll.ts`, `forge-permissions.ts`; approver-adapters "Forge command comments")
-- [ ] 2.4 Remove `questionClass` from new answers; completion reads the class from the `## Questions` line, and a deferred answer still makes the question non-blocking (`src/interaction/approver.ts`, `in-session.ts`, `dialog/result.ts`, `complete-question.ts`; questions-and-stuck "Question answers")
+- [x] 2.1 `spec_question`: drop `class` from the schema and refuse it; require 2 to 4 candidates plus `recommended` and `rationale` on new questions and `reask`; keep an internal non-blocking origin for code (`src/tools/spec-question.ts`, `src/tools/question-candidates.ts`; questions-and-stuck "Question tool", design D5)
+- [x] 2.2 Finding routing raises its question non-blocking with the two fixed candidates, the first recommended (`src/review/effects.ts`, `src/review/stages.ts`; finding-routing "Route effects")
+- [x] 2.3 Remove `class` and `--class` from the command grammar so they are reported unparseable; stop applying and recording `class` commands and ignore stored `class` markers (`src/interaction/commands.ts`, `forge-match.ts`, `poll.ts`, `forge-permissions.ts`; approver-adapters "Forge command comments")
+- [x] 2.4 Remove `questionClass` from new answers; completion reads the class from the `## Questions` line, and a deferred answer still makes the question non-blocking (`src/interaction/approver.ts`, `in-session.ts`, `dialog/result.ts`, `complete-question.ts`; questions-and-stuck "Question answers")
 
 ## 3. Briefings and descriptions for every other request
 
