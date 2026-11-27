@@ -81,6 +81,11 @@ function phaseOfState(state: ChangeState): string {
 	return p.ids.map(phaseText).join(" + ");
 }
 
+/** The `Incomplete` line is labelled when the state it was read from may be out of date. */
+function incompleteTitle(state: ChangeState): string {
+	return state.stale || state.readOnly ? "Incomplete (may be stale)" : "Incomplete";
+}
+
 function counterText(c: NextStep["counters"][number]): string {
 	return c.cap === undefined ? `${c.name} ${c.value}` : `${c.name} ${c.value}/${c.cap}`;
 }
@@ -97,7 +102,7 @@ function changeLines(step: NextStep, state: ChangeState): string[] {
 		...listLines("Blocking questions", step.blockingQuestions.map((q) => `${q.id}: ${untrusted(q.text)}`)),
 		...inlineLine("Counters", step.counters.map(counterText)),
 		...inlineLine("Active units", step.activeUnits),
-		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
+		...inlineLine(incompleteTitle(state), step.incomplete.map(untrusted)),
 	];
 }
 

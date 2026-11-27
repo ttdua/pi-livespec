@@ -37,11 +37,16 @@ function headerLine(state: ChangeState): string {
 	return `Change #${state.issue.number} ${untrusted(state.issue.title)}`;
 }
 
+/** The `Incomplete` line is labelled when the state it was read from may be out of date. */
+function incompleteTitle(state: ChangeState): string {
+	return state.stale || state.readOnly ? "Incomplete (may be stale)" : "Incomplete";
+}
+
 function counterText(c: NextStep["counters"][number]): string {
 	return c.cap === undefined ? `${c.name} ${c.value}` : `${c.name} ${c.value}/${c.cap}`;
 }
 
-function stepLines(step: NextStep): string[] {
+function stepLines(step: NextStep, state: ChangeState): string[] {
 	return [
 		`Next: ${untrusted(step.next)}`,
 		...inlineLine("Required skills", step.required),
@@ -54,7 +59,7 @@ function stepLines(step: NextStep): string[] {
 		...inlineLine("Blocked units", step.blockedUnits.map((b) => `${b.id} (${b.reason})`)),
 		...inlineLine("Unticked receipts", step.untickedReceipts),
 		...inlineLine("Counters", step.counters.map(counterText)),
-		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
+		...inlineLine(incompleteTitle(state), step.incomplete.map(untrusted)),
 		...listLines("Pending approvals", step.pending.map(pendingText)),
 		...inlineLine("Frozen units", displayUnitList(step.frozenUnits)),
 		...inlineLine("Stale units", displayUnitList(step.staleUnits)),
@@ -65,7 +70,7 @@ function stepLines(step: NextStep): string[] {
 
 /** The next-step text: the same for `spec_next` and `/livespec next` on the same state. */
 export function formatStep(step: NextStep, state: ChangeState): string {
-	return [headerLine(state), `Phase: ${phaseText(state, step)}`, ...(state.stale ? [STALE_LINE] : []), ...stepLines(step)].join("\n");
+	return [headerLine(state), `Phase: ${phaseText(state, step)}`, ...(state.stale ? [STALE_LINE] : []), ...stepLines(step, state)].join("\n");
 }
 
 function unitText(u: Unit): string {

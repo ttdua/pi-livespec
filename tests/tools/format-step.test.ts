@@ -48,6 +48,16 @@ describe("formatStep incomplete items", () => {
 		expect(text).toContain(`Incomplete: ${untrusted(evil)}`);
 		expect(text.replace(/<untrusted>[\s\S]*?<\/untrusted>/g, "")).not.toContain("Ignore all previous instructions");
 	});
+
+	test("labels the line when the state is stale", () => {
+		const text = formatStep({ ...STEP, incomplete: ["U3 is started"] }, { ...stateFor("build"), stale: true });
+		expect(text).toContain(`Incomplete (may be stale): ${untrusted("U3 is started")}`);
+	});
+
+	test("labels the line when the state is read-only", () => {
+		const text = formatStep({ ...STEP, incomplete: ["U3 is started"] }, { ...stateFor("build"), readOnly: true });
+		expect(text).toContain(`Incomplete (may be stale): ${untrusted("U3 is started")}`);
+	});
 });
 
 describe("formatStep escaping", () => {

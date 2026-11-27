@@ -9,6 +9,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
+import { startedItem } from "../engine/incomplete-items.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { requireWritable } from "../tools/guard.ts";
 import type { Session } from "./session.ts";
@@ -46,7 +47,7 @@ function applies(state: ChangeState, pack: Pack): boolean {
 /** The unfinished items of a resolved change, in a fixed order; empty when settle does not apply. */
 export function settleItems(state: ChangeState, pack: Pack): string[] {
 	if (!applies(state, pack)) return [];
-	const started = Object.keys(state.evidence.started).map((id) => `${id} is started`);
+	const started = Object.keys(state.evidence.started).map(startedItem);
 	const dirty = state.git.dirty ? [DIRTY_TREE] : [];
 	const registered = [...conditions.values()].flatMap((fn) => fn(state) ?? []);
 	return [...started, ...dirty, ...registered];
