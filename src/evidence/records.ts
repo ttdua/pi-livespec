@@ -89,7 +89,7 @@ export function newEvidenceId(unit: string, now: Date): string {
 }
 
 function located<T>(m: MarkedComment, index: number, kind: string, valid: (d: unknown) => d is T): (T & Located) | undefined {
-	return m.kind === kind && valid(m.data) ? { ...m.data, id: m.id, commentId: m.commentId, index } : undefined;
+	return m.kind === kind && valid(m.data) ? { ...m.data, id: m.id, commentId: m.ref, index } : undefined;
 }
 
 /** The start record of comment `m` at comment index `index`, when it is a well-formed `unit-start`. */

@@ -50,13 +50,13 @@ describe("nextStage", () => {
 
 	test("aggregate posted: verify names the unverified keys, skipping the rest", () => {
 		const a = aggregate([agg(), agg({ location: "x.ts:1", verify: "skipped-parent" }), agg({ location: "y.ts:1" })], 1, H);
-		const v = verifier(`${a.commentId}:2`);
-		expect(nextStage(at([run(SELECTED), a, v]), pack)).toEqual({ stage: "verify", missing: [`${a.commentId}:0`] });
+		const v = verifier(`${a.ref}:2`);
+		expect(nextStage(at([run(SELECTED), a, v]), pack)).toEqual({ stage: "verify", missing: [`${a.ref}:0`] });
 	});
 
 	test("a BLOCKED verifier counts: route", () => {
 		const a = aggregate([agg()], 1, H);
-		expect(nextStage(at([run(SELECTED), a, verifier(`${a.commentId}:0`, { status: "BLOCKED", completed: false, verdict: undefined })]), pack)).toEqual({ stage: "route" });
+		expect(nextStage(at([run(SELECTED), a, verifier(`${a.ref}:0`, { status: "BLOCKED", completed: false, verdict: undefined })]), pack)).toEqual({ stage: "route" });
 	});
 
 	test("routed at HEAD: done", () => {
@@ -72,7 +72,7 @@ describe("nextStage", () => {
 
 	test("an aggregated round whose HEAD moved still finishes its verify and route", () => {
 		const a = aggregate([agg()], 1, "a1");
-		expect(nextStage(at([run({ ...SELECTED, head: "a1" }), a]), pack)).toEqual({ stage: "verify", missing: [`${a.commentId}:0`] });
+		expect(nextStage(at([run({ ...SELECTED, head: "a1" }), a]), pack)).toEqual({ stage: "verify", missing: [`${a.ref}:0`] });
 	});
 
 	test("a BLOCKED reviewer is not relaunched until a lifting stuck answer", () => {
@@ -166,7 +166,7 @@ describe("nextStage refusals", () => {
 		expect(r.reason).toContain("spec_stuck");
 		const b = aggregate([agg()], 1, "a1");
 		expect(nextStage(at([run({ ...SELECTED, head: "a1" }), b]), capped).stage).toBe("verify");
-		expect(nextStage(at([run({ ...SELECTED, head: "a1" }), b, verifier(`${b.commentId}:0`)]), capped).stage).toBe("route");
+		expect(nextStage(at([run({ ...SELECTED, head: "a1" }), b, verifier(`${b.ref}:0`)]), capped).stage).toBe("route");
 	});
 
 	test("a stray decision comment changes nothing", () => {

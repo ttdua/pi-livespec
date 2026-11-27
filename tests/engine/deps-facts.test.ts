@@ -11,7 +11,7 @@ import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 let seq = 0;
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
-	return { commentId: `c${seq}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
 }
 
 const DRAFTS = { unit: "U3", evidence: "e", a: { name: "token-store", proposal: "p" }, b: { units: ["U4"], summary: "s" }, c: { summary: "s", follow_up: { name: "f", proposal: "p" } }, d: { action: "drop", reason: "wrong direction" } };

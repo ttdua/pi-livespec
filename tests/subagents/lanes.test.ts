@@ -85,7 +85,7 @@ async function repo() {
 	git(root, "switch", "-q", "-c", "livespec/per-ip-cap");
 	const posted: string[] = [];
 	const ops = { git: createGit(root), root, post: async (body: string) => void posted.push(body) };
-	const records = () => openLanes(posted.map((b, i) => ({ ...(parseMarked(b) as { kind: string; id: string; data: unknown }), commentId: `${i}`, author: "me" })));
+	const records = () => openLanes(posted.map((b, i) => ({ ...(parseMarked(b) as { kind: string; id: string; data: unknown }), ref: `${i}`, source: "forge" as const, author: "me" })));
 	return { root, ops, posted, records };
 }
 

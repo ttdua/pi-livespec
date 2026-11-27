@@ -21,7 +21,7 @@ const receipt: ReceiptData = {
 function asMarked(body: string, commentId: string): MarkedComment {
 	const parsed = parseMarked(body);
 	if (!parsed) throw new Error("unparsable");
-	return { commentId, author: "bot", ...parsed };
+	return { ref: commentId, source: "forge", author: "bot", ...parsed };
 }
 
 describe("evidence records", () => {
@@ -41,16 +41,16 @@ describe("evidence records", () => {
 	test("readStarts and readReceipts keep comment order and skip malformed records", () => {
 		const marked = [
 			asMarked(startComment("U1.a", start), "c1"),
-			{ commentId: "c2", author: "bot", kind: "unit-start", id: "U1.b", data: { unit: "U1" } },
+			{ ref: "c2", source: "forge" as const, author: "bot", kind: "unit-start", id: "U1.b", data: { unit: "U1" } },
 			asMarked(receiptComment("U1.c", receipt), "c3"),
-			{ commentId: "c4", author: "bot", kind: "receipt", id: "U2.d", data: { ...receipt, post: "x" } },
+			{ ref: "c4", source: "forge" as const, author: "bot", kind: "receipt", id: "U2.d", data: { ...receipt, post: "x" } },
 		];
 		expect(readStarts(marked)).toEqual([{ ...start, id: "U1.a", commentId: "c1", index: 0 }]);
 		expect(readReceipts(marked)).toEqual([{ ...receipt, id: "U1.c", commentId: "c3", index: 2 }]);
 	});
 
 	test("rebuild reader rejects a malformed record", () => {
-		const ok: MarkedComment = { commentId: "c1", author: "bot", kind: "rebuild", id: "rebuild.U1.1", data: { unit: "U1", round: 1, finding: "c:0" } };
+		const ok: MarkedComment = { source: "forge", ref: "c1", author: "bot", kind: "rebuild", id: "rebuild.U1.1", data: { unit: "U1", round: 1, finding: "c:0" } };
 		expect(asRebuildRecord(ok, 3)).toMatchObject({ unit: "U1", round: 1, index: 3 });
 		expect(asRebuildRecord({ ...ok, data: { unit: "U1", round: "1", finding: "c:0" } }, 0)).toBeUndefined();
 	});

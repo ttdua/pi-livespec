@@ -10,7 +10,7 @@ import type { Placed } from "./source-types.ts";
 
 /** The comment's updated-at, the version of a `comment:<id>` source; falls back to a content hash. */
 async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
-	const found = (await cx.reads.comments(cx.ctx.state.issue.number)).find((c) => c.id === m.commentId);
+	const found = (await cx.reads.comments(cx.ctx.state.issue.number)).find((c) => c.id === m.ref);
 	return found?.updatedAt ?? sha256(JSON.stringify(m.data));
 }
 
@@ -19,7 +19,7 @@ async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
  * so the whole source is wrapped: an injection in one child's record must not reach the next packet as state.
  */
 async function commentSource(cx: Cx, m: MarkedComment, title: string, text: string): Promise<Placed> {
-	return placed({ id: `comment:${m.commentId}`, version: await commentVersion(cx, m), title, text, untrusted: true });
+	return placed({ id: `comment:${m.ref}`, version: await commentVersion(cx, m), title, text, untrusted: true });
 }
 
 /** Notes humans gave at the plan gate. */

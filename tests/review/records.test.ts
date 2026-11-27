@@ -9,7 +9,7 @@ describe("review-run", () => {
 		const first = run();
 		const routed = run({ routed: true });
 		expect(first.id).toBe("review-run.1");
-		expect(latestRun([first, routed])).toMatchObject({ round: 1, routed: true, commentId: routed.commentId });
+		expect(latestRun([first, routed])).toMatchObject({ round: 1, routed: true, commentId: routed.ref });
 		expect(latestRun([])).toBeUndefined();
 	});
 
@@ -34,7 +34,7 @@ describe("aggregate and verifier records", () => {
 		const a = aggregate([agg()], 2);
 		expect(a.id).toBe("finding-summary.change.review.2");
 		expect(invalidRecords([a])).toEqual([]);
-		expect(aggregateOf([a], 2)).toMatchObject({ commentId: a.commentId, data: { aggregate: true, round: 2, reviews: ["r1"] } });
+		expect(aggregateOf([a], 2)).toMatchObject({ commentId: a.ref, data: { aggregate: true, round: 2, reviews: ["r1"] } });
 		expect(aggregateOf([a], 1)).toBeUndefined();
 	});
 

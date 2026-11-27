@@ -17,7 +17,7 @@ const TAGS_U3: DecisionRecord = {
 };
 
 function marked(id: string, data: unknown, kind = "decision"): MarkedComment {
-	return { commentId: `c-${id}-${String((data as { outcome?: unknown }).outcome)}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c-${id}-${String((data as { outcome?: unknown }).outcome)}`, kind, id, author: "bot", data };
 }
 
 describe("decision records", () => {

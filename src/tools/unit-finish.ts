@@ -148,7 +148,7 @@ const commentLink = (url: string | undefined, commentId: string): string => (url
 function evidenceLinks(state: ChangeState, unit: string, posted?: string): string[] {
 	const url = state.issue.url;
 	const receipts = (state.evidence.receipts[unit] ?? []).map((r) => `- receipt ${r.id}: ${commentLink(url, r.commentId)}`);
-	const attempts = state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${unit}`).map((m) => `- failed attempt: ${commentLink(url, m.commentId)}`);
+	const attempts = state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${unit}`).map((m) => `- failed attempt: ${commentLink(url, m.ref)}`);
 	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ${commentLink(url, posted)}`])];
 }
 

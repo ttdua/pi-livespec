@@ -6,13 +6,19 @@ import { parse, stringify } from "yaml";
 import { ForgeError } from "./errors.ts";
 import type { Comment, Forge } from "./types.ts";
 
+/** A marked record: a forge comment (`source: "forge"`) or a ledger entry (`source: "ledger"`). */
 export interface MarkedComment {
-	/** Comment id as returned by the forge. */
-	commentId: string;
+	/** Reference of the record: the forge comment id, or the ledger entry ref. */
+	ref: string;
+	source: "forge" | "ledger";
 	kind: string;
 	id: string;
 	author: string;
 	data: unknown;
+	/** When the record was written, for forge comments the comment's createdAt. */
+	createdAt?: string;
+	/** Ref of the forge record a ledger entry was copied from; declared only, not yet used. */
+	from?: string;
 }
 
 export interface MarkedReadResult {
@@ -114,11 +120,13 @@ export function filterMarked(comments: Comment[], login: string): MarkedReadResu
 			continue;
 		}
 		result.comments.push({
-			commentId: comment.id,
+			ref: comment.id,
+			source: "forge",
 			kind: parsed.kind,
 			id: parsed.id,
 			author: comment.author,
 			data: parsed.data,
+			createdAt: comment.createdAt,
 		});
 	}
 	return result;

@@ -19,7 +19,7 @@ const digestOf = (c: Change, id: string): string => unitDigest(c.units.find((u) 
 let seq = 0;
 function m(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
-	return { commentId: `c${seq}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
 }
 
 const startData = (unit: string, digest = "d"): StartData => ({

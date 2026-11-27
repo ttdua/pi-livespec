@@ -53,7 +53,7 @@ async function requestOf(h: Gate): Promise<{ data: Record<string, any>; text: st
 	const marked = filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
 	const request = marked.filter((m: MarkedComment) => m.kind === "request").at(-1);
 	if (!request) throw new Error("no request");
-	return { data: request.data as Record<string, any>, text: await h.world.commentBodyOf(request.commentId) };
+	return { data: request.data as Record<string, any>, text: await h.world.commentBodyOf(request.ref) };
 }
 
 const COUNT = "echo run >> $LOG; exit 1";

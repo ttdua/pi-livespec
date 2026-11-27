@@ -7,79 +7,79 @@ import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { agg, aggregate, rebut, run, stuckAnswer, stuckReport, verifier } from "./review-fixtures.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 
-const key = (m: MarkedComment, i: number) => `${m.commentId}:${i}`;
+const key = (m: MarkedComment, i: number) => `${m.ref}:${i}`;
 const question = (text: string, checked: boolean): Question => ({ id: "Q1", kind: "non-blocking", text, checked, line: 1 });
 
 describe("findingState", () => {
 	it("Refuted finding", () => {
 		const a = aggregate([agg()]);
-		expect(findingState([a, verifier(key(a, 0), { verdict: "refuted" })], a.commentId, 0, [])).toBe("disputed");
+		expect(findingState([a, verifier(key(a, 0), { verdict: "refuted" })], a.ref, 0, [])).toBe("disputed");
 	});
 
 	it("Confirmed finding", () => {
 		const a = aggregate([agg(), agg({ location: "src/x.ts:1" })]);
-		expect(findingState([a, verifier(key(a, 1))], a.commentId, 1, [])).toBe("blocking");
+		expect(findingState([a, verifier(key(a, 1))], a.ref, 1, [])).toBe("blocking");
 	});
 
 	it("Verifier blocked", () => {
 		const a = aggregate([agg()]);
 		const blocked = verifier(key(a, 0), { status: "BLOCKED", completed: false, verdict: undefined });
-		expect(findingState([a, blocked], a.commentId, 0, [])).toBe("blocking");
+		expect(findingState([a, blocked], a.ref, 0, [])).toBe("blocking");
 	});
 
 	it("refuted, then incomplete run stays disputed", () => {
 		const a = aggregate([agg()]);
 		const refuted = verifier(key(a, 0), { verdict: "refuted" });
 		const partial = verifier(key(a, 0), { round: 2, status: "DONE", completed: false, verdict: "confirmed" });
-		expect(findingState([a, refuted, partial], a.commentId, 0, [])).toBe("disputed");
+		expect(findingState([a, refuted, partial], a.ref, 0, [])).toBe("disputed");
 	});
 
 	it("refuted, then a BLOCKED run counts as confirming", () => {
 		const a = aggregate([agg()]);
 		const refuted = verifier(key(a, 0), { verdict: "refuted" });
 		const blocked = verifier(key(a, 0), { round: 2, status: "BLOCKED", completed: false, verdict: undefined });
-		expect(findingState([a, refuted, blocked], a.commentId, 0, [])).toBe("blocking");
+		expect(findingState([a, refuted, blocked], a.ref, 0, [])).toBe("blocking");
 	});
 
 	it("an incomplete, not blocked verifier run leaves the finding unverified", () => {
 		const a = aggregate([agg()]);
 		const partial = verifier(key(a, 0), { status: "DONE", completed: false, verdict: "refuted" });
-		expect(findingState([a, partial], a.commentId, 0, [])).toBe("unverified");
+		expect(findingState([a, partial], a.ref, 0, [])).toBe("unverified");
 	});
 
 	it("Unverified finding blocks", () => {
 		const a = aggregate([agg()]);
-		expect(findingState([a], a.commentId, 0, [])).toBe("unverified");
-		expect(blockingFindings([a], a.commentId, [])).toEqual([{ index: 0, finding: expect.objectContaining({ route: "unit" }) }]);
+		expect(findingState([a], a.ref, 0, [])).toBe("unverified");
+		expect(blockingFindings([a], a.ref, [])).toEqual([{ index: 0, finding: expect.objectContaining({ route: "unit" }) }]);
 	});
 
 	it("Answered question", () => {
 		const a = aggregate([agg({ route: "question", routeUnit: undefined, verify: "skipped-off" })]);
 		const text = `Decide finding:${key(a, 0)}`;
-		expect(findingState([a], a.commentId, 0, [question(text, false)])).toBe("blocking");
-		expect(findingState([a], a.commentId, 0, [question(text, true)])).toBe("answered");
-		expect(blockingFindings([a], a.commentId, [question(text, true)])).toEqual([]);
+		expect(findingState([a], a.ref, 0, [question(text, false)])).toBe("blocking");
+		expect(findingState([a], a.ref, 0, [question(text, true)])).toBe("answered");
+		expect(blockingFindings([a], a.ref, [question(text, true)])).toEqual([]);
 	});
 
 	it("out-of-scope and record never block", () => {
 		const a = aggregate([agg({ route: "out-of-scope", routeUnit: undefined }), agg({ route: "record", severity: "SUGGESTION", verify: "skipped-suggestion" })]);
-		expect(findingState([a], a.commentId, 0, [])).toBe("open");
-		expect(findingState([a], a.commentId, 1, [])).toBe("open");
-		expect(blockingFindings([a], a.commentId, [])).toEqual([]);
+		expect(findingState([a], a.ref, 0, [])).toBe("open");
+		expect(findingState([a], a.ref, 1, [])).toBe("open");
+		expect(blockingFindings([a], a.ref, [])).toEqual([]);
 	});
 
 	it("a rebutted WARNING does not block, a rebutted missed-context does", () => {
 		const a = aggregate([agg({ verify: "skipped-off" }), agg({ kind: "missed-context", route: "in-change", verify: "skipped-missed-context" })]);
-		const marked = [a, rebut(a.commentId, 0)];
-		expect(findingState(marked, a.commentId, 0, [])).toBe("rebutted");
-		expect(findingState([...marked, rebut(a.commentId, 1)], a.commentId, 1, [])).toBe("blocking");
+		const marked = [a, rebut(a.ref, 0)];
+		expect(findingState(marked, a.ref, 0, [])).toBe("rebutted");
+		expect(findingState([...marked, rebut(a.ref, 1)], a.ref, 1, [])).toBe("blocking");
 	});
 
 	it("a refuted verifier record of a parent or missed-context finding does not dispute it", () => {
 		const a = aggregate([agg({ from: ["parent"], verify: "skipped-parent" }), agg({ kind: "missed-context", verify: "skipped-missed-context" })]);
 		const marked = [a, verifier(key(a, 0), { verdict: "refuted" }), verifier(key(a, 1), { verdict: "refuted" })];
-		expect(findingState(marked, a.commentId, 0, [])).toBe("blocking");
-		expect(findingState(marked, a.commentId, 1, [])).toBe("blocking");
+		expect(findingState(marked, a.ref, 0, [])).toBe("blocking");
+		expect(findingState(marked, a.ref, 1, [])).toBe("blocking");
 	});
 });
 

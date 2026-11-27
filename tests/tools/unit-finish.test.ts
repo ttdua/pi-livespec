@@ -310,7 +310,7 @@ describe("unit-evidence", () => {
 		const decisions = (await h.ofKind("decision")).filter((m) => m.id === "progress.U1");
 		expect(decisions.length).toBeGreaterThan(1);
 		const text = await expectFinishRefusal(h, "U1", ["BLOCKED", "spec_stuck"]);
-		for (const d of decisions) expect(text).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-${d.commentId}`);
+		for (const d of decisions) expect(text).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-${d.ref}`);
 	});
 
 	test("extra parameters are ignored", async () => {

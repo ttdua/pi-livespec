@@ -75,7 +75,7 @@ describe("progress rule", () => {
 		expect(data.facts_hash).toMatch(/^[0-9a-f]{64}$/);
 		expect(data.signature).toEqual(failA);
 		expect(data.attempt).toBe(1);
-		const marked: MarkedComment[] = [{ commentId: "c1", author: "bot", ...parsed }];
+		const marked: MarkedComment[] = [{ source: "forge", ref: "c1", author: "bot", ...parsed }];
 		const previous = previousSignature(marked, "U1", -1);
 		expect(previous).toEqual(failA);
 		expect((await run({ attempt: 2, cap: 3, signature: { ...failA }, previous })).outcome).toBe("stop");
@@ -93,8 +93,8 @@ describe("progress rule", () => {
 	});
 
 	test("previousSignature ignores records at or before the window start and other units", () => {
-		const rec = (subject: string, sig: Signature): MarkedComment => ({
-			commentId: "c",
+		const rec = (subject: string, sig: Signature): MarkedComment => ({ source: "forge", 
+			ref: "c",
 			author: "bot",
 			kind: "decision",
 			id: `progress.${subject}`,

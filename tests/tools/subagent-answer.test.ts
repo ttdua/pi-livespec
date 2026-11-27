@@ -177,7 +177,7 @@ describe("verifier answer", () => {
 	test("resumes after the stored packet is gone, rebuilding with the finding", async () => {
 		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
 		await h.seed("finding-summary", "finding-summary.change.review.1", AGG);
-		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const key = `${(await h.latest("finding-summary"))?.ref}:0`;
 		const out = await h.call("subagent_dispatch", { role: "verifier", finding: key });
 		expect(textOf(out)).toContain("agent-1 asks");
 		const { rmSync } = await import("node:fs");

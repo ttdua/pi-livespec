@@ -509,7 +509,7 @@ describe("Amendment with a briefing", () => {
 });
 
 describe("historyUnitIds", () => {
-	const decision = (id: string, data: Record<string, unknown>): MarkedComment => ({ commentId: id, kind: "decision", id, author: BOT_LOGIN, data });
+	const decision = (id: string, data: Record<string, unknown>): MarkedComment => ({ source: "forge", ref: id, kind: "decision", id, author: BOT_LOGIN, data });
 
 	test("skips the answer of a rule ask, keeps rule records and overrides", () => {
 		const marked = [

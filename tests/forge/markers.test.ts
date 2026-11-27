@@ -111,7 +111,7 @@ describe("readMarkedComments", () => {
 		const own = comment("c1", "naicoi", writeMarked("receipt", "u1", { n: 1 }));
 		const result = await readMarkedComments(stubForge("naicoi", [own]), 7);
 		expect(result.comments).toEqual([
-			{ commentId: "c1", kind: "receipt", id: "u1", author: "naicoi", data: { n: 1 } },
+			{ ref: "c1", source: "forge", kind: "receipt", id: "u1", author: "naicoi", data: { n: 1 }, createdAt: "2026-11-14T10:00:00Z" },
 		]);
 		expect(result.warnings).toEqual([]);
 	});

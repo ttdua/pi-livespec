@@ -257,7 +257,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 
 				expect(read.warnings).toEqual([]);
 				expect(read.comments).toEqual([
-					{ commentId: created.id, kind: "receipt", id: "u1", author: BOT_LOGIN, data: { ok: true, n: 3 } },
+					{ ref: created.id, source: "forge", kind: "receipt", id: "u1", author: BOT_LOGIN, data: { ok: true, n: 3 }, createdAt: created.createdAt },
 				]);
 			});
 

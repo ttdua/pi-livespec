@@ -250,7 +250,7 @@ describe("spec_gate", () => {
 		const h = await change("define", { config: FORGE_CHAIN, edit: longProposal });
 		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		const request = (await ofKind(h, "request"))[0];
-		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
+		const text = await h.world.commentBodyOf(request?.ref ?? "?");
 		expect(text).toContain(`…\nFull text: ${issueUrl(h)}`);
 		expect(text).toContain(`Links:\n- ${issueUrl(h)}`);
 	});
@@ -262,7 +262,7 @@ describe("spec_gate", () => {
 		const out = await h.call("spec_gate", { target: "define", briefing });
 		expect(out.isError, textOf(out)).toBe(false);
 		const request = (await ofKind(h, "request"))[0];
-		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
+		const text = await h.world.commentBodyOf(request?.ref ?? "?");
 		expect(text.match(/<!-- livespec:/g)).toHaveLength(1);
 		const lines = text.slice(0, text.indexOf("### How to answer")).split("\n");
 		expect(lines.filter((l) => /^[\s>*+\-]*\/livespec approve/.test(l))).toEqual([]);

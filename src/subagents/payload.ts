@@ -24,7 +24,7 @@ function advisoryListed(marked: MarkedComment[]): Listed {
 		const data = m.data as FindingSummaryData;
 		if (data.advisory !== true) continue;
 		data.findings.forEach((f, i) => {
-			const key = findingKey(m.commentId, i);
+			const key = findingKey(m.ref, i);
 			if (shown.has(key)) return;
 			out.lines.push(findingLine(f));
 			out.keys.push(key);

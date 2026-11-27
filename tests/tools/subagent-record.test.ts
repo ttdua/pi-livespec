@@ -140,7 +140,7 @@ describe("verifier", () => {
 	const seeded = async () => {
 		const h = await subagentHarness({ units: [U1] });
 		await h.seed("finding-summary", "finding-summary.change.review.1", AGGREGATE);
-		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const key = `${(await h.latest("finding-summary"))?.ref}:0`;
 		return { h, key };
 	};
 	const verdict = (over: Record<string, unknown> = {}) => ({ status: "DONE", notes: "n", discoveries: [], sources_used: [], findings: [], verdict: "refuted", reason: "guarded by caller", ...over });

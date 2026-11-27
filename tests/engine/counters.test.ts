@@ -20,7 +20,7 @@ beforeEach(async () => {
 });
 
 function marked(kind: string, id: string, data: unknown): MarkedComment {
-	return { commentId: "c", kind, id, author: BOT_LOGIN, data };
+	return { source: "forge", ref: "c", kind, id, author: BOT_LOGIN, data };
 }
 
 async function own(): Promise<MarkedComment[]> {

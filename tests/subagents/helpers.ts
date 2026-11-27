@@ -9,7 +9,7 @@ let counter = 0;
 export function mark(body: string): MarkedComment {
 	const parsed = parseMarked(body);
 	if (!parsed) throw new Error("not a marked comment");
-	return { commentId: `c${++counter}`, kind: parsed.kind, id: parsed.id, author: "me", data: parsed.data };
+	return { source: "forge", ref: `c${++counter}`, kind: parsed.kind, id: parsed.id, author: "me", data: parsed.data };
 }
 
 /** A placeholder own comment, so the next records sit after a `unit-start` at index 0. */

@@ -14,5 +14,5 @@ export async function seedSummary(h: UnitHarness, over: Partial<FindingSummaryDa
 		sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [], ...over,
 	};
 	await h.seed("finding-summary", `finding-summary.${data.unit ?? "change"}.unit.${data.round}`, data);
-	return (await h.marked()).at(-1)?.commentId as string;
+	return (await h.marked()).at(-1)?.ref as string;
 }

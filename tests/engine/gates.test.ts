@@ -68,7 +68,7 @@ function decision(point: string, unit: string, outcome: unknown, reason: string,
 	if (!u) throw new Error(unit);
 	const parsed = parseMarked(decisionComment({ point, subject: unit, digest: unitDigest(u), source: "rule", outcome, reason, ...extra }));
 	if (!parsed) throw new Error("bad decision");
-	return { commentId: `c-${point}-${unit}`, author: "bot", ...parsed };
+	return { source: "forge", ref: `c-${point}-${unit}`, author: "bot", ...parsed };
 }
 
 describe("gateRefusal", () => {
@@ -157,7 +157,7 @@ describe("gatePayload", () => {
 			decisionComment({ point: "tags", subject: "U3", digest: "0".repeat(64), source: "human", outcome: ["perf"], reason: "older contract reason" }),
 		);
 		if (!otherContract) throw new Error("bad decision");
-		marked.push({ commentId: "c-old", author: "bot", ...otherContract });
+		marked.push({ source: "forge", ref: "c-old", author: "bot", ...otherContract });
 		const payload = gatePayload(ready("plan", { marked }), pack, "plan", FACTS);
 		expect(payload.summary).toBe(
 			[
@@ -263,7 +263,7 @@ describe("parked and proposer gates", () => {
 });
 
 describe("parkedRecord", () => {
-	const parked = (id: string, data: unknown): MarkedComment => ({ commentId: id, author: "bot", ...parseMarked(writeMarked("parked", id, data))! });
+	const parked = (id: string, data: unknown): MarkedComment => ({ source: "forge", ref: id, author: "bot", ...parseMarked(writeMarked("parked", id, data))! });
 
 	test("the latest parked record, or none after a resume", () => {
 		expect(parkedRecord([])).toBeUndefined();
@@ -355,7 +355,7 @@ describe("subagent findings in the gate payload", () => {
 
 	test("rebuttals in gate payload", () => {
 		const summary = reviewed({ unit: "U3", findings: [finding({ evidence: "off by one" })] });
-		const s = ready("define", { marked: [summary, rebutted(summary.commentId, 0, "limit is inclusive", "see ratelimit.ts:12")] });
+		const s = ready("define", { marked: [summary, rebutted(summary.ref, 0, "limit is inclusive", "see ratelimit.ts:12")] });
 		const text = gatePayload(s, pack, "define", FACTS).summary;
 		expect(text).toContain("Subagent findings");
 		expect(text).toContain("Rebuttals");
@@ -385,13 +385,13 @@ describe("subagent findings in the gate payload", () => {
 		const review = oos();
 		const advisory = reviewer("spec");
 		const payload = gatePayload(ready("define", { marked: [review, advisory] }), pack, "define", FACTS);
-		expect([...payload.findings].sort()).toEqual([`${advisory.commentId}:0`, `${review.commentId}:0`].sort());
+		expect([...payload.findings].sort()).toEqual([`${advisory.ref}:0`, `${review.ref}:0`].sort());
 	});
 
 	test("out-of-scope findings are listed until a gate comment has recorded them", () => {
 		const review = oos();
 		expect(gatePayload(ready("define", { marked: [review] }), pack, "define", FACTS).summary).toContain("unrelated module leaks");
-		const shown = gateComment([`${review.commentId}:0`]);
+		const shown = gateComment([`${review.ref}:0`]);
 		const after = gatePayload(ready("define", { marked: [review, shown] }), pack, "define", FACTS);
 		expect(after.summary).not.toContain("Out-of-scope findings");
 		expect(after.findings).toEqual([]);
@@ -409,12 +409,12 @@ describe("subagent findings in the gate payload", () => {
 		const review = buildAdvisory();
 		const payload = gatePayload(ready("ship", { marked: [review] }), pack, "ship", FACTS);
 		expect(payload.summary).toContain("advisory build complaint");
-		expect(payload.findings).toEqual([`${review.commentId}:0`]);
+		expect(payload.findings).toEqual([`${review.ref}:0`]);
 	});
 
 	test("an advisory finding is not listed again once a gate comment recorded it", () => {
 		const review = buildAdvisory();
-		const shown = gateComment([`${review.commentId}:0`]);
+		const shown = gateComment([`${review.ref}:0`]);
 		const after = gatePayload(ready("ship", { marked: [review, shown] }), pack, "ship", FACTS);
 		expect(after.summary).not.toContain("advisory build complaint");
 		expect(after.findings).toEqual([]);

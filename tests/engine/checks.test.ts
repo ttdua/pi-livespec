@@ -190,7 +190,7 @@ describe("runChecks", () => {
 function decisionMarked(r: DecisionRecord): MarkedComment {
 	const parsed = parseMarked(decisionComment(r));
 	if (!parsed) throw new Error("decision comment does not parse");
-	return { commentId: `c-${r.point}-${r.subject}`, author: "bot", ...parsed };
+	return { source: "forge", ref: `c-${r.point}-${r.subject}`, author: "bot", ...parsed };
 }
 
 /** Rule records matching the fixture body: U1 low with no tags, U3 medium with `[security, api]`. */

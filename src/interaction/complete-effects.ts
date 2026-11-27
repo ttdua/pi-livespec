@@ -40,7 +40,7 @@ export function startRun(ctx: CompletionCtx): Run {
 export async function postComment(run: Run, body: string): Promise<void> {
 	const comment = await run.ctx.forge.createComment(run.ctx.issue, body);
 	const parsed = parseMarked(comment.body);
-	if (parsed) run.marked.push({ commentId: comment.id, author: comment.author, ...parsed });
+	if (parsed) run.marked.push({ ref: comment.id, source: "forge", author: comment.author, createdAt: comment.createdAt, ...parsed });
 }
 
 /** True when an own marked comment of `kind` with `id` exists (and, when given, carries `request`). */

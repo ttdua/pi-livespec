@@ -5,7 +5,7 @@ import type { MarkedComment } from "../../src/forge/markers.ts";
 let seq = 0;
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
-	return { commentId: `c${seq}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
 }
 
 const cascade = (q: string, afterPlan: boolean): MarkedComment =>

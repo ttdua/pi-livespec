@@ -164,7 +164,7 @@ const VALID: Record<string, (d: unknown) => boolean> = { dispatch: isDispatchDat
 
 /** Own `dispatch` and `finding-summary` records whose data does not have the expected shape. */
 export function invalidRecords(marked: MarkedComment[]): string[] {
-	return marked.filter((m) => m.kind in VALID && !(VALID[m.kind] as (d: unknown) => boolean)(m.data)).map((m) => `ignored invalid ${m.kind} record ${m.commentId} (${m.id})`);
+	return marked.filter((m) => m.kind in VALID && !(VALID[m.kind] as (d: unknown) => boolean)(m.data)).map((m) => `ignored invalid ${m.kind} record ${m.ref} (${m.id})`);
 }
 
 /** Valid records only, and of those the latest comment per marker identity: superseded comments are history. */
@@ -205,7 +205,7 @@ const isDerived = (d: FindingSummaryData): boolean => isSystem(d) || d.role === 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
 	current(marked).forEach((m, at) => {
-		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.commentId, at, data: m.data as FindingSummaryData });
+		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.ref, at, data: m.data as FindingSummaryData });
 	});
 	return found;
 }

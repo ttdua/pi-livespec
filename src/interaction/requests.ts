@@ -148,7 +148,7 @@ export function allRequests(marked: MarkedComment[]): (PendingRequest & { commen
 	const out: (PendingRequest & { commentId: string })[] = [];
 	for (const m of marked) {
 		const data = m.kind === REQUEST_KIND ? asRequestRecord(m) : undefined;
-		if (data) out.push({ id: m.id, subject: data.subject, kind: data.kind, mode: data.mode, createdAt: createdAtOf(m.id), data, commentId: m.commentId });
+		if (data) out.push({ id: m.id, subject: data.subject, kind: data.kind, mode: data.mode, createdAt: createdAtOf(m.id), data, commentId: m.ref });
 	}
 	return out;
 }
@@ -188,7 +188,7 @@ export function closers(marked: MarkedComment[]): Map<string, Closer> {
 		const id = m.kind === ANSWER_KIND ? m.id : RESULT_KINDS.has(m.kind) && typeof m.data.request === "string" ? m.data.request : undefined;
 		if (id === undefined || out.has(id)) continue;
 		const answer = m.kind === ANSWER_KIND && isObject(m.data.answer) && isObject(m.data.answer.answerComment) ? m.data.answer.answerComment.id : undefined;
-		out.set(id, typeof answer === "string" ? { commentId: m.commentId, answerCommentId: answer } : { commentId: m.commentId });
+		out.set(id, typeof answer === "string" ? { commentId: m.ref, answerCommentId: answer } : { commentId: m.ref });
 	}
 	return out;
 }

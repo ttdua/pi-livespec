@@ -90,8 +90,8 @@ function shipState(work: string, base: string, at: At): ChangeState {
 	);
 }
 
-const shipRecord = (pushedHead: string, confirmed: string[]): MarkedComment => ({
-	commentId: `s-${pushedHead}`,
+const shipRecord = (pushedHead: string, confirmed: string[]): MarkedComment => ({ source: "forge", 
+	ref: `s-${pushedHead}`,
 	kind: "ship",
 	id: `ship.41.${pushedHead}`,
 	author: "bot",
@@ -205,7 +205,7 @@ describe("shipContext behavior records", () => {
 		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
 		const m = parseMarked(decisionComment(r));
 		if (m === undefined) throw new Error("not marked");
-		return { ...m, commentId: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
+		return { ...m, ref: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
 	};
 
 	test("Newer changed record wins (records)", async () => {

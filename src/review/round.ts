@@ -27,7 +27,7 @@ function reviewerRuns(marked: MarkedComment[], subject: ReviewSubject, head: str
 	return current(marked).flatMap((m) => {
 		const d = m.data as FindingSummaryData;
 		const ok = m.kind === "finding-summary" && d.role === "reviewer" && d.subject === subject && d.unit === undefined && d.aggregate !== true && d.head === head && Array.isArray(d.findings);
-		return ok ? [{ at: marked.indexOf(m), commentId: m.commentId, data: d }] : [];
+		return ok ? [{ at: marked.indexOf(m), commentId: m.ref, data: d }] : [];
 	});
 }
 

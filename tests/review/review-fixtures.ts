@@ -8,7 +8,7 @@ let counter = 0;
 export function mark(body: string): MarkedComment {
 	const p = parseMarked(body);
 	if (!p) throw new Error("not marked");
-	return { commentId: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
+	return { source: "forge", ref: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
 }
 
 export const finding = (over: Partial<Finding> = {}): Finding => ({

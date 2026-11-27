@@ -351,9 +351,9 @@ async function approvedGate(h: CascadeHarness, phase: string): Promise<void> {
 }
 
 /** Kind and id of every own comment written after `before`, in order. */
-async function newComments(h: CascadeHarness, before: { commentId: string }[]): Promise<[string, string | undefined][]> {
-	const seen = new Set(before.map((m) => m.commentId));
-	return (await own(h)).filter((m) => !seen.has(m.commentId)).map((m) => [m.kind, m.id]);
+async function newComments(h: CascadeHarness, before: { ref: string }[]): Promise<[string, string | undefined][]> {
+	const seen = new Set(before.map((m) => m.ref));
+	return (await own(h)).filter((m) => !seen.has(m.ref)).map((m) => [m.kind, m.id]);
 }
 
 async function movePhase(h: CascadeHarness, from: string, to: string): Promise<void> {
