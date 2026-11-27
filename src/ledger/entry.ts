@@ -37,6 +37,7 @@ export const LEDGER_META_FILE = "ledger.yaml";
 export const LEDGER_SCHEMA = 1;
 
 const REF_SUFFIX_BYTES = 4;
+const ID_PATTERN = /^[^\s~]+$/;
 const REF_PATTERN = /^[^\s~]+~[0-9a-f]{8}$/;
 const UNIT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const JSONL_FILES: Partial<Record<LedgerKind, string>> = {
@@ -81,11 +82,36 @@ function unitOf(kind: LedgerKind, data: unknown): string {
 	return unit;
 }
 
-/** The text that appends `entries` to a file whose current content is `existing`. */
+/**
+ * The text that appends `entries` to a file whose current content is `existing`. Throws
+ * `LedgerError("git")` when a YAML file would not read back as its old entries plus `entries`.
+ */
 export function appendText(path: string, existing: string, entries: LedgerEntry[]): string {
 	const prefix = existing === "" || existing.endsWith("\n") ? existing : `${existing}\n`;
-	const added = isJsonl(path) ? entries.map((e) => `${JSON.stringify(e)}\n`).join("") : stringify(entries);
-	return prefix + added;
+	if (isJsonl(path)) return prefix + entries.map((e) => `${JSON.stringify(e)}\n`).join("");
+	const text = prefix + stringify(entries, { aliasDuplicateObjects: false });
+	const before = yamlSequenceLength(existing);
+	if (before === undefined || yamlSequenceLength(text) !== before + entries.length) {
+		throw new LedgerError("git", `refusing to append to \`${path}\`: it is not a readable YAML sequence of entries`);
+	}
+	return text;
+}
+
+/** Throws `LedgerError("kind")` when `entry` would be skipped by a read of its own file. */
+export function assertEntry(entry: LedgerEntry): void {
+	const problem = entryProblem(entry);
+	if (problem) throw new LedgerError("kind", `invalid ledger entry ${JSON.stringify(entry.ref) ?? "(no ref)"}: ${problem}`);
+	fileFor(entry.kind, entry.data);
+}
+
+function yamlSequenceLength(text: string): number | undefined {
+	try {
+		const doc: unknown = parse(text);
+		if (doc === null || doc === undefined) return 0;
+		return Array.isArray(doc) ? doc.length : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /** The entries of one ledger file in file order, with one warning per entry skipped. */
@@ -94,7 +120,7 @@ export function parseFile(path: string, text: string): { entries: LedgerEntry[];
 	const entries: LedgerEntry[] = [];
 	const warnings = [...items.warnings];
 	for (const { value, where } of items.values) {
-		const problem = entryProblem(path, value);
+		const problem = entryProblem(value) ?? kindInFileProblem(path, value as LedgerEntry);
 		if (problem) warnings.push(`${where}: skipped entry: ${problem}`);
 		else entries.push(value as LedgerEntry);
 	}
@@ -134,21 +160,22 @@ function parseYamlSequence(path: string, text: string): ParsedItems {
 	return { values: doc.map((value, index) => ({ value, where: `${path}[${index}]` })), warnings: [] };
 }
 
-/** Why `value` is not a valid entry of the file at `path`, or undefined when it is. */
-function entryProblem(path: string, value: unknown): string | undefined {
+/** Why `value` is not a well-formed entry, or undefined when it is. */
+function entryProblem(value: unknown): string | undefined {
 	if (!isObject(value)) return "not an object";
 	if (typeof value.ref !== "string" || !REF_PATTERN.test(value.ref)) return "missing or malformed `ref`";
 	if (typeof value.kind !== "string" || !isLedgerKind(value.kind)) return "missing or unknown `kind`";
-	if (typeof value.id !== "string" || value.id === "") return "missing `id`";
+	if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) return "missing or malformed `id`";
 	if (!Number.isSafeInteger(value.seq) || (value.seq as number) < 1) return "missing or invalid `seq`";
 	if (typeof value.at !== "string" || value.at === "") return "missing `at`";
 	if (value.after !== undefined && typeof value.after !== "string") return "invalid `after`";
 	if (value.from !== undefined && typeof value.from !== "string") return "invalid `from`";
-	if (!Object.hasOwn(value, "data")) return "missing `data`";
-	return kindInFileProblem(path, value.kind, value.data);
+	// `undefined` data is dropped by both encoders, so the entry would read back without `data`.
+	if (!Object.hasOwn(value, "data") || value.data === undefined) return "missing `data`";
+	return undefined;
 }
 
-function kindInFileProblem(path: string, kind: LedgerKind, data: unknown): string | undefined {
+function kindInFileProblem(path: string, { kind, data }: LedgerEntry): string | undefined {
 	try {
 		if (fileFor(kind, data) === path) return undefined;
 	} catch {

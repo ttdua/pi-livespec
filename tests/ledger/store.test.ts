@@ -59,6 +59,7 @@ async function commitFiles(root: string, base: string, files: Record<string, str
 }
 
 function entry(over: Partial<LedgerEntry> & Pick<LedgerEntry, "ref" | "kind" | "id">): LedgerEntry {
+	// Spread keeps an explicit `data: undefined` from `over`.
 	return { seq: 1, at: "2026-11-27T10:00:00.000Z", data: {}, ...over };
 }
 
@@ -291,5 +292,94 @@ describe("invalid ledger content", () => {
 		const read = await readLedger(exec, root, 59);
 		expect(read.entries.map((e) => e.ref)).toEqual([appended.ref]);
 		expect(read.warnings.length).toBeGreaterThan(0);
+	});
+
+	it.each([
+		["an unknown schema", { "ledger.yaml": "schema: 2\nissue: 59\n" }],
+		["another issue", { "ledger.yaml": "schema: 1\nissue: 60\n" }],
+		["an unparseable target unit file", { "units/U1.yaml": "{ not: [ yaml" }],
+		["a target unit file that is not a sequence", { "units/U1.yaml": "a: 1\n" }],
+		["a flow-sequence target unit file", { "units/U1.yaml": "[]\n" }],
+	])("refuses to append on top of %s, leaving the ref unchanged", async (_name, files) => {
+		const root = await repoWithCommit();
+		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);
+		git(root, ["update-ref", LEDGER, await commitFiles(root, base, files)]);
+		const before = tipOf(root);
+
+		const attempt = appendEntry(exec, root, 59, { kind: "receipt", id: "receipt.U1", data: { unit: "U1" } });
+
+		await expect(attempt).rejects.toMatchObject({ code: "git" });
+		expect(tipOf(root)).toBe(before);
+	});
+});
+
+describe("entry validation on write", () => {
+	it.each([
+		["an empty id", { id: "" }],
+		["an id with whitespace", { id: "progress U1" }],
+		["an id with a tilde", { id: "progress~U1" }],
+		["undefined data", { data: undefined }],
+	])("appendEntry refuses %s and leaves the ref unchanged", async (_name, over) => {
+		const root = await repoWithCommit();
+		await appendEntry(exec, root, 59, { kind: "decision", id: "progress.U1", data: {} });
+		const before = tipOf(root);
+
+		const attempt = appendEntry(exec, root, 59, { kind: "decision", id: "progress.U1", data: {}, ...over });
+
+		await expect(attempt).rejects.toBeInstanceOf(LedgerError);
+		expect(tipOf(root)).toBe(before);
+	});
+
+	it.each([
+		["a malformed ref", { ref: "progress.U1" }],
+		["an id with whitespace", { id: "progress U1", ref: "progress U1~00000001" }],
+		["undefined data", { data: undefined }],
+		["a zero seq", { seq: 0 }],
+		["a missing at", { at: "" }],
+		["an unknown kind", { kind: "lane" as never }],
+	])("commitEntries refuses %s before writing any object", async (_name, over) => {
+		const root = await repoWithCommit();
+		const objectsBefore = git(root, ["count-objects", "-v"]);
+		const bad = entry({ ref: "progress.U1~00000001", kind: "decision", id: "progress.U1", ...over });
+
+		await expect(commitEntries(exec, root, 59, undefined, [bad])).rejects.toBeInstanceOf(LedgerError);
+		expect(git(root, ["count-objects", "-v"])).toBe(objectsBefore);
+	});
+});
+
+describe("unit file encoding", () => {
+	it("stores blobs without clean filters or line-ending conversion", async () => {
+		const root = await repoWithCommit();
+		const hashed: string[][] = [];
+		const spying: GitExec = (args, o) => {
+			if (args[0] === "hash-object") hashed.push(args);
+			return defaultGitExec(args, o);
+		};
+
+		await appendEntry(spying, root, 59, { kind: "counter", id: "counter.review", data: { value: 1 } });
+
+		expect(hashed.length).toBeGreaterThan(0);
+		for (const args of hashed) expect(args.slice(0, 4)).toEqual(["hash-object", "-w", "--no-filters", "--"]);
+	});
+
+	it("round-trips multi-line, unicode, nested and shared data across appends without YAML aliases", async () => {
+		const root = await repoWithCommit();
+		const shared = { files: ["a.ts", "b.ts"], note: "x" };
+		const first = await appendEntry(exec, root, 59, {
+			kind: "unit-start",
+			id: "start.U1",
+			data: { unit: "U1", summary: "line one\nline two\n  indented: yes\n", title: "Tiếng Việt ✓ — 日本", base: shared, head: shared },
+		});
+		const second = await appendEntry(exec, root, 59, {
+			kind: "receipt",
+			id: "receipt.U1",
+			data: { unit: "U1", deep: { a: [{ b: { c: [1, "2", null, true] } }] }, date: "2026-11-27", yes: "yes", left: shared, right: shared },
+		});
+
+		const text = show(root, "units/U1.yaml");
+		expect(text).not.toMatch(/[&*][A-Za-z0-9]+/);
+		const read = await readLedger(exec, root, 59);
+		expect(read.warnings).toEqual([]);
+		expect(read.entries).toEqual([first, second]);
 	});
 });

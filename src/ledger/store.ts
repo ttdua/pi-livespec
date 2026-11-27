@@ -15,6 +15,7 @@ import {
 	LedgerError,
 	type LedgerRead,
 	appendText,
+	assertEntry,
 	fileFor,
 	isEntryFile,
 	newRef,
@@ -63,6 +64,7 @@ export async function readLedger(exec: GitExec, root: string, n: number): Promis
 export async function commitEntries(exec: GitExec, root: string, n: number, base: string | undefined, entries: LedgerEntry[]): Promise<string> {
 	ledgerRef(n);
 	if (entries.length === 0) throw new LedgerError("git", "commitEntries needs at least one entry");
+	for (const entry of entries) assertEntry(entry);
 	const scratch = await mkdtemp(join(tmpdir(), "livespec-ledger-"));
 	try {
 		const contents = await changedFiles(exec, root, n, base, entries);
@@ -77,8 +79,8 @@ export async function commitEntries(exec: GitExec, root: string, n: number, base
 export async function appendEntry(exec: GitExec, root: string, n: number, input: AppendInput, now: () => Date = () => new Date()): Promise<LedgerEntry> {
 	const ref = ledgerRef(n);
 	if (!isLedgerKind(input.kind)) throw new LedgerError("kind", `\`${String(input.kind)}\` is not a ledger kind`);
-	fileFor(input.kind, input.data);
 	const identity = { ref: newRef(input.id), at: now().toISOString() };
+	assertEntry(buildEntry(input, identity, 1));
 	let lastFailure = "";
 	for (let attempt = 0; attempt <= CAS_RETRIES; attempt++) {
 		const tip = await readTip(exec, root, n);
@@ -151,7 +153,11 @@ function dropRepeatedRefs(entries: LedgerEntry[], warnings: string[]): LedgerEnt
 
 /** The new content of every file `entries` touch (and `ledger.yaml` for a fresh ledger). */
 async function changedFiles(exec: GitExec, root: string, n: number, base: string | undefined, entries: LedgerEntry[]): Promise<Map<string, string>> {
-	const existing = new Map((base ? await listTree(exec, root, base) : []).map((f) => [f.path, f.blob]));
+	const files = base ? await listTree(exec, root, base) : [];
+	const metaProblem = base ? await ledgerMetaProblem(exec, root, files, n) : undefined;
+	// Reads ignore a ledger with a bad `ledger.yaml`, so anything appended to it would be invisible.
+	if (metaProblem) throw new LedgerError("git", `refusing to append to the ledger of #${n}: ${metaProblem}`);
+	const existing = new Map(files.map((f) => [f.path, f.blob]));
 	const byFile = new Map<string, LedgerEntry[]>();
 	for (const entry of entries) {
 		const path = fileFor(entry.kind, entry.data);
@@ -174,7 +180,7 @@ async function writeTreeWith(exec: GitExec, root: string, scratch: string, base:
 	for (const [path, text] of contents) {
 		const file = join(scratch, `blob-${fileNo++}`);
 		await writeFile(file, text);
-		const blob = await git(exec, root, ["hash-object", "-w", "--", file]);
+		const blob = await git(exec, root, ["hash-object", "-w", "--no-filters", "--", file]);
 		await git(exec, root, ["update-index", "--add", "--cacheinfo", `100644,${blob},${path}`], env);
 	}
 	return git(exec, root, ["write-tree"], env);
