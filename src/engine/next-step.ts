@@ -6,7 +6,6 @@ import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
 import { gateResultDecision } from "./gate-decision.ts";
-import { escalationConfigFor } from "../decide/rules/gate-escalation.ts";
 import { escalationForecast } from "./gate-escalation-facts.ts";
 import { approvedAtHead } from "./locks.ts";
 import { isWaivable } from "./registry.ts";
@@ -246,12 +245,12 @@ function waivedChecks(state: ChangeState, phase: Phase): Set<string> {
 
 /**
  * Rule 9: the first check result with severity `error`, named by its check; warnings never block, and
- * neither do checks the phase's valid approved gate waived, nor a waivable check at a gate that escalates
+ * neither do checks the phase's valid approved gate waived, nor a waivable check at a gate whose escalation forecast is `human`
  * (flow-engine "Next step precedence": the gate step names it as an escalation).
  */
 const failingCheck: Rule = ({ pack, state, phase }) => {
 	const waived = waivedChecks(state, phase);
-	const escalates = escalationConfigFor(pack, phase.id) !== undefined;
+	const escalates = escalationForecast(pack, state, phase)?.outcome === "human";
 	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error" && !waived.has(r.check) && !(escalates && isWaivable(r.check)));
 	return failure ? { next: `Fix ${failure.check}: ${sentence(failure.message)}.` } : undefined;
 };

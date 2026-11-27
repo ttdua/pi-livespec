@@ -25,8 +25,7 @@ export type GateEscalationFacts = {
  */
 function advisoryReview(state: ChangeState, pack: Pack, phase: string): AdvisoryReview {
 	const subjects = entriesFor(pack, phase)
-		.filter((e) => e.role === "reviewer" && e.advisory === true && e.mode === "always" && e.subject !== undefined && e.subject !== "unit")
-		.flatMap((e) => (e.subject === undefined ? [] : [e.subject]));
+		.flatMap((e) => (e.role === "reviewer" && e.advisory === true && e.mode === "always" && e.subject !== undefined && e.subject !== "unit" ? [e.subject] : []));
 	if (subjects.length === 0) return "none";
 	const reviews = subjects.map((subject) => latestChangeReviewAt(state.marked, subject, state.git.head));
 	if (reviews.includes(undefined)) return "missing";

@@ -1189,6 +1189,23 @@ describe("escalation in the next step", () => {
 			expect(step.next).not.toMatch(/^Fix size-limits/);
 		});
 
+		test("a superseded approval gives the gate step, not a fix", () => {
+			const lock = lockWith({ gates: { plan: gateResult("approved", true, ["size-limits"]) } });
+			expect(nextStep(pack, reviewedState("plan", untagged, { checks: failing("size-limits"), lock })).next).toBe("The plan gate approval no longer matches the change: request the gate again.");
+		});
+
+		test("a rule forecasting self keeps the fix step", async () => {
+			const { registerRule, ruleFor } = await import("../../src/decide/registry.ts");
+			const original = ruleFor("gate-escalation");
+			if (original === undefined) throw new Error("rule must be registered");
+			registerRule("gate-escalation", original.schema, () => ({ outcome: "self", reason: "test rule" }));
+			try {
+				expect(nextStep(pack, reviewedState("plan", untagged, { checks: failing("size-limits") })).next).toBe("Fix size-limits: U3 touches too many files.");
+			} finally {
+				registerRule("gate-escalation", original.schema, original.fn);
+			}
+		});
+
 		test("a non-waivable failing check still asks to fix it", () => {
 			const step = nextStep(pack, reviewedState("plan", untagged, { checks: failing("unit-shape") }));
 			expect(step.next).toMatch(/^Fix unit-shape: /);

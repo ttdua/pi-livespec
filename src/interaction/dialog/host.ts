@@ -76,7 +76,6 @@ class DialogHost implements Component, Focusable {
 	private readonly theme: DialogTheme;
 
 	constructor(
-		private readonly r: ApprovalRequest,
 		private readonly model: DialogModel,
 		private readonly tui: TUI,
 		private readonly piTheme: Theme,
@@ -159,5 +158,5 @@ class DialogHost implements Component, Focusable {
 /** The `ctx.ui.custom` factory for `r`; `makeField` replaces the `Editor` (tests). */
 export function createDialog(r: ApprovalRequest, makeField: (tui: TUI, theme: Theme) => TextField = editorField): DialogFactory<DialogOutcome> {
 	const model = buildModel(r);
-	return (tui, theme, keybindings, done) => new DialogHost(r, model, tui, theme, keybindings, done, makeField);
+	return (tui, theme, keybindings, done) => new DialogHost(model, tui, theme, keybindings, done, makeField);
 }
