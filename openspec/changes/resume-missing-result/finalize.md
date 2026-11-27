@@ -16,7 +16,7 @@
 - **Branch**: `fix/subagent-respawn`
 - **Base branch**: `main`
 - **Final state**: `pr-updated` (fast-forward merge of `resume-missing-result` at `749bdb9`; the push creates the remote branch, because no remote branch or PR existed before)
-- **PR URL**: `N/A (see PR comment)`
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/70` (opened at finalize step 11, closes #66)
 
 Deviations from the canonical steps (project AGENTS.md: worktrees go through Worktrunk):
 - Step 3 skipped `git pull`, because `fix/subagent-respawn` had no remote tracking branch yet.
@@ -34,7 +34,7 @@ Deviations from the canonical steps (project AGENTS.md: worktrees go through Wor
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/70#issuecomment-7206280255)
 
 ---
 
@@ -54,4 +54,4 @@ Deviations from the canonical steps (project AGENTS.md: worktrees go through Wor
 
 ## Next step
 
-Wait for the PR code review (if a PR is opened). After approval, run `/opsx-archive` on this feature branch so the archive commits land here, push them to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive into main.
+Wait for the code review of PR #70. After approval, run `/opsx-archive` on this feature branch so the archive commits land here, push them to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive into main.
