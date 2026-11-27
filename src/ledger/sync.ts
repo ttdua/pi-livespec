@@ -4,29 +4,34 @@
 import type { GitExec } from "../engine/git-exec.ts";
 import { GitError } from "../engine/git.ts";
 import { ledgerDelete, ledgerFetch, ledgerPush } from "../guard/push.ts";
-import { LedgerError } from "./entry.ts";
-import { deleteRef, hasOrigin, isAncestor, readRef, setRef, swapRef, trackingRef } from "./refs.ts";
+import { advanceRef, backoff, deleteRef, hasOrigin, isAncestor, ledgerRef, readRef, swapRef, trackingRef } from "./refs.ts";
 import { planReplay } from "./replay.ts";
-import { commitEntries, ledgerRef, readTree } from "./store.ts";
+import { commitEntries, readTree } from "./store.ts";
 
 export type SyncResult = { status: "synced" } | { status: "pending"; reason: string } | { status: "error"; message: string };
 export type FetchState = "fetched" | "stale-known" | "unknown-offline";
 export type RemoveResult = { remote: "deleted" | "gone" | "moved" | "failed"; message?: string };
 
 const PUSH_RESTARTS = 3;
-const CAS_RETRIES = 5;
+/** Restarts from the fetch after a lost local compare-and-swap. */
+const SWAP_RESTARTS = 5;
+/** Lost swaps tolerated while moving the tracking ref forward. */
+const TRACKING_RETRIES = 3;
+const NO_ORIGIN = "the clone has no `origin` remote";
 
 /** The remote tip after a fetch (undefined when origin has no ledger), or why origin could not be read. */
 type FetchOutcome = { ok: true; remoteTip: string | undefined } | { ok: false; reason: string };
+/** The local and remote tips once the local ref holds every remote entry, or why that did not happen. */
+type Integrated = { ok: true; local: string | undefined; remoteTip: string | undefined } | { ok: false; reason: string };
 
 /** Fetch, fast-forward or replay, then push without force; never throws. */
 export async function syncLedger(exec: GitExec, root: string, n: number): Promise<SyncResult> {
 	try {
 		for (let restart = 0; restart <= PUSH_RESTARTS; restart++) {
-			const fetched = await fetchRemote(exec, root, n);
-			if (!fetched.ok) return { status: "pending", reason: fetched.reason };
-			const local = await integrate(exec, root, n, fetched.remoteTip);
-			if (local === undefined || local === fetched.remoteTip) return { status: "synced" };
+			const state = await fetchAndIntegrate(exec, root, n);
+			if (!state.ok) return { status: "pending", reason: state.reason };
+			const { local, remoteTip } = state;
+			if (local === undefined || local === remoteTip) return { status: "synced" };
 			const pushed = await pushLocal(exec, root, n, local);
 			if (pushed !== "rejected") return pushed;
 		}
@@ -39,9 +44,8 @@ export async function syncLedger(exec: GitExec, root: string, n: number): Promis
 /** The fetch, fast-forward and replay steps of a sync, without the push; true on success. */
 export async function fetchLedger(exec: GitExec, root: string, n: number): Promise<boolean> {
 	try {
-		const fetched = await fetchRemote(exec, root, n);
-		if (fetched.ok) await integrate(exec, root, n, fetched.remoteTip);
-		return fetched.ok || fetched.reason === NO_ORIGIN;
+		const state = await fetchAndIntegrate(exec, root, n);
+		return state.ok || state.reason === NO_ORIGIN;
 	} catch {
 		return false;
 	}
@@ -79,14 +83,13 @@ export async function removeRemote(exec: GitExec, root: string, n: number): Prom
 	return result;
 }
 
-const NO_ORIGIN = "the clone has no `origin` remote";
-
 async function deleteOnOrigin(exec: GitExec, root: string, n: number): Promise<RemoveResult> {
 	if (!(await hasOrigin(exec, root))) return { remote: "gone" };
 	const synced = await syncLedger(exec, root, n);
 	if (synced.status === "pending") return { remote: "failed", message: synced.reason };
 	if (synced.status === "error") return { remote: "failed", message: synced.message };
-	const tip = await readRef(exec, root, ledgerRef(n));
+	// The lease is the tip origin was last seen at, not a local tip that may hold entries appended since.
+	const tip = await readRef(exec, root, trackingRef(n));
 	if (tip === undefined) return { remote: "gone" };
 	return { remote: await ledgerDelete(exec, root, n, tip) };
 }
@@ -109,20 +112,28 @@ async function fetchRemote(exec: GitExec, root: string, n: number): Promise<Fetc
 	return { ok: true, remoteTip: await readRef(exec, root, tracking) };
 }
 
-/**
- * Brings the local ref onto `remoteTip` (fast-forward, or replay when diverged) and returns the local
- * tip afterwards. A lost compare-and-swap re-reads the local ref and tries again.
- */
-async function integrate(exec: GitExec, root: string, n: number, remoteTip: string | undefined): Promise<string | undefined> {
-	const ref = ledgerRef(n);
-	for (let attempt = 0; attempt <= CAS_RETRIES; attempt++) {
-		const local = await readRef(exec, root, ref);
-		if (remoteTip === undefined || local === remoteTip) return local;
-		if (local !== undefined && (await isAncestor(exec, root, remoteTip, local))) return local;
-		const next = await integratedTip(exec, root, n, local, remoteTip);
-		if (await swapRef(exec, root, ref, next, local)) return next;
+/** Fetch, then fast-forward or replay; a lost local compare-and-swap restarts from the fetch. */
+async function fetchAndIntegrate(exec: GitExec, root: string, n: number): Promise<Integrated> {
+	for (let attempt = 0; attempt <= SWAP_RESTARTS; attempt++) {
+		if (attempt > 0) await backoff(attempt - 1);
+		const fetched = await fetchRemote(exec, root, n);
+		if (!fetched.ok) return fetched;
+		const local = await integrate(exec, root, n, fetched.remoteTip);
+		if (local !== LOST) return { ok: true, local, remoteTip: fetched.remoteTip };
 	}
-	throw new LedgerError("cas", `another writer kept moving ${ref} during sync; gave up after ${CAS_RETRIES} retries`);
+	return { ok: false, reason: `another writer kept moving refs/livespec/${n}; swap retries used up after ${SWAP_RESTARTS + 1} attempts` };
+}
+
+const LOST = Symbol("lost swap");
+
+/** Brings the local ref onto `remoteTip` (fast-forward, or replay when diverged) and returns the local tip, or `LOST`. */
+async function integrate(exec: GitExec, root: string, n: number, remoteTip: string | undefined): Promise<string | undefined | typeof LOST> {
+	const ref = ledgerRef(n);
+	const local = await readRef(exec, root, ref);
+	if (remoteTip === undefined || local === remoteTip) return local;
+	if (local !== undefined && (await isAncestor(exec, root, remoteTip, local))) return local;
+	const next = await integratedTip(exec, root, n, local, remoteTip);
+	return (await swapRef(exec, root, ref, next, local)) ? next : LOST;
 }
 
 /** The commit the local ref should move to: the remote tip itself, or a replay of local-only entries onto it. */
@@ -132,7 +143,7 @@ async function integratedTip(exec: GitExec, root: string, n: number, local: stri
 	return replayed.length === 0 ? remoteTip : commitEntries(exec, root, n, remoteTip, replayed);
 }
 
-/** Pushes `local` without force; on success the tracking ref follows it. */
+/** Pushes `local` without force; on success the tracking ref moves forward to it (never back). */
 async function pushLocal(exec: GitExec, root: string, n: number, local: string): Promise<SyncResult | "rejected"> {
 	let outcome: "pushed" | "rejected";
 	try {
@@ -142,7 +153,7 @@ async function pushLocal(exec: GitExec, root: string, n: number, local: string):
 		throw error;
 	}
 	if (outcome === "rejected") return outcome;
-	await setRef(exec, root, trackingRef(n), local);
+	await advanceRef(exec, root, trackingRef(n), local, TRACKING_RETRIES);
 	return { status: "synced" };
 }
 

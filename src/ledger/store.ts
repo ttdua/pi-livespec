@@ -21,9 +21,11 @@ import {
 	newRef,
 	parseFile,
 } from "./entry.ts";
+import { ABSENT, backoff, gitFailure, isLostSwap, ledgerRef, readRef } from "./refs.ts";
+
+export { ledgerRef } from "./refs.ts";
 
 const CAS_RETRIES = 5;
-const LOCK_BACKOFF_MS = 20;
 const READ_CACHE_LIMIT = 64;
 const LIVESPEC_IDENTITY: Record<string, string> = {
 	GIT_AUTHOR_NAME: "livespec",
@@ -31,18 +33,9 @@ const LIVESPEC_IDENTITY: Record<string, string> = {
 	GIT_COMMITTER_NAME: "livespec",
 	GIT_COMMITTER_EMAIL: "livespec@localhost",
 };
-/** `update-ref` old value that requires the ref not to exist yet. */
-const ABSENT = "";
-
 type TreeFile = { path: string; blob: string };
 
 const readCache = new Map<string, LedgerRead>();
-
-/** The ledger ref of change `n`; throws before any git call when `n` is not a positive integer. */
-export function ledgerRef(n: number): string {
-	if (!Number.isSafeInteger(n) || n < 1) throw new LedgerError("git", `ledger issue must be a positive integer, got ${n}`);
-	return `refs/livespec/${n}`;
-}
 
 /** The validated entries of the ledger tree at `commit`; never throws on hostile content. */
 export async function readTree(exec: GitExec, root: string, commit: string, n: number): Promise<LedgerRead> {
@@ -90,18 +83,15 @@ export async function appendEntry(exec: GitExec, root: string, n: number, input:
 		const swap = await exec(["update-ref", "-m", commitMessage([entry]), ref, commit, tip ?? ABSENT], { cwd: root });
 		if (swap.code === 0) return entry;
 		lastFailure = swap.spawnError ?? swap.stderr.trim();
-		if (!(await isLostSwap(exec, root, n, tip, lastFailure))) throw gitFailure(["update-ref", ref], lastFailure);
-		await delay(LOCK_BACKOFF_MS * (attempt + 1));
+		if (!(await isLostSwap(exec, root, ref, tip, lastFailure))) throw gitFailure(["update-ref", ref], lastFailure);
+		await backoff(attempt);
 	}
 	throw new LedgerError("cas", `another writer kept moving ${ref}; gave up after ${CAS_RETRIES} retries: ${lastFailure}`);
 }
 
 /** The local tip of `refs/livespec/<n>`, or undefined when the ref does not exist. */
-async function readTip(exec: GitExec, root: string, n: number): Promise<string | undefined> {
-	const r = await exec(["rev-parse", "--verify", "--quiet", `${ledgerRef(n)}^{commit}`], { cwd: root });
-	if (r.code === 0) return r.stdout.trim();
-	if (r.code === 1 && r.stderr.trim() === "") return undefined;
-	throw gitFailure(["rev-parse", ledgerRef(n)], r.spawnError ?? r.stderr);
+function readTip(exec: GitExec, root: string, n: number): Promise<string | undefined> {
+	return readRef(exec, root, ledgerRef(n));
 }
 
 async function readTreeUncached(exec: GitExec, root: string, commit: string, n: number): Promise<LedgerRead> {
@@ -206,12 +196,6 @@ function nextSeq(entries: LedgerEntry[]): number {
 	return entries.reduce((max, e) => Math.max(max, e.seq), 0) + 1;
 }
 
-/** True when `update-ref` failed because another writer moved or held the ref. */
-async function isLostSwap(exec: GitExec, root: string, n: number, readTipValue: string | undefined, failure: string): Promise<boolean> {
-	if ((await readTip(exec, root, n)) !== readTipValue) return true;
-	return /cannot lock ref|unable to (create|lock)|is at .* but expected|reference already exists/i.test(failure);
-}
-
 async function listTree(exec: GitExec, root: string, commit: string): Promise<TreeFile[]> {
 	const out = await git(exec, root, ["ls-tree", "-r", "-z", "--full-tree", commit], undefined, false);
 	return out
@@ -233,10 +217,6 @@ async function git(exec: GitExec, root: string, args: string[], env?: Record<str
 	return trim ? r.stdout.trim() : r.stdout;
 }
 
-function gitFailure(args: string[], detail: string): LedgerError {
-	return new LedgerError("git", `git ${args.join(" ")} failed: ${detail.trim()}`);
-}
-
 function cacheRead(key: string, read: LedgerRead): void {
 	if (readCache.size >= READ_CACHE_LIMIT) {
 		const oldest = readCache.keys().next().value;
@@ -247,8 +227,4 @@ function cacheRead(key: string, read: LedgerRead): void {
 
 function copyRead(read: LedgerRead): LedgerRead {
 	return { ...read, entries: [...read.entries], warnings: [...read.warnings] };
-}
-
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

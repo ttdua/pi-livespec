@@ -1,4 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type GitExec, defaultGitExec } from "../../src/engine/git-exec.ts";
 import { type AppendInput, LedgerError, entryVersion } from "../../src/ledger/entry.ts";
@@ -41,6 +43,36 @@ function interceptOnce(match: (args: string[]) => boolean, before: () => Promise
 }
 
 const isPush = (args: string[]) => args[0] === "push" && !args.some((a) => a.startsWith("--force-with-lease"));
+const isLocalSwap = (args: string[]) => args[0] === "update-ref" && args.includes(LOCAL) && !args.includes("-d");
+
+/** An exec that holds `refs/livespec/<N>.lock` in `root` during the first `times` local swaps, as a concurrent writer would. */
+function lockedSwaps(root: string, times: number): GitExec {
+	const lock = join(root, ".git", "refs", "livespec", `${N}.lock`);
+	let left = times;
+	return async (args, opts) => {
+		if (left === 0 || !isLocalSwap(args)) return defaultGitExec(args, opts);
+		left--;
+		writeFileSync(lock, "");
+		try {
+			return await defaultGitExec(args, opts);
+		} finally {
+			rmSync(lock, { force: true });
+		}
+	};
+}
+
+/** Clones a and b with a shared synced D0, then one more entry on each side, so b's sync must replay. */
+async function diverged(): Promise<{ remote: string; a: string; b: string }> {
+	const clones = await twoClones();
+	const seed = createLedger(exec, clones.a);
+	await seed.append(N, decision("D0"));
+	await seed.background();
+	await createLedger(exec, clones.b).ensureFetched(N);
+	await appendEntry(exec, clones.a, N, decision("D1"));
+	expect(await createLedger(exec, clones.a).sync(N)).toEqual({ status: "synced" });
+	await appendEntry(exec, clones.b, N, decision("D2"));
+	return clones;
+}
 
 describe("ledger sync", () => {
 	it("Two machines append concurrently", async () => {
@@ -135,6 +167,68 @@ describe("ledger sync", () => {
 		expect(await next.sync(N)).toEqual({ status: "synced" });
 		expect(await next.pending(N)).toBe(false);
 		expect(refAt(remote, LOCAL)).toBe(refAt(a, LOCAL));
+	});
+
+	it("a lock collision on the local swap restarts the sync", async () => {
+		const { remote, b } = await diverged();
+		expect(await createLedger(lockedSwaps(b, 1), b).sync(N)).toEqual({ status: "synced" });
+		expect(refAt(remote, LOCAL)).toBe(refAt(b, LOCAL));
+		expect((await readLedger(exec, b, N)).entries.map((e) => e.id)).toEqual(["D0", "D1", "D2"]);
+	});
+
+	it("lost swaps beyond the restart budget end pending", async () => {
+		const { b } = await diverged();
+		const result = await createLedger(lockedSwaps(b, 100), b).sync(N);
+		expect(result.status).toBe("pending");
+		expect(result.status === "pending" && result.reason).toMatch(/retries used up/);
+	});
+
+	it("an append between fetch and swap restarts the sync and keeps both entries", async () => {
+		const { remote, b } = await diverged();
+		let late = "";
+		const execB = interceptOnce(isLocalSwap, async () => {
+			late = (await appendEntry(exec, b, N, decision("D3"))).ref;
+		});
+		expect(await createLedger(execB, b).sync(N)).toEqual({ status: "synced" });
+		const entries = (await readLedger(exec, b, N)).entries;
+		expect(entries.map((e) => e.id).sort()).toEqual(["D0", "D1", "D2", "D3"]);
+		expect(entries.map((e) => e.ref)).toContain(late);
+		expect(refAt(remote, LOCAL)).toBe(refAt(b, LOCAL));
+	});
+
+	it("two concurrent syncs keep every entry and leave tracking at the final tip", async () => {
+		const { remote, b } = await diverged();
+		const ledger = createLedger(exec, b);
+		const results = await Promise.all([ledger.sync(N), ledger.sync(N)]);
+		// Both fetches may race on the tracking ref lock; the loser ends pending (left as is, Minor 6).
+		expect(results.map((r) => r.status).every((s) => s === "synced" || s === "pending")).toBe(true);
+		expect(results.map((r) => r.status)).toContain("synced");
+		expect((await readLedger(exec, b, N)).entries.map((e) => e.id).sort()).toEqual(["D0", "D1", "D2"]);
+		expect(refAt(b, TRACKING)).toBe(refAt(b, LOCAL));
+		expect(refAt(remote, LOCAL)).toBe(refAt(b, LOCAL));
+		expect(await ledger.pending(N)).toBe(false);
+	});
+
+	it("the tracking ref never moves backwards after a push", async () => {
+		const { remote, a, b } = await twoClones();
+		const seed = createLedger(exec, a);
+		await seed.append(N, decision("D0"));
+		await seed.background();
+		await createLedger(exec, b).ensureFetched(N);
+		await appendEntry(exec, b, N, decision("D1"));
+		// After B's push lands, A builds on it and B fetches the newer tip before B records its push.
+		const execB = interceptOnce(
+			(args) => args[0] === "update-ref" && args.includes(TRACKING),
+			async () => {
+				await createLedger(exec, a).ensureFetched(N);
+				await appendEntry(exec, a, N, decision("D2"));
+				expect(await createLedger(exec, a).sync(N)).toEqual({ status: "synced" });
+				git(b, ["fetch", "-q", "origin", `+${LOCAL}:${TRACKING}`]);
+			},
+		);
+		expect(await createLedger(execB, b).sync(N)).toEqual({ status: "synced" });
+		expect(refAt(b, TRACKING)).toBe(refAt(remote, LOCAL));
+		expect(await createLedger(exec, b).pending(N)).toBe(false);
 	});
 
 	it("remote ref deleted → tracking ref cleared", async () => {
@@ -257,6 +351,26 @@ describe("ledger remove", () => {
 		);
 		expect(await createLedger(execA, a).remove(N)).toEqual({ remote: "moved" });
 		expect(refAt(remote, LOCAL)).toBe(refAt(b, LOCAL));
+		expect(refAt(a, LOCAL)).toBeUndefined();
+	});
+
+	it("leases the delete on the synced tip, not a later local tip", async () => {
+		const { remote, a } = await twoClones();
+		const ledger = createLedger(exec, a);
+		await ledger.append(N, decision("D1"));
+		await ledger.background();
+		// After the fetch, the sync reads the tracking ref and the local ref; the third ledger ref read
+		// picks the lease tip. A local append lands right before it, after the sync has finished.
+		let fetched = false;
+		let refReads = 0;
+		const execA: GitExec = async (args, opts) => {
+			if (args[0] === "fetch") fetched = true;
+			const readsLedgerRef = args[0] === "rev-parse" && args.some((x) => x.startsWith(LOCAL) || x.startsWith(TRACKING));
+			if (fetched && readsLedgerRef && ++refReads === 3) await appendEntry(exec, a, N, decision("D2"));
+			return defaultGitExec(args, opts);
+		};
+		expect(await createLedger(execA, a).remove(N)).toEqual({ remote: "deleted" });
+		expect(refAt(remote, LOCAL)).toBeUndefined();
 		expect(refAt(a, LOCAL)).toBeUndefined();
 	});
 
