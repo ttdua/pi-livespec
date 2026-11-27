@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add a `grouped(kind, title, provider)` helper that folds a provider's sources into one optional `records:<kind>` source (text names each record by its own id, untrusted, version = content hash, none when empty) in `src/subagents/sources-records.ts`
-- [ ] 1.2 Use `grouped` for `decisionRecords` and `dispatchAnswers(true)` in the reviewer manifest `REVIEWER_ALL` in `src/subagents/sources.ts`; leave the implementer manifest unchanged
-- [ ] 1.3 Tests in `tests/subagents/sources.test.ts`: records do not grow the required list, grouped records keep their ids (and untrusted), implementer answers stay required, a new record changes the grouped version but not the required ids; update the existing untrusted-decision test to the grouped source
+- [x] 1.1 Add a `grouped(kind, title, provider)` helper that folds a provider's sources into one optional `records:<kind>` source (text names each record by its own id, untrusted, version = content hash, none when empty) in `src/subagents/sources-records.ts`
+- [x] 1.2 Use `grouped` for `decisionRecords` and `dispatchAnswers(true)` in the reviewer manifest `REVIEWER_ALL` in `src/subagents/sources.ts`; leave the implementer manifest unchanged
+- [x] 1.3 Tests in `tests/subagents/sources.test.ts`: records do not grow the required list, grouped records keep their ids (and untrusted), implementer answers stay required, a new record changes the grouped version but not the required ids; update the existing untrusted-decision test to the grouped source
 
 ## 2. Optional marking in the packet and protocol
 
