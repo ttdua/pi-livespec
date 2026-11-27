@@ -28,10 +28,10 @@ Blocked by: none
 
 Blocked by: 2, 3
 
-- [ ] 4.1 `src/ledger/sync.ts`: fetch into the tracking ref (clear it when the remote ref is absent), fast-forward, replay through `commitEntries`, push with 3 restarts; results `synced`/`pending`/`error`
-- [ ] 4.2 `pending(n)` from local refs only
-- [ ] 4.3 `Ledger` facade: `read`, `append`, `ensureFetched` (per session, offline rules), `sync`, `remove` (maps `deleted`/`gone`/`moved`/failure; the guarded calls live in `sync.ts`), exposes `background`, a promise covering every background sync started
-- [ ] 4.4 Tests with a bare remote and two clones for every ledger-store sync, fetch-before-use and retention scenario
+- [x] 4.1 `src/ledger/sync.ts`: fetch into the tracking ref (clear it when the remote ref is absent), fast-forward, replay through `commitEntries`, push with 3 restarts; results `synced`/`pending`/`error`
+- [x] 4.2 `pending(n)` from local refs only
+- [x] 4.3 `Ledger` facade: `read`, `append`, `ensureFetched` (per session, offline rules), `sync`, `remove` (maps `deleted`/`gone`/`moved`/failure; the guarded calls live in `sync.ts`), exposes `background`, a promise covering every background sync started
+- [x] 4.4 Tests with a bare remote and two clones for every ledger-store sync, fetch-before-use and retention scenario
 
 ## 5. Change state and reader seam
 
