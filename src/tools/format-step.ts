@@ -5,6 +5,7 @@
 import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
+import { incompleteTitle } from "../engine/incomplete-items.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { type FixCard, fixLaneText, fixNextStep, readinessText, untrusted } from "../hooks/phase-card.ts";
 import { pendingText } from "../interaction/card.ts";
@@ -41,7 +42,7 @@ function counterText(c: NextStep["counters"][number]): string {
 	return c.cap === undefined ? `${c.name} ${c.value}` : `${c.name} ${c.value}/${c.cap}`;
 }
 
-function stepLines(step: NextStep): string[] {
+function stepLines(step: NextStep, state: ChangeState): string[] {
 	return [
 		`Next: ${untrusted(step.next)}`,
 		...inlineLine("Required skills", step.required),
@@ -54,7 +55,7 @@ function stepLines(step: NextStep): string[] {
 		...inlineLine("Blocked units", step.blockedUnits.map((b) => `${b.id} (${b.reason})`)),
 		...inlineLine("Unticked receipts", step.untickedReceipts),
 		...inlineLine("Counters", step.counters.map(counterText)),
-		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
+		...inlineLine(incompleteTitle(state), step.incomplete.map(untrusted)),
 		...listLines("Pending approvals", step.pending.map(pendingText)),
 		...inlineLine("Frozen units", displayUnitList(step.frozenUnits)),
 		...inlineLine("Stale units", displayUnitList(step.staleUnits)),
@@ -65,7 +66,7 @@ function stepLines(step: NextStep): string[] {
 
 /** The next-step text: the same for `spec_next` and `/livespec next` on the same state. */
 export function formatStep(step: NextStep, state: ChangeState): string {
-	return [headerLine(state), `Phase: ${phaseText(state, step)}`, ...(state.stale ? [STALE_LINE] : []), ...stepLines(step)].join("\n");
+	return [headerLine(state), `Phase: ${phaseText(state, step)}`, ...(state.stale ? [STALE_LINE] : []), ...stepLines(step, state)].join("\n");
 }
 
 function unitText(u: Unit): string {

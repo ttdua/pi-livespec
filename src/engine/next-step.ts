@@ -17,6 +17,7 @@ import { phaseEntryStep, reviewEntriesRunBySpecReview } from "../subagents/phase
 import { dependencyFollowUp } from "../deps/follow-up.ts";
 import { parkedStep } from "../deps/parked.ts";
 import { reviewStep } from "../review/next.ts";
+import { reconcileIncomplete } from "./incomplete-items.ts";
 import { effectiveMode } from "./request-mode.ts";
 import type { ChangeState, CheckResult, Decision, NextStep, SectionName } from "./state-types.ts";
 
@@ -417,7 +418,7 @@ export function nextStep(pack: Pack, state: ChangeState): NextStep {
 		blockedUnits: blockedUnits(state),
 		untickedReceipts: [...state.evidence.untickedReceipts],
 		pendingVerifier: pendingVerifier(state),
-		incomplete: [...state.incomplete],
+		incomplete: reconcileIncomplete(state.incomplete, state.evidence.started),
 		pending: requests.map(({ id, subject, mode, adapter }) => ({ id, subject, mode, adapter })),
 		frozenUnits: changed.frozen,
 		staleUnits: changed.stale,

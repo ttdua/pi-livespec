@@ -47,7 +47,8 @@ function isResultDispatch(d: Obj): boolean {
 
 export function isDispatchData(d: unknown): boolean {
 	if (!isObj(d) || !hasCommonFields(d)) return false;
-	if (d.status === "QUESTION") return isStr(d.agentId) && isStr(d.question);
+	if (d.status === "QUESTION") return isStr(d.agentId) && isStr(d.question) && optional(d.finding, isStr);
+	if (d.status === "RETRY") return isStr(d.agentId) && isStr(d.newAgentId) && isNum(d.attempt) && isStr(d.reason) && optional(d.finding, isStr);
 	if (d.status === "ANSWERED") return isStr(d.agentId) && isStr(d.answer);
 	return isResultDispatch(d);
 }
