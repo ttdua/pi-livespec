@@ -7,7 +7,7 @@
 
 **Change**: `settle-incomplete-freshness`
 **Finalized at**: `2026-11-27 03:45` (UTC)
-**Outcome**: `pr-updated` (canonical git-side closeout; push pending the user's explicit approval, see Deviations)
+**Outcome**: `pr-created` (canonical git-side closeout; the feature branch had no PR, so finalize step 11 opened one)
 
 ---
 
@@ -15,8 +15,8 @@
 
 - **Branch**: `issue-69`
 - **Base branch**: `main`
-- **Final state**: `pr-updated` pending. `settle-incomplete-freshness` was fast-forward merged into `issue-69` locally. The push to `origin` has not run yet.
-- **PR URL**: N/A. `issue-69` has no upstream and no PR yet.
+- **Final state**: `pr-open`. `settle-incomplete-freshness` was fast-forward merged into `issue-69`, then `issue-69` was pushed to `origin`.
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/71
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)` until a PR is opened.
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/71#issuecomment-7209453109)
 
 ---
 
@@ -51,14 +51,14 @@
 
 ## Deviations
 
-- The project policy (`AGENTS.md`, "Git approval") requires explicit user permission in chat before any push, merge to a shared remote or PR. Finalize step 10 (push) and step 11 (open PR) are therefore deferred to the user's answer instead of running automatically.
+- The project policy (`AGENTS.md`, "Git approval") requires explicit user permission in chat before any push, merge to a shared remote or PR. Finalize step 10 (push) and step 11 (open PR) therefore waited for the user's answer instead of running automatically. The user approved pushing `issue-69` and opening the PR with the suggested title.
 - The worktree was cleaned with `wt remove` (Worktrunk), as `AGENTS.md` requires, instead of `git worktree remove`.
 
 ---
 
 ## Next step
 
-The push is pending the user's approval. After the push, open the PR if wanted, then wait for PR code review. After approval:
+Wait for PR review. After approval:
 1. Run `/opsx-archive` on `issue-69`; the commits land there.
 2. Push the archive commits to update the PR.
 3. Merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive into `main`.
