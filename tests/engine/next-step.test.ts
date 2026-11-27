@@ -1145,3 +1145,16 @@ describe("parked change", () => {
 		expect(parkedBuild({ requests: { pending: [pending], applying: [] } }).next).toContain("Wait for the human's answer");
 	});
 });
+
+describe("incomplete items reconciled with started units", () => {
+	test("drops incomplete items of units no longer started", () => {
+		const rec = { unit: "U3", digest: "d", verify: "v", pre: { sha: "abc1234".padEnd(40, "0") }, id: "U3.s", commentId: "c", index: 0 };
+		const base = state("build", NO_QUESTION);
+		const s = { ...base, incomplete: ["U2 is started", "U3 is started", "uncommitted changes in the working tree"], evidence: { ...base.evidence, started: { U3: rec } } };
+		expect(nextStep(pack, s).incomplete).toEqual(["U3 is started", "uncommitted changes in the working tree"]);
+	});
+
+	test("keeps other items as recorded", () => {
+		expect(nextStep(pack, state("build", NO_QUESTION, { incomplete: ["review pending for U2"] })).incomplete).toEqual(["review pending for U2"]);
+	});
+});

@@ -5,6 +5,7 @@
 import { formatPackError } from "../commands/messages.ts";
 import type { PackError } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
+import { incompleteTitle } from "../engine/incomplete-items.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { LaneOutcome } from "../fix/lane.ts";
 
@@ -97,7 +98,7 @@ function changeLines(step: NextStep, state: ChangeState): string[] {
 		...listLines("Blocking questions", step.blockingQuestions.map((q) => `${q.id}: ${untrusted(q.text)}`)),
 		...inlineLine("Counters", step.counters.map(counterText)),
 		...inlineLine("Active units", step.activeUnits),
-		...inlineLine("Incomplete", step.incomplete.map(untrusted)),
+		...inlineLine(incompleteTitle(state), step.incomplete.map(untrusted)),
 	];
 }
 

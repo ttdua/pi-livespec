@@ -62,7 +62,7 @@ The card SHALL show:
 - open blocking questions;
 - counters with their caps;
 - active units, started units and blocked units with their reason;
-- the items of the latest `incomplete` comment;
+- the items of the latest `incomplete` comment as reconciled by flow-engine "Next step", labelled `Incomplete (may be stale)` instead of `Incomplete` while the snapshot is stale or read-only;
 - optional skills that still need a skill note;
 - pending approver requests, with subject and adapter;
 - frozen and stale units;
@@ -102,6 +102,14 @@ Forge text MUST be wrapped as untrusted content, and a stale snapshot MUST be st
 #### Scenario: Parked and initiative lines
 - **WHEN** change #40 of initiative #30 is parked waiting for #41
 - **THEN** the card shows `initiative #30`, #41 as open, and the parked state with its wip branches
+
+#### Scenario: Incomplete items after a receipt
+- **WHEN** the latest `incomplete` comment lists `U2 is started`, and U2 has since received its receipt
+- **THEN** the card shows no `Incomplete` line naming U2
+
+#### Scenario: Possibly stale incomplete items
+- **WHEN** the latest `incomplete` comment lists `U2 is started`, U2 is still started, and the snapshot is stale
+- **THEN** the card shows `Incomplete (may be stale):` with U2
 
 ### Requirement: Cache evidence
 The change SHALL record a manual smoke run of at least five turns against a real model, listing per turn the uncached input and cache-read tokens with and without the livespec hooks, in the format of probe (c) in `docs/evidence/host-seams.md`. The run passes when, from turn 2 on, each hooked turn's cache-read tokens are within one cache block of the control turn, or the hooked turn reads more; an isolated full miss counts only if the control run shows none.
