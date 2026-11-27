@@ -155,20 +155,36 @@ describe("pollApprovals", () => {
 		const locked = Object.fromEntries(parseChange(body).units.map((u) => [u.id, unitDigest(u)]));
 		const gate = { phase: "plan", outcome: "approved", notes: "", by: "alice", at: "t", adapter: "in-session", head_sha: h.head, waivers: [], locked };
 		await h.world.postComment(n, BOT_LOGIN, writeMarked("gate", "plan.self-1", gate));
-		const r = request("question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] }, body, h.head, 1);
+		const r = request("question", "question:Q1", { id: "Q1", text: "header?" }, body, h.head, 1);
 		await postRequest(h.world, n, r);
 		await h.world.setPermission("alice", "write");
-		await h.world.postComment(n, "alice", `/livespec answer Q1 X-Forwarded-For --changes ${REQUIREMENT}`);
+		await h.world.postComment(n, "alice", `/livespec answer Q1 X-Forwarded-For`);
 		await h.session.refresh();
 
 		await Promise.all([pollApprovals(h.session), pollApprovals(h.session)]);
 
 		const marked = await ownMarked(h.world, n);
 		expect(marked.filter((m) => m.kind === "answer")).toHaveLength(1);
-		expect(marked.filter((m) => m.kind === "stale")).toHaveLength(1);
+		expect(marked.filter((m) => m.kind === "stale")).toHaveLength(0);
 		expect(marked.filter((m) => m.kind === "question")).toHaveLength(1);
 		if (h.session.card.kind !== "change") throw new Error("no change card");
-		expect(h.session.card.state.counters.change_iterations).toBe(1);
+		expect(h.session.card.state.counters.change_iterations).toBe(0);
+	});
+
+	test("a --changes answer leaves the request pending and the card warns", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH });
+		const body = resumeBody(h.head).replace("- [x] Q1 (blocking)", "- [ ] Q1 (blocking)");
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: DEFINE_LABELS });
+		await postRequest(h.world, n, request("question", "question:Q1", { id: "Q1", text: "header?" }, body, h.head, 1));
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(n, "alice", `/livespec answer Q1 X-Forwarded-For --changes ${REQUIREMENT}`);
+		await h.session.refresh();
+
+		await pollApprovals(h.session);
+
+		const marked = await ownMarked(h.world, n);
+		expect(marked.filter((m) => m.kind === "answer")).toHaveLength(0);
+		expect(h.session.commandWarnings).toEqual([expect.stringContaining("--changes was removed")]);
 	});
 
 	test("warnings are reset when the card is not a change", async () => {
@@ -209,7 +225,7 @@ describe("/livespec class commands", () => {
 		const q2 = o.closed ? Q2_DONE : o.nonBlocking ? OPEN_Q2.replace("(blocking)", "(non-blocking)") : OPEN_Q2;
 		const body = resumeBody(h.head).replace(Q2_DONE, q2);
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: DEFINE_LABELS });
-		await postRequest(h.world, n, request("question", "question:Q2", { id: "Q2", text: "window?", requirements: [REQUIREMENT] }, body, h.head, 1));
+		await postRequest(h.world, n, request("question", "question:Q2", { id: "Q2", text: "window?" }, body, h.head, 1));
 		await h.world.setPermission("alice", "write");
 		const commandId = await h.world.postComment(n, "alice", "/livespec class Q2 non-blocking");
 		await h.session.refresh();

@@ -136,15 +136,22 @@ describe("gates and decisions", () => {
 		await h.session.refresh();
 		expect(parseChange(await h.world.bodyOf(n)).units.find((u) => u.id === "U1")?.done).toBe(true);
 
-		// 7. A question answered with a requirement change that U1 covers.
+		// 7. A plain answer: Q1 is answered and the change stays where it is.
 		const asked = await h.call("spec_question", { text: "Is the cap per IP or per token?" });
 		expect(asked.isError, textOf(asked)).toBe(false);
-		await writerSays(h, n, `/livespec answer Q1 per client token --changes ${PER_IP}`);
+		await writerSays(h, n, "/livespec answer Q1 per client token");
+		expect(parseChange(await h.world.bodyOf(n)).questions.find((q) => q.id === "Q1")?.checked).toBe(true);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
+		expect(parseChange(await h.world.bodyOf(n)).units.find((u) => u.id === "U1")?.done).toBe(true);
 
-		expect(await phaseOf(h, n)).toEqual(["livespec:phase/define"]);
-		expect(parseChange(await h.world.bodyOf(n)).units.find((u) => u.id === "U1")?.done).toBe(false);
-		expect(card(h).state.lock.staleUnits).toContain("U1");
-		expect(card(h).state.counters.change_iterations).toBe(1);
+		// Five counted cascades, seeded directly, reach the cap and send the change back to define.
+		for (let i = 1; i <= 5; i++) {
+			await h.world.postComment(n, BOT_LOGIN, writeMarked("stale", `Q${10 + i}`, { reason: `Q${10 + i}`, phases: ["define"], units: [], after_plan: true }));
+		}
+		await h.world.forge.removeLabels(n, ["livespec:phase/build"]);
+		await h.world.forge.addLabels(n, ["livespec:phase/define"]);
+		await h.session.refresh();
+		expect(card(h).state.counters.change_iterations).toBe(5);
 
 		const capped = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(capped.isError).toBe(true);
@@ -179,9 +186,11 @@ describe("gates and decisions", () => {
 		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
 
 		await useAdapters(h, "forge");
-		// In plan, before any plan gate: the answer cascades, U1 goes stale and the change returns to define.
-		expect((await h.call("spec_question", { text: "Is the cap per IP or per token?" })).isError).toBe(false);
-		await writerSays(h, n, `/livespec answer Q1 per client token --changes ${PER_IP}`);
+		// In plan, before any plan gate: a spec cascade (seeded) marks U1 stale and the change returns to define.
+		await h.world.postComment(n, BOT_LOGIN, writeMarked("stale", "Q1", { reason: "Q1", phases: ["define", "plan", "build", "review", "ship", "close"], units: ["U1"], after_plan: false }));
+		await h.world.forge.removeLabels(n, ["livespec:phase/plan"]);
+		await h.world.forge.addLabels(n, ["livespec:phase/define"]);
+		await h.session.refresh();
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/define"]);
 		expect(card(h).state.lock.staleUnits).toContain("U1");
 

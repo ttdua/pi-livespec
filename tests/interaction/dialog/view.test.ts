@@ -229,8 +229,8 @@ describe("short terminals and scroll limits", () => {
 		const out = [draw(m, at(m, { notes: dirty })), draw(m, at(m, { tab: 1, picked: 0, notes: dirty }))].flat().join("\n");
 		expect(out).not.toMatch(/[\u001b\u0007]/);
 		expect(out).toContain("badtext");
-		const q = buildModel(request({ kind: "question", subject: "question:Q2", question: { id: "Q2", class: "blocking", requirements: [] } }));
-		const review = draw(q, at(q, { tab: 1, picked: 0, answer: dirty, requirement: { kind: "other", text: dirty } })).join("\n");
+		const q = buildModel(request({ kind: "question", subject: "question:Q2", question: { id: "Q2", class: "blocking" } }));
+		const review = draw(q, at(q, { tab: 1, picked: 0, answer: dirty })).join("\n");
 		expect(review).not.toMatch(/[\u001b\u0007]/);
 	});
 });
@@ -332,27 +332,17 @@ describe("review tab", () => {
 		expect(draw(m, at(m, { tab: 1 })).join("\n")).toContain("Nothing picked yet");
 	});
 
-	test("a question shows the answer and the requirement rows", () => {
+	test("a question shows the answer and no requirement step", () => {
 		const m = buildModel(
-			request({
-				kind: "question",
-				subject: "question:Q2",
-				options: [{ id: "p", label: "per-IP limits" }],
-				question: { id: "Q2", class: "blocking", requirements: ["rate-limiting/Requirement: Limits"] },
-			}),
+			request({ kind: "question", subject: "question:Q2", options: [{ id: "p", label: "per-IP limits" }], question: { id: "Q2", class: "blocking" } }),
 		);
-		const lines = draw(m, at(m, { tab: 1, picked: 0, focus: 1, requirement: { kind: "named", name: "rate-limiting/Requirement: Limits" } }));
+		const lines = draw(m, at(m, { tab: 1, picked: 0 }));
 		expect(lines).toContain("Answer: per-IP limits");
-		expect(lines).toContain("Does the answer change a requirement?");
-		expect(lines).toContain("  1 ( ) no");
-		expect(lines).toContain("› 2 (•) rate-limiting/Requirement: Limits");
-		expect(lines).toContain("  3 ( ) other");
+		expect(lines).not.toContain("Does the answer change a requirement?");
 	});
 
-	test("a typed answer and a typed requirement are shown", () => {
-		const m = buildModel(request({ kind: "question", subject: "question:Q2", question: { id: "Q2", class: "blocking", requirements: [] } }));
-		const lines = draw(m, at(m, { tab: 1, picked: 0, answer: "no limit", requirement: { kind: "other", text: "a/b" } }));
-		expect(lines).toContain("Answer: no limit");
-		expect(lines).toContain("  2 (•) other: a/b");
+	test("a typed answer is shown", () => {
+		const m = buildModel(request({ kind: "question", subject: "question:Q2", question: { id: "Q2", class: "blocking" } }));
+		expect(draw(m, at(m, { tab: 1, picked: 0, answer: "no limit" }))).toContain("Answer: no limit");
 	});
 });

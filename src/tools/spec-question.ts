@@ -5,12 +5,9 @@
 // non-blocking before the next adapter gets an async request; with no adapter
 // left the question stays open. Completion lives in `complete-question.ts`.
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type Change, parseChange, type Question } from "../core/change.ts";
 import { appendQuestion, reclassifyQuestion } from "../core/question-lines.ts";
-import { parseSpec } from "../core/spec.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { type ApprovalRequest, isSubject, type QuestionClass, type QuestionSnapshot, type Subject } from "../interaction/approver.ts";
@@ -37,7 +34,6 @@ function questionSubject(id: string): Subject | undefined {
 	const subject = `${SUBJECT_PREFIX}${id}`;
 	return isSubject(subject) ? subject : undefined;
 }
-const SPECS_PATH = "specs";
 /** The reclassify write of "answer later": the first try plus one retry after a version conflict. */
 const RECLASSIFY_TRIES = 2;
 const DEFERRED_TEXT = (id: string) => `${id} is now non-blocking and stays open with no adapter left to ask; send it again later with spec_question { reask: "${id}" }.`;
@@ -72,23 +68,12 @@ export function reaskTarget(change: Change, id: string): Question | { refused: s
 	return q;
 }
 
-/** The capabilities the change declares, new then modified. */
-export function declaredCapabilities(change: Change): string[] {
-	const caps = change.header.capabilities;
-	return caps ? [...caps.new, ...caps.modified] : [];
-}
-
-/** `<capability>/Requirement: <name>` for every requirement heading of one living spec. */
-export function requirementNames(capability: string, specText: string): string[] {
-	return parseSpec(specText, capability).requirements.map((r) => `${capability}/Requirement: ${r.name}`);
-}
-
 /** The prepared question request; the mode follows the class. */
-export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass; candidates?: CandidateRequest }, input: { body: string; requirements: string[]; now: Date }): ApprovalRequest {
+export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass; candidates?: CandidateRequest }, input: { body: string; now: Date }): ApprovalRequest {
 	const subject = questionSubject(q.id);
 	if (subject === undefined) throw new Error(`not a question id: ${q.id}`);
 	const mode = q.class === "blocking" ? "blocking" : "async";
-	const snapshot: QuestionSnapshot = { id: q.id, text: neutralise(q.text), requirements: input.requirements };
+	const snapshot: QuestionSnapshot = { id: q.id, text: neutralise(q.text) };
 	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${neutralise(q.text)}`;
 	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now, ...(q.candidates ?? {}) });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
@@ -104,24 +89,11 @@ export function questionRequest(state: ChangeState, q: { id: string; text: strin
 		files: [],
 		mode,
 		...(q.candidates ?? {}),
-		question: { id: q.id, class: q.class, requirements: input.requirements },
+		question: { id: q.id, class: q.class },
 	};
 }
 
 // --- I/O -----------------------------------------------------------------------------
-
-/** Requirement names from the declared capabilities' living specs; a missing or broken spec adds none. */
-async function readRequirements(root: string, change: Change): Promise<string[]> {
-	const names: string[] = [];
-	for (const capability of declaredCapabilities(change)) {
-		try {
-			names.push(...requirementNames(capability, await readFile(join(root, SPECS_PATH, capability, "spec.md"), "utf8")));
-		} catch {
-			// A missing or unparsable spec offers no names; the human can still type one ("other").
-		}
-	}
-	return names;
-}
 
 /** Appends the question with one version-checked body write. */
 async function appendToBody(forge: CachedForge, n: number, form: Extract<QuestionForm, { action: "ask" }>): Promise<{ id: string; body: string } | { refused: string }> {
@@ -178,8 +150,7 @@ export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): 
 	}
 	const q = await resolveQuestion(w, state, form, p);
 	if ("refused" in q) return toolResult(q.refused, undefined, true);
-	const requirements = await readRequirements(w.session.cwd, parseChange(q.body));
-	const request = questionRequest(state, q, { body: q.body, requirements, now: new Date() });
+	const request = questionRequest(state, q, { body: q.body, now: new Date() });
 	let result: ToolResult<undefined>;
 	try {
 		result = await sendRequest(w, state, request, ctx, {

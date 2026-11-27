@@ -55,7 +55,7 @@ const gate = (): DialogModel => buildModel(request());
 const plan = (): DialogModel => buildModel(request({ overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: [] } } } }));
 const stuck = (): DialogModel => buildModel(request({ kind: "stuck", subject: "stuck:S1", options: OPTIONS }));
 const question = (): DialogModel =>
-	buildModel(request({ kind: "question", subject: "question:Q1", options: OPTIONS, question: { id: "Q1", class: "blocking", requirements: ["r1"] } }));
+	buildModel(request({ kind: "question", subject: "question:Q1", options: OPTIONS, question: { id: "Q1", class: "blocking" } }));
 
 const field = (text = "typed") => ({ value: () => text });
 const at = (m: DialogModel, over: Partial<DialogState> = {}): DialogState => ({ ...initialState(m), ...over });
@@ -118,14 +118,11 @@ describe("keyToAction without an editor", () => {
 		expect(key("e", m)).toBeUndefined();
 	});
 
-	test("question review: digits pick a requirement, Enter picks the focused one, then submits", () => {
+	test("question review: Enter submits", () => {
 		const m = question();
 		const review = at(m, { tab: 1 });
-		expect(key("2", m, review)).toEqual({ type: "pickRequirement", index: 1 });
-		expect(key(KEY.enter, m, { ...review, focus: 1 })).toEqual({ type: "pickRequirement", index: 1 });
-		expect(key(KEY.enter, m, { ...review, focus: 1, requirement: { kind: "named", name: "r1" } })).toEqual({ type: "submit" });
-		expect(key(KEY.enter, m, { ...review, focus: 0, requirement: { kind: "none" } })).toEqual({ type: "submit" });
-		expect(key(KEY.enter, m, { ...review, focus: 2, requirement: { kind: "other", text: "x" } })).toEqual({ type: "submit" });
+		expect(key(KEY.enter, m, review)).toEqual({ type: "submit" });
+		expect(key("2", m, review)).toBeUndefined();
 	});
 
 	test("unknown keys do nothing", () => {

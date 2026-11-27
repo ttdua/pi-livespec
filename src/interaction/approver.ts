@@ -63,7 +63,6 @@ export interface AmendSnapshot {
 export interface QuestionSnapshot {
 	id: string;
 	text: string;
-	requirements: string[];
 }
 
 export interface StuckSnapshot {
@@ -111,7 +110,7 @@ export interface ApprovalRequest {
 	briefing?: Briefing;
 	mode: RequestMode;
 	overridable?: { units: string[]; current?: Record<string, { difficulty?: Difficulty; tags: string[] }> };
-	question?: { id: string; class: QuestionClass; requirements: string[] };
+	question?: { id: string; class: QuestionClass };
 }
 
 export interface Override {
@@ -130,7 +129,6 @@ export interface Answered {
 	by: string;
 	at: string;
 	adapter: AdapterName;
-	changesRequirement?: string;
 	questionClass?: QuestionClass;
 	overrides?: Override[];
 	answerComment?: { id: string; author: string; updatedAt: string };

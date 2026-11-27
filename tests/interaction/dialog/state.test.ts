@@ -23,7 +23,7 @@ const OPTIONS: RequestOption[] = [{ id: "A", label: "Option A" }, { id: "B", lab
 const gate = (): DialogModel => buildModel(request());
 const plan = (): DialogModel => buildModel(request({ overridable: { units: ["U1", "U2"], current: { U1: { difficulty: "low", tags: ["a"] } } } }));
 const question = (): DialogModel =>
-	buildModel(request({ kind: "question", subject: "question:Q1", options: OPTIONS, question: { id: "Q1", class: "blocking", requirements: ["r1", "r2"] } }));
+	buildModel(request({ kind: "question", subject: "question:Q1", options: OPTIONS, question: { id: "Q1", class: "blocking" } }));
 
 function run(model: DialogModel, actions: DialogAction[], from: DialogState = initialState(model)): DialogState {
 	return actions.reduce((s, a) => reduce(model, s, a), from);
@@ -142,25 +142,17 @@ describe("submit and canSubmit", () => {
 		expect(canSubmit(m, initialState(m)).ok).toBe(false);
 	});
 
-	test("question needs a requirement pick, a typed answer and a typed requirement", () => {
+	test("question is submittable right after a candidate is picked", () => {
 		const m = question();
-		const own = m.entries.findIndex((e) => e.action.kind === "own");
-		const cand: DialogState = { ...initialState(m), picked: 0 };
-		expect(canSubmit(m, cand).ok).toBe(false);
-		expect(canSubmit(m, { ...cand, requirement: { kind: "none" } }).ok).toBe(true);
-		const typed: DialogState = { ...initialState(m), picked: own, requirement: { kind: "none" } };
-		expect(canSubmit(m, typed).ok).toBe(false);
-		expect(canSubmit(m, { ...typed, answer: "x" }).ok).toBe(true);
-		expect(canSubmit(m, { ...typed, answer: "x", requirement: { kind: "other", text: " " } }).ok).toBe(false);
+		expect(canSubmit(m, { ...initialState(m), picked: 0 })).toEqual({ ok: true });
 	});
 
-	test("pickRequirement sets none and named; other opens the editor", () => {
+	test("an empty own answer cannot be submitted", () => {
 		const m = question();
-		expect(run(m, [{ type: "pickRequirement", index: 0 }], review(m)).requirement).toEqual({ kind: "none" });
-		expect(run(m, [{ type: "pickRequirement", index: 2 }], review(m)).requirement).toEqual({ kind: "named", name: "r2" });
-		const other = run(m, [{ type: "pickRequirement", index: 3 }], review(m));
-		expect(other.requirement).toEqual({ kind: "other", text: "" });
-		expect(other.editor).toBe("requirement");
+		const own = m.entries.findIndex((e) => e.action.kind === "own");
+		const typed: DialogState = { ...initialState(m), picked: own };
+		expect(canSubmit(m, typed)).toEqual({ ok: false, reason: "Type your answer first" });
+		expect(canSubmit(m, { ...typed, answer: "x" }).ok).toBe(true);
 	});
 
 	test("Review shows the answer before it is sent", () => {
@@ -197,7 +189,6 @@ describe("cancel and editor", () => {
 		const m = gate();
 		expect(run(m, [{ type: "closeEditor", text: "hi" }], { ...initialState(m), editor: "note" })).toMatchObject({ notes: "hi", editor: undefined });
 		expect(run(m, [{ type: "closeEditor", text: "ans" }], { ...initialState(m), editor: "answer" }).answer).toBe("ans");
-		expect(run(m, [{ type: "closeEditor", text: "req" }], { ...initialState(m), editor: "requirement" }).requirement).toEqual({ kind: "other", text: "req" });
 	});
 
 	test("closeEditor on tags parses a, b", () => {
@@ -246,23 +237,12 @@ describe("reducer guards", () => {
 		expect(reduce(m, s, { type: "closeEditor", text: "a" })).toEqual(s);
 	});
 
-	test("pickRequirement only on the review tab", () => {
-		const m = question();
-		const s = initialState(m);
-		expect(reduce(m, s, { type: "pickRequirement", index: 0 })).toEqual(s);
-	});
-
 	test("openEditor note only when the model has notes", () => {
 		const m = question();
 		const s = initialState(m);
 		expect(reduce(m, s, { type: "openEditor", editor: "note" })).toEqual(s);
 	});
 
-	test("re-picking other keeps the typed text", () => {
-		const m = question();
-		const s = run(m, [{ type: "pickRequirement", index: 3 }], { ...initialState(m), tab: 1, requirement: { kind: "other", text: "typed" } });
-		expect(s.requirement).toEqual({ kind: "other", text: "typed" });
-	});
 });
 
 describe("purity", () => {

@@ -18,7 +18,7 @@ export const FULL_WIDTH = 60;
 
 const NARROW_LINE = "Too narrow — widen or press Esc";
 const TAB_TITLES: Record<TabName, string> = { decision: "Decision", units: "Adjust units", review: "Review" };
-const EDITOR_TITLES: Record<EditorName, string> = { note: "Note:", answer: "Your answer:", requirement: "Changed requirement:", tags: "Tags" };
+const EDITOR_TITLES: Record<EditorName, string> = { note: "Note:", answer: "Your answer:", tags: "Tags" };
 const FOCUS = "›";
 const PICKED = " ✓";
 const DESCRIPTION_INDENT = "    ";
@@ -135,25 +135,11 @@ function reviewSummary(ctx: Ctx, entry: DialogEntry): string[] {
 	return [`Outcome: ${outcomeText(ctx)}`, ...choice, ...noteLines(ctx), ...overrideLines(ctx, entry)];
 }
 
-/** `no`, each declared requirement, then `other`; `(•)` marks the pick. */
-function requirementRows(ctx: Ctx): string[][] {
-	const { model, state } = ctx;
-	const picked = state.requirement;
-	const other = picked?.kind === "other" && picked.text.trim() !== "" ? `other: ${oneLine(typed(picked.text.trim()))}` : "other";
-	const rows = [
-		{ label: "no", on: picked?.kind === "none" },
-		...model.requirements.map((r) => ({ label: oneLine(r.label), on: picked?.kind === "named" && picked.name === r.id })),
-		{ label: other, on: picked?.kind === "other" },
-	];
-	return rows.map((row, i) => wrapWithPrefix(`${rowPrefix(ctx, i)}(${row.on ? "•" : " "}) `, row.label, ctx.width, "      "));
-}
-
 function reviewLayout(ctx: Ctx): Layout {
 	const { model, state } = ctx;
 	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
 	if (entry === undefined) return { body: wrap("Nothing picked yet — pick an answer on the Decision tab.", ctx.width), fixed: [], keep: 0, footer: [] };
-	const fixed = model.kind === "question" ? stack(["", "Does the answer change a requirement?"], requirementRows(ctx), state.focus) : { fixed: [], keep: 0 };
-	return { body: reviewSummary(ctx, entry), ...fixed, footer: [] };
+	return { body: reviewSummary(ctx, entry), fixed: [], keep: 0, footer: [] };
 }
 
 // --- footer -----------------------------------------------------------------------------------
@@ -169,7 +155,7 @@ function hintOf(ctx: Ctx, tab: TabName): string {
 	const note = ctx.model.notes ? " · n note" : "";
 	if (tab === "decision") return `↑↓ move · 1-9 pick${note} · Tab next tab · Enter select · Esc cancel`;
 	if (tab === "units") return "↑↓ move · ←→ difficulty · e tags · Tab next tab · Enter next · Esc cancel";
-	if (ctx.model.kind === "question") return "↑↓ move · 1-9 pick · Enter pick, then submit · Tab tabs · Esc cancel";
+	if (ctx.model.kind === "question") return "Enter submit · Tab tabs · Esc cancel";
 	return `Enter submit${note} · Tab tabs · Esc cancel`;
 }
 

@@ -107,16 +107,16 @@ describe("createDialog", () => {
 	});
 
 	test("question answer later → deferred without review", () => {
-		const r = request({ kind: "question", subject: "question:Q1", question: { id: "Q1", class: "blocking", requirements: [] } });
+		const r = request({ kind: "question", subject: "question:Q1", question: { id: "Q1", class: "blocking" } });
 		const { done, press } = mount(r);
 		press("2");
 		expect(done).toHaveBeenCalledWith({ kind: "result", result: { status: "deferred", questionClass: "non-blocking" } });
 	});
 
-	test("own answer typed and no requirement change", () => {
-		const r = request({ kind: "question", subject: "question:Q1", question: { id: "Q1", class: "blocking", requirements: [] } });
+	test("own answer typed submits in one pass", () => {
+		const r = request({ kind: "question", subject: "question:Q1", question: { id: "Q1", class: "blocking" } });
 		const { done, press } = mount(r);
-		press("1", "n", "o", " ", "l", "i", "m", "i", "t", KEY.enter, KEY.enter, KEY.enter, KEY.enter);
+		press("1", "n", "o", " ", "l", "i", "m", "i", "t", KEY.enter, KEY.enter, KEY.enter);
 		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "", answer: "no limit", questionClass: "blocking" } });
 	});
 

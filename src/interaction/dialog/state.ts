@@ -3,8 +3,7 @@
 import type { Difficulty } from "../approver.ts";
 import type { DialogEntry, DialogModel } from "./model.ts";
 
-export type EditorName = "note" | "answer" | "tags" | "requirement";
-export type Requirement = { kind: "none" } | { kind: "named"; name: string } | { kind: "other"; text: string };
+export type EditorName = "note" | "answer" | "tags";
 
 export type DialogState = {
 	tab: number;
@@ -14,7 +13,6 @@ export type DialogState = {
 	notes: string;
 	answer: string;
 	overrides: Readonly<Record<string, { difficulty?: Difficulty; tags?: string[] }>>;
-	requirement?: Requirement;
 	editor?: EditorName;
 	error?: string;
 	done?: "submitted" | "cancelled" | "deferred";
@@ -29,7 +27,6 @@ export type DialogAction =
 	| { type: "openEditor"; editor: EditorName }
 	| { type: "closeEditor"; text: string }
 	| { type: "cycleDifficulty"; delta: 1 | -1 }
-	| { type: "pickRequirement"; index: number }
 	| { type: "submit" }
 	| { type: "cancel" };
 
@@ -46,12 +43,7 @@ function rowCount(model: DialogModel, state: DialogState): number {
 	const tab = tabOf(model, state);
 	if (tab === "decision") return model.entries.length;
 	if (tab === "units") return model.units.length;
-	return model.kind === "question" ? model.requirements.length + 2 : 0;
-}
-
-/** The picked entry's action is a question answer (candidate or own). */
-function isAnswer(entry: DialogEntry | undefined): boolean {
-	return entry?.action.kind === "candidate" || entry?.action.kind === "own";
+	return 0;
 }
 
 export function canSubmit(model: DialogModel, state: DialogState): { ok: true } | { ok: false; reason: string } {
@@ -59,10 +51,6 @@ export function canSubmit(model: DialogModel, state: DialogState): { ok: true } 
 	if (entry === undefined) return { ok: false, reason: "Pick an answer on the Decision tab first" };
 	if (entry.action.kind === "changes" && state.notes.trim() === "") return { ok: false, reason: "Requested changes need a note" };
 	if (entry.action.kind === "own" && state.answer.trim() === "") return { ok: false, reason: "Type your answer first" };
-	if (!isAnswer(entry)) return { ok: true };
-	const changed = state.requirement;
-	if (changed === undefined) return { ok: false, reason: "Say whether the answer changes a requirement" };
-	if (changed.kind === "other" && changed.text.trim() === "") return { ok: false, reason: "Type the changed requirement first" };
 	return { ok: true };
 }
 
@@ -114,8 +102,6 @@ function closeEditor(model: DialogModel, state: DialogState, text: string): Dial
 			return { ...closed, notes: text };
 		case "answer":
 			return { ...closed, answer: text };
-		case "requirement":
-			return { ...closed, requirement: { kind: "other", text } };
 		case "tags":
 			return withOverride(model, closed, { tags: parseTags(text) });
 		default:
@@ -136,15 +122,6 @@ function cycleDifficulty(model: DialogModel, state: DialogState, delta: 1 | -1):
 	const current = state.overrides[unit.unit]?.difficulty ?? unit.difficulty;
 	const index = current === undefined ? (delta === 1 ? 0 : LEVELS.length - 1) : (LEVELS.indexOf(current) + delta + LEVELS.length) % LEVELS.length;
 	return withOverride(model, state, { difficulty: LEVELS[index] });
-}
-
-function pickRequirement(model: DialogModel, state: DialogState, index: number): DialogState {
-	if (tabOf(model, state) !== "review" || model.kind !== "question" || index < 0 || index > model.requirements.length + 1) return state;
-	if (index === 0) return { ...state, requirement: { kind: "none" }, error: undefined };
-	const name = model.requirements[index - 1]?.id;
-	if (name !== undefined) return { ...state, requirement: { kind: "named", name }, error: undefined };
-	const text = state.requirement?.kind === "other" ? state.requirement.text : "";
-	return { ...state, requirement: { kind: "other", text }, editor: "requirement", error: undefined };
 }
 
 function submit(model: DialogModel, state: DialogState): DialogState {
@@ -175,8 +152,6 @@ export function reduce(model: DialogModel, state: DialogState, action: DialogAct
 			return closeEditor(model, state, action.text);
 		case "cycleDifficulty":
 			return cycleDifficulty(model, state, action.delta);
-		case "pickRequirement":
-			return pickRequirement(model, state, action.index);
 		case "submit":
 			return submit(model, state);
 		case "cancel":

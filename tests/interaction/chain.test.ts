@@ -23,7 +23,7 @@ const request: ApprovalRequest = {
 		subject: "question:Q1",
 		mode: "blocking",
 		head_sha: "deadbeef",
-		snapshot: { id: "Q1", text: "Which limit?", requirements: [] },
+		snapshot: { id: "Q1", text: "Which limit?" },
 		summary: "Which limit?",
 	},
 	change: 7,
@@ -32,7 +32,7 @@ const request: ApprovalRequest = {
 	links: [],
 	files: [],
 	mode: "blocking",
-	question: { id: "Q1", class: "blocking", requirements: [] },
+	question: { id: "Q1", class: "blocking" },
 };
 
 const answered = (adapter: AdapterName): Answered => ({

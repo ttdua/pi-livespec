@@ -155,7 +155,6 @@ function commandAnswer(request: PendingRequest, command: Command, comment: Comme
 		}
 		case "answer": {
 			const a: Answered = { ...answer, outcome: "approved", notes: "", answer: command.text };
-			if (command.changes !== undefined) a.changesRequirement = command.changes;
 			if (command.class !== undefined) a.questionClass = command.class;
 			return a;
 		}

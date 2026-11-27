@@ -51,29 +51,12 @@ function unitsKey(data: string, kb: KeybindingsManager): DialogAction | undefine
 	return printableOf(data) === "e" ? { type: "openEditor", editor: "tags" } : undefined;
 }
 
-/** The requirement row (`0` = no, then each declared one, then `other`) the state has picked. */
-function pickedRequirementRow(model: DialogModel, state: DialogState): number | undefined {
-	const picked = state.requirement;
-	if (picked === undefined) return undefined;
-	if (picked.kind === "none") return 0;
-	if (picked.kind === "other") return model.requirements.length + 1;
-	return model.requirements.findIndex((r) => r.id === picked.name) + 1;
+function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel): DialogAction | undefined {
+	if (kb.matches(data, "tui.select.confirm")) return { type: "submit" };
+	return printableOf(data) === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
 }
 
-/** Enter on a question's review picks the focused requirement row first and submits once it is picked. */
-function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState): DialogAction | undefined {
-	const isQuestion = model.kind === "question";
-	if (kb.matches(data, "tui.select.confirm")) {
-		if (!isQuestion || pickedRequirementRow(model, state) === state.focus) return { type: "submit" };
-		return { type: "pickRequirement", index: state.focus };
-	}
-	const char = printableOf(data);
-	const index = isQuestion ? digitIndex(char) : undefined;
-	if (index !== undefined) return index <= model.requirements.length + 1 ? { type: "pickRequirement", index } : undefined;
-	return char === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
-}
-
-const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState) => DialogAction | undefined> = {
+const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel) => DialogAction | undefined> = {
 	decision: decisionKey,
 	units: unitsKey,
 	review: reviewKey,
@@ -89,5 +72,5 @@ export function keyToAction(
 ): DialogAction | undefined {
 	if (state.editor !== undefined) return editorKey(data, kb, field);
 	const tab = model.tabs[state.tab];
-	return commonKey(data, kb) ?? (tab === undefined ? undefined : TAB_KEYS[tab](data, kb, model, state));
+	return commonKey(data, kb) ?? (tab === undefined ? undefined : TAB_KEYS[tab](data, kb, model));
 }

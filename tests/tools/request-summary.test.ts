@@ -28,7 +28,7 @@ describe("the request summary is the stored record summary", () => {
 	});
 
 	test("question", () => {
-		expectMatches(questionRequest(state, { id: "Q1", text: RAW, class: "blocking" }, { body: "", requirements: [], now: NOW }));
+		expectMatches(questionRequest(state, { id: "Q1", text: RAW, class: "blocking" }, { body: "", now: NOW }));
 	});
 
 	test("amend", () => {

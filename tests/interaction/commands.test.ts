@@ -35,26 +35,24 @@ describe("parseCommand", () => {
 		expect(parseCommand("/livespec choose")).toHaveProperty("error");
 	});
 
-	test("Answer that changes a requirement", () => {
-		expect(parseCommand("/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap")).toEqual({
-			verb: "answer",
-			question: "Q2",
-			text: "use per-user limits",
-			changes: "rate-limit/Requirement: Per-IP cap",
-		});
+	test("--changes is refused with the removal message", () => {
+		expect(parseCommand("/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap")).toEqual({ error: "--changes was removed: edit the spec instead; livespec cascades requirement edits from the spec diff" });
+	});
+
+	test("answer text with a --changes token is refused", () => {
+		expect(parseCommand("/livespec answer Q2 keep --changes off")).toEqual({ error: "--changes was removed: edit the spec instead; livespec cascades requirement edits from the spec diff" });
 	});
 
 	test("answer without flags", () => {
 		expect(parseCommand("/livespec answer Q1 yes")).toEqual({ verb: "answer", question: "Q1", text: "yes" });
 	});
 
-	test("answer with --class before --changes", () => {
-		expect(parseCommand("/livespec answer Q3 keep it --class non-blocking --changes auth/Requirement: Login")).toEqual({
+	test("answer with --class", () => {
+		expect(parseCommand("/livespec answer Q2 use per-user limits --class non-blocking")).toEqual({
 			verb: "answer",
-			question: "Q3",
-			text: "keep it",
+			question: "Q2",
+			text: "use per-user limits",
 			class: "non-blocking",
-			changes: "auth/Requirement: Login",
 		});
 	});
 
