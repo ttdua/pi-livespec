@@ -68,11 +68,17 @@ function stringList(m: MarkedComment, key: "units" | "phases"): string[] {
 }
 
 /** Own comments matching `test` after the lock gate, in comment order; none without a lock. */
-function afterBaseline(input: CascadeInput, test: (m: MarkedComment) => boolean): { m: MarkedComment; at: number }[] {
+function afterBaseline(input: Pick<CascadeInput, "lock" | "marked">, test: (m: MarkedComment) => boolean): { m: MarkedComment; at: number }[] {
 	const from = input.lock.baseline?.at;
 	if (from === undefined) return [];
 	return input.marked.flatMap((m, at) => (at > from && test(m) ? [{ m, at }] : []));
 }
+
+/**
+ * Whether the lock failed closed: an own missing-baseline record follows it. Sticky until a new plan gate is
+ * approved, even when the lock commit becomes reachable again; only the completion may still run.
+ */
+export const failedClosed = (input: Pick<CascadeInput, "lock" | "marked">): boolean => afterBaseline(input, isBaselineStale).length > 0;
 
 /**
  * Whether the change must move back to define: it is in a phase after define, or a previous try left it
@@ -133,8 +139,7 @@ function latestDefineApproval(marked: MarkedComment[]): number {
 /** A lock whose baseline is unknown (no record, commit gone) gets one missing-baseline record. */
 const planLegacyMissing: SubPlanner = (input) => {
 	const lockGate = input.lock.baseline;
-	if (input.baseline !== undefined || lockGate === undefined) return undefined;
-	if (afterBaseline(input, isBaselineStale).length > 0) return undefined;
+	if (input.baseline !== undefined || lockGate === undefined || failedClosed(input)) return undefined;
 	const sha = lockGate.headSha ?? UNKNOWN_SHA;
 	const data: StaleData = { reason: `the plan-lock commit ${sha} is missing; approve the spec and the plan again`, phases: cascadePhases(input.pack), units: [], after_plan: false, baseline: sha };
 	return { kind: "legacy-missing", id: `${BASELINE_PREFIX}${sha.slice(0, ID_HEX)}`, data, moveBack: needsMoveBack(input.pack, input.phase) };
@@ -173,7 +178,7 @@ function headsInScope(input: CascadeInput): Record<string, string> {
 
 /** A new cascade for every requirement whose HEAD digest differs from the acknowledged one, minus integration edits. */
 const planNewCascade: SubPlanner = (input) => {
-	if (input.baseline === undefined) return NONE;
+	if (input.baseline === undefined || failedClosed(input)) return NONE;
 	const heads = headsInScope(input);
 	const diff = changedIds(acknowledgedDigests(input), heads);
 	const excluded = excludedIds(input, diff);

@@ -14,14 +14,16 @@ import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
 import { type MarkedComment, readMarkedComments, writeMarked } from "../forge/markers.ts";
 import type { Session } from "../hooks/session.ts";
-import { acknowledgedDigests, type CascadeInput, planSpecCascade, type SpecCascadePlan } from "./spec-cascade-plan.ts";
+import { acknowledgedDigests, type CascadeInput, failedClosed, planSpecCascade, type SpecCascadePlan } from "./spec-cascade-plan.ts";
 
 const STEP = "spec-cascade";
 const REMOTE = "origin";
 const DEFINE = "define";
-const HEAD = "HEAD";
 
 type Target = { session: Session; forge: CachedForge; pack: Pack; state: ChangeState };
+
+/** The git branch and HEAD sha read once at the start of a run: every digest and the merge-base use this sha. */
+type Pinned = { branch: string; head: string };
 
 /** The connected, writable, current change, as `pollTarget` guards it; undefined means skip. */
 function cascadeTarget(session: Session): Target | undefined {
@@ -34,10 +36,10 @@ function cascadeTarget(session: Session): Target | undefined {
 // --- reading the input -------------------------------------------------------------
 
 /**
- * The integration reference: `merge-base(HEAD, origin/<branch>)` after a best-effort fetch, else `base` when that
+ * The integration reference: `merge-base(head, origin/<branch>)` after a best-effort fetch, else `base` when that
  * commit exists, else undefined (no exclusion).
  */
-export async function integrationRef(session: Session, git: Git, base: string | undefined): Promise<string | undefined> {
+export async function integrationRef(session: Session, git: Git, head: string, base: string | undefined): Promise<string | undefined> {
 	const project = session.config.project;
 	const branch = project === null ? undefined : await integrationBranch(project, git);
 	if (branch !== undefined) {
@@ -45,7 +47,7 @@ export async function integrationRef(session: Session, git: Git, base: string | 
 		await git.fetch(REMOTE, branch).catch(() => undefined);
 		const ref = `${REMOTE}/${branch}`;
 		if ((await git.remoteRef(ref)) !== undefined) {
-			const mergeBase = await git.mergeBase(HEAD, ref).catch(() => undefined);
+			const mergeBase = await git.mergeBase(head, ref).catch(() => undefined);
 			if (mergeBase !== undefined) return mergeBase;
 		}
 	}
@@ -61,22 +63,35 @@ async function baselineOf(git: Git, lock: CascadeInput["lock"], change: Change):
 	return requirementDigests(git, gate.headSha, requirementScope(change));
 }
 
-/** The planner's input, read fresh; digests only with a known baseline, the reference only when something changed. */
-async function readCascadeInput(t: Target): Promise<CascadeInput> {
+/**
+ * Whether the checkout is still the change's branch: its `Branch` header, else the branch the card resolved on.
+ * After a switch the session card can still name the change while HEAD is another branch's.
+ */
+function onChangeBranch(t: Target, change: Change, pinned: Pinned): boolean {
+	return pinned.branch === (change.header.branch ?? t.state.git.branch);
+}
+
+/**
+ * The planner's input, read fresh; digests only with a known baseline, the reference only when something changed.
+ * Undefined when the checkout is not the change's branch: nothing is compared and nothing written.
+ */
+async function readCascadeInput(t: Target, pinned: Pinned): Promise<CascadeInput | undefined> {
 	const n = t.state.issue.number;
 	const git = t.session.git;
 	// `readMarkedComments` reads the forge directly. The comments cache is dropped only after a write, so a
 	// session that goes offline later still has its cached copy.
 	const [issue, { comments: marked }] = await Promise.all([t.forge.getIssue(n), readMarkedComments(t.forge, n)]);
 	const change = parseChange(issue.body);
+	if (!onChangeBranch(t, change, pinned)) return undefined;
 	const lock = deriveLocks(change, marked);
 	const baseline = await baselineOf(git, lock, change);
 	const scope = lock.baseline?.scope ?? requirementScope(change);
 	const input: CascadeInput = { change, marked, phase: phaseFromLabels(issue.labels), pack: t.pack, lock, baseline, scope, heads: {}, reference: undefined };
-	if (baseline === undefined) return input;
-	input.heads = await requirementDigests(git, HEAD, scope);
+	// Fail-closed is sticky (design D6): with an own missing-baseline record, nothing is compared.
+	if (baseline === undefined || failedClosed(input)) return input;
+	input.heads = await requirementDigests(git, pinned.head, scope);
 	if (changedIds(acknowledgedDigests(input), input.heads).length === 0) return input;
-	const ref = await integrationRef(t.session, git, change.header.base);
+	const ref = await integrationRef(t.session, git, pinned.head, change.header.base);
 	if (ref !== undefined) input.reference = await requirementDigests(git, ref, scope);
 	return input;
 }
@@ -132,9 +147,11 @@ const PASSES = 2;
 async function cascadeChange(t: Target): Promise<boolean> {
 	const r: Run = { ...t, wrote: false };
 	try {
+		const [branch, head] = await Promise.all([t.session.git.branch(), t.session.git.head()]);
+		const pinned: Pinned = { branch, head };
 		for (let pass = 0; pass < PASSES; pass++) {
-			const input = await readCascadeInput(r);
-			if (!(await applyCascade(r, input, planSpecCascade(input)))) break;
+			const input = await readCascadeInput(r, pinned);
+			if (input === undefined || !(await applyCascade(r, input, planSpecCascade(input)))) break;
 		}
 	} catch (error) {
 		r.session.record(STEP, error);

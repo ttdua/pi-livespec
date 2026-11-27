@@ -294,6 +294,19 @@ describe("planSpecCascade", () => {
 		expect(planSpecCascade(approved)).toEqual({ kind: "none" });
 	});
 
+	test("baseline comment exists, commit back → no new cascade", () => {
+		const input = inputOf({ baseline: undefined, marked: [planGate()] });
+		const withComment = [...input.marked, posted(planSpecCascade(input))];
+		// The commit is reachable again, so the runner could read a baseline: the fail-closed state stays.
+		const back = inputOf({ marked: withComment, phase: ok("define"), baseline: { [CAP]: A, [BURST]: A }, heads: { [CAP]: B, [BURST]: A } });
+		expect(planSpecCascade(back)).toEqual({ kind: "none" });
+		const inBuild = inputOf({ marked: withComment, baseline: { [CAP]: A, [BURST]: A }, heads: { [CAP]: B, [BURST]: A } });
+		expect(planSpecCascade(inBuild)).toEqual({ kind: "complete", untick: [], moveBack: true });
+		// A new plan gate ends it: edits after the new lock cascade again.
+		const relocked = inputOf({ marked: [...withComment, defineGate(), planGate({ [CAP]: A, [BURST]: A })], phase: ok("build"), heads: { [CAP]: B, [BURST]: A } });
+		expect(planSpecCascade(relocked).kind).toBe("cascade");
+	});
+
 	test("legacy commit gone in define → legacy-missing without moveBack", () => {
 		const plan = planSpecCascade(inputOf({ baseline: undefined, marked: [planGate()], phase: ok("define") }));
 		expect(plan).toMatchObject({ kind: "legacy-missing", moveBack: false, data: { after_plan: false } });

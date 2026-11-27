@@ -308,6 +308,18 @@ describe("spec-diff cascade through the triggers", () => {
 		expect(await iterations(h)).toBe(1);
 	});
 
+	test("Branch switched away: /livespec next writes nothing to the change", async () => {
+		const h = await locked();
+		h.git("switch", "-q", "-c", "livespec/other");
+		await editSpec(h, CAP_EDIT);
+		await next(h);
+		expect(h.faults.ops).toEqual([]);
+		expect(await stales(h, "")).toEqual([]);
+		expect(await phaseOf(h)).toEqual(BUILD);
+		expect(await doneUnits(h)).toEqual(["U1", "U2", "U3"]);
+		expect(h.session.errors.filter((e) => e.startsWith("spec-cascade"))).toEqual([]);
+	});
+
 	test("Read-only forge skips the cascade", async () => {
 		const h = await locked();
 		await editSpec(h, CAP_EDIT);

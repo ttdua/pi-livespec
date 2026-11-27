@@ -237,6 +237,29 @@ describe("runSpecCascade", () => {
 		expect(await stales(h, "baseline.")).toHaveLength(1);
 	});
 
+	test("legacy fail-closed is sticky when the lock commit comes back", async () => {
+		const h = await harness();
+		h.git("switch", "-q", "-c", "side");
+		h.git("commit", "-q", "--allow-empty", "-m", "side");
+		const side = h.git("rev-parse", "HEAD");
+		h.git("switch", "-q", "-");
+		h.git("branch", "-q", "-D", "side");
+		await lock(h, { headSha: side, legacy: true });
+		const real = h.session.git.hasCommit.bind(h.session.git);
+		let gone = true;
+		Object.assign(h.session.git, { hasCommit: (sha: string) => (gone && sha === side ? Promise.resolve(false) : real(sha)) });
+		await editSpec(h, "Each IP SHALL be capped at 100.");
+		expect(await runSpecCascade(h.session)).toBe(true);
+		expect(await stales(h, "baseline.")).toHaveLength(1);
+		expect(await phaseOf(h)).toEqual(["livespec:phase/define"]);
+		gone = false;
+		h.faults.ops.length = 0;
+		expect(await runSpecCascade(h.session)).toBe(false);
+		expect(h.faults.ops).toEqual([]);
+		expect(await stales(h, "spec.")).toEqual([]);
+		expect(await doneUnits(h)).toEqual(["U1", "U2", "U3"]);
+	});
+
 	test("read-only forge skips", async () => {
 		const h = await harness();
 		await lock(h);
@@ -294,6 +317,40 @@ describe("runSpecCascade", () => {
 		expect(await runSpecCascade(h.session)).toBe(false);
 		expect(h.faults.ops).toEqual([]);
 		expect(await stales(h, "spec.")).toHaveLength(1);
+	});
+
+	test("branch switched away from the change: nothing written", async () => {
+		const h = await harness();
+		await lock(h);
+		// The session card still names the change; HEAD is now another branch with a spec edit.
+		h.git("switch", "-q", "-c", "livespec/other");
+		await editSpec(h, "Each IP SHALL be capped at 100.");
+		const record = vi.spyOn(h.session, "record");
+		expect(await runSpecCascade(h.session)).toBe(false);
+		expect(h.faults.ops).toEqual([]);
+		expect(await stales(h, "")).toEqual([]);
+		expect(record).not.toHaveBeenCalled();
+	});
+
+	test("HEAD is pinned once per run: a commit landing mid-run is not read", async () => {
+		const h = await harness();
+		await lock(h);
+		await editSpec(h, "Each IP SHALL be capped at 100.");
+		const pinned = h.git("rev-parse", "HEAD");
+		// Only the cascade's own reads: the refresh after its writes reads HEAD for other facts.
+		let cascading = true;
+		const refresh = h.session.refresh.bind(h.session);
+		vi.spyOn(h.session, "refresh").mockImplementation(() => ((cascading = false), refresh()));
+		const revs: string[] = [];
+		const show = h.session.git.showFile.bind(h.session.git);
+		Object.assign(h.session.git, { showFile: (rev: string, path: string) => (cascading && revs.push(rev), show(rev, path)) });
+		const merges: string[] = [];
+		const mergeBase = h.session.git.mergeBase.bind(h.session.git);
+		Object.assign(h.session.git, { mergeBase: (a: string, b: string) => (merges.push(a), mergeBase(a, b)) });
+		expect(await runSpecCascade(h.session)).toBe(true);
+		expect(revs).not.toContain("HEAD");
+		expect(revs).toContain(pinned);
+		expect(merges.every((a) => a === pinned)).toBe(true);
 	});
 
 	test("no lock → nothing written", async () => {
