@@ -411,7 +411,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 /livespec answer Q2 use per-user limits, not per-IP
 ```
 
-Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capability>/spec.md` và commit; không có flag nào. livespec phát hiện thay đổi từ spec diff khi bắt đầu session, khi chạy `/livespec next`, và trước gate kế tiếp hoặc `unit_finish`. Change quay về `define` và các unit đã xong phủ requirement đó bị untick; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ sửa spec khi đáp án thực sự đổi nó. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp.
+Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capability>/spec.md` và commit trên branch của change; không có flag nào. Cascade dưới đây chỉ chạy sau khi plan đã được lock; trước đó, thay đổi chỉ là một phần của change. livespec phát hiện thay đổi từ spec diff khi bắt đầu session, khi chạy `/livespec next`, và trước gate kế tiếp hoặc `unit_finish`. Change quay về `define` và các unit đã xong phủ requirement đó bị untick; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ sửa spec khi đáp án thực sự đổi nó. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp.
 
 ### Stuck report: chọn lối ra
 

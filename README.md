@@ -409,7 +409,7 @@ Rules that decide whether your comment counts:
 /livespec answer Q2 use per-user limits, not per-IP
 ```
 
-If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it; there is no flag. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
+If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it on the change's branch; there is no flag. The cascade below runs only after the plan is locked; before that, the edit is simply part of the change. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
 
 ### Stuck report: pick a way out
 
