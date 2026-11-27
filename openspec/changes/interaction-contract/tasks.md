@@ -2,8 +2,8 @@
 
 Blocked by: none
 
-- [ ] 1.1 Sort the forge "How to answer" rows with the recommended row first, the question free-text row last (`src/interaction/forge-text.ts`; request-briefing "Forge request text", design D7)
-- [ ] 1.2 Append the interaction-contract sentence to every rubric, persona subjects included (`src/subagents/rubrics.ts`; design D8)
+- [x] 1.1 Sort the forge "How to answer" rows with the recommended row first, the question free-text row last (`src/interaction/forge-text.ts`; request-briefing "Forge request text", design D7)
+- [x] 1.2 Append the interaction-contract sentence to every rubric, persona subjects included (`src/subagents/rubrics.ts`; design D8)
 
 ## 2. Question class removal and required candidates
 
