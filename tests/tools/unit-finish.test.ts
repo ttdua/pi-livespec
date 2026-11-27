@@ -124,6 +124,9 @@ describe("unit-evidence", () => {
 		expect(await h.ofKind("receipt")).toHaveLength(1);
 		expect((await h.units())[0]?.done).toBe(false);
 		expect(h.writes.written).toBe(0);
+		expect((await h.ofKind("decision")).filter((m) => m.id === "progress.U1")).toEqual([]);
+		await h.session.refresh();
+		expect(cardState(h).state.counters["unit_attempts.U1"]).toBeUndefined();
 	});
 
 	test("Crash between receipt and tick", async () => {
