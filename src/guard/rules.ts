@@ -133,6 +133,29 @@ function isGhApiWrite(inv: Invocation): boolean {
 	return method !== undefined ? method !== "GET" : hasOption(s, GH_API_FIELDS);
 }
 
+const LEDGER_ADVICE = "the ledger is written only by livespec tools";
+const LEDGER_READS = set("log", "show", "cat-file", "rev-parse", "rev-list", "ls-tree", "ls-remote", "for-each-ref", "diff");
+
+/** The destination of a refspec word (`+src:dst` → `dst`), or undefined when it has none. */
+function refspecDestination(text: string): string | undefined {
+	const colon = text.indexOf(":");
+	return colon < 0 ? undefined : text.slice(colon + 1);
+}
+
+/** Agent git access to the ledger refs beyond reads: any ledger ref in a non-read command, `update-ref --stdin`, or a wildcard refspec outside `refs/remotes/`. */
+function isLedgerWrite(inv: Invocation): boolean {
+	if (inv.name !== "git") return false;
+	const sub = inv.args[0]?.text ?? "";
+	const rest = inv.args.slice(1).map((w) => w.text);
+	if (!LEDGER_READS.has(sub) && rest.some((a) => a.includes("refs/livespec") || a.includes("livespec-origin"))) return true;
+	if (sub === "update-ref" && rest.includes("--stdin")) return true;
+	if (sub !== "fetch" && sub !== "push") return false;
+	return rest.some((a) => {
+		const dst = a.startsWith("-") ? undefined : refspecDestination(a);
+		return dst !== undefined && dst.includes("*") && !dst.startsWith("refs/remotes/");
+	});
+}
+
 const GH_ALIAS_WRITES = set("set", "import");
 const SUBTREE_VALUED = set("-P", "--prefix", "-m", "--message");
 
@@ -200,6 +223,7 @@ const forgeWrite = (what: string) => () => ({ what, advice: FORGE_ADVICE });
 
 const RULES: readonly Rule[] = [
 	{ id: "push", matches: isGitPush, explain: () => ({ what: "git push is blocked", advice: PUSH_ADVICE }) },
+	{ id: "ledger", matches: isLedgerWrite, explain: () => ({ what: "this git command could write the ledger refs", advice: LEDGER_ADVICE }) },
 	{ id: "gh-alias", matches: isGhAliasWrite, explain: () => ({ what: "gh alias set and import are blocked because gh aliases can hide forge writes", advice: "run the gh command itself, or ask a human" }) },
 	{
 		id: "gh-issue",

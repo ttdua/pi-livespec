@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { GitError } from "../../src/engine/git.ts";
 import type { GitExec } from "../../src/engine/git-exec.ts";
-import { guardedDeleteWip, guardedPush } from "../../src/guard/push.ts";
+import { guardedDeleteWip, guardedPush, ledgerDelete, ledgerFetch, ledgerPush } from "../../src/guard/push.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, originRefs, textOf, toolHarness } from "../tools/helpers.ts";
 import { BRANCH, parkHarness } from "../tools/park-fixture.ts";
@@ -35,7 +35,11 @@ describe("command-guards", () => {
 		const others = sources.filter((path) => !path.endsWith("/guard/push.ts"));
 		expect(others.filter((path) => readFileSync(path, "utf8").includes("guardedDeleteWip")).map((path) => basename(path))).toEqual(["change-resume.ts"]);
 		expect(readFileSync(others.find((path) => basename(path) === "change-resume.ts") as string, "utf8")).not.toContain("guardedPush(");
-		expect(importing.every((path) => path.includes("/src/tools/"))).toBe(true);
+		const ledgerUsers = others.filter((path) => /ledger(Fetch|Push|Delete)/.test(readFileSync(path, "utf8")));
+		// src/ledger/sync.ts is admitted by name; it lands with the ledger module.
+		const relative = (paths: string[]) => paths.map((path) => path.slice(SRC_DIR.length)).filter((path) => path !== "ledger/sync.ts");
+		expect(relative(ledgerUsers)).toEqual([]);
+		expect(relative(importing.filter((path) => !path.includes("/src/tools/")))).toEqual([]);
 	});
 
 	test("Refspec from the fix branch", async () => {
@@ -181,5 +185,61 @@ describe("guardedPush", () => {
 		await expect(guardedPush(defaultGitExec, h.root, "origin", "refs/heads/missing:refs/heads/main")).rejects.toBeInstanceOf(GitError);
 		expect(originRefs(h.origin)).toBe(before);
 		execFileSync("git", ["status"], { cwd: h.root });
+	});
+});
+
+describe("ledger operations", () => {
+	function fake(code = 0, stderr = "", stdout = ""): { exec: GitExec; calls: string[][] } {
+		const calls: string[][] = [];
+		return { calls, exec: async (args) => (calls.push(args), { stdout, stderr, code }) };
+	}
+
+	test("Ledger push refspec", async () => {
+		const { exec, calls } = fake();
+		expect(await ledgerPush(exec, "/r", 59, "t")).toBe("pushed");
+		expect(calls).toEqual([["push", "--", "origin", "t:refs/livespec/59"]]);
+	});
+
+	test("ledgerPush reports a non-fast-forward as rejected and throws on other failures", async () => {
+		for (const stderr of ["! [rejected] x", "hint: fetch first", "non-fast-forward"]) {
+			expect(await ledgerPush(fake(1, stderr).exec, "/r", 59, "t")).toBe("rejected");
+		}
+		await expect(ledgerPush(fake(128, "fatal: unreachable").exec, "/r", 59, "t")).rejects.toBeInstanceOf(GitError);
+	});
+
+	test("ledgerFetch asks ls-remote first, then fetches", async () => {
+		const { exec, calls } = fake(0, "", "t\trefs/livespec/59\n");
+		expect(await ledgerFetch(exec, "/r", 59)).toBe("fetched");
+		expect(calls).toEqual([
+			["ls-remote", "--exit-code", "--", "origin", "refs/livespec/59"],
+			["fetch", "--", "origin", "+refs/livespec/59:refs/livespec-origin/59"],
+		]);
+	});
+
+	test("ledgerFetch returns absent when ls-remote exits 2", async () => {
+		const { exec, calls } = fake(2);
+		expect(await ledgerFetch(exec, "/r", 59)).toBe("absent");
+		expect(calls).toHaveLength(1);
+	});
+
+	test("ledgerDelete uses a lease on the synced tip", async () => {
+		const { exec, calls } = fake(0, "", "t\trefs/livespec/59\n");
+		expect(await ledgerDelete(exec, "/r", 59, "t")).toBe("deleted");
+		expect(calls.filter((a) => a[0] === "push")).toEqual([["push", "--force-with-lease=refs/livespec/59:t", "--", "origin", ":refs/livespec/59"]]);
+	});
+
+	test("ledgerDelete reports gone and moved", async () => {
+		expect(await ledgerDelete(fake(2).exec, "/r", 59, "t")).toBe("gone");
+		expect(await ledgerDelete(fake(0, "", "other\trefs/livespec/59\n").exec, "/r", 59, "t")).toBe("moved");
+	});
+
+	test("Ledger operations refuse a bad issue number", async () => {
+		const { exec, calls } = fake();
+		for (const n of [0, -1, 1.5, "59 --force"] as unknown as number[]) {
+			await expect(ledgerFetch(exec, "/r", n)).rejects.toBeInstanceOf(GitError);
+			await expect(ledgerPush(exec, "/r", n, "t")).rejects.toBeInstanceOf(GitError);
+			await expect(ledgerDelete(exec, "/r", n, "t")).rejects.toBeInstanceOf(GitError);
+		}
+		expect(calls).toEqual([]);
 	});
 });

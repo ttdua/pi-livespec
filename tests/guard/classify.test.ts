@@ -393,3 +393,21 @@ describe("wrapper chdir reaches nested scripts", () => {
 	for (const c of blockedCases) it(`blocks ${c}`, () => expectBlocked([c]));
 	it("allows a nested script in another directory", () => expectAllowed(["env -C /tmp sh -c 'rm livespec/flow.yaml'", "env -C .pi sh -c 'cat livespec/flow.yaml'"]));
 });
+
+describe("ledger refs", () => {
+	it("Agent ledger writes blocked", () => {
+		const commands = [
+			"git update-ref refs/livespec/59 HEAD",
+			"git push origin x:refs/livespec/59",
+			"git fetch origin refs/livespec/59:refs/livespec/59",
+			"git update-ref --stdin",
+			"git fetch origin '+refs/*:refs/*'",
+		];
+		expectBlocked(commands);
+		for (const c of commands.slice(0, 1).concat(commands.slice(2))) expect(blocked(c).reason).toContain("the ledger is written only by livespec tools");
+	});
+
+	it("Agent ledger reads allowed", () => {
+		expectAllowed(["git show refs/livespec/59:findings.jsonl", "git log refs/livespec/59", "git cat-file -p refs/livespec/59", "git fetch origin", "git fetch origin '+refs/heads/*:refs/remotes/origin/*'"]);
+	});
+});
