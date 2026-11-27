@@ -304,9 +304,18 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
 	const escalation = isPhase ? await decideEscalation(state, w.pack, target) : undefined;
+	return escalateOrPass(w, state, target, { escalation, briefed, rawBriefing: p.briefing }, ctx);
+}
+
+/**
+ * The gate after its checks pass: the rule's escalation (if any) decides the mode, a human gate needs a valid
+ * briefing and a recommendation that is not approve over a check to waive, then the gate passes or asks.
+ */
+async function escalateOrPass(w: WriteContext, state: ChangeState, target: string, i: { escalation: Escalation | undefined; briefed: BriefingStep; rawBriefing: unknown }, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
+	const { escalation } = i;
 	const plan = planGate(state, w.pack, target, escalation?.outcome === "human");
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	const briefing = escalation?.outcome === "human" ? escalatedBriefing(target, p.briefing, escalation) : briefed;
+	const briefing = escalation?.outcome === "human" ? escalatedBriefing(target, i.rawBriefing, escalation) : i.briefed;
 	if (!briefing.ok) return toolResult(briefing.message, undefined, true);
 	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefing.briefing, plan) : undefined;
 	if (unrecommendable) return toolResult(unrecommendable, undefined, true);

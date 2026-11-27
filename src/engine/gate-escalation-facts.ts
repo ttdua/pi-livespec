@@ -19,13 +19,18 @@ export type GateEscalationFacts = {
 	units: { id: string; tags: string[] }[];
 };
 
-/** `none` without an `always` advisory reviewer of a whole-change subject; else what its latest review at HEAD reports. */
+/**
+ * `none` without an `always` advisory reviewer of a whole-change subject; else what the latest review at HEAD of
+ * every such reviewer reports: `missing` beats `critical` beats `clean`.
+ */
 function advisoryReview(state: ChangeState, pack: Pack, phase: string): AdvisoryReview {
-	const entry = entriesFor(pack, phase).find((e) => e.role === "reviewer" && e.advisory === true && e.mode === "always" && e.subject !== undefined && e.subject !== "unit");
-	if (entry?.subject === undefined) return "none";
-	const review = latestChangeReviewAt(state.marked, entry.subject, state.git.head);
-	if (review === undefined) return "missing";
-	return review.findings.some((f) => f.severity === "CRITICAL") ? "critical" : "clean";
+	const subjects = entriesFor(pack, phase)
+		.filter((e) => e.role === "reviewer" && e.advisory === true && e.mode === "always" && e.subject !== undefined && e.subject !== "unit")
+		.flatMap((e) => (e.subject === undefined ? [] : [e.subject]));
+	if (subjects.length === 0) return "none";
+	const reviews = subjects.map((subject) => latestChangeReviewAt(state.marked, subject, state.git.head));
+	if (reviews.includes(undefined)) return "missing";
+	return reviews.some((r) => r?.findings.some((f) => f.severity === "CRITICAL")) ? "critical" : "clean";
 }
 
 /** The facts of `phase` at HEAD; `waivable` are the phase's failing waivable checks, as the caller ran them. */
@@ -57,11 +62,11 @@ export function escalationOutcome(outcome: unknown): GateEscalationOutcome {
 }
 
 /** The next step's forecast of the gate (phase-gates "Escalation in the next step"), from the registered rule: writes nothing. */
-export function escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: GateEscalationOutcome; reason: string } | undefined {
+export function escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: GateEscalationOutcome; reason: string; waivable: string[] } | undefined {
 	const input = escalationInput(state, pack, phase.id);
 	const rule = ruleFor(GATE_ESCALATION_POINT);
 	if (input === undefined || rule === undefined) return undefined;
 	const result = rule.fn(input.facts, input.config);
 	if (!("outcome" in result)) throw new Error(`the ${GATE_ESCALATION_POINT} rule never asks`);
-	return { outcome: escalationOutcome(result.outcome), reason: result.reason };
+	return { outcome: escalationOutcome(result.outcome), reason: result.reason, waivable: input.facts.failing_waivable };
 }

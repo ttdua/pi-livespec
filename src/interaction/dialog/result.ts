@@ -1,7 +1,7 @@
 // Turns a submitted dialog state into the flow result, with the rules of the select flows
 // (`in-session.ts`): empty notes approve, notes approve with notes, `changes` drops overrides.
 
-import type { ApprovalRequest, Deferred, Outcome, Override } from "../approver.ts";
+import type { Deferred, Outcome, Override } from "../approver.ts";
 import { CANCELLED, type Cancelled, type Verdict } from "../flow-result.ts";
 import type { DialogEntry, DialogModel } from "./model.ts";
 import type { DialogState } from "./state.ts";

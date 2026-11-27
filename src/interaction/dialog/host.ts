@@ -59,7 +59,7 @@ function prefillOf(model: DialogModel, state: DialogState, editor: EditorName): 
 }
 
 /** What a finished state resolves; `undefined` while the dialog is still open. */
-function outcomeOf(model: DialogModel, state: DialogState, r: ApprovalRequest): DialogOutcome | undefined {
+function outcomeOf(model: DialogModel, state: DialogState): DialogOutcome | undefined {
 	if (state.done === undefined) return undefined;
 	if (state.done === "cancelled") return { kind: "cancelled" };
 	const result = toResult(model, state);
@@ -138,7 +138,7 @@ class DialogHost implements Component, Focusable {
 		this.state = next;
 		if (opened && next.editor !== undefined) this.fieldOf().set(prefillOf(this.model, next, next.editor));
 		this.syncFieldFocus();
-		const outcome = outcomeOf(this.model, next, this.r);
+		const outcome = outcomeOf(this.model, next);
 		if (outcome === undefined) return;
 		this.finished = true;
 		this.done(outcome);

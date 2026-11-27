@@ -62,6 +62,28 @@ describe("gateEscalationFacts", () => {
 		expect(gateEscalationFacts(state, pack, "plan", []).advisory_review).toBe("clean");
 	});
 
+	describe("two advisory reviewers", () => {
+		const withTwo = (): Pack => ({
+			...pack,
+			phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, subagents: [{ role: "reviewer", subject: "plan", mode: "always", advisory: true }, { role: "reviewer", subject: "persona:security-auditor", mode: "always", advisory: true }] } : p)),
+		});
+		const persona = (over: Parameters<typeof reviewed>[0] = {}) => planReview({ subject: "persona:security-auditor", ...over });
+
+		test("Second advisory reviewer counted", () => {
+			const state = stateFor("plan", { marked: [planReview(), persona({ findings: [finding({ severity: "CRITICAL" })] })] }, BODY);
+			expect(gateEscalationFacts(state, withTwo(), "plan", []).advisory_review).toBe("critical");
+		});
+
+		test("One advisory review missing", () => {
+			const state = stateFor("plan", { marked: [planReview({ findings: [finding({ severity: "CRITICAL" })] })] }, BODY);
+			expect(gateEscalationFacts(state, withTwo(), "plan", []).advisory_review).toBe("missing");
+		});
+
+		test("both clean", () => {
+			expect(gateEscalationFacts(stateFor("plan", { marked: [planReview(), persona()] }, BODY), withTwo(), "plan", []).advisory_review).toBe("clean");
+		});
+	});
+
 	test("phase without advisory reviewer", () => {
 		expect(gateEscalationFacts(stateFor("shape", {}, BODY), pack, "shape", []).advisory_review).toBe("none");
 	});

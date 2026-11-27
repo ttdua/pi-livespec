@@ -419,9 +419,9 @@ describe("nextStep approvals, locks and stuck reports", () => {
 		const waived = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", false, ["size-limits"]) } }) }));
 		expect(waived.next).toBe("The plan gate is approved: move to build.");
 		expect(waived.advance).toBe("build");
-		const superseded = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", true, ["size-limits"]) } }) }));
+		const superseded = nextStep(humanPlan, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved", true, ["size-limits"]) } }) }));
 		expect(superseded.next).toBe("Fix size-limits: U3 touches too many files.");
-		const notWaived = nextStep(pack, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved") } }) }));
+		const notWaived = nextStep(humanPlan, state("plan", NO_QUESTION, { checks: sizeLimits, lock: lockWith({ gates: { plan: gateResult("approved") } }) }));
 		expect(notWaived.next).toBe("Fix size-limits: U3 touches too many files.");
 	});
 
@@ -1176,6 +1176,28 @@ describe("escalation in the next step", () => {
 		expect(step.next).toContain("security");
 		expect(step.next).toContain("briefing");
 		expect(s.marked).toEqual(marked);
+	});
+
+	describe("Waivable check at an escalating self gate", () => {
+		const failing = (check: string) => [{ check, code: check, severity: "error" as const, message: "U3 touches too many files" }];
+
+		test("Failing waivable check names the escalation", () => {
+			const step = nextStep(pack, reviewedState("plan", untagged, { checks: failing("size-limits") }));
+			expect(step.next).toContain("will ask the human");
+			expect(step.next).toContain("size-limits fails");
+			expect(step.next).toContain(" The human can waive size-limits, or fix them first.");
+			expect(step.next).not.toMatch(/^Fix size-limits/);
+		});
+
+		test("a non-waivable failing check still asks to fix it", () => {
+			const step = nextStep(pack, reviewedState("plan", untagged, { checks: failing("unit-shape") }));
+			expect(step.next).toMatch(/^Fix unit-shape: /);
+		});
+
+		test("a waivable failing check at a human gate still asks to fix it", () => {
+			const step = nextStep(humanPlan, reviewedState("plan", untagged, { checks: failing("size-limits") }));
+			expect(step.next).toBe("Fix size-limits: U3 touches too many files.");
+		});
 	});
 
 	test("no trigger keeps the self forecast", () => {
