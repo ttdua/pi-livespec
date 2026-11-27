@@ -174,6 +174,21 @@ describe("renderForgeRequest", () => {
 		expect(answerRows(text).find((r) => r.includes("per-user limits"))).toContain("(recommended)");
 	});
 
+	test("recommended row first", () => {
+		const options = [
+			{ id: "A", label: "per-user limits" },
+			{ id: "B", label: "per-IP limits" },
+		];
+		const stuck = request({ subject: "decide:tags.U1", kind: "stuck", snapshot: { point: "tags", subject: "U1", facts: {} }, options, briefing: { summary: "Pick one.", recommended: "B", rationale: "Rule says B.", author: "rule" } });
+		const stuckRows = answerRows(renderForgeRequest(stuck));
+		expect(stuckRows[0]).toContain("/livespec choose B");
+		expect(stuckRows[0]).toContain("(recommended)");
+		const questionRows = answerRows(renderForgeRequest(request({ ...QUESTION, briefing: { summary: "Which limit?", recommended: "B", rationale: "IP is stable.", author: "agent" } })));
+		expect(questionRows[0]).toContain("per-IP limits");
+		expect(questionRows[0]).toContain("(recommended)");
+		expect(questionRows[questionRows.length - 1]).toContain("`/livespec answer Q2 <text>`");
+	});
+
 	test("free-text row always present for questions", () => {
 		const bare = request({ ...QUESTION, options: undefined, briefing: undefined });
 		for (const r of [request(QUESTION), bare]) {

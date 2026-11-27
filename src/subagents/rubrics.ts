@@ -9,7 +9,12 @@ const RUBRICS: Record<string, string> = {
 	change: "Review the whole change against the specs, the constraints and the decisions: integration defects, gaps between units, missed context.",
 };
 
+// Shared by every rubric (design D8): reviewers flag requests that break the human interaction contract.
+const CONTRACT_SENTENCE = 'A new or changed human request that breaks approver-adapters "Interaction contract" is a finding.';
+
 export function rubricFor(subject: ReviewSubject): string {
-	if (subject.startsWith("persona:")) return `Review the change as the persona "${subject.slice("persona:".length)}": report what this lens finds, with evidence.`;
-	return RUBRICS[subject] ?? RUBRICS.change ?? "";
+	const base = subject.startsWith("persona:")
+		? `Review the change as the persona "${subject.slice("persona:".length)}": report what this lens finds, with evidence.`
+		: (RUBRICS[subject] ?? RUBRICS.change ?? "");
+	return `${base} ${CONTRACT_SENTENCE}`;
 }
