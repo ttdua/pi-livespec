@@ -96,9 +96,12 @@ function gateData(d: unknown): GateData | undefined {
 	if (typeof d.head_sha === "string") data.headSha = d.head_sha;
 	const locked = stringRecord(d.locked);
 	if (locked) data.locked = locked;
+	// The requirement record is valid only as a pair: a half or malformed one is no record (the legacy path).
 	const requirements = stringRecord(d.requirements);
-	if (requirements) data.requirements = requirements;
-	if (isStringList(d.requirement_scope)) data.scope = [...d.requirement_scope];
+	if (requirements && isStringList(d.requirement_scope)) {
+		data.requirements = requirements;
+		data.scope = [...d.requirement_scope];
+	}
 	return data;
 }
 

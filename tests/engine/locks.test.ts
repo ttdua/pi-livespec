@@ -218,6 +218,16 @@ describe("deriveLocks", () => {
 		expect(deriveLocks(change, []).baseline).toBeUndefined();
 	});
 
+	test("a half or malformed requirement record is no record", () => {
+		const change = parseChange(BODY);
+		const requirements = { "rate-limit/Requirement: Per-IP cap": "a".repeat(64) };
+		const halves = [{ requirements }, { requirement_scope: ["rate-limit"] }, { requirements, requirement_scope: [1] }, { requirements: "bad", requirement_scope: ["rate-limit"] }];
+		for (const extra of halves) {
+			const gate = planGate(digests(change), extra);
+			expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.commentId, headSha: "f" });
+		}
+	});
+
 	test("baseline survives a later stale listing plan", () => {
 		const change = parseChange(BODY);
 		const gate = planGate(digests(change), { requirements: {}, requirement_scope: [] });
