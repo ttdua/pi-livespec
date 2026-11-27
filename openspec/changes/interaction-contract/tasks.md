@@ -35,11 +35,11 @@ Blocked by: 1, 2, 3
 
 Blocked by: 3, 4
 
-- [ ] 5.1 Add the `gate-escalation` rule with its schema and list-replacing merge, and register it (`src/decide/rules/gate-escalation.ts`, `src/decide/registry.ts`; decision-seam "Gate escalation rule", design D4)
-- [ ] 5.2 Build the facts from code: failing waivable checks, advisory review state at HEAD, unit tags (`src/engine/gate-escalation-facts.ts`; decision-seam "Gate escalation facts")
-- [ ] 5.3 `spec_gate`: consult the rule for listed self phases, refuse a missing briefing before writing, record the decision once per facts, then pass or send the human gate with the reason in the payload (`src/tools/spec-gate.ts`; phase-gates "Self gate escalation", "Waivable checks")
-- [ ] 5.4 Next step forecasts the escalation without writing (`src/engine/gate-decision.ts`; phase-gates "Escalation in the next step")
-- [ ] 5.5 Default pack: `plan` `gate: self`, `decisions.gate-escalation`; update `tests/fixtures/agent-skills.pack.json` (`src/packs/agent-skills.yaml`; flow-pack "Default flow pack", "Project override")
+- [x] 5.1 Add the `gate-escalation` rule with its schema and list-replacing merge, and register it (`src/decide/rules/gate-escalation.ts`, `src/decide/registry.ts`; decision-seam "Gate escalation rule", design D4)
+- [x] 5.2 Build the facts from code: failing waivable checks, advisory review state at HEAD, unit tags (`src/engine/gate-escalation-facts.ts`; decision-seam "Gate escalation facts")
+- [x] 5.3 `spec_gate`: consult the rule for listed self phases, refuse a missing briefing before writing, record the decision once per facts, then pass or send the human gate with the reason in the payload (`src/tools/spec-gate.ts`; phase-gates "Self gate escalation", "Waivable checks")
+- [x] 5.4 Next step forecasts the escalation without writing (`src/engine/gate-decision.ts`; phase-gates "Escalation in the next step")
+- [x] 5.5 Default pack: `plan` `gate: self`, `decisions.gate-escalation`; update `tests/fixtures/agent-skills.pack.json` (`src/packs/agent-skills.yaml`; flow-pack "Default flow pack", "Project override")
 
 ## 6. Units tab behind a key
 
