@@ -2,10 +2,10 @@
 
 ### Requirement: Interaction contract
 Every approver request (gate, amendment, question, stuck report, rule ask) SHALL:
-1. ask only what only the human can answer; a fact git, the specs, the diff or the ledger can give MUST NOT be asked;
+1. ask only an authority decision or what the system does not know; a fact git, the specs, the diff or the ledger can give MUST NOT be asked;
 2. state each choice's consequence as its description;
 3. carry a briefing with `recommended` and `rationale`, the recommended choice first;
-4. be answerable in one action; notes and unit overrides MUST NOT be required to submit.
+4. be answerable in one pick submitted once; notes and unit overrides MUST NOT be required.
 
 #### Scenario: Approve in one action
 - **WHEN** a plan gate with overridable units is shown in the dialog and the human picks the recommended `approve` and submits, without opening the units tab or writing a note

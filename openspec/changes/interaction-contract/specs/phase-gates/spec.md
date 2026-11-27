@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Self gate escalation
-A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` after its checks and refusals; a `human` phase gate MUST NOT. On `human` without a valid `briefing` it MUST refuse naming `briefing`, writing nothing. Otherwise it SHALL record the `decision` `gate-escalation.<phase>` unless the latest has equal facts, then pass, or send a human gate (with `waive` if needed) whose payload names the reason.
+A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` after its checks and refusals; a `human` phase gate MUST NOT. On `human` without a valid `briefing` it MUST refuse naming `briefing`, writing nothing. Otherwise it SHALL record the `decision` `gate-escalation.<phase>` unless the latest has equal facts, then pass, or send a human gate, with `waive` when a waivable check fails, whose payload names the reason.
 
 #### Scenario: Plan without triggers passes alone
 - **WHEN** the change is in `plan`, every check passes, the plan reviewer's advisory review at HEAD has no `CRITICAL` finding, no unit is tagged `security` or `migration`, and `spec_gate plan` runs without a briefing
@@ -32,7 +32,7 @@ A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL cons
 - **THEN** no `gate-escalation` decision is posted and the self gate passes as before
 
 ### Requirement: Escalation in the next step
-Before a gate that "Self gate escalation" covers is requested, the next step SHALL forecast its outcome from the same facts, writing nothing; gate-only checks that have not run are left out. On `human` it SHALL say the gate will ask the human, name the reasons, and say to pass a briefing; a missing advisory review's dispatch comes first. On `self` it SHALL say the gate can pass unless a gate-only check fails.
+Before a gate that "Self gate escalation" covers is requested, the next step SHALL forecast its outcome from the same facts, writing nothing; gate-only checks that have not run are left out. On `human` it SHALL say the gate will ask the human, name the reasons, and say to pass a briefing; it SHALL name a missing advisory review's dispatch first. On `self` it SHALL say the gate can pass unless a gate-only check fails.
 
 #### Scenario: Next step names the escalation
 - **WHEN** the change is in `plan`, every check passes and U1 is tagged `security`
@@ -40,7 +40,7 @@ Before a gate that "Self gate escalation" covers is requested, the next step SHA
 
 #### Scenario: Failing waivable check names the escalation
 - **WHEN** the change is in `plan`, `size-limits` fails and every other check passes
-- **THEN** the next step says the plan gate will ask the human because `size-limits` fails, and that the human can waive it or the agent can fix it
+- **THEN** the next step says the plan gate will ask the human because `size-limits` fails, and that the human can waive it or it can be fixed first
 
 ## MODIFIED Requirements
 
