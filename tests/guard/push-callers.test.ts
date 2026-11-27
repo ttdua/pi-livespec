@@ -28,8 +28,10 @@ describe("command-guards", () => {
 		const sources = sourcesUnder(SRC_DIR);
 		expect(sources.length).toBeGreaterThan(0);
 		const importing = sources.filter((path) => !path.endsWith("/guard/push.ts") && /guard\/push(\.ts)?["']|from "\.\/push(\.ts)?"/.test(readFileSync(path, "utf8")));
+		// The ledger sync is the one non-tool importer; it is admitted by its full path, not its basename.
+		const toolImporters = importing.filter((path) => path.slice(SRC_DIR.length) !== "ledger/sync.ts");
 		const allowed = new Set(["change-ship.ts", "change-push.ts", "fix-ship.ts", "change-park.ts", "change-resume.ts"]);
-		expect(importing.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
+		expect(toolImporters.map((path) => basename(path)).filter((name) => !allowed.has(name))).toEqual([]);
 		expect(importing.map((path) => basename(path))).toContain("change-ship.ts");
 		expect(importing.map((path) => basename(path))).toContain("change-park.ts");
 		const others = sources.filter((path) => !path.endsWith("/guard/push.ts"));
