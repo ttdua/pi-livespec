@@ -13,7 +13,7 @@
 9. open blocking question;
 10. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
 11. missing phase output;
-12. failing check not waived by the phase's valid gate result, except a waivable check at a phase whose gate phase-gates "Self gate escalation" covers, which falls through to the gate step (rule 20) so it is reported as an escalation;
+12. failing check not waived by the phase's valid gate result, except a waivable check at a phase whose gate phase-gates "Self gate escalation" covers and whose escalation forecast is `human`, which falls through to the gate step (rule 20) so it is reported as an escalation;
 13. in a `per: unit` phase, a blocked unit: send a stuck report with `spec_stuck`;
 14. in a `per: unit` phase, a started unit: finish it with `unit_finish`;
 15. in a `per: unit` phase, a receipted unit that is not ticked: run `unit_finish` again;
