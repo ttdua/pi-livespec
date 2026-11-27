@@ -9,12 +9,15 @@ import { runNextCommand } from "../../src/commands/next.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
+import { decisionComment } from "../../src/decide/records.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
+import "../../src/initiatives/facts.ts";
 import { REMOVED_DIGEST } from "../../src/engine/requirement-diff.ts";
-import { registerSessionHooks } from "../../src/hooks/session.ts";
-import { getSession, setSession } from "../../src/hooks/session-store.ts";
+import { setSession } from "../../src/hooks/session-store.ts";
+import { createGit } from "../../src/engine/git.ts";
 import { BRIEFING } from "../helpers/briefing.ts";
 import { pickByLabel } from "../helpers/menu.ts";
+import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import {
 	BURST,
@@ -23,6 +26,10 @@ import {
 	type CascadeHarness,
 	type CascadeHarnessOptions,
 	cascadeHarness,
+	seedLock,
+	noFaults,
+	faultyForge,
+	changeBody,
 	dataOf,
 	doneUnits,
 	editSpec,
@@ -40,7 +47,7 @@ import {
 	WINDOW,
 } from "../helpers/spec-cascade-fixture.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
-import { fakeContent } from "../hooks/helpers.ts";
+import { CHANGE_BRANCH, cleanupHomes, harness } from "../hooks/helpers.ts";
 import { cleanupDirs, textOf, type ToolOut } from "../tools/helpers.ts";
 
 beforeEach(() => registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" }));
@@ -49,6 +56,7 @@ afterEach(async () => {
 	setSession(undefined);
 	resetGatesForTests();
 	await cleanupDirs();
+	await cleanupHomes();
 });
 
 const CAP_EDIT = "Each IP SHALL be capped at 100.";
@@ -309,8 +317,165 @@ describe("spec-diff cascade through the triggers", () => {
 	});
 });
 
-// Placeholders silence unused imports until the later batch lands.
-void WINDOW;
-void getSession;
-void registerSessionHooks;
-void fakeContent;
+// --- other triggers -------------------------------------------------------------------------------------
+
+/** A flow whose define and plan phases dispatch no subagent, so the gate decides their next step. */
+const NO_GATE_SUBAGENTS = "extends: agent-skills\nphases:\n  - id: define\n    subagents: []\n  - id: plan\n    subagents: []\n";
+const FLOW = { ".pi/livespec/flow.yaml": NO_GATE_SUBAGENTS };
+
+/** U2 (Burst) pending and red at HEAD, so `unit_start U2` records a start. */
+const U2_PENDING = [UNITS[0], { id: "U2", requirement: "Burst", done: false, verify: "test -f src/u2.ts" }, UNITS[2], UNITS[3]];
+
+/** A gate approved behind the session's back (another session or the forge), after every comment so far. */
+async function approvedGate(h: CascadeHarness, phase: string): Promise<void> {
+	const id = `${phase}.seed-${(await own(h)).length}`;
+	await seedOwn(h, "gate", id, { phase, outcome: "approved", notes: "", by: "alice", at: "2026-11-16T10:00:00.000Z", adapter: "in-session", head_sha: h.git("rev-parse", "HEAD"), waivers: [] });
+}
+
+async function movePhase(h: CascadeHarness, from: string, to: string): Promise<void> {
+	await h.world.forge.removeLabels(h.n, [`livespec:phase/${from}`]);
+	await h.world.forge.addLabels(h.n, [`livespec:phase/${to}`]);
+	await h.session.refresh();
+}
+
+/** The change's own spec diff from Base, so the define phase has its `specs-diff` output and checks pass. */
+async function ownSpecDiff(h: CascadeHarness): Promise<void> {
+	await writeIn(h.root, SPEC_PATH, spec().replace("The window SHALL slide.", "The window SHALL slide by the second."));
+	commitAll(h.root, "own spec edit");
+}
+
+describe("spec-diff cascade through other triggers", () => {
+	test("Edit merged by change_sync ignored", async () => {
+		const h = await cascadeHarness({ header: ["Initiative: #2"] });
+		await h.world.seedIssue({ title: "limits", body: `Goal: Limit\nCapabilities: [rate-limit]\n\n## Changes\n- [x] #9 audit-log — Depends: —\n- [ ] #${h.n} per-ip-cap — Depends: —\n`, labels: ["livespec:initiative"] });
+		await lock(h);
+		await mainEdits(h, { [SPEC_PATH]: spec(undefined, "Spikes SHALL be absorbed by the sibling.") });
+		await h.session.refresh();
+		ok(await h.call("change_sync"), "change_sync");
+		expect(h.git("merge-base", "--is-ancestor", "origin/main", "HEAD")).toBe("");
+		const before = await own(h);
+		await next(h);
+		// change_sync's own base diff may stale the units it covers (`stale.sync.*`); the cascade adds nothing.
+		expect(await stales(h, "spec.")).toEqual([]);
+		expect(await own(h)).toHaveLength(before.length);
+		expect(await iterations(h)).toBe(0);
+		expect(await phaseOf(h)).toEqual(BUILD);
+	});
+
+	test("Retried cascade counts once (via session_start)", async () => {
+		// The hooks harness: an https origin and a fake account, so session_start connects the forge.
+		const faults = noFaults();
+		const h = await harness({ branch: CHANGE_BRANCH, files: { [SPEC_PATH]: spec() }, forge: (world) => faultyForge(world.forge, faults) });
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body: `Base: ${h.head}\nBranch: ${CHANGE_BRANCH}\n${changeBody()}`, labels: ["livespec", "livespec:phase/build"] });
+		await seedLock(h.world, n, createGit(h.root));
+		await writeIn(h.root, SPEC_PATH, spec(CAP_EDIT));
+		commitAll(h.root, "spec edit");
+		const view = { world: h.world, n } as unknown as CascadeHarness;
+		// The first start writes the stale comment, then the untick conflicts.
+		faults.conflictOnce = true;
+		await h.start();
+		expect(await stales(view, "spec.")).toHaveLength(1);
+		expect(await phaseOf(view)).toEqual(BUILD);
+		// The next session start runs the cascade again and completes it.
+		await h.start();
+		expect(await doneUnits(view)).toEqual(["U1", "U2"]);
+		expect(await phaseOf(view)).toEqual(DEFINE);
+		expect(await stales(view, "spec.")).toHaveLength(1);
+		expect(await iterations(view)).toBe(1);
+	});
+
+	test("Baseline commit missing (via unit_finish U2)", async () => {
+		const h = await cascadeHarness({ units: U2_PENDING, files: FLOW });
+		await ownSpecDiff(h);
+		await lock(h, { headSha: GONE_SHA, legacy: true });
+		ok(await h.call("unit_start", { unit: "U2" }), "unit_start U2");
+		const out = await h.call("unit_finish", { unit: "U2" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("not in a per: unit phase (phase define)");
+		const records = await stales(h, "baseline.");
+		expect(records).toHaveLength(1);
+		expect(records[0]?.id).toBe(`baseline.${GONE_SHA.slice(0, 12)}`);
+		expect(await phaseOf(h)).toEqual(DEFINE);
+		expect(nextStep(h)).toBe("Ready for the define gate.");
+		expect(await iterations(h)).toBe(0);
+	});
+
+	test("Missing baseline handled once", async () => {
+		const h = await cascadeHarness({ files: FLOW });
+		await lock(h, { headSha: GONE_SHA, legacy: true });
+		await next(h);
+		expect(await phaseOf(h)).toEqual(DEFINE);
+		await approvedGate(h, "define");
+		await movePhase(h, "define", "plan");
+		await next(h);
+		expect(await stales(h, "baseline.")).toHaveLength(1);
+		expect(await phaseOf(h)).toEqual(PLAN);
+	});
+
+	test("Baseline commit missing in define", async () => {
+		const h = await cascadeHarness({ phase: "define", files: FLOW });
+		await lock(h, { headSha: GONE_SHA, legacy: true });
+		await next(h);
+		const records = await stales(h, "baseline.");
+		expect(records).toHaveLength(1);
+		expect(dataOf(records[0])).toMatchObject({ units: [], after_plan: false });
+		expect(await phaseOf(h)).toEqual(DEFINE);
+		await approvedGate(h, "define");
+		await movePhase(h, "define", "plan");
+		await next(h);
+		expect(await stales(h, "baseline.")).toHaveLength(1);
+		expect(await phaseOf(h)).toEqual(PLAN);
+	});
+
+	test("Parallel triggers run once (spec_gate build and unit_finish U2)", async () => {
+		const h = await locked({ units: U2_PENDING });
+		ok(await h.call("unit_start", { unit: "U2" }), "unit_start U2");
+		await editSpec(h, CAP_EDIT);
+		const [gate, finish] = await Promise.all([h.call("spec_gate", { target: "build", briefing: BRIEFING }), h.call("unit_finish", { unit: "U2" })]);
+		expect(gate.isError).toBe(true);
+		expect(finish.isError).toBe(true);
+		expect(await stales(h, "spec.")).toHaveLength(1);
+		expect(await iterations(h)).toBe(1);
+		expect(await phaseOf(h)).toEqual(DEFINE);
+	});
+});
+
+// The re-approval needs the real define and plan gates, so the new plan gate comment is livespec's own.
+describe("unit-planning re-approval", () => {
+	test("Re-approval after a missing baseline", async () => {
+		const h = await cascadeHarness({ files: FLOW, ui: { hasUI: true, select: approveAll } });
+		await ownSpecDiff(h);
+		await lock(h, { headSha: GONE_SHA, legacy: true });
+		await next(h);
+		expect(await phaseOf(h)).toEqual(DEFINE);
+		expect(staleUnits(h)).toEqual([]);
+
+		ok(await h.call("spec_gate", { target: "define", briefing: BRIEFING }), "spec_gate define");
+		await next(h);
+		expect(await phaseOf(h)).toEqual(PLAN);
+		await seedClassification(h);
+		ok(await h.call("spec_gate", { target: "plan", briefing: BRIEFING }), "spec_gate plan");
+		const plan = (await own(h)).filter((m) => m.kind === "gate" && dataOf(m).phase === "plan").at(-1);
+		expect(dataOf(plan)).toMatchObject({ outcome: "approved", requirement_scope: ["rate-limit"], requirements: { [CAP]: expect.any(String), [BURST]: expect.any(String), [WINDOW]: expect.any(String) } });
+		await next(h);
+
+		// The new record is the baseline: an edit after it cascades, and nothing before it does.
+		await editSpec(h, CAP_EDIT);
+		await next(h);
+		const cascades = await stales(h, "spec.");
+		expect(cascades).toHaveLength(1);
+		expect(Object.keys(dataOf(cascades[0]).requirements as object)).toEqual([CAP]);
+		expect(await stales(h, "baseline.")).toHaveLength(1);
+	});
+});
+
+/** Rule decision records for every unit, so `unit-classification` passes at the plan gate. */
+async function seedClassification(h: CascadeHarness): Promise<void> {
+	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
+		const digest = unitDigest(u);
+		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+	}
+	await h.session.comments?.invalidate(h.n);
+	await h.session.refresh();
+}
