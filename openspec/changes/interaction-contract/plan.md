@@ -52,7 +52,7 @@
 | `GateOption.description` (`src/engine/gates.ts`) | modified | required (was optional) — deviation in Task 4: registered named-gate options must be described so `spec_gate` builds contract-valid requests | internal |
 | `amendRequest(..., briefing: Briefing)` | modified | `briefing` required (was optional) — deviation in Task 4, production always passes one | internal |
 | `escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: "self"\|"human"; reason: string } \| undefined` | new | pure; undefined when the phase is not covered | internal |
-| `DialogModel.unitsAvailable: boolean`, `DialogState.unitsOpen: boolean`, action `{ type: "openUnits" }` | new | `tabs` derives from `unitsOpen` | internal |
+| `DialogModel.unitsAvailable: boolean`, `DialogState.unitsOpen: boolean`, action `{ type: "openUnits" }`, `tabsOf(model, state)` | new | `DialogModel.tabs` holds only decision and review; `tabsOf` adds `units` once `unitsOpen` (deviation in Task 6: derivation lives in `state.ts`) | internal |
 | `NEW_DEPENDENCY_OPTIONS` | modified | each `{ id, label, description }`; label of A without `(default)` | internal |
 
 ---

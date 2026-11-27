@@ -45,7 +45,7 @@ Blocked by: 3, 4
 
 Blocked by: none
 
-- [ ] 6.1 Dialog model shows Decision and Review only, with `unitsAvailable`; `u` on Decision adds and selects the units tab; key hint shown (`src/interaction/dialog/model.ts`, `keys.ts`, `state.ts`, `view.ts`; approver-adapters "In-session dialog", "Dialog unit overrides", design D6)
+- [x] 6.1 Dialog model shows Decision and Review only, with `unitsAvailable`; `u` on Decision adds and selects the units tab; key hint shown (`src/interaction/dialog/model.ts`, `keys.ts`, `state.ts`, `view.ts`; approver-adapters "In-session dialog", "Dialog unit overrides", design D6)
 
 ## 7. Documentation
 
