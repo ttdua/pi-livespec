@@ -80,6 +80,52 @@ describe("unit-evidence", () => {
 		expect(h.runs()).toBe(0);
 	});
 
+	/** Moves the change from the build phase to `phase`, as another client would. */
+	async function movePhase(h: UnitHarness, phase: string): Promise<void> {
+		await h.world.dropLabel("livespec:phase/build");
+		await h.world.forge.addLabels?.(h.n, [`livespec:phase/${phase}`]);
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+	}
+
+	test("Not in a per-unit phase", async () => {
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		await movePhase(h, "define");
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase define)"]);
+		expect(h.runs()).toBe(runs);
+		expect((await h.units())[0]?.done).toBe(false);
+	});
+
+	test("Receipted unit outside a per-unit phase", async () => {
+		const h = await started({ update: (call) => (call === 1 ? "throw" : undefined) });
+		await h.commit({ "src/u1.ts": "x\n" });
+		await expect(h.finish("U1")).rejects.toThrow("transport failed");
+		await movePhase(h, "plan");
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase plan)"]);
+		expect(h.runs()).toBe(runs);
+		expect((await h.units())[0]?.done).toBe(false);
+	});
+
+	test("phase changed during Verify is not ticked", async () => {
+		const h = await unitHarness({ units: [U1], scripts: { "check.sh": check("src/u1.ts", "sleep 1\n") } });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const runs = h.runs();
+		const pending = h.finish("U1");
+		await waitFor(() => h.runs() > runs);
+		await h.world.dropLabel("livespec:phase/build");
+		await h.world.forge.addLabels?.(h.n, ["livespec:phase/define"]);
+		const out = await pending;
+		expect(out.isError, textOf(out)).toBe(true);
+		expect(textOf(out)).toContain("not in a per: unit phase (phase define)");
+		expect(await h.ofKind("receipt")).toHaveLength(1);
+		expect((await h.units())[0]?.done).toBe(false);
+		expect(h.writes.written).toBe(0);
+	});
+
 	test("Crash between receipt and tick", async () => {
 		const h = await started({ update: (call) => (call === 1 ? "throw" : undefined) });
 		await h.commit({ "src/u1.ts": "x\n" });

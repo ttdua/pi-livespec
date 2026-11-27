@@ -10,13 +10,15 @@ import { TickError, tickUnit } from "../core/tick.ts";
 import { decisionComment } from "../decide/records.ts";
 import { decide } from "../decide/seam.ts";
 import type { CachedForge } from "../forge/cache.ts";
+import type { Pack } from "../engine/pack-types.ts";
+import { phaseFromLabels } from "../engine/snapshot.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { isTestFile, testOnlyCommitCheck } from "../evidence/pending.ts";
 import { previousSignature, progressRecord } from "../evidence/progress-rule.ts";
 import { newEvidenceId, type ReceiptData, receiptComment, type StartRecord } from "../evidence/records.ts";
 import { classifyRun, postOk } from "../evidence/red-green.ts";
-import { blockedRefusal, finishMode, unitFinishRefusal } from "../evidence/refusals.ts";
+import { blockedRefusal, finishMode, notPerUnitText, unitFinishRefusal } from "../evidence/refusals.ts";
 import { runVerify, type VerifyRun } from "../evidence/runner.ts";
 import { failureSignature } from "../evidence/signature.ts";
 import { budgetWindow } from "../evidence/unit-state.ts";
@@ -44,16 +46,19 @@ function isDone(body: string, unit: string): boolean {
 	return found.statusText === DONE_STATUS;
 }
 
-type TickOutcome = "ticked" | "already" | "conflict" | "cancelled";
+type TickOutcome = "ticked" | "already" | "conflict" | "cancelled" | { moved: string };
 
 /**
  * Ticks `unit` with a version-checked write. On a conflict, re-reads once: a unit already ticked is left
  * alone, else it ticks again. A missing unit, a missing or malformed status line and a transport error
  * propagate; the receipted, unticked unit is reconciled later. A cancellation stops before each write.
+ * The labels read with each body are checked first: a change that left its `per: unit` phase is not ticked.
  */
-async function tick(forge: CachedForge, issue: number, unit: string, cancelled: () => boolean): Promise<TickOutcome> {
+async function tick(forge: CachedForge, issue: number, unit: string, pack: Pack, cancelled: () => boolean): Promise<TickOutcome> {
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const current = await forge.getIssue(issue);
+		const moved = notPerUnitText(phaseFromLabels(current.labels), pack);
+		if (moved !== undefined) return { moved };
 		if (attempt > 0 && isDone(current.body, unit)) return "already";
 		const body = tickUnit(current.body, unit);
 		if (cancelled()) return "cancelled";
@@ -63,7 +68,7 @@ async function tick(forge: CachedForge, issue: number, unit: string, cancelled: 
 	return "conflict";
 }
 
-const tickText = (unit: string, r: Exclude<TickOutcome, "cancelled">): string =>
+const tickText = (unit: string, r: Exclude<TickOutcome, "cancelled" | { moved: string }>): string =>
 	r === "conflict" ? `The tick of ${unit} conflicted twice with another edit; run unit_finish ${unit} again to tick it.` : `${unit} is ticked done.`;
 
 // --- pending unit -------------------------------------------------------------------------
@@ -129,8 +134,9 @@ async function green(c: UnitCall, start: StartRecord, pre: Pre, run: VerifyRun):
 	await w.forge.createComment(state.issue.number, receiptComment(newEvidenceId(u.id, new Date()), data));
 	// Before the tick: when the tick throws, the next refresh must still see the receipt to reconcile.
 	await w.session.comments?.invalidate(state.issue.number);
-	const ticked = await tick(w.forge, state.issue.number, u.id, () => c.cancelled() !== undefined);
+	const ticked = await tick(w.forge, state.issue.number, u.id, c.pack, () => c.cancelled() !== undefined);
 	await afterForgeWrite(w.session, state.issue.number);
+	if (typeof ticked === "object") return c.refuse(`${ticked.moved} The receipt for ${u.id} is posted; run unit_finish ${u.id} again in a per: unit phase to tick it.`);
 	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was posted, before the tick; run unit_finish ${u.id} again to tick it.`);
 	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt posted for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
 }
@@ -170,7 +176,8 @@ export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, po
 // --- flow ---------------------------------------------------------------------------------
 
 async function reconcile(c: UnitCall): Promise<ToolResult<undefined>> {
-	const ticked = await tick(c.w.forge, c.state.issue.number, c.unit.id, () => c.cancelled() !== undefined);
+	const ticked = await tick(c.w.forge, c.state.issue.number, c.unit.id, c.pack, () => c.cancelled() !== undefined);
+	if (typeof ticked === "object") return c.refuse(ticked.moved);
 	if (ticked === "cancelled") return c.refuse(invalidText({ invalid: "aborted" }, { exit: null }));
 	await afterForgeWrite(c.w.session, c.state.issue.number);
 	return c.done(`${c.unit.id} already has a receipt; no Verify was run. ${tickText(c.unit.id, ticked)}`);
@@ -218,6 +225,8 @@ async function runFinish(c: UnitCall, found: Staleness): Promise<ToolResult<unde
 /** The D10 refusal; a blocked unit's refusal links its receipts and failed attempts from the refreshed state. */
 function precheck(unit: string): PrecheckFn {
 	return async (state, pack, git) => {
+		const phase = notPerUnitText(state.phase, pack);
+		if (phase !== undefined) return { refused: phase };
 		const gate = await finishGateRefusal(state, pack, unit, git);
 		if (gate !== undefined) return { refused: gate };
 		const refusal = unitFinishRefusal(state, pack, unit, finishMode(state, unit));
