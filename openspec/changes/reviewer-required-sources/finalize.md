@@ -16,7 +16,7 @@
 - **Branch**: `issue-68`
 - **Base branch**: `main`
 - **Final state**: `pr-updated` (`reviewer-required-sources` fast-forward merged into `issue-68` at `fbc9994`; `issue-68` pushed to `origin`. Before this push it had no remote tracking branch.)
-- **PR URL**: N/A at the time of writing (see PR comment)
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/72 (opened after the push, at the user's request)
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/72#issuecomment-7215844021)
 
 ---
 
@@ -49,4 +49,4 @@
 
 ## Next step
 
-Wait for PR code review once a PR is open (the logic was already reviewed at the planning gates). After approval, run `/opsx-archive` on `issue-68`, push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive into `main`.
+Wait for code review on PR #72 (the logic was already reviewed at the planning gates). After approval, run `/opsx-archive` on `issue-68`, push the archive commits to update the PR, then merge the PR (`gh pr merge --squash --delete-branch` or the GitHub UI). That single merge lands both the implementation and the archive into `main`.
