@@ -16,6 +16,8 @@ export type GateForecast = { outcome: "self" | "human"; reason: string };
 /** The sentence of a `self` or `human` gate with no gate result yet; a forecast `human` names the escalation. */
 function gateReady(phase: Phase, forecast: GateForecast | undefined): string {
 	if (forecast?.outcome === "human") return `The ${phase.id} gate will ask the human: ${forecast.reason}. Pass a briefing to spec_gate ${phase.id}.`;
+	// Gate-only checks have not run here, so a covered gate may still escalate on them.
+	if (forecast?.outcome === "self") return `Checks pass; the ${phase.id} gate can pass unless a gate-only check fails.`;
 	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
 }
 

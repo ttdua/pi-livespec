@@ -1,7 +1,8 @@
 // Facts of the `gate-escalation` decision (decision-seam "Gate escalation facts"), built by code from the
 // change state: never from the agent. Pure.
 
-import { escalationConfigFor, type GateEscalationOutcome, gateEscalationRule } from "../decide/rules/gate-escalation.ts";
+import { ruleFor } from "../decide/registry.ts";
+import { escalationConfigFor, GATE_ESCALATION_POINT, type GateEscalationOutcome } from "../decide/rules/gate-escalation.ts";
 import { entriesFor } from "../subagents/policy.ts";
 import { latestChangeReviewAt } from "../subagents/records.ts";
 import { failingWaivable } from "./gates.ts";
@@ -41,20 +42,26 @@ export function gateEscalationFacts(state: ChangeState, pack: Pack, phase: strin
 export type Escalation = { outcome: GateEscalationOutcome; reason: string; facts: GateEscalationFacts };
 
 /**
- * The rule's outcome for `phase` over the check results `state` holds; undefined when the phase is not a `self`
- * gate the `gate-escalation` config lists, so it never consults the rule.
+ * The facts of `phase` over the check results `state` holds, and the effective config; undefined when the phase
+ * is not a `self` gate the `gate-escalation` config lists, so it never consults the rule.
  */
-export function gateEscalation(state: ChangeState, pack: Pack, phase: string): Escalation | undefined {
-	const config = escalationConfigFor(pack, phase);
-	if (config === undefined) return undefined;
-	const facts = gateEscalationFacts(state, pack, phase, failingWaivable(state, pack, phase));
-	const result = gateEscalationRule(facts, config);
-	if (!("outcome" in result)) throw new Error("the gate-escalation rule never asks");
-	return { outcome: result.outcome as GateEscalationOutcome, reason: result.reason, facts };
+export function escalationInput(state: ChangeState, pack: Pack, phase: string): { facts: GateEscalationFacts; config: unknown } | undefined {
+	if (escalationConfigFor(pack, phase) === undefined) return undefined;
+	return { facts: gateEscalationFacts(state, pack, phase, failingWaivable(state, pack, phase)), config: pack.decisions[GATE_ESCALATION_POINT] };
 }
 
-/** The next step's forecast of the gate (phase-gates "Escalation in the next step"): writes nothing. */
+/** A rule outcome of `gate-escalation`; anything but `self` or `human` is a programming error of the registered rule. */
+export function escalationOutcome(outcome: unknown): GateEscalationOutcome {
+	if (outcome === "self" || outcome === "human") return outcome;
+	throw new Error(`decision \`${GATE_ESCALATION_POINT}\` returned \`${String(outcome)}\`; expected self or human`);
+}
+
+/** The next step's forecast of the gate (phase-gates "Escalation in the next step"), from the registered rule: writes nothing. */
 export function escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: GateEscalationOutcome; reason: string } | undefined {
-	const escalation = gateEscalation(state, pack, phase.id);
-	return escalation === undefined ? undefined : { outcome: escalation.outcome, reason: escalation.reason };
+	const input = escalationInput(state, pack, phase.id);
+	const rule = ruleFor(GATE_ESCALATION_POINT);
+	if (input === undefined || rule === undefined) return undefined;
+	const result = rule.fn(input.facts, input.config);
+	if (!("outcome" in result)) throw new Error(`the ${GATE_ESCALATION_POINT} rule never asks`);
+	return { outcome: escalationOutcome(result.outcome), reason: result.reason };
 }

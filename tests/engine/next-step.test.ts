@@ -1180,7 +1180,7 @@ describe("escalation in the next step", () => {
 
 	test("no trigger keeps the self forecast", () => {
 		const step = nextStep(pack, reviewedState("plan", untagged));
-		expect(step.next).toBe("Checks pass; the plan gate can pass.");
+		expect(step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
 	});
 
 	test("missing review names the dispatch first", () => {

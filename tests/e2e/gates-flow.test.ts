@@ -201,7 +201,7 @@ describe("gates and decisions", () => {
 
 		await h.world.postComment(n, BOT_LOGIN, planReview(h.git("rev-parse", "HEAD")));
 		await h.call("spec_status");
-		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass.");
+		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
 		const plan = await h.call("spec_gate", { target: "plan" });
 		expect(plan.isError, textOf(plan)).toBe(false);
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);

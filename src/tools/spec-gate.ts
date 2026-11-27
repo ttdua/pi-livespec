@@ -8,10 +8,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type Change, isDifficulty, parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
-import { escalationConfigFor, GATE_ESCALATION_POINT } from "../decide/rules/gate-escalation.ts";
+import { GATE_ESCALATION_POINT } from "../decide/rules/gate-escalation.ts";
+import { decide } from "../decide/seam.ts";
 import { decisionComment, latestDecisions, sameFacts } from "../decide/records.ts";
 import { runChecks } from "../engine/checks.ts";
-import { type Escalation, gateEscalation } from "../engine/gate-escalation-facts.ts";
+import { type Escalation, escalationInput, escalationOutcome } from "../engine/gate-escalation-facts.ts";
 import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
@@ -252,19 +253,36 @@ export function proposerBriefing(raw: unknown, options: RequestOption[]): Briefi
 }
 
 /**
- * Requires and validates the briefing of a human gate; runs before any check. A self gate ignores it, except one
- * that may escalate (`gate-escalation`), which validates a passed briefing and requires one only when it escalates.
+ * Requires and validates the briefing of a human gate; runs before any check. A self gate ignores it, valid or
+ * not; one that escalates validates it after the rule (`escalatedBriefing`).
  */
 export function briefingStep(target: string, pack: Pack, raw: unknown): BriefingStep {
 	const phase = pack.phases.find((ph) => ph.id === target);
 	const named = phase === undefined ? namedGate(target) : undefined;
 	const human = phase === undefined ? named !== undefined : phase.gate === "human";
-	const mayEscalate = phase !== undefined && escalationConfigFor(pack, target) !== undefined;
-	if (!human && !(mayEscalate && raw !== undefined)) return { ok: true };
+	if (!human) return { ok: true };
+	return requiredBriefing(raw, [...BUILT_IN_IDS, ...(named?.options ?? []).map((o) => o.id)]);
+}
+
+function requiredBriefing(raw: unknown, ids: string[]): BriefingStep {
 	if (raw === undefined) return { ok: false, message: BRIEFING_REQUIRED };
-	const ids = [...BUILT_IN_IDS, ...(named?.options ?? []).map((o) => o.id)];
 	const checked = validateRequiredBriefing(raw, ids, { author: "agent" });
 	return "refused" in checked ? { ok: false, message: `${checked.refused}. ${BRIEFING_REQUIRED}` } : { ok: true, briefing: checked };
+}
+
+/** The briefing of a self phase gate the rule escalated: required and validated now, naming why the gate asks. */
+function escalatedBriefing(target: string, raw: unknown, e: Escalation): BriefingStep {
+	const checked = requiredBriefing(raw, BUILT_IN_IDS);
+	return checked.ok ? checked : { ok: false, message: `The ${target} gate asks the human (${e.reason}). ${checked.message}` };
+}
+
+/** `decide("gate-escalation", facts)` for a covered self phase gate; undefined when the phase does not consult it. */
+async function decideEscalation(state: ChangeState, pack: Pack, target: string): Promise<Escalation | undefined> {
+	const input = escalationInput(state, pack, target);
+	if (input === undefined) return undefined;
+	const decided = await decide(GATE_ESCALATION_POINT, input.facts, { config: input.config, subject: target });
+	if (decided.status !== "decided") throw new Error(`the ${GATE_ESCALATION_POINT} rule never asks`);
+	return { outcome: escalationOutcome(decided.outcome), reason: decided.reason, facts: input.facts };
 }
 
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
@@ -285,22 +303,17 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
-	const escalation = isPhase ? gateEscalation(state, w.pack, target) : undefined;
+	const escalation = isPhase ? await decideEscalation(state, w.pack, target) : undefined;
 	const plan = planGate(state, w.pack, target, escalation?.outcome === "human");
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	if (plan.mode === "human" && briefed.briefing === undefined) return toolResult(escalatedWithoutBriefing(target, escalation), undefined, true);
-	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefed.briefing, plan) : undefined;
+	const briefing = escalation?.outcome === "human" ? escalatedBriefing(target, p.briefing, escalation) : briefed;
+	if (!briefing.ok) return toolResult(briefing.message, undefined, true);
+	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefing.briefing, plan) : undefined;
 	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
 	if (escalation !== undefined) await recordEscalation(w, state, escalation);
 	if (plan.mode === "self") return passSelf(w, state, target);
 	const summary = escalation === undefined ? {} : { summary: `Escalated: ${escalation.reason}` };
-	return askHuman(w, state, target, plan, ctx, { briefing: briefed.briefing, ...summary });
-}
-
-/** Only an escalated self gate reaches the human plan without a briefing: `briefingStep` required it everywhere else. */
-function escalatedWithoutBriefing(target: string, escalation: Escalation | undefined): string {
-	const why = escalation === undefined ? "" : ` (${escalation.reason})`;
-	return `The ${target} gate asks the human${why}. ${BRIEFING_REQUIRED}`;
+	return askHuman(w, state, target, plan, ctx, { briefing: briefing.briefing, ...summary });
 }
 
 /** Posts the `gate-escalation.<phase>` decision unless the latest one has the same facts (a rerun records nothing new). */
