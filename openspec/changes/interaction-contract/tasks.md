@@ -51,4 +51,4 @@ Blocked by: none
 
 Blocked by: 1, 2, 3, 4, 5, 6
 
-- [ ] 7.1 Update `README.md`, `README.vi.md` and `docs/architecture.md`: self plan gate and its triggers, no question class or `class` commands, required briefings and candidates, hidden units tab
+- [x] 7.1 Update `README.md`, `README.vi.md` and `docs/architecture.md`: self plan gate and its triggers, no question class or `class` commands, required briefings and candidates, hidden units tab
