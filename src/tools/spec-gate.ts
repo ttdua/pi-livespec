@@ -20,6 +20,7 @@ import { validateBriefing } from "../interaction/briefing.ts";
 import { offeredChoiceIds } from "../interaction/describe-actions.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
+import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
 import { askBehaviorChanges } from "../docs/behavior-ask.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
@@ -260,6 +261,8 @@ export function briefingStep(target: string, pack: Pack, raw: unknown): Briefing
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
+	// Before the change is resolved, so a cascade that moved the phase back is what the gate sees (design D7).
+	await runSpecCascade(w.session);
 	const change = requireChange(w.session);
 	if (!change.ok) return toolResult(change.message, undefined, true);
 	const target = String(p.target ?? "");

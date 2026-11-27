@@ -65,7 +65,8 @@ async function baselineOf(git: Git, lock: CascadeInput["lock"], change: Change):
 async function readCascadeInput(t: Target): Promise<CascadeInput> {
 	const n = t.state.issue.number;
 	const git = t.session.git;
-	await t.session.comments?.invalidate(n);
+	// `readMarkedComments` reads the forge directly. The comments cache is dropped only after a write, so a
+	// session that goes offline later still has its cached copy.
 	const [issue, { comments: marked }] = await Promise.all([t.forge.getIssue(n), readMarkedComments(t.forge, n)]);
 	const change = parseChange(issue.body);
 	const lock = deriveLocks(change, marked);

@@ -35,6 +35,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount, cardAudit } from "./card-input.ts";
@@ -550,6 +551,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);
+	await runSpecCascade(session);
 	await pollFeedback(session);
 	await suggestAudits(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");

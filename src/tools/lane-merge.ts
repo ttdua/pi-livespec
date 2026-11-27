@@ -109,7 +109,7 @@ async function report(c: UnitCall, outcome: MergeOutcome, start: StartRecord, se
 export async function runLaneMerge(unit: string, ctx: ToolCtx, signal?: AbortSignal): Promise<ToolResult<undefined>> {
 	const child = childRefusal(TOOL, ctx);
 	if (child) return child;
-	return lockedEvidenceCall(TOOL, unit, signal, precheck(unit), merge, "change");
+	return lockedEvidenceCall(TOOL, unit, signal, precheck(unit), merge, { where: "change" });
 }
 
 export function registerLaneMerge(pi: ExtensionAPI): void {

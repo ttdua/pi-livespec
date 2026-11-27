@@ -786,3 +786,23 @@ describe("gateRequest overridable.current", () => {
 		expect(gateRequest(state, {} as Pack, "define", plan, input).overridable).toBeUndefined();
 	});
 });
+
+describe("spec cascade trigger", () => {
+	test("spec_gate runs the cascade before resolving the change and sees the moved phase", async () => {
+		const cascade = await import("../../src/interaction/spec-cascade.ts");
+		const h = await change("build", { ui: human("approve") });
+		// Stands in for a cascade that moved the change back to define, as the real one does after a covered edit.
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async (session) => {
+			await h.world.forge.removeLabels(h.n, ["livespec:phase/build"]);
+			await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
+			await session.refresh();
+			return true;
+		});
+		const out = await h.call("spec_gate", { target: "build", briefing: BRIEFING });
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("current phase (define)");
+		expect(await ofKind(h, "gate")).toEqual([]);
+		run.mockRestore();
+	});
+});

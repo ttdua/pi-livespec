@@ -27,7 +27,8 @@ import { withTempWorktree } from "../evidence/worktree.ts";
 import { staleSince, stuckFor } from "../subagents/finish-freshness.ts";
 import { finishGateRefusal } from "../subagents/finish-gate.ts";
 import type { ApproverCtx } from "./approver-for.ts";
-import { afterForgeWrite, type ToolResult } from "./guard.ts";
+import { runSpecCascade } from "../interaction/spec-cascade.ts";
+import { afterForgeWrite, type ToolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { runSpecStuck } from "./spec-stuck.ts";
 import { invalidText, lockedEvidenceCall, type Precheck, type PrecheckFn, refusedRun, startable, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
@@ -237,7 +238,9 @@ function precheck(unit: string): PrecheckFn {
 
 export async function runUnitFinish(unit: string, signal?: AbortSignal, ctx?: ApproverCtx): Promise<ToolResult<undefined>> {
 	const found: Staleness = {};
-	const result = await lockedEvidenceCall(TOOL, unit, signal, precheck(unit), (c) => runFinish(c, found));
+	// The cascade runs under the evidence lock, before the change is resolved (design D7).
+	const before = async (w: WriteContext): Promise<void> => void (await runSpecCascade(w.session));
+	const result = await lockedEvidenceCall(TOOL, unit, signal, precheck(unit), (c) => runFinish(c, found), { before });
 	return found.stale !== undefined && ctx !== undefined ? reportStale(unit, found.stale, ctx) : result;
 }
 

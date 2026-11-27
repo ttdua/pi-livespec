@@ -1,5 +1,5 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerSessionHooks } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
@@ -541,5 +541,61 @@ describe("rebuild marker", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(await h.ofKind("receipt")).toHaveLength(2);
 		expect((await h.units())[1]?.done).toBe(true);
+	});
+});
+
+describe("spec cascade trigger", () => {
+	const cascadeModule = () => import("../../src/interaction/spec-cascade.ts");
+
+	test("unit_finish runs the cascade before resolving the change and refuses in the phase it moved to", async () => {
+		const cascade = await cascadeModule();
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async (session) => {
+			await h.world.dropLabel("livespec:phase/build");
+			await h.world.forge.addLabels?.(h.n, ["livespec:phase/define"]);
+			await session.refresh();
+			return true;
+		});
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase define)"]);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(h.runs()).toBe(runs);
+		run.mockRestore();
+	});
+
+	test("unit_finish runs the cascade under the evidence lock", async () => {
+		const cascade = await cascadeModule();
+		const { withEvidenceLock } = await import("../../src/evidence/lock.ts");
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const order: string[] = [];
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async () => {
+			order.push("cascade");
+			await gate;
+			return false;
+		});
+		const finish = h.finish("U1");
+		await waitFor(() => order.length > 0);
+		const queued = withEvidenceLock(async () => void order.push("next lock holder"));
+		await new Promise((r) => setTimeout(r, 50));
+		// Still held: the cascade runs inside the lock, so the next holder waits for it.
+		expect(order).toEqual(["cascade"]);
+		release();
+		await Promise.all([finish, queued]);
+		expect(order).toEqual(["cascade", "next lock holder"]);
+		run.mockRestore();
+	});
+
+	test("unit_start and lane_merge do not run the cascade", async () => {
+		const cascade = await cascadeModule();
+		const run = vi.spyOn(cascade, "runSpecCascade").mockResolvedValue(false);
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.call("lane_merge", { unit: "U1" });
+		expect(run).not.toHaveBeenCalled();
+		run.mockRestore();
 	});
 });

@@ -2,12 +2,14 @@
 
 import type { Session } from "../hooks/session.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { pollFeedback } from "../ship/feedback-poll.ts";
 import { formatFix, formatOpenChanges, formatStep } from "../tools/format-step.ts";
 import { readCurrentChange } from "../tools/read-change.ts";
 
 export async function runNextCommand(session: Session): Promise<string> {
 	await pollApprovals(session);
+	await runSpecCascade(session);
 	await pollFeedback(session);
 	const current = await readCurrentChange(session);
 	if (current.kind === "change") return formatStep(current.step, current.state);

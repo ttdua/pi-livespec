@@ -23,6 +23,9 @@ export const UNIT_PARAMETERS = { type: "object", properties: { unit: { type: "st
 
 const ABORTED = "Verify was aborted (the tool call was cancelled or the session is shutting down); nothing was recorded.";
 
+/** Where the unit runs, and a hook that runs under the lock before the change is resolved. */
+export type LockedCallOptions = { where?: "unit" | "change"; before?: (w: WriteContext) => Promise<void> };
+
 /** One locked call: the fresh write context, the change state, the unit and the run environment. */
 export type UnitCall = {
 	w: WriteContext;
@@ -59,6 +62,7 @@ async function unitWorktree(session: Session, state: ChangeState, unit: string):
  * Runs `body` for `unit` under the evidence lock, after `prepareWrite` (which refreshes), `requireChange`,
  * the `precheck` rules and a run environment whose signal is not aborted yet. Every refusal writes nothing.
  * `where: "change"` keeps the change worktree even when the unit has an open lane (`lane_merge`).
+ * `before` runs right after `prepareWrite`, under the lock; `requireChange` then reads the session it may refresh.
  */
 export function lockedEvidenceCall(
 	tool: string,
@@ -66,12 +70,14 @@ export function lockedEvidenceCall(
 	signal: AbortSignal | undefined,
 	precheck: PrecheckFn,
 	body: (c: UnitCall) => Promise<ToolResult<undefined>>,
-	where: "unit" | "change" = "unit",
+	opts: LockedCallOptions = {},
 ): Promise<ToolResult<undefined>> {
+	const { where = "unit", before } = opts;
 	const refuse = (message: string): ToolResult<undefined> => toolResult(message.startsWith(`${tool} refused`) ? message : `${tool} refused: ${message}`, undefined, true);
 	return withEvidenceLock(async () => {
 		const w = await prepareWrite();
 		if (!w.ok) return refuse(w.message);
+		await before?.(w);
 		const change = requireChange(w.session);
 		if (!change.ok) return refuse(change.message);
 		const lane = where === "change" ? { state: change.state, at: undefined } : await unitWorktree(w.session, change.state, unit);
