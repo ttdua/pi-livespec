@@ -34,7 +34,7 @@
 | Name | new / modified | Shape | public |
 |---|---|---|---|
 | Source id form `records:<kind>` | new | `records:decisions` \| `records:dispatch-answers`; `PacketSource` with `required: false`, `untrusted: true`, `version: sha256(text)` | yes (packet text read by child agents) |
-| `grouped` | new | `function grouped(kind: string, title: string, provider: Provider): Provider` in `src/subagents/sources-records.ts`; provider `name` is `` `records:${kind}` ``; returns `[]` when `provider` yields none, else one `placed({ id: \`records:${kind}\`, version: sha256(text), title, text, untrusted: true, required: false })`; `text` = each inner source as `#### <inner id>\n<inner text>` joined by `\n\n`, in provider order | no |
+| `grouped` | new | `function grouped(kind: string, title: string, provider: Provider): Provider` in `src/subagents/sources-records.ts`; provider `name` is `` `records:${kind}` ``; returns `[]` when `provider` yields none, else one `placed({ id: \`records:${kind}\`, version: sha256(text), title, text, untrusted: true, required: false })`; `text` = each inner source as `#### <inner id>\n<inner text>` joined by `\n\n`, in provider order; each body line starting with `#` is escaped as `\#`, so record text cannot forge a heading (final review Important 1) | no |
 | `renderSource` output | modified | after `version: <v>` line, an optional source adds the line `optional: list in sources_used only if you used it`; required sources unchanged | yes (packet text) |
 | Spilled sources list line | modified | `- <id> <version> <path>` gains suffix ` (optional)` for an optional source | yes (packet text) |
 | `PROTOCOL_VERSION` | modified | `1` → `2` | yes |
