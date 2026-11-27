@@ -114,6 +114,8 @@ export class Session {
 	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
+	/** The spec-diff requirement cascade in flight; concurrent triggers share it, so one edit cascades once per session. */
+	cascadeInFlight?: Promise<boolean>;
 	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
 	feedbackPollInFlight?: Promise<FeedbackPollResult>;
 	private first = true;
