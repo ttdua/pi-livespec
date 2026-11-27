@@ -11,7 +11,7 @@ import { BOT, DEFAULT_SKILLS, HUMAN, makeTree, makeWorld, pack, type World } fro
 
 afterEach(resetPacketSourcesForTests);
 
-async function build(world: World, role: "implementer" | "reviewer", unit?: string, subject?: "unit" | "spec"): Promise<Packet> {
+async function build(world: World, role: "implementer" | "reviewer", unit?: string, subject?: "unit" | "spec" | "change"): Promise<Packet> {
 	const result = await buildPacket(world.refreshed(), role, unit, subject);
 	if (!result.ok) throw new Error(result.message);
 	return result.packet;
@@ -177,6 +177,24 @@ describe("optional sources", () => {
 		expect(optional.length).toBe(1);
 		expect(optional[0]).toMatch(/ \(optional\)$/);
 		for (const l of lines.filter((l) => !l.startsWith("- records:"))) expect(l).not.toContain("(optional)");
+	});
+
+	// `fit` spills in reverse manifest order and decisions come after dispatch answers, so decisions spill first.
+	test("a change packet marks one group inline and one spilled as optional", async () => {
+		const answered = (w: World) => w.post(BOT, dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-1", answer: "short" } as Parameters<typeof dispatchComment>[0]));
+		const first = await makeWorld();
+		answered(first);
+		const baseline = await build(first, "reviewer", undefined, "change");
+		const world = await makeWorld({ budget: Math.ceil(baseline.text.length / 4) + 500 });
+		answered(world);
+		for (let i = 0; i < 20; i++) world.post(BOT, writeMarked("decision", `decision.d${i}`, { answer: "y".repeat(1500) }));
+		const packet = await build(world, "reviewer", undefined, "change");
+		const section = (id: string) => packet.text.split(`### ${id}`)[1]?.split("\n### ")[0] ?? "";
+		const spilledLines = (packet.text.split("### Spilled sources\n")[1]?.split("\n### ")[0] ?? "").split("\n");
+		expect(section("records:dispatch-answers")).toContain("optional: list in sources_used only if you used it");
+		expect(spilledLines.filter((l) => l.startsWith("- records:decisions "))).toEqual([expect.stringMatching(/ \(optional\)$/)]);
+		expect(section("file:specs/constraints.md")).not.toBe("");
+		expect(section("file:specs/constraints.md")).not.toContain("optional:");
 	});
 
 	test("a spilled group cannot forge a heading", async () => {

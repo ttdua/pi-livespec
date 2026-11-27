@@ -377,6 +377,26 @@ describe("subagent-dispatch tools", () => {
 		expect(leaked).toEqual([]);
 	});
 
+	test("a change reviewer omitting constraints twice is blocked naming it", async () => {
+		const h = await subagentHarness({ executor: {}, scripts: { "specs/constraints.md": "No new runtime dependency.\n" } });
+		const constraints = "file:specs/constraints.md";
+		const spawn = h.fake.service.spawn;
+		Object.assign(h.fake.service, {
+			spawn: (type: string, prompt: string, o: never) => {
+				const omitted = JSON.parse(JSON.stringify({ ...done({ sources_used: footerIds(prompt).filter((id) => id !== constraints) }), commits: undefined, findings: [] }));
+				h.fake.records.push({ structuredResult: omitted }, { structuredResult: omitted });
+				return spawn(type, prompt, o);
+			},
+		});
+		await h.call("subagent_dispatch", { role: "reviewer", subject: "change" });
+		expect(footerIds(h.fake.spawned.at(-1)?.prompt ?? "")).toContain(constraints);
+		expect(h.fake.resumed).toHaveLength(1);
+		const summary = (await h.latest("finding-summary"))?.data as { status: string; reason?: string; notes?: string };
+		expect(summary.status).toBe("BLOCKED");
+		expect(summary.reason).toContain(constraints);
+		expect(summary.notes).toContain(constraints);
+	});
+
 	test("a dispatch stores its packet for unit_finish freshness", async () => {
 		const h = await subagentHarness({ executor: {} });
 		next(h, citing(h));
