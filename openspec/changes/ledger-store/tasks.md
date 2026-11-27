@@ -11,18 +11,18 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 2.1 `src/core/record-kinds.ts`: `LEDGER_KINDS` (neutral module); `src/ledger/entry.ts`: entry type, file of each kind, `newRef`, validation, `entryVersion` (sorted-key JSON without `seq`); unit tests
-- [ ] 2.2 `src/ledger/store.ts`: `readTree(commit)` and `readLedger(n)` (ls-tree + `cat-file blob`, schema check, skip-with-warning rules of "Invalid ledger content", cache by tip SHA)
-- [ ] 2.3 `commitEntries(n, base, entries[])` with temp file blobs and a temp `GIT_INDEX_FILE` tree (no stdin needed), `appendEntry` with `update-ref` CAS and 5 retries, committer fallback, refusal of other kinds
-- [ ] 2.4 Tests against real temp repos: first append, two worktrees appending at once, dirty tree untouched, no identity, corrupt line, unknown schema, duplicate ref, kind in the wrong file
+- [x] 2.1 `src/core/record-kinds.ts`: `LEDGER_KINDS` (neutral module); `src/ledger/entry.ts`: entry type, file of each kind, `newRef`, validation, `entryVersion` (sorted-key JSON without `seq`); unit tests
+- [x] 2.2 `src/ledger/store.ts`: `readTree(commit)` and `readLedger(n)` (ls-tree + `cat-file blob`, schema check, skip-with-warning rules of "Invalid ledger content", cache by tip SHA)
+- [x] 2.3 `commitEntries(n, base, entries[])` with temp file blobs and a temp `GIT_INDEX_FILE` tree (no stdin needed), `appendEntry` with `update-ref` CAS and 5 retries, committer fallback, refusal of other kinds
+- [x] 2.4 Tests against real temp repos: first append, two worktrees appending at once, dirty tree untouched, no identity, corrupt line, unknown schema, duplicate ref, kind in the wrong file
 
 ## 3. Guarded ledger git paths and the bash guard rule
 
 Blocked by: none
 
-- [ ] 3.1 `src/guard/push.ts`: `ledgerFetch`, `ledgerPush`, `ledgerDelete` with the positive-integer check and exact refspecs; tests for refspecs and refusals
-- [ ] 3.2 Guard rule: block agent git commands naming `refs/livespec` or `livespec-origin` except listed read subcommands; block `update-ref --stdin` and wildcard destination refspecs outside `refs/remotes/`
-- [ ] 3.3 Push-callers scan: only `src/ledger/` uses the ledger operations, and the scan's caller allow-list admits `src/ledger/sync.ts`
+- [x] 3.1 `src/guard/push.ts`: `ledgerFetch`, `ledgerPush`, `ledgerDelete` with the positive-integer check and exact refspecs; tests for refspecs and refusals
+- [x] 3.2 Guard rule: block agent git commands naming `refs/livespec` or `livespec-origin` except listed read subcommands; block `update-ref --stdin` and wildcard destination refspecs outside `refs/remotes/`
+- [x] 3.3 Push-callers scan: only `src/ledger/` uses the ledger operations, and the scan's caller allow-list admits `src/ledger/sync.ts`
 
 ## 4. Ledger sync, fetch before use, retention plumbing
 
