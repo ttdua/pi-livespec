@@ -114,6 +114,17 @@ describe("result interpretation", () => {
 		expect(interpret(rec(done()), packet(), "implementer", { ...h0, returns: 1 }).kind).toBe("blocked");
 	});
 
+	test("missing optional source accepted without return", () => {
+		const result = JSON.parse(JSON.stringify({ ...withSources(["answer:Q2"]), commits: undefined, findings: [] }));
+		expect(interpret(rec(result), packet(), "reviewer", h0)).toMatchObject({ kind: "accept" });
+	});
+
+	test("blocked reason names omitted required ids", () => {
+		const out = interpret(rec(done()), packet(), "implementer", { ...h0, returns: 1 });
+		expect(out).toMatchObject({ kind: "blocked", reason: expect.stringContaining("answer:Q2") });
+		expect((out as { reason: string }).reason).not.toContain("spec:x");
+	});
+
 	test("needs context capped at 2", () => {
 		const nc = done({ status: "NEEDS_CONTEXT", reason: "need spec:auth", evidence: "no auth spec" });
 		expect(interpret(rec(nc), packet(), "implementer", { ...h0, needsContext: 1 })).toMatchObject({ kind: "more-context", ids: ["spec:auth"] });

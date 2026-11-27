@@ -354,6 +354,29 @@ describe("subagent-dispatch tools", () => {
 		expect(out).not.toContain("run new_dependency");
 	});
 
+	test("review round 1 with many records does not block", async () => {
+		const h = await subagentHarness({ executor: {} });
+		for (let i = 0; i < 29; i++) await h.seed("decision", `tags.d${i}`, { tags: ["x"] });
+		for (let i = 0; i < 14; i++) {
+			await h.seed("dispatch", `dispatch.change.reviewer.answered.${i}`, { status: "ANSWERED", role: "reviewer", agentId: `agent-old-${i}`, answer: "stop this dispatch" });
+		}
+		const decisions = (await h.ofKind("decision")).filter((m) => m.id.startsWith("tags.d"));
+		const answered = (await h.ofKind("dispatch")).filter((m) => m.id.startsWith("dispatch.change.reviewer.answered."));
+		expect(new Set(decisions.map((m) => m.commentId)).size).toBe(29);
+		expect(new Set(answered.map((m) => (m.data as { agentId: string }).agentId)).size).toBe(14);
+		next(h, () => done({ sources_used: footerIds(h.fake.spawned.at(-1)?.prompt ?? "").filter((id) => !id.startsWith("records:")), commits: undefined, findings: [] }));
+		const out = await h.call("subagent_dispatch", { role: "reviewer", subject: "change" });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const footer = footerIds(h.fake.spawned.at(-1)?.prompt ?? "");
+		expect(footer).toEqual(expect.arrayContaining(["records:decisions", "records:dispatch-answers"]));
+		expect(h.fake.resumed).toEqual([]);
+		const summary = (await h.latest("finding-summary"))?.data as { required: string[] };
+		expect(summary).toMatchObject({ status: "DONE", completed: true, round: 1 });
+		const seededComments = new Set(decisions.map((m) => `comment:${m.commentId}`));
+		const leaked = summary.required.filter((id) => id.startsWith("records:") || seededComments.has(id) || id.startsWith("answer:agent-old-"));
+		expect(leaked).toEqual([]);
+	});
+
 	test("a dispatch stores its packet for unit_finish freshness", async () => {
 		const h = await subagentHarness({ executor: {} });
 		next(h, citing(h));
