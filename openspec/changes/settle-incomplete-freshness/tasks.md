@@ -2,9 +2,9 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add the pure `src/engine/incomplete-items.ts` with `startedItem(id)` and `reconcileIncomplete(items, started)` (design D3); unit-test drop, keep, order and non-unit items (flow-engine "Finished unit dropped…", "Still-started unit kept", "Other items kept as recorded")
-- [ ] 1.2 Use `startedItem` in `settleItems` (`src/hooks/settle.ts`) and `reconcileIncomplete` for `step.incomplete` in `nextStep` (`src/engine/next-step.ts`); extend `tests/engine/next-step.test.ts`
-- [ ] 1.3 Label the line `Incomplete (may be stale)` when `state.stale || state.readOnly` in `src/hooks/phase-card.ts` and `src/tools/format-step.ts`; extend `tests/hooks/phase-card.test.ts` and `tests/tools/format-step.test.ts` (context-injection "Incomplete items after a receipt", "Possibly stale incomplete items"; settle-continuation "Step text labels possibly stale items")
+- [x] 1.1 Add the pure `src/engine/incomplete-items.ts` with `startedItem(id)` and `reconcileIncomplete(items, started)` (design D3); unit-test drop, keep, order and non-unit items (flow-engine "Finished unit dropped…", "Still-started unit kept", "Other items kept as recorded")
+- [x] 1.2 Use `startedItem` in `settleItems` (`src/hooks/settle.ts`) and `reconcileIncomplete` for `step.incomplete` in `nextStep` (`src/engine/next-step.ts`); extend `tests/engine/next-step.test.ts`
+- [x] 1.3 Label the line `Incomplete (may be stale)` when `state.stale || state.readOnly` in `src/hooks/phase-card.ts` and `src/tools/format-step.ts`; extend `tests/hooks/phase-card.test.ts` and `tests/tools/format-step.test.ts` (context-injection "Incomplete items after a receipt", "Possibly stale incomplete items"; settle-continuation "Step text labels possibly stale items")
 
 ## 2. Settle rewrites differing comments and surfaces skipped updates
 

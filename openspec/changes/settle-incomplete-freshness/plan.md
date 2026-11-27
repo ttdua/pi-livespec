@@ -41,7 +41,7 @@
 | `NextStep.incomplete` | modified | type unchanged (`string[]`); value is now `reconcileIncomplete(state.incomplete, state.evidence.started)` | no |
 | `incomplete` comment data | unchanged | `{ items: string[]; at: string; head_sha: string }` | no |
 | `Incomplete` line text | modified | `Incomplete (may be stale): <items>` when `state.stale \|\| state.readOnly`, else `Incomplete: <items>`, in `renderCard` and `formatStep` | no |
-| `incompleteTitle` | new | `export function incompleteTitle(state: Pick<ChangeState, "stale" | "readOnly">): string` in `src/engine/incomplete-items.ts`; returns `Incomplete (may be stale)` when stale or read-only, else `Incomplete`; one owner shared by `renderCard` and `formatStep` (review: duplicated helper) | no |
+| `incompleteTitle` | new | `export function incompleteTitle(state: Pick<ChangeState, "stale" | "readOnly">): string` in `src/engine/incomplete-items.ts`; returns `Incomplete (may be stale)` when stale or read-only, else `Incomplete`; one owner shared by `renderCard` and `formatStep` | no |
 | `writeDecision` | new | `function writeDecision(recorded: readonly string[], items: readonly string[], asked: boolean): "clear" \| "write" \| "none"` in `src/hooks/settle.ts` (D1 table, ordered equality) | no |
 | `tryRecordIncomplete` | new | `async function tryRecordIncomplete(session: Session, ctx: ExtensionContext, state: ChangeState, items: string[]): Promise<void>` in `src/hooks/settle.ts`; wraps only the refusal check and `writeIncomplete`, records and notifies a refusal or a thrown write error, never throws | no |
 | `beforeSettle` | modified | `beforeSettle(session: Session, ctx: ExtensionContext, event: AgentBeforeSettleEvent)` (internal) | no |
