@@ -16,7 +16,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import { type RequirementRecord, requirementRecord } from "../engine/requirement-diff.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, Briefing, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
-import { validateBriefing } from "../interaction/briefing.ts";
+import { validateBriefing, validateRequiredBriefing } from "../interaction/briefing.ts";
 import { offeredChoiceIds } from "../interaction/describe-actions.ts";
 import { type GateCommentInput, gateComment } from "../interaction/complete-gate.ts";
 import { prepareRequest } from "../interaction/requests.ts";
@@ -240,11 +240,10 @@ const BUILT_IN_IDS = ["approve", "changes", "dismiss", WAIVE];
 
 type BriefingStep = { ok: true; briefing?: Briefing } | { ok: false; message: string };
 
-/** The shape of the briefing a proposer tool passes, against the ids its gate could offer; refuses a bad shape. */
+/** The briefing a proposer tool must pass, with `recommended` and `rationale`, against the ids its gate could offer; refuses a missing or bad one. */
 export function proposerBriefing(raw: unknown, options: RequestOption[]): BriefingStep {
-	if (raw === undefined) return { ok: true };
 	const ids = offeredChoiceIds({ kind: "gate", options: [{ id: WAIVE, label: "Waive" }, ...options] });
-	const checked = validateBriefing(raw, ids, { author: "agent" });
+	const checked = validateRequiredBriefing(raw, ids, { author: "agent" });
 	return "refused" in checked ? { ok: false, message: checked.refused } : { ok: true, briefing: checked };
 }
 
@@ -288,12 +287,12 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 
 export const BRIEFING_SCHEMA = {
 	type: "object",
-	description: "Advisory briefing shown to the human after livespec's facts: summary, points to watch, the recommended choice and why. It is never an answer. spec_gate requires it on human gates; other tools accept it optionally.",
+	description: "Advisory briefing shown to the human after livespec's facts: summary, points to watch, the recommended choice and why. It is never an answer. Required on human and escalated gates, unit amendments and proposer tools (initiative_propose, new_dependency); there `recommended` and `rationale` are required too.",
 	properties: {
 		summary: { type: "string", description: "what the human is deciding and what changed, at most 600 characters" },
 		watch: { type: "array", items: { type: "string" }, description: "up to 5 one-line things to check before answering" },
-		recommended: { type: "string", description: "id of the offered choice you suggest; needs rationale" },
-		rationale: { type: "string", description: "why you suggest it, at most 600 characters" },
+		recommended: { type: "string", description: "id of the offered choice you suggest; required on unit amendments and proposer tools, and needs rationale" },
+		rationale: { type: "string", description: "why you suggest it, at most 600 characters; required with recommended" },
 	},
 	required: ["summary"],
 };

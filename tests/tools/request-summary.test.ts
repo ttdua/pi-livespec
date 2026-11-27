@@ -19,7 +19,7 @@ function expectMatches(request: ApprovalRequest): void {
 
 describe("the request summary is the stored record summary", () => {
 	test("decide", () => {
-		expectMatches(decisionRequest(state, { point: "pick", subject: "U1", facts: {}, summary: RAW, options: OPTIONS }, NOW));
+		expectMatches(decisionRequest(state, { point: "pick", subject: "U1", facts: {}, summary: RAW, options: OPTIONS, recommended: "x", rationale: "Because." }, NOW));
 	});
 
 	test("stuck", () => {

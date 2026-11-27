@@ -434,9 +434,9 @@ describe("plan_units", () => {
 const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
 const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
 const LEVELS = [
-	{ id: "low", label: "Low" },
-	{ id: "medium", label: "Medium" },
-	{ id: "high", label: "High" },
+	{ id: "low", label: "Low", description: "Low effort." },
+	{ id: "medium", label: "Medium", description: "Medium effort." },
+	{ id: "high", label: "High", description: "High effort." },
 ];
 const NO_SCHEMA = { validate() {} };
 const LEVEL_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High", x: "X" };
@@ -444,7 +444,7 @@ const selectingId = (id: string): FakeUI => ({ hasUI: true, select: async (_t, o
 
 /** Makes `point` ask a human instead of deciding by rule. */
 function askingRule(point: string, options = LEVELS): void {
-	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options } }));
+	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options, recommended: options[0]!.id, rationale: "Safest default." } }));
 }
 
 const requestsOf = async (h: Plan) => (await marked(h)).filter((m) => m.kind === "request");
@@ -505,7 +505,7 @@ describe("plan_units asks classification", () => {
 	});
 
 	test("Tags answer that is not a list of tags", async () => {
-		askingRule("tags", [{ id: "x", label: "X" }]);
+		askingRule("tags", [{ id: "x", label: "X", description: "Pick x." }]);
 		const h = await planning("plan", SESSION_CHAIN, selectingId("x"));
 		const before = await issueBody(h);
 		const head = h.git("rev-parse", "HEAD");

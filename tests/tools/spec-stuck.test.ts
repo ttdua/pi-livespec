@@ -144,9 +144,10 @@ describe("spec_stuck", () => {
 		await h.session.refresh();
 		const out = await h.stuck(REPORT);
 		expect(out.isError).toBe(false);
-		const data = (await ofKind(h, "request"))[0]?.data as { summary: string; briefing?: unknown };
+		const data = (await ofKind(h, "request"))[0]?.data as { summary: string; options: { id: string; description?: string }[]; briefing?: unknown };
 		expect(data.summary).toContain("Recommended: A");
-		expect(data.briefing).toBeUndefined();
+		expect(data.options.map((o) => o.description)).toEqual(["Option A of stuck report S1.", "Option B of stuck report S1."]);
+		expect(data.briefing).toMatchObject({ summary: REPORT.hypothesis, recommended: "A", rationale: "Recommended in stuck report S1.", author: "agent" });
 	});
 
 	test("Recommendation is not an answer", async () => {

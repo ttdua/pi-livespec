@@ -16,7 +16,7 @@ import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { untrusted } from "../hooks/phase-card.ts";
-import { validateBriefing } from "../interaction/briefing.ts";
+import { validateRequiredBriefing } from "../interaction/briefing.ts";
 import { amendedBody } from "../interaction/amend-body.ts";
 import { type AmendSnapshot, ANSWER_KIND, type ApprovalRequest, type Briefing, type Difficulty, type Subject } from "../interaction/approver.ts";
 import { allRequests, prepareRequest } from "../interaction/requests.ts";
@@ -61,10 +61,9 @@ export function amendForm(p: UnitAmendParams): AmendForm | { refused: string } {
 	return refusal(FORMS);
 }
 
-/** The optional agent briefing, checked before any decision may be asked. */
-function amendBriefing(raw: unknown): { briefing?: Briefing } | { refused: string } {
-	if (raw === undefined) return {};
-	const checked = validateBriefing(raw, BRIEFING_CHOICES, { author: "agent" });
+/** The required agent briefing with `recommended` and `rationale`, checked before any decision may be asked. */
+function amendBriefing(raw: unknown): { briefing: Briefing } | { refused: string } {
+	const checked = validateRequiredBriefing(raw, BRIEFING_CHOICES, { author: "agent" });
 	return "refused" in checked ? refusal(checked.refused) : { briefing: checked };
 }
 
@@ -262,6 +261,7 @@ export function registerUnitAmend(pi: ExtensionAPI): void {
 				replacement: UNIT_INPUT_SCHEMA,
 				briefing: BRIEFING_SCHEMA,
 			},
+			required: ["briefing"],
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => {
 			const q = params as UnitAmendParams;

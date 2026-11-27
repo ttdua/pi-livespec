@@ -28,15 +28,15 @@ const COVERS = "rate-limit/Requirement: Per-IP cap";
 const AT = "2026-11-15T10:00:00.000Z";
 const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
 const LEVELS = [
-	{ id: "low", label: "Low" },
-	{ id: "medium", label: "Medium" },
-	{ id: "high", label: "High" },
+	{ id: "low", label: "Low", description: "Low effort." },
+	{ id: "medium", label: "Medium", description: "Medium effort." },
+	{ id: "high", label: "High", description: "High effort." },
 ];
 const NO_SCHEMA = { validate() {} };
 
 /** Makes `point` ask a human instead of deciding by rule. */
 function askingRule(point: string, options = LEVELS): void {
-	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options } }));
+	registerRule(point, NO_SCHEMA, () => ({ ask: { summary: `Which ${point} for U1?`, options, recommended: options[0]!.id, rationale: "Safest default." } }));
 }
 
 /** A forge answer to the open decision: `/livespec choose`, then the status refresh that completes it. */
@@ -78,6 +78,7 @@ function humanUI(human: Human): { hasUI: true; select: SelectFn } {
 	};
 }
 
+const DEFAULT_BRIEFING = { summary: "Amends the unit.", recommended: "approve", rationale: "The amendment is small and matches the plan." };
 type Amend = ToolHarness & { n: number; human: Human; amend(params: unknown): ReturnType<ToolHarness["call"]> };
 
 /** A planned two-unit change (U1, U2) through plan_units, locked by an approved plan gate unless `locked` is false. `config` sets the approver chain. */
@@ -92,7 +93,7 @@ async function planned(o: { locked?: boolean; units?: UnitInput[]; config?: stri
 	await h.session.refresh();
 	const out = await h.call("plan_units", { units: o.units ?? [U1, U2] });
 	if (out.isError) throw new Error(textOf(out));
-	const a: Amend = { ...h, n, human, amend: (params) => h.call("unit_amend", params) };
+	const a: Amend = { ...h, n, human, amend: (params) => h.call("unit_amend", { briefing: DEFAULT_BRIEFING, ...(params as object) }) };
 	if (o.locked !== false) await lock(a);
 	return a;
 }
@@ -488,11 +489,25 @@ describe("Amendment with a briefing", () => {
 		expect(answer?.data).toMatchObject({ request: { briefing: { summary: briefing.summary, author: "agent" } } });
 	});
 
-	test("without a briefing the request has none", async () => {
+	test("unit_amend without a briefing", async () => {
 		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
 		await h.world.setPermission("alice", "write");
-		await h.amend(edit);
-		expect((await ofKind(h, "request"))[0]?.data).not.toHaveProperty("briefing");
+		const out = await h.amend({ ...edit, briefing: undefined });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing");
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect(await ofKind(h, "amendment")).toEqual([]);
+	});
+
+	test("unit_amend briefing without recommended", async () => {
+		const h = await planned({ config: FORGE_CHAIN });
+		askingRule("difficulty");
+		await h.world.setPermission("alice", "write");
+		const out = await h.amend({ ...edit, briefing: { summary: "s" } });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("recommended");
+		expect(await ofKind(h, "request")).toEqual([]);
 	});
 
 	test("invalid briefing refused before any decision request", async () => {

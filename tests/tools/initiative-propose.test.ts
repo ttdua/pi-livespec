@@ -45,7 +45,9 @@ const shape = (o: Opts = {}): Promise<ToolHarness> =>
 		...(o.forge ? { forge: o.forge } : {}),
 	});
 
+const BRIEFING = { summary: "Splits the change in two.", recommended: "approve", rationale: "Each part is independently shippable." };
 const twoEntries = {
+	briefing: BRIEFING,
 	name: "limits",
 	goal: "Limit requests",
 	capabilities: ["rate-limit"],
@@ -102,11 +104,14 @@ describe("initiative_propose: the request", () => {
 		expect(data.briefing).toMatchObject({ summary: "Splits the change in two.", author: "agent" });
 	});
 
-	test("Proposer without a briefing", async () => {
+	test("initiative_propose without a briefing", async () => {
 		const h = await shape({ config: FORGE_CHAIN });
-		const out = await h.call("initiative_propose", twoEntries);
-		expect(out.isError, textOf(out)).toBe(false);
-		expect((await ofKind(h, "request"))[0]?.data).not.toHaveProperty("briefing");
+		const before = (await all(h)).length;
+		const out = await h.call("initiative_propose", { ...twoEntries, briefing: undefined });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing");
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect((await all(h)).length).toBe(before);
 	});
 
 	test("Invalid proposer briefing refused before any request", async () => {
@@ -348,7 +353,7 @@ describe("initiative amendments", () => {
 	test("New change added midway", async () => {
 		const h = await shape({ phase: "build", ui: human("approve") });
 		const t = await inInitiative(h, { entries: (n) => [`- [ ] #${n} per-ip-cap — Depends: —`] });
-		const out = await h.call("initiative_propose", { name: "limits", goal: "", capabilities: [], entries: [{ name: "audit-log", proposal: "Log decisions.", depends: [`#${h.n}`] }] });
+		const out = await h.call("initiative_propose", { briefing: BRIEFING, name: "limits", goal: "", capabilities: [], entries: [{ name: "audit-log", proposal: "Log decisions.", depends: [`#${h.n}`] }] });
 		expect(out.isError, textOf(out)).toBe(false);
 		const [audit] = await titled(h, "audit-log");
 		expect(parseChange(audit?.body ?? "").header).toMatchObject({ initiative: `#${t}`, depends: [`#${h.n}`] });
@@ -361,7 +366,7 @@ describe("initiative amendments", () => {
 		const h = await shape({ phase: "build", ui: human("approve") });
 		const dep = await h.world.seedIssue({ title: "request-context", body: "Depends: —\n", labels: ["livespec"], state: "closed" });
 		const t = await inInitiative(h, { depends: [dep], entries: (n) => [`- [ ] #${dep} request-context — Depends: —`, `- [ ] #${n} per-ip-cap — Depends: #${dep}`] });
-		const out = await h.call("initiative_propose", { name: "limits", goal: "", capabilities: [], entries: [], remove: [`#${h.n}:#${dep}`, `#${dep}`] });
+		const out = await h.call("initiative_propose", { briefing: BRIEFING, name: "limits", goal: "", capabilities: [], entries: [], remove: [`#${h.n}:#${dep}`, `#${dep}`] });
 		expect(out.isError, textOf(out)).toBe(false);
 		expect(parseChange(await h.world.bodyOf(h.n)).header.depends).toEqual([]);
 		expect(await h.world.bodyOf(h.n)).toMatch(/^Depends: —$/m);
@@ -373,7 +378,7 @@ describe("initiative amendments", () => {
 		const h = await shape({ phase: "build", config: FORGE_CHAIN });
 		const other = await h.world.seedIssue({ title: "request-context", body: `Depends: #${h.n}\n`, labels: ["livespec", "livespec:phase/shape"] });
 		await inInitiative(h, { depends: [other], entries: (n) => [`- [ ] #${other} request-context — Depends: —`, `- [ ] #${n} per-ip-cap — Depends: #${other}`] });
-		const out = await h.call("initiative_propose", { name: "limits", goal: "", capabilities: [], entries: [{ name: "audit-log", proposal: "Log.", depends: [`#${h.n}`] }] });
+		const out = await h.call("initiative_propose", { briefing: BRIEFING, name: "limits", goal: "", capabilities: [], entries: [{ name: "audit-log", proposal: "Log.", depends: [`#${h.n}`] }] });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("→");
 		expect(await ofKind(h, "request")).toEqual([]);
@@ -383,7 +388,7 @@ describe("initiative amendments", () => {
 		const h = await shipReady({ noShipGate: true, ui: human("approve") });
 		const dep = await h.world.seedIssue({ title: "request-context", body: "Depends: —\n", labels: ["livespec"], state: "closed" });
 		const t = await inInitiative(h, { depends: [dep], entries: (n) => [`- [ ] #${dep} request-context — Depends: —`, `- [ ] #${n} per-ip-cap — Depends: #${dep}`] });
-		const proposed = await h.call("initiative_propose", { name: "limits", goal: "", capabilities: [], entries: [], remove: [`#${h.n}:#${dep}`, `#${dep}`] });
+		const proposed = await h.call("initiative_propose", { briefing: BRIEFING, name: "limits", goal: "", capabilities: [], entries: [], remove: [`#${h.n}:#${dep}`, `#${dep}`] });
 		expect(proposed.isError, textOf(proposed)).toBe(false);
 		const pr = await h.world.seedPullRequest({ head: "livespec/per-ip-cap", state: "closed", merged: true });
 		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace(/^Branch:/m, `PR: #${pr}\nBranch:`));

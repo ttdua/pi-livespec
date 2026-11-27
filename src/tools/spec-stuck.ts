@@ -135,10 +135,11 @@ export function stuckRequest(state: ChangeState, id: string, report: StuckReport
 	const subject = stuckSubject(id);
 	const snapshot: StuckSnapshot = { id };
 	const summary = reportSummary(state.issue.number, id, report);
-	const briefing = report.rationale === undefined ? undefined : { summary: report.hypothesis, recommended: report.recommended, rationale: report.rationale, author: "agent" as const };
-	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options: report.options, head: state.git.head, body: "", snapshot, summary, now, ...(briefing ? { briefing } : {}) });
+	const options = report.options.map((o) => (o.description === undefined ? { ...o, description: `Option ${o.id} of stuck report ${id}.` } : o));
+	const briefing = { summary: report.hypothesis, recommended: report.recommended, rationale: report.rationale ?? `Recommended in stuck report ${id}.`, author: "agent" as const };
+	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, head: state.git.head, body: "", snapshot, summary, now, briefing });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options: report.options, ...(briefing ? { briefing } : {}) };
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options, briefing };
 }
 
 /**

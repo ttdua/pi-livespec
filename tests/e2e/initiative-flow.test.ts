@@ -98,6 +98,8 @@ async function plannedChange(pick: { current: string }, count: number): Promise<
 
 // --- the flows -----------------------------------------------------------------------------------
 
+const PROPOSER_BRIEFING = { summary: "Proposes the change.", recommended: "approve", rationale: "The proposal is minimal." };
+
 describe("initiatives and discovered dependencies", () => {
 	test("plan over the limits needs a split or a waiver", async () => {
 		// An approval cannot be given while a waivable check fails; the completion-superseded path is covered by
@@ -133,6 +135,7 @@ describe("initiatives and discovered dependencies", () => {
 		// A is the current change per-ip-cap in shape; it proposes an initiative where B (audit-log) depends on it.
 		const h = await toolHarness({ change: { body: SHAPE_BODY, phase: "shape" }, ui: human({ current: "approve" }) });
 		const proposed = await h.call("initiative_propose", {
+			briefing: PROPOSER_BRIEFING,
 			name: "limits",
 			goal: "Limit requests",
 			capabilities: ["rate-limit"],
@@ -187,6 +190,7 @@ describe("initiatives and discovered dependencies", () => {
 		// The human chooses A: the prerequisite token-store is created and added to Depends.
 		ok(
 			await h.call("new_dependency", {
+				briefing: { ...PROPOSER_BRIEFING, recommended: "A" },
 				unit: "U3",
 				evidence: "U3 needs a token store",
 				a: { name: "token-store", proposal: "Store tokens.", depends: [] },
@@ -228,6 +232,7 @@ describe("initiatives and discovered dependencies", () => {
 		const h = await toolHarness({ change: { body: SHAPE_BODY, phase: "shape" }, ui: human({ current: "approve" }) });
 		const before = (await allIssues(h)).length;
 		const out = await h.call("initiative_propose", {
+			briefing: PROPOSER_BRIEFING,
 			name: "limits",
 			goal: "Limit requests",
 			capabilities: ["rate-limit"],

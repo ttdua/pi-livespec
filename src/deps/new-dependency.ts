@@ -32,11 +32,11 @@ type Node = number | string;
 
 /** The gate's registered options, in the order the request offers them; A is the default. */
 export const NEW_DEPENDENCY_OPTIONS: RequestOption[] = [
-	{ id: "A", label: "A: create the prerequisite change and park this one until it merges (default)" },
-	{ id: "B", label: "B: add the missing work to this change as new units (unit_amend --add)" },
-	{ id: "C", label: "C: stub the missing part now and create a follow-up change" },
-	{ id: "D", label: "D: send the change back to shape, or drop it" },
-	{ id: "split", label: "split: ship the finished units and move the rest to a new change (change_split)" },
+	{ id: "A", label: "A: create the prerequisite change and park this one until it merges", description: "Creates the prerequisite change in shape, lists it in an initiative, and parks this change until it merges." },
+	{ id: "B", label: "B: add the missing work to this change as new units (unit_amend --add)", description: "Changes nothing now; the missing work is added to this change as new units with unit_amend --add." },
+	{ id: "C", label: "C: stub the missing part now and create a follow-up change", description: "Creates a follow-up change in shape for the missing part; this change stubs it with unit_amend." },
+	{ id: "D", label: "D: send the change back to shape, or drop it", description: "Sends the change back to shape (marking later phases stale), or leaves it to be closed as abandoned." },
+	{ id: "split", label: "split: ship the finished units and move the rest to a new change (change_split)", description: "Changes nothing now; the units not done move to a new change with change_split." },
 ];
 
 const SPLIT = "split";
@@ -169,7 +169,7 @@ export function newDependencySummary(d: NewDependencyDrafts, state: ChangeState,
 	const lines = [
 		`New dependency${d.unit === undefined ? "" : ` found by ${untrusted(d.unit)}`}.`,
 		`Evidence: ${untrusted(d.evidence)}`,
-		`A (default): create ${untrusted(d.a.name)} in shape — Depends: ${dependsText(d.a.depends)} — in ${where}; park #${state.issue.number}.`,
+		`A: create ${untrusted(d.a.name)} in shape — Depends: ${dependsText(d.a.depends)} — in ${where}; park #${state.issue.number}.`,
 		...indent(untrusted(d.a.proposal)),
 		`B: add units ${untrusted(d.b.units.join(", "))} with unit_amend --add.`,
 		...indent(untrusted(d.b.summary)),

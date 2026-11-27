@@ -115,7 +115,7 @@ export function registerInitiativePropose(pi: ExtensionAPI): void {
 				briefing: BRIEFING_SCHEMA,
 				remove: { type: "array", items: { type: "string" }, description: "amendment only: #<n> removes an abandoned change's entry, #<change>:#<dep> removes an abandoned dependency" },
 			},
-			required: ["name", "goal", "capabilities", "entries"],
+			required: ["name", "goal", "capabilities", "entries", "briefing"],
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => runInitiativePropose(params, ctx as ApproverCtx),
 	});

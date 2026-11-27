@@ -126,7 +126,7 @@ describe("gates and decisions", () => {
 		await h.world.editBodyBehindBack(n, (await h.world.bodyOf(n)).replace("Verify: `bun test r`", "Verify: `bun test readme`"));
 		await h.session.refresh();
 		expect(card(h).state.lock.frozen).toEqual(["U2"]);
-		const amend = await h.call("unit_amend", { unit: "U2", replacement: { ...unit("Readme note", "README.md", "r"), verify: "bun test readme" } });
+		const amend = await h.call("unit_amend", { briefing: { summary: "Tightens the readme verify.", recommended: "approve", rationale: "Only the verify command changes." }, unit: "U2", replacement: { ...unit("Readme note", "README.md", "r"), verify: "bun test readme" } });
 		expect(amend.isError, textOf(amend)).toBe(false);
 		await writerSays(h, n, "/livespec approve");
 		expect(card(h).state.lock.frozen).toEqual([]);

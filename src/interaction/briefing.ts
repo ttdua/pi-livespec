@@ -96,3 +96,11 @@ export function validateOptionTexts(options: RequestOption[], o: { requireDescri
 	}
 	return out;
 }
+
+/** A briefing a tool must receive: present, and naming `recommended` (checked first) and `rationale`. */
+export function validateRequiredBriefing(raw: unknown, choices: string[], o: { author: Author }): Briefing | Refused {
+	if (raw === undefined) return refuse("briefing is required: pass `briefing` with a summary, `recommended` and `rationale`");
+	if (isObject(raw) && raw.recommended === undefined) return refuse("briefing.recommended is required");
+	if (isObject(raw) && raw.rationale === undefined) return refuse("briefing.rationale is required");
+	return validateBriefing(raw, choices, o);
+}
