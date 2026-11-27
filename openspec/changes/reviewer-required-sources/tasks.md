@@ -10,10 +10,10 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Mark optional sources in `renderSource` and the spilled-source list in `src/subagents/render.ts`
-- [ ] 2.2 Update the protocol Result paragraph and bump `PROTOCOL_VERSION` to 2 in `src/subagents/protocol.ts`
-- [ ] 2.3 Update the return-to-child message in `src/subagents/dispatch.ts` to ask for every required source
-- [ ] 2.4 Tests in `tests/subagents/packet.test.ts` and `tests/subagents/protocol.test.ts`: optional source marked inline and spilled, required source unmarked, protocol explains optional sources
+- [x] 2.1 Mark optional sources in `renderSource` and the spilled-source list in `src/subagents/render.ts`
+- [x] 2.2 Update the protocol Result paragraph and bump `PROTOCOL_VERSION` to 2 in `src/subagents/protocol.ts`
+- [x] 2.3 Update the return-to-child message in `src/subagents/dispatch.ts` to ask for every required source
+- [x] 2.4 Tests in `tests/subagents/packet.test.ts` and `tests/subagents/protocol.test.ts`: optional source marked inline and spilled, required source unmarked, protocol explains optional sources
 
 ## 3. Finding summary keeps the why
 
