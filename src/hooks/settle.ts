@@ -2,9 +2,11 @@
 // (a started unit, a dirty tree, a registered condition) asks for one
 // continuation per user prompt; when it is still unfinished after that, an own
 // `incomplete` comment records it, and a later settle with nothing unfinished
-// clears it, whatever the phase. The hook fails open: errors are recorded.
+// clears it, whatever the phase. A settle rewrites a comment whose items differ.
+// The hook fails open: errors are recorded, and a skipped update is notified.
 
-import type { AgentBeforeSettleEvent, AgentBeforeSettleEventResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AgentBeforeSettleEvent, AgentBeforeSettleEventResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { messageOf } from "../core/messages.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
@@ -53,6 +55,20 @@ export function settleItems(state: ChangeState, pack: Pack): string[] {
 	return [...started, ...dirty, ...registered];
 }
 
+type WriteDecision = "clear" | "write" | "none";
+
+/** Design D1: what the settle writes, comparing the current items with the recorded ones in order. */
+function writeDecision(recorded: readonly string[], items: readonly string[], asked: boolean): WriteDecision {
+	if (items.length === 0) return recorded.length > 0 ? "clear" : "none";
+	if (sameItems(recorded, items)) return "none";
+	// Before the continuation only an existing list is rewritten: the first comment waits for it.
+	return asked || recorded.length > 0 ? "write" : "none";
+}
+
+function sameItems(a: readonly string[], b: readonly string[]): boolean {
+	return a.length === b.length && a.every((item, i) => item === b[i]);
+}
+
 function continuationText(items: string[]): string {
 	return ["livespec: this work is unfinished. Finish it before stopping (make a started unit pass, then run unit_finish; commit or discard changes), or say why it cannot be finished:", ...items.map((i) => `- ${i}`)].join("\n");
 }
@@ -75,15 +91,32 @@ async function writeIncomplete(forge: Forge, state: ChangeState, items: string[]
 	if (result.status === "conflict") throw new Error(`the incomplete comment on issue #${n} changed concurrently (${result.changed.join(", ")})`);
 }
 
-/** Writes through the session's writable forge; a refusal (read-only, no account) is recorded as a warning. */
-async function recordIncomplete(session: Session, state: ChangeState, items: string[]): Promise<void> {
+/** Warns the user that the change's comment was not updated; the UI may be gone, so a throw is dropped. */
+function notifyWarning(ctx: ExtensionContext, n: number, reason: string): void {
+	try {
+		ctx.ui.notify(`livespec: the incomplete comment of #${n} was not updated: ${reason}`, "warning");
+	} catch {
+		// The UI is gone (pi shutting down); the warning is still recorded.
+	}
+}
+
+/** Writes the comment; a refusal or a thrown write error is recorded and notified, never thrown. */
+async function tryRecordIncomplete(session: Session, ctx: ExtensionContext, state: ChangeState, items: string[]): Promise<void> {
+	const n = state.issue.number;
 	const writable = requireWritable(session);
 	if (!writable.ok) {
 		session.record(STEP, `incomplete items not written: ${writable.message}`);
+		notifyWarning(ctx, n, writable.message);
 		return;
 	}
-	await writeIncomplete(writable.forge, state, items);
-	await session.comments?.invalidate(state.issue.number);
+	try {
+		await writeIncomplete(writable.forge, state, items);
+	} catch (error) {
+		session.record(STEP, error);
+		notifyWarning(ctx, n, messageOf(error));
+		return;
+	}
+	await session.comments?.invalidate(n);
 }
 
 // ---------------------------------------------------------------- hooks
@@ -103,25 +136,29 @@ function unknownReason(card: CardInput): string | undefined {
 	return undefined;
 }
 
-async function beforeSettle(session: Session, event: AgentBeforeSettleEvent): Promise<Settle> {
+/**
+ * Fails open: no continuation, no write, and the flag stays as it was. Recorded items may then be out of
+ * date, so the user is told; a card without change state or without recorded items is only recorded.
+ */
+function settleUnknown(session: Session, ctx: ExtensionContext, card: CardInput, reason: string): void {
+	session.record(STEP, `unfinished work unknown: ${reason}; nothing was written`);
+	if (card.kind === "change" && card.state.incomplete.length > 0) notifyWarning(ctx, card.state.issue.number, reason);
+}
+
+async function beforeSettle(session: Session, ctx: ExtensionContext, event: AgentBeforeSettleEvent): Promise<Settle> {
 	await session.refresh();
 	const card = session.card;
 	const unknown = unknownReason(card);
 	if (unknown !== undefined) {
-		// Fail open: no continuation, no write, and the flag stays as it was.
-		session.record(STEP, `unfinished work unknown: ${unknown}; nothing was written`);
+		settleUnknown(session, ctx, card, unknown);
 		return undefined;
 	}
 	if (card.kind !== "change" || !session.pack.ok) return undefined;
 	const items = settleItems(card.state, session.pack.pack);
-	if (items.length === 0) {
-		if (card.state.incomplete.length > 0) await recordIncomplete(session, card.state, []);
-		return undefined;
-	}
-	if (asked.get(session) === true) {
-		await recordIncomplete(session, card.state, items);
-		return undefined;
-	}
+	const wasAsked = asked.get(session) === true;
+	const decision = writeDecision(card.state.incomplete, items, wasAsked);
+	if (decision !== "none") await tryRecordIncomplete(session, ctx, card.state, decision === "clear" ? [] : items);
+	if (items.length === 0 || wasAsked) return undefined;
 	asked.set(session, true);
 	const message = { type: "custom_message" as const, customType: SETTLE_MESSAGE_TYPE, content: continuationText(items), display: true };
 	return { entries: [...event.entries, message], continue: true };
@@ -135,7 +172,7 @@ export function registerSettleHooks(pi: ExtensionAPI): void {
 		const session = getSession();
 		if (!session?.initialized) return undefined;
 		try {
-			return await beforeSettle(session, event);
+			return await beforeSettle(session, ctx, event);
 		} catch (error) {
 			session.record(STEP, error);
 			return undefined;
