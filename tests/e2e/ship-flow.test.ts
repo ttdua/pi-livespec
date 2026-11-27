@@ -70,13 +70,13 @@ test("ship, failing check routed on the same pull request, push after a review g
 	// "New commits after the reviewed SHA need review" next step and the short-SHA refusal are covered by
 	// tests/ship/ship-steps.test.ts and tests/tools/change-push.test.ts "Unreviewed commits refused".
 	const unreviewed = await commitFix(h);
-	const originBefore = originRefs(h.origin);
+	const originBefore = originRefs(h.origin, { ignoreLedger: true });
 	for (const tool of ["change_ship", "change_push"]) {
 		const refused = await h.call(tool);
 		expect(refused.isError, tool).toBe(true);
 		expect(textOf(refused), tool).toContain("the change is in review");
 	}
-	expect(originRefs(h.origin)).toBe(originBefore);
+	expect(originRefs(h.origin, { ignoreLedger: true })).toBe(originBefore);
 	expect(await openPulls(h)).toHaveLength(1);
 
 	// KNOWN SHORTCUT: the review gate at the fix HEAD is posted by hand (no executor in tests, so no real review round

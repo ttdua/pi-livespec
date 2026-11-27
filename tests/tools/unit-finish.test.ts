@@ -325,6 +325,7 @@ describe("unit-evidence", () => {
 		const h = await started();
 		await h.commit({ "src/u1.ts": "x\n" });
 		await h.finish("U1");
+		await h.settle();
 		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
 	});
 });

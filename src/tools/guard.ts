@@ -7,6 +7,7 @@ import type { Pack, PackError } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
+import type { Ledger } from "../ledger/index.ts";
 import type { Session } from "../hooks/session.ts";
 import { type FixCard, untrusted } from "../hooks/phase-card.ts";
 import { getSession } from "../hooks/session-store.ts";
@@ -102,12 +103,12 @@ export function requireChange(session: Session): { ok: true; step: NextStep; sta
 	return { ok: false, message: current.kind === "list" ? NO_CHANGE : current.message };
 }
 
-export type WriteContext = { session: Session; pack: Pack; forge: CachedForge };
+export type WriteContext = { session: Session; pack: Pack; forge: CachedForge; ledger: Ledger };
 
 /**
  * The preconditions of every forge-writing tool, in order: an initialized session, a valid pack, then
- * a fresh snapshot (which updates the read-only mode) and a writable forge. Nothing is written and no
- * branch changes before this returns ok.
+ * a fresh snapshot (which fetches the change's ledger and updates the read-only mode), a fetched or
+ * known ledger, and a writable forge. Nothing is written and no branch changes before this returns ok.
  */
 export async function prepareWrite(): Promise<({ ok: true } & WriteContext) | Refusal> {
 	const s = requireSession();
@@ -115,16 +116,34 @@ export async function prepareWrite(): Promise<({ ok: true } & WriteContext) | Re
 	const pack = requireValidPack(s.session);
 	if (!pack.ok) return pack;
 	await s.session.refresh();
+	const ledger = await requireKnownLedger(s.session);
+	if (!ledger.ok) return ledger;
 	// A fix card reads no forge, so one tracked read brings the read-only mode up to date before a fix
 	// write (fix_ship, change_new --from-fix); its failure only sets that mode, so it is ignored.
 	if (s.session.card.kind === "fix") await s.session.forge?.whoami().catch(() => undefined);
 	const writable = requireWritable(s.session);
 	if (!writable.ok) return writable;
-	return { ok: true, session: s.session, pack: pack.pack, forge: writable.forge };
+	return { ok: true, session: s.session, pack: pack.pack, forge: writable.forge, ledger: s.session.ledger };
+}
+
+/**
+ * Refuses when the current change's ledger could not be fetched and no copy is known: an empty read
+ * would look like "no records" and fork the state. The refresh already fetched, so a success is remembered.
+ */
+async function requireKnownLedger(session: Session): Promise<{ ok: true } | Refusal> {
+	if (session.card.kind !== "change") return { ok: true };
+	const n = session.card.state.issue.number;
+	if ((await session.ledger.ensureFetched(n)) !== "unknown-offline") return { ok: true };
+	return { ok: false, message: `the ledger of #${n} could not be fetched; reconnect and retry` };
 }
 
 /** Drops the comments cache of `issue` and rebuilds the card; every forge-writing tool calls it after a successful write. */
 export async function afterForgeWrite(session: Session, issue: number): Promise<void> {
 	await session.comments?.invalidate(issue);
+	await session.refresh();
+}
+
+/** Rebuilds the card after a ledger append; the comments cache stays, since no forge comment changed. */
+export async function afterLedgerWrite(session: Session, _issue: number): Promise<void> {
 	await session.refresh();
 }

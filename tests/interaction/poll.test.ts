@@ -196,6 +196,26 @@ describe("pollApprovals", () => {
 		expect(h.session.commandWarnings).toEqual([]);
 	});
 
+	test("a decide request whose decision is a ledger entry counts as completed", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH });
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		const r = request("stuck", "decide:tags.U3", { point: "tags", subject: "U3", facts: {} }, "", h.head, 1, STUCK_OPTIONS);
+		await postRequest(h.world, n, r);
+		await h.world.setPermission("alice", "write");
+		await h.session.refresh();
+		if (h.session.card.kind !== "change") throw new Error("no change card");
+		expect(h.session.card.state.requests.pending.map((p) => p.id)).toEqual([r.id]);
+		// Another session completed the request: its decision is in the ledger, which the card has not read yet.
+		await h.session.ledger.append(n, { kind: "decision", id: "tags.U3", data: { point: "tags", subject: "U3", source: "human", outcome: "A", reason: "r", request: r.id } });
+		await h.world.postComment(n, "alice", "/livespec choose A");
+
+		await pollApprovals(h.session);
+
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
+		if (h.session.card.kind !== "change") throw new Error("no change card");
+		expect(h.session.card.state.requests.pending).toEqual([]);
+	});
+
 	test("ignored commands become card warnings", async () => {
 		const h = await stuckPending();
 		await h.world.setPermission("bob", "read");

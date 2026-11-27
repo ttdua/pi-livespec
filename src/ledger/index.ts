@@ -15,6 +15,7 @@ export type Ledger = {
 	append(n: number, input: AppendInput): Promise<LedgerEntry>;
 	/** Fetches and integrates the remote ledger once per Ledger instance. */
 	ensureFetched(n: number): Promise<FetchState>;
+	/** Fetches, integrates and pushes; tracked by `background()` like the syncs started after appends. */
 	sync(n: number): Promise<SyncResult>;
 	/** True when the local tip holds entries origin is not known to have; local refs only. */
 	pending(n: number): Promise<boolean>;
@@ -37,11 +38,16 @@ export function createLedger(exec: GitExec, root: string): Ledger {
 		return (await hasKnownLedger(exec, root, n)) ? "stale-known" : "unknown-offline";
 	};
 
-	const startBackgroundSync = (n: number): void => {
-		// Best-effort: a failed sync leaves the entry pending locally, which `pending(n)` reports.
-		const task = syncLedger(exec, root, n).catch(() => undefined);
+	const trackedSync = (n: number): Promise<SyncResult> => {
+		const task = syncLedger(exec, root, n);
 		running.add(task);
 		void task.finally(() => running.delete(task));
+		return task;
+	};
+
+	const startBackgroundSync = (n: number): void => {
+		// Best-effort: a failed sync leaves the entry pending locally, which `pending(n)` reports.
+		void trackedSync(n).catch(() => undefined);
 	};
 
 	return {
@@ -55,7 +61,7 @@ export function createLedger(exec: GitExec, root: string): Ledger {
 			startBackgroundSync(n);
 			return entry;
 		},
-		sync: (n) => syncLedger(exec, root, n),
+		sync: trackedSync,
 		pending: (n) => isPending(exec, root, n),
 		remove: (n) => removeRemote(exec, root, n),
 		async background() {

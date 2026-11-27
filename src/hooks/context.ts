@@ -59,7 +59,7 @@ export function registerContextHooks(pi: ExtensionAPI): void {
 		if (!session) return;
 		try {
 			event.systemPromptOptions.sections[ROUTING_SECTION] = ROUTING_NOTE;
-			await session.refresh();
+			await session.refresh({ fetch: false });
 		} catch (error) {
 			warn(ctx, "before_agent_start", error);
 		}

@@ -67,7 +67,8 @@ describe("review-findings at unit_finish", () => {
 	test("a rebutted finding no longer refuses", async () => {
 		const h = await greenUnit();
 		const id = await seedSummary(h, { findings: [warning()] });
-		await h.seed("finding-summary", `finding-summary.rebut.${id}`, { rebuts: id, items: [{ index: 0, reason: "r", evidence: "e" }] });
+		// Ids allow only [A-Za-z0-9._-], as `rebuttalComment` builds them; the ref's `~` becomes `-`.
+		await h.seed("finding-summary", `finding-summary.rebut.${id.replace(/[^A-Za-z0-9._-]/g, "-")}`, { rebuts: id, items: [{ index: 0, reason: "r", evidence: "e" }] });
 		const out = await h.finish("U1");
 		expect(out.isError, textOf(out)).toBeFalsy();
 	});

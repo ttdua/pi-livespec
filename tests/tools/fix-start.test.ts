@@ -14,7 +14,7 @@ const hasRef = (git: (...a: string[]) => string, name: string) => git("branch", 
 describe("fix_start", () => {
 	test("Start a fix", async () => {
 		const h = await toolHarness();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("fix_start", { slug: "typo-in-readme" });
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(h.git("branch", "--show-current")).toBe("fix/typo-in-readme");
@@ -22,7 +22,7 @@ describe("fix_start", () => {
 		expect(out.details).toEqual({ branch: "fix/typo-in-readme" });
 		expect(textOf(out)).toBe(`Started fix/typo-in-readme at origin/main ${h.head}. No issue was created and nothing was pushed.`);
 		expect(await h.world.forge.searchIssues({})).toEqual([]);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("Dirty tree", async () => {

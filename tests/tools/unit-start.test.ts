@@ -207,6 +207,7 @@ describe("unit-evidence", () => {
 	test("No push", async () => {
 		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
 		await h.start("U1");
+		await h.settle();
 		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
 	});
 });

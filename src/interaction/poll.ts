@@ -8,9 +8,10 @@ import { reclassifyQuestion } from "../core/question-lines.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
+import { readOwnRecords } from "../ledger/records.ts";
 import { CLASS_KIND } from "./approver.ts";
 import { type CompletionCtx, completeAnswer, finishApplying } from "./complete.ts";
 import { type ClassChange, matchCommands } from "./forge-match.ts";
@@ -34,12 +35,13 @@ function pollTarget(session: Session): Target | undefined {
 
 type Fresh = { comments: Comment[]; marked: MarkedComment[] };
 
-/** Drops the comments cache and reads the issue's comments from the forge. */
+/** Drops the comments cache, reads the issue's comments from the forge and merges the own ones with the ledger. */
 async function readFresh(t: Target): Promise<Fresh> {
 	const n = t.state.issue.number;
 	await t.session.comments?.invalidate(n);
 	const [{ login }, comments] = await Promise.all([t.forge.whoami(), t.forge.listComments(n)]);
-	return { comments, marked: filterMarked(comments, login).comments };
+	const own = await readOwnRecords(t.forge, t.session.ledger, n, { comments, login });
+	return { comments, marked: own.records };
 }
 
 function completionCtx(t: Target, marked: MarkedComment[]): CompletionCtx {

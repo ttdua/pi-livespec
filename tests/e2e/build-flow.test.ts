@@ -32,13 +32,13 @@ test("build flow: start red, finish green, receipt and tick, guarded bash, quiet
 	expect((await h.units())[0]?.done).toBe(true);
 
 	const body = await h.world.bodyOf(h.n);
-	const refs = originRefs(h.origin);
+	const refs = originRefs(h.origin, { ignoreLedger: true });
 	const edit = await bash(`gh issue edit ${h.n} --body x`);
 	expect(edit?.block).toBe(true);
 	expect(edit?.reason).toMatch(/^livespec guard:/);
 	expect((await bash("git push"))?.block).toBe(true);
 	expect(await h.world.bodyOf(h.n)).toBe(body);
-	expect(originRefs(h.origin)).toBe(refs);
+	expect(originRefs(h.origin, { ignoreLedger: true })).toBe(refs);
 
 	const settle = await pi.fire("agent_before_settle", { type: "agent_before_settle", entries: [], continue: false, context: {}, outcome: "completed" }, ctx);
 	expect(settle).toBeUndefined();

@@ -86,13 +86,13 @@ describe("runAudit", () => {
 		const initiative = await seedForge(h);
 		const status = gitStatus(h.root);
 		const branches = h.git("branch", "--list");
-		const refs = originRefs(h.origin);
+		const refs = originRefs(h.origin, { ignoreLedger: true });
 		const issues = await h.world.forge.searchIssues({ state: "all" });
 		const out = await runAudit(depsOf(h), initiative);
 		expect(out.ok).toBe(true);
 		expect(gitStatus(h.root)).toEqual(status);
 		expect(h.git("branch", "--list")).toBe(branches);
-		expect(originRefs(h.origin)).toBe(refs);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(refs);
 		expect(await h.world.forge.searchIssues({ state: "all" })).toHaveLength(issues.length);
 		expect(await h.world.forge.listComments(initiative)).toHaveLength(1);
 	});

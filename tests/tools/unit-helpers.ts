@@ -10,7 +10,10 @@ import { join } from "node:path";
 import { afterEach } from "vitest";
 import { parseChange, type Unit } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { isLedgerKind } from "../../src/core/record-kinds.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { lastForgeRef } from "../../src/ledger/merge.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import type { FakeUI } from "../hooks/fake-pi.ts";
@@ -98,10 +101,11 @@ export type UnitHarness = ToolHarness & {
 	finish(unit: string, signal?: AbortSignal): ReturnType<ToolHarness["call"]>;
 	/** Writes `files`, commits them and refreshes the session. */
 	commit(files: Record<string, string>, message?: string): Promise<string>;
+	/** The own records: marked comments merged with the ledger entries. */
 	marked(): Promise<MarkedComment[]>;
 	ofKind(kind: string): Promise<MarkedComment[]>;
 	units(): Promise<Unit[]>;
-	/** Stores an own marked comment and refreshes. */
+	/** Appends a ledger kind to the ledger (anchored after the last own comment), else posts an own marked comment; then refreshes. */
 	seed(kind: string, id: string, data: unknown): Promise<void>;
 };
 
@@ -134,7 +138,12 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 		...(o.ui !== undefined ? { ui: o.ui } : {}),
 	};
 	const h = await toolHarness(options);
-	const marked = async () => filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	const marked = async () => (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
+	const seedRecord = async (kind: string, id: string, data: unknown) => {
+		if (!isLedgerKind(kind)) return void (await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data)));
+		const after = lastForgeRef(await marked());
+		await h.session.ledger.append(h.n, { kind, id, data, ...(after === undefined ? {} : { after }) });
+	};
 	return {
 		...h,
 		log,
@@ -159,7 +168,7 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 		ofKind: async (kind) => (await marked()).filter((m) => m.kind === kind),
 		units: async () => parseChange(await h.world.bodyOf(h.n)).units,
 		seed: async (kind, id, data) => {
-			await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data));
+			await seedRecord(kind, id, data);
 			await h.session.comments?.invalidate(h.n);
 			await h.session.refresh();
 		},

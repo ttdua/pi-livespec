@@ -229,12 +229,12 @@ describe("change_park", () => {
 		const h = await parkHarness();
 		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace(`Depends: #${h.prereq}`, "Depends: —"));
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const count = (await h.marked()).length;
 		const out = await h.park();
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("not in Depends yet or already merged");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect((await h.marked()).length).toBe(count);
 		expect(await labels(h)).not.toContain("livespec:parked");
 	});
@@ -242,11 +242,11 @@ describe("change_park", () => {
 	test("refused before choice A", async () => {
 		for (const choice of [null, "B"] as const) {
 			const h = await parkHarness({ choice });
-			const before = originRefs(h.origin);
+			const before = originRefs(h.origin, { ignoreLedger: true });
 			const out = await h.park();
 			expect(out.isError).toBe(true);
 			expect(textOf(out)).toContain("new-dependency");
-			expect(originRefs(h.origin)).toBe(before);
+			expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 			expect(await h.ofKind("parked")).toEqual([]);
 		}
 	});
@@ -263,11 +263,11 @@ describe("change_park", () => {
 	test("refused in a child session", async () => {
 		const h = await parkHarness();
 		await withWork(h);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await runChangePark(asChild(h.ctx) as never);
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("child session");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(await h.ofKind("parked")).toEqual([]);
 	});
 });

@@ -97,10 +97,10 @@ describe("change_start", () => {
 
 	test("No push", async () => {
 		const h = await started();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.start();
 		expect(out.isError).toBe(false);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("Config wins", async () => {

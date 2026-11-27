@@ -4,26 +4,30 @@
 import { parseChange } from "../core/change.ts";
 import { type WorkInProgress, type WorkInProgressFn, registerWorkInProgress } from "../content/wip.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
-import { readMarkedComments } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import type { Ledger } from "../ledger/index.ts";
+import { readOwnRecords } from "../ledger/records.ts";
 import { deriveUnitEvidence } from "./unit-state.ts";
 
 const BUILD_PHASE = "build";
 const IDLE: WorkInProgress = { busy: false };
 
-/** The first started unit of `issue`, read from its own marked comments; undefined when none is started. */
-async function startedUnitOf(forge: Forge, issue: Issue): Promise<WorkInProgress | undefined> {
-	const { comments } = await readMarkedComments(forge, issue.number);
-	const evidence = deriveUnitEvidence(parseChange(issue.body), comments, undefined);
+/** The first started unit of `issue`, read from its own records; undefined when none is started. */
+async function startedUnitOf(forge: Forge, ledger: Ledger, login: string, issue: Issue): Promise<WorkInProgress | undefined> {
+	const { records } = await readOwnRecords(forge, ledger, issue.number, { login });
+	const evidence = deriveUnitEvidence(parseChange(issue.body), records, undefined);
 	const unit = Object.keys(evidence.started)[0];
 	if (unit === undefined) return undefined;
 	return { busy: true, change: issue.number, reason: `change #${issue.number} has ${unit} started` };
 }
 
-export const startedUnitWorkInProgress: WorkInProgressFn = async (forge) => {
+export const startedUnitWorkInProgress: WorkInProgressFn = async (forge, ledger) => {
 	const issues = await forge.searchIssues({ labels: [LABEL_LIVESPEC, phaseLabel(BUILD_PHASE)], state: "open" });
+	if (issues.length === 0) return IDLE;
+	// `whoami` throws while the forge is unreachable, so work in progress is unknown rather than idle.
+	const { login } = await forge.whoami();
 	for (const issue of [...issues].sort((a, b) => a.number - b.number)) {
-		const busy = await startedUnitOf(forge, issue);
+		const busy = await startedUnitOf(forge, ledger, login, issue);
 		if (busy) return busy;
 	}
 	return IDLE;

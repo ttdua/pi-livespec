@@ -2,8 +2,9 @@
 // comment with plain text from `renderForgeRequest`; answers are plain `/livespec …`
 // command comments from writers, matched purely by `matchCommands`.
 
-import { readMarkedComments } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
+import type { Ledger } from "../ledger/index.ts";
+import { readOwnRecords } from "../ledger/records.ts";
 import type { ApprovalRequest, Approver } from "./approver.ts";
 import { renderForgeRequest } from "./forge-text.ts";
 import { openRequestFor, readRequests, requestComment } from "./requests.ts";
@@ -38,13 +39,16 @@ function defaultAvailable(forge: Forge): () => boolean {
 	return () => (typeof readOnly === "function" ? !readOnly.call(forge) : true);
 }
 
-export function createForgeApprover(forge: Forge, issue: number, opts: ForgeApproverOptions = {}): Approver {
+/** `ledger` holds the change's ledger records, read with the comments for the open-request check. */
+export function createForgeApprover(forge: Forge, ledger: Ledger, issue: number, opts: ForgeApproverOptions = {}): Approver {
 	return {
 		name: "forge",
 		available: opts.available ?? defaultAvailable(forge),
 		async request(r) {
-			const { comments } = await readMarkedComments(forge, issue);
-			const open = openRequestFor(readRequests(comments), r.subject);
+			// `whoami` first, so an unreachable forge fails the request instead of reading no own records.
+			const { login } = await forge.whoami();
+			const { records } = await readOwnRecords(forge, ledger, issue, { login });
+			const open = openRequestFor(readRequests(records), r.subject);
 			if (open !== undefined) throw new DuplicateRequestError(open, r.subject);
 			await forge.createComment(issue, requestComment(r.record.id, r.record, renderForgeRequest(r)));
 			return { status: "pending", requestId: r.record.id };

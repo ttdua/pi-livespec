@@ -6,7 +6,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { type LoadedConfig, loadConfig } from "../config.ts";
 import type { ContentManager } from "../content/manager.ts";
 import { workInProgress } from "../content/wip.ts";
+import { defaultGitExec } from "../engine/git-exec.ts";
 import { loadPack } from "../engine/pack-load.ts";
+import { createLedger, type Ledger } from "../ledger/index.ts";
 import type { LoadedPack } from "../engine/pack-types.ts";
 import type { Forge } from "../forge/types.ts";
 import type { Session, SessionDeps } from "../hooks/session.ts";
@@ -36,6 +38,11 @@ function packFor(cwd: string): Promise<LoadedPack> {
 function configFor(cwd: string, env: CommandEnv): Promise<LoadedConfig> {
 	const session = sessionFor(cwd);
 	return session ? Promise.resolve(session.config) : loadConfig(cwd, env.home);
+}
+
+/** The session's ledgers when it runs in `cwd`, else ledgers of the repository at `cwd`. */
+function ledgerFor(cwd: string): Ledger {
+	return sessionFor(cwd)?.ledger ?? createLedger(defaultGitExec, cwd);
 }
 
 /** The session's cached forge with its read-only mode, or a freshly detected one. Throws when detection fails. */
@@ -104,7 +111,7 @@ export async function skillsDeps(cwd: string, env: CommandEnv): Promise<SkillsCo
 			const connection = await forgeFor(cwd, env).catch((error: unknown) => {
 				throw new Error(`${NO_FORGE_WIP}: ${messageOf(error)}`);
 			});
-			return workInProgress(connection.forge);
+			return workInProgress(connection.forge, ledgerFor(cwd));
 		},
 	};
 }

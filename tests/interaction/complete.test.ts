@@ -13,7 +13,9 @@ import { currentDecision, decisionComment, latestDecisions } from "../../src/dec
 import { advancePhase } from "../../src/engine/advance.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
+import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
+import { createLedger } from "../../src/ledger/index.ts";
 import { deriveLocks, validApproval } from "../../src/engine/locks.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { nextStep } from "../../src/engine/next-step.ts";
@@ -71,14 +73,14 @@ async function markedOf(f: Fixture): Promise<MarkedComment[]> {
 }
 
 async function ctxOf(f: Fixture, forge: Forge = f.world.forge): Promise<CompletionCtx> {
-	return { forge, git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
+	return { forge, ledger: createLedger(defaultGitExec, f.root), git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
 }
 
 const comments = { list: async (forge: Forge, issue: { number: number }) => ({ comments: await forge.listComments(issue.number), stale: false }) } as unknown as CommentsCache;
 
 /** The change state and next step as `Session.refresh` sees them. */
 async function stateOf(f: Fixture): Promise<{ state: ChangeState; step: ReturnType<typeof nextStep> }> {
-	const snapshot = await readChangeSnapshot({ forge: f.world.forge, isReadOnly: () => false, git: f.git, comments, caps: { iterations: f.pack.loops.change_iterations, unitAttempts: f.pack.loops.unit_attempts } }, f.n);
+	const snapshot = await readChangeSnapshot({ forge: f.world.forge, ledger: createLedger(defaultGitExec, f.root), fetch: false, isReadOnly: () => false, git: f.git, comments, caps: { iterations: f.pack.loops.change_iterations, unitAttempts: f.pack.loops.unit_attempts } }, f.n);
 	const state = { ...snapshot, checks: await runChecks(f.pack, snapshot, { root: f.root, git: f.git }) };
 	return { state, step: nextStep(f.pack, state) };
 }
@@ -105,7 +107,7 @@ const gateSnapshot = (target: string) => ({ target, failingWaivable: [] });
 
 /** Posts the forge request, then a writer's command, and returns the polled answer. */
 async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): Promise<Answered> {
-	const approver = createForgeApprover(f.world.forge, f.n);
+	const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 	await approver.request(envelope(record));
 	await f.world.setPermission("alice", "write");
 	await f.world.postComment(f.n, "alice", command);
@@ -218,7 +220,7 @@ describe("completion engine", () => {
 	test("Issue edited before the answer", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
-		const approver = createForgeApprover(f.world.forge, f.n);
+		const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 		await approver.request(envelope(record));
 		await f.world.editBodyBehindBack(f.n, (await f.world.bodyOf(f.n)).replace("Limit each client IP.", "Limit each client IP and user."));
 		await f.world.setPermission("alice", "write");
@@ -342,7 +344,7 @@ describe("completion engine", () => {
 		await seedLock(f);
 		const u3 = parseChange(await f.world.bodyOf(f.n)).units[1]!;
 		const record = await prepare(f, "gate", "amend:1", { action: "drop", unit: "U3", oldDigest: unitDigest(u3), oldDone: false, records: [] });
-		const approver = createForgeApprover(f.world.forge, f.n);
+		const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 		await approver.request(envelope(record));
 		await f.world.editBodyBehindBack(f.n, u3Done(await f.world.bodyOf(f.n)));
 		await f.world.setPermission("alice", "write");

@@ -183,9 +183,9 @@ describe("guardedPush", () => {
 
 	test("a failed push throws GitError", async () => {
 		const h = await toolHarness();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		await expect(guardedPush(defaultGitExec, h.root, "origin", "refs/heads/missing:refs/heads/main")).rejects.toBeInstanceOf(GitError);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		execFileSync("git", ["status"], { cwd: h.root });
 	});
 });

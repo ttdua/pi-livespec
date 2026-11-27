@@ -5,6 +5,7 @@ import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestS
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
 import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
+import { emptyLedger } from "../helpers/ledger.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -34,7 +35,7 @@ function approval(s: Spec): ApprovalRequest {
 async function setup() {
 	const world = new MemoryWorld();
 	const n = await world.seedIssue({ title: "per-ip-cap", body: "body", labels: DEFINE_LABELS });
-	const approver = createForgeApprover(world.forge, n);
+	const approver = createForgeApprover(world.forge, emptyLedger(), n);
 	return { world, n, approver };
 }
 
@@ -224,7 +225,7 @@ describe("forge adapter", () => {
 				return Reflect.get(target, prop, receiver);
 			},
 		});
-		const approver = createForgeApprover(counting, n);
+		const approver = createForgeApprover(counting, emptyLedger(), n);
 		const r = approval({ subject: "gate:define" });
 		await approver.request(r);
 		await world.setPermission("alice", "read");

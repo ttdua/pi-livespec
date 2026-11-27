@@ -29,12 +29,12 @@ async function fixReady(o: ToolHarnessOptions & { testCommand?: string | null } 
 const openPulls = (h: ToolHarness): Promise<PullRequest[]> => h.world.forge.listPullRequests({ state: "open", head: "fix/typo" });
 
 async function refusedUnchanged(h: ToolHarness, text: string | undefined = undefined): Promise<string> {
-	const before = originRefs(h.origin);
+	const before = originRefs(h.origin, { ignoreLedger: true });
 	const out = await h.call("fix_ship");
 	expect(out.isError).toBe(true);
 	expect(textOf(out)).toContain(NOTHING);
 	if (text !== undefined) expect(textOf(out)).toContain(text);
-	expect(originRefs(h.origin)).toBe(before);
+	expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	expect(out.details).toEqual({});
 	return textOf(out);
 }
@@ -201,11 +201,11 @@ describe("fix_ship", () => {
 
 	test("child session refused", async () => {
 		const h = await fixReady();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const t = h.pi.tools.get("fix_ship");
 		const out = (await t?.execute("c", {}, undefined, undefined, asChild(h.ctx))) as { isError?: boolean };
 		expect(out.isError).toBe(true);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("read-only forge refused", async () => {

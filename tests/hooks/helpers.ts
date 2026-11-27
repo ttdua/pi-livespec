@@ -16,6 +16,7 @@ import { defaultExec, type ExecFn } from "../../src/forge/github.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { registerContextHooks } from "../../src/hooks/context.ts";
 import { registerSessionHooks, type SessionDeps } from "../../src/hooks/session.ts";
+import { getSession } from "../../src/hooks/session-store.ts";
 import { registerChangeTools } from "../../src/tools/change-tools.ts";
 import { type AccountRec, FakeGhStore, emptyData } from "../forge/fake-gh/state.ts";
 import { FAKE_GH_PATH } from "../forge/github-world.ts";
@@ -135,6 +136,8 @@ export type Harness = {
 	/** The fake `gh` state: accounts, argv and token env of every invocation. */
 	gh: FakeGhStore;
 	accounts: AccountEnv;
+	/** The session's git runner, whose ledger calls reach a local bare origin; for tests that register the extension again. */
+	gitExec: GitExec;
 	/** The deps of every `detect` call, in order. */
 	detectCalls: Partial<DetectDeps>[];
 	start(): Promise<unknown>;
@@ -146,8 +149,19 @@ export type Harness = {
 
 const homes: string[] = [];
 
+/** Waits for the current session's background ledger syncs, then removes the temp homes. */
 export async function cleanupHomes(): Promise<void> {
+	await getSession()?.ledger.background();
 	for (const dir of homes.splice(0)) await rm(dir, { recursive: true, force: true });
+}
+
+/**
+ * The session's git runner: ledger commands (any argument naming `refs/livespec/`) reach a local bare
+ * repository through `url.<bare>.insteadOf`, so ledger fetches and syncs succeed while every other git
+ * call still sees the unreachable forge-shaped origin.
+ */
+function ledgerOriginExec(bare: string, origin: string): GitExec {
+	return (args, opts) => (args.some((a) => a.includes("refs/livespec/")) ? defaultGitExec(["-c", `url.${bare}.insteadOf=${origin}`, ...args], opts) : defaultGitExec(args, opts));
 }
 
 export type HarnessOptions = {
@@ -171,6 +185,8 @@ export type HarnessOptions = {
 	gitea?: { url: string; teaConfig: string };
 	/** Wraps the account flow's git seam, e.g. to make a `git config --local --get` fail. */
 	accountGit?: (real: GitExec) => GitExec;
+	/** Wraps the session's git runner (git and ledger), e.g. to record or hold ledger fetches. */
+	sessionGit?: (real: GitExec) => GitExec;
 };
 
 /** The project config of the harness: Gitea mode names the forge, so detection never probes. */
@@ -219,7 +235,11 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 	const giteaEnv = await giteaAccounts(fake.env, o.gitea);
 	const accounts = o.accountGit ? { ...giteaEnv, git: o.accountGit(giteaEnv.git) } : giteaEnv;
 	const detectCalls: Partial<DetectDeps>[] = [];
+	const ledgerOrigin = join(home, "ledger-origin.git");
+	execFileSync("git", ["init", "-q", "--bare", ledgerOrigin]);
+	const gitExec = (o.sessionGit ?? ((real) => real))(ledgerOriginExec(ledgerOrigin, o.gitea ? `${o.gitea.url}/acme/shop.git` : ORIGIN));
 	const deps: Partial<SessionDeps> = {
+		gitExec,
 		home,
 		accounts,
 		detect: detectFor(o, world, detectCalls),
@@ -237,7 +257,7 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 		if (!t) throw new Error(`tool ${tool} is not registered`);
 		return (await t.execute("call-1", params, undefined, undefined, ctx)) as ToolOut;
 	};
-	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts, detectCalls, start: () => startIn(root), startIn, call };
+	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts, gitExec, detectCalls, start: () => startIn(root), startIn, call };
 }
 
 export type PromptEvent = { type: "before_agent_start"; systemPromptOptions: { sections: Record<string, string> } };

@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange, type Unit } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { CommentsCache } from "../../src/engine/comments-cache.ts";
+import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
+import { createLedger, type Ledger } from "../../src/ledger/index.ts";
 import { readChangeSnapshot, type SnapshotDeps } from "../../src/engine/snapshot.ts";
 import { CachedForge } from "../../src/forge/cache.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
@@ -36,9 +38,12 @@ beforeEach(async () => {
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
-function deps(forge: Forge = world.forge, isReadOnly = () => false): SnapshotDeps {
-	return { forge, isReadOnly, git: createGit(root), comments: new CommentsCache({ dir: join(dir, "comments") }), caps: { iterations: 5, unitAttempts: 3 } };
+function deps(forge: Forge = world.forge, isReadOnly = () => false, ledger: Ledger = createLedger(defaultGitExec, root)): SnapshotDeps {
+	return { forge, ledger, fetch: false, isReadOnly, git: createGit(root), comments: new CommentsCache({ dir: join(dir, "comments") }), caps: { iterations: 5, unitAttempts: 3 } };
 }
+
+/** Appends a ledger entry to change `n` of the test repo. */
+const append = (n: number, kind: "unit-start" | "receipt" | "decision" | "counter", id: string, data: unknown) => createLedger(defaultGitExec, root).append(n, { kind, id, data });
 
 /** The fixture names `PR: #41`, which these tests do not seed: its unreadable-pull-request warning is not under test. */
 const withoutPrWarning = (warnings: string[]): string[] => warnings.filter((w) => !w.includes("pull request #41"));
@@ -231,14 +236,15 @@ describe("readChangeSnapshot", () => {
 
 		test("Started unit from comments", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3"))));
+			await append(n, "unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3")));
 			const state = await readChangeSnapshot(deps(), n);
 			expect(Object.keys(state.evidence.started)).toEqual(["U3"]);
+			expect(state.marked.map((m) => [m.kind, m.source])).toEqual([["unit-start", "ledger"]]);
 		});
 
 		test("Done unit is never started", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U1.a", startData("U1", digestOf(FIXTURE_BODY, "U1"))));
+			await append(n, "unit-start", "U1.a", startData("U1", digestOf(FIXTURE_BODY, "U1")));
 			expect((await readChangeSnapshot(deps(), n)).evidence.started).toEqual({});
 		});
 
@@ -320,5 +326,93 @@ describe("pull request state", () => {
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.pr).toBeUndefined();
 		expect(state.warnings).toEqual([]);
+	});
+});
+
+describe("ledger records", () => {
+	const START = { unit: "U3", digest: "d", verify: "npm test", pre: { sha: "a".repeat(40) } };
+
+	/** A ledger whose fetch reports `state` and counts its calls; reads go to the test repo. */
+	function fetching(state: "fetched" | "stale-known" | "unknown-offline"): Ledger & { fetches: number } {
+		const real = createLedger(defaultGitExec, root);
+		const ledger = { ...real, fetches: 0, ensureFetched: async () => {
+			ledger.fetches += 1;
+			return state;
+		} };
+		return ledger;
+	}
+
+	test("No ledger", async () => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		const state = await readChangeSnapshot(deps(), n);
+		expect(state.marked).toEqual([]);
+		expect(state.evidence.started).toEqual({});
+		expect(state.evidence.receipts).toEqual({});
+		expect(withoutPrWarning(state.warnings)).toEqual([]);
+	});
+
+	test("an entry not yet on origin adds a pending-sync warning", async () => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await append(n, "unit-start", "U3.a", START);
+		const state = await readChangeSnapshot(deps(), n);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("not on origin yet")]);
+	});
+
+	test("a snapshot without fetch never fetches the ledger", async () => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		const ledger = fetching("fetched");
+		await readChangeSnapshot(deps(world.forge, () => false, ledger), n);
+		expect(ledger.fetches).toBe(0);
+	});
+
+	test.each([
+		["stale-known", "may be out of date"],
+		["unknown-offline", "no copy of it is known"],
+	] as const)("a %s fetch adds a warning and still reads", async (fetchState, text) => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		const ledger = fetching(fetchState);
+		const state = await readChangeSnapshot({ ...deps(world.forge, () => false, ledger), fetch: true }, n);
+		expect(ledger.fetches).toBe(1);
+		expect(state.counters.custom_loop).toBe(2);
+		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining(text)]);
+	});
+
+	test("Account switch", async () => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("stale", "Q1", { reason: "Q1", phases: ["define"], units: [], after_plan: true }));
+		let login = BOT_LOGIN;
+		const forge = new Proxy(world.forge, {
+			get(t, key, r) {
+				if (key === "whoami") return async () => ({ login });
+				const v = Reflect.get(t, key, r);
+				return typeof v === "function" ? v.bind(t) : v;
+			},
+		});
+		const d = deps(forge);
+		expect((await readChangeSnapshot(d, n)).iterations.count).toBe(1);
+		login = OTHER_LOGIN;
+		const state = await readChangeSnapshot(d, n);
+		expect(state.iterations.count).toBe(0);
+		expect(state.marked).toEqual([]);
+	});
+
+	test("Comments cache hit", async () => {
+		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
+		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await append(n, "unit-start", "U3.a", START);
+		let lists = 0;
+		const forge = new Proxy(world.forge, {
+			get(t, key, r) {
+				if (key === "listComments") return (x: number) => ((lists += 1), t.listComments(x));
+				const v = Reflect.get(t, key, r);
+				return typeof v === "function" ? v.bind(t) : v;
+			},
+		});
+		const d = deps(forge);
+		await readChangeSnapshot(d, n);
+		const state = await readChangeSnapshot(d, n);
+		expect(lists).toBe(1);
+		expect(state.marked.map((m) => m.kind)).toEqual(["counter", "unit-start"]);
 	});
 });

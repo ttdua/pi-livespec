@@ -61,6 +61,6 @@ export function approverFor(session: Session, ctx: ApproverCtx, issue: number): 
 		"in-session": createInSessionApprover(uiOf(ctx), () => loginOf(session)),
 	};
 	const forge = session.forge;
-	if (forge) adapters.forge = createForgeApprover(forge, issue, { available: () => forgeWritable(session) });
+	if (forge) adapters.forge = createForgeApprover(forge, session.ledger, issue, { available: () => forgeWritable(session) });
 	return { chain, adapters };
 }

@@ -9,12 +9,14 @@ import type { ChangeState, PhaseState } from "../engine/state-types.ts";
 import { phaseFromLabels } from "../engine/snapshot.ts";
 import { type MarkedComment, parseMarked } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import type { Ledger } from "../ledger/index.ts";
 import type { ShipContext, ShipInput } from "../ship/context.ts";
 import type { AnswerData } from "./requests.ts";
 
 /** What completion needs; `root` is the repository root the checks read specs from. */
 export type CompletionCtx = {
 	forge: Forge;
+	ledger: Ledger;
 	git: Git;
 	pack: Pack;
 	issue: number;

@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { advancePhase } from "../../src/engine/advance.ts";
 import { CommentsCache } from "../../src/engine/comments-cache.ts";
+import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
+import { createLedger } from "../../src/ledger/index.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { readChangeSnapshot } from "../../src/engine/snapshot.ts";
@@ -101,7 +103,7 @@ describe("advancePhase", () => {
 		await writeIn(root, "README.md", "x\n");
 		commitAll(root);
 		const comments = new CommentsCache({ dir: join(dir, "comments") });
-		const state = await readChangeSnapshot({ forge: world.forge, isReadOnly: () => false, git: createGit(root), comments }, n);
+		const state = await readChangeSnapshot({ forge: world.forge, ledger: createLedger(defaultGitExec, root), fetch: false, isReadOnly: () => false, git: createGit(root), comments }, n);
 		expect(state.phase).toEqual({ kind: "ambiguous", ids: ["define", "plan"] });
 	});
 

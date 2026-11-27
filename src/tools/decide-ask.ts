@@ -9,7 +9,8 @@ import { BEHAVIOR_POINT, type BehaviorItem } from "../docs/behavior-change.ts";
 import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, Briefing, DecideSnapshot, Subject } from "../interaction/approver.ts";
-import { type MarkedComment, readMarkedComments } from "../forge/markers.ts";
+import type { MarkedComment } from "../forge/markers.ts";
+import { readOwnRecords } from "../ledger/records.ts";
 import { validateBriefing } from "../interaction/briefing.ts";
 import { openRequestFor, prepareRequest, readRequests } from "../interaction/requests.ts";
 import type { ApproverCtx } from "./approver-for.ts";
@@ -70,7 +71,9 @@ export function createDecisionAsker(w: WriteContext, state: ChangeState, ctx: Ap
 	const now = o.now ?? (() => new Date());
 	return async (intent) => {
 		const request = decisionRequest(state, intent, now(), o.proposal === true);
-		const { comments } = await readMarkedComments(w.forge, state.issue.number);
+		// `whoami` first, so an unreachable forge fails the ask instead of reading no own records.
+		const { login } = await w.forge.whoami();
+		const { records: comments } = await readOwnRecords(w.forge, w.ledger, state.issue.number, { login });
 		const reused = reuseAnswer(comments, intent);
 		if (reused !== undefined) return reused;
 		const open = openRequestFor(readRequests(comments), request.subject);

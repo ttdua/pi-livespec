@@ -17,7 +17,7 @@ export function agentSkillsOf(session: Pick<Session, "activeTree">): string | un
 
 /** The completion context for `issue` from the session's git, cwd and active content tree. */
 export function sessionCompletionCtx(session: Session, forge: Forge, pack: Pack, issue: number, marked: MarkedComment[]): CompletionCtx {
-	const ctx: CompletionCtx = { forge, git: session.git, pack, issue, marked, root: session.cwd, now: () => new Date() };
+	const ctx: CompletionCtx = { forge, ledger: session.ledger, git: session.git, pack, issue, marked, root: session.cwd, now: () => new Date() };
 	ctx.shipFor = (state) => shipFor(session, state);
 	const skills = agentSkillsOf(session);
 	if (skills !== undefined) ctx.agentSkills = skills;
