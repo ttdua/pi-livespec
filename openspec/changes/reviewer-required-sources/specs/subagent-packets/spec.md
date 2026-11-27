@@ -18,7 +18,7 @@ Nothing that varies between two dispatches of the same change and role MUST appe
 - **THEN** it states that the child must not tick, push, write to the forge or edit outside `Files`
 
 #### Scenario: Optional source marked
-- **WHEN** `specs/constraints.md` exists and a `reviewer` packet with subject `change` holds `records:decisions` inline and `records:dispatch-answers` as a spilled source
+- **WHEN** `specs/constraints.md` exists and a `reviewer` packet with subject `change` holds `records:dispatch-answers` inline and `records:decisions` as a spilled source
 - **THEN** both are marked optional in the task, and `file:specs/constraints.md` is not
 
 ### Requirement: Protocol content
