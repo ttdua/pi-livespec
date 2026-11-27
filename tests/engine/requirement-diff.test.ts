@@ -117,4 +117,10 @@ describe("changedIds over requirement digests", () => {
 		expect(Object.keys(map)).toContain(coversId("rate-limit/Requirement:  Per-IP   cap"));
 		expect(Object.keys(map)).toContain("rate-limit/Requirement: Per-IP cap");
 	});
+
+	test("two requirements normalizing to one id throw, naming the capability and the id", async () => {
+		const duplicate = `${BASE_SPEC}\n### Requirement: Per-IP  cap\nAnother body.\n`;
+		const { digests } = await repoWith(duplicate);
+		await expect(digests()).rejects.toThrow(/rate-limit.*rate-limit\/Requirement: Per-IP cap/);
+	});
 });

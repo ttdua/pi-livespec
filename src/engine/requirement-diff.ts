@@ -28,17 +28,27 @@ export function requirementContent(r: Requirement): string {
 	return JSON.stringify({ text: collapse(r.text), scenarios });
 }
 
-/** `<capability>/Requirement: <name>` to sha256 of its content, for every requirement at `rev`; a missing file contributes nothing. */
+/** Id to digest for the requirements of one capability; throws when two normalize to one id (no silent last-wins). */
+function capabilityDigests(capability: string, requirements: Requirement[]): [string, string][] {
+	const seen = new Set<string>();
+	return requirements.map((r) => {
+		// Collapsed like `coversId`, so a name with doubled inner spaces still matches its `Covers` entry.
+		const id = coversId(`${capability}${COVERS_SEPARATOR} ${r.name}`);
+		if (seen.has(id)) throw new Error(`capability ${capability} has two requirements with the id "${id}"`);
+		seen.add(id);
+		return [id, createHash("sha256").update(requirementContent(r)).digest("hex")];
+	});
+}
+
+/**
+ * `<capability>/Requirement: <name>` to sha256 of its content, for every requirement at `rev`; a missing file
+ * contributes nothing. Throws when two requirements of one capability normalize to the same id.
+ */
 export async function requirementDigests(git: Git, rev: string, capabilities: string[]): Promise<Record<string, string>> {
 	const perCapability = await Promise.all(
 		capabilities.map(async (capability) => {
 			const text = await git.showFile(rev, `specs/${capability}/spec.md`);
-			if (text === undefined) return [];
-			return parseSpec(text, capability).requirements.map((r) => {
-				const digest = createHash("sha256").update(requirementContent(r)).digest("hex");
-				// Collapsed like `coversId`, so a name with doubled inner spaces still matches its `Covers` entry.
-				return [coversId(`${capability}${COVERS_SEPARATOR} ${r.name}`), digest] as const;
-			});
+			return text === undefined ? [] : capabilityDigests(capability, parseSpec(text, capability).requirements);
 		}),
 	);
 	return Object.fromEntries(perCapability.flat());
