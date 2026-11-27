@@ -104,6 +104,25 @@ describe("questions from a child", () => {
 		expect((await h.units())[0]?.done).toBe(true);
 	});
 
+	test("a change reviewer's answer is optional in the next change packet", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which config file?" }] } });
+		const out = await h.call("subagent_dispatch", { role: "reviewer", subject: "change" });
+		expect(textOf(out)).toContain("Child agent-1 asks");
+		const requiredOnly = required(h).filter((id) => !id.startsWith("records:"));
+		h.fake.records.push({ structuredResult: JSON.parse(JSON.stringify({ ...done({ sources_used: requiredOnly }), commits: undefined, findings: [] })) });
+		const answered = await h.call("subagent_answer", { id: "agent-1", answer: "the project one" });
+		expect(answered.isError, textOf(answered)).toBeFalsy();
+		expect(h.fake.resumed).toEqual([{ id: "agent-1", prompt: "the project one" }]);
+		expect((await h.latest("finding-summary"))?.data).toMatchObject({ status: "DONE", completed: true });
+		const packet = textOf(await h.call("subagent_packet", { role: "reviewer", subject: "change" }));
+		const ids = footerIds(packet);
+		expect(ids).toContain("records:dispatch-answers");
+		expect(ids).not.toContain("answer:agent-1:1");
+		const section = packet.split("### records:dispatch-answers")[1]?.split("\n### ")[0] ?? "";
+		expect(section).toContain("optional: list in sources_used only if you used it");
+		expect(section).toContain("answer:agent-1:1");
+	});
+
 	test("refuses an id the executor no longer knows", async () => {
 		const { h } = await asked();
 		Object.assign(h.fake.service, { getRecord: () => undefined });

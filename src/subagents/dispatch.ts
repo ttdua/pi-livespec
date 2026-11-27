@@ -210,7 +210,7 @@ export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, fac
 }
 
 /** What the child is told when its result omits required sources. */
-const returnMessage = (missing: string[]): string => `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every source you used.`;
+const returnMessage = (missing: string[]): string => `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every required source.`;
 
 /** Interprets settled runs until one ends the dispatch: a retry resumes the child (one fallback child at most), a return resumes it naming the missing sources once. */
 async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory, trace: { respawn?: Respawn }): Promise<DispatchOutcome> {

@@ -1,6 +1,6 @@
 // The livespec protocol text every packet starts with, its version and the prohibitions every task repeats.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Repeated in the task layer of every packet, so the rule sits next to the work. */
 export const PROHIBITIONS = [
@@ -27,7 +27,7 @@ ${PROHIBITIONS.map((p) => `- ${p}`).join("\n")}
 If you lack information, call \`ask_parent\` with one specific question. If you cannot continue without it, return the status \`NEEDS_CONTEXT\` and name the source ids you needed.
 
 ## Result
-Submit your result once through \`submit_result\`. List every source you used by id in \`sources_used\`. Record in \`discoveries\` anything a later unit needs to know.
+Submit your result once through \`submit_result\`. List by id in \`sources_used\` every required source. A source marked optional is listed only if you used it. Record in \`discoveries\` anything a later unit needs to know.
 `;
 
 export function protocolText(): string {

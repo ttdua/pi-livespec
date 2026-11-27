@@ -8,7 +8,7 @@ import { answeredQuestions, changeIssue, coveredRequirements, initiativeIssue } 
 import { closedWork, closingSummaries, pullRequestAndChecks, referencedIssues, reviewComments } from "./sources-forge.ts";
 import { codeDiff, constraints, declaredSpecs, findingAndCode, owningUnit, productExcerpt, specsDiff } from "./sources-git.ts";
 import { personaFile } from "./sources-persona.ts";
-import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, planGateNotes, receiptsOf, unitFindings } from "./sources-records.ts";
+import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, grouped, planGateNotes, receiptsOf, unitFindings } from "./sources-records.ts";
 
 const extra = new Map<Role, SourceProvider[]>();
 
@@ -29,7 +29,7 @@ const IMPLEMENTER: Provider[] = [
 	coveredRequirements, constraints, answeredQuestions(false), dispatchAnswers(false), planGateNotes, unitFindings,
 	dependencyRecords, referencedIssues, reviewComments(true),
 ];
-const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, constraints, allReceipts, changeIssue("body"), answeredQuestions(true), dispatchAnswers(true), decisionRecords, reviewComments(false), pullRequestAndChecks];
+const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, constraints, allReceipts, changeIssue("body"), answeredQuestions(true), grouped("dispatch-answers", "Answers the parent gave to children", dispatchAnswers(true)), grouped("decisions", "Decision records", decisionRecords), reviewComments(false), pullRequestAndChecks];
 const REVIEW_BASE: Provider[] = [changeIssue("header"), initiativeIssue, declaredSpecs, constraints, closingSummaries];
 
 function manifest(role: Role, subject: ReviewSubject | undefined): Provider[] {
@@ -60,7 +60,7 @@ function registered(role: Role): Provider[] {
 	}));
 }
 
-/** The required sources of `target` in manifest order, first occurrence of an id wins. A failing provider rejects with its name. */
+/** The sources of `target`, required and optional, in manifest order, first occurrence of an id wins. A failing provider rejects with its name. */
 export async function collectSources(ctx: PacketContext, target: Target, reads: Reads = makeReads(ctx.forge)): Promise<Placed[]> {
 	const cx: Cx = { ctx, target, reads };
 	const providers = [...manifest(target.role, target.subject), ...rubric(target.role === "reviewer" ? target.subject : undefined), productExcerpt, ...registered(target.role)];

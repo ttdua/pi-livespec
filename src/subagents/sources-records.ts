@@ -152,3 +152,20 @@ export function dispatchAnswers(all: boolean): Provider {
 		},
 	};
 }
+
+/** A leading `#` on any line becomes `\#`, so record text cannot pass for a source section or an inner `#### <id>` line. */
+const escapeHeadings = (text: string): string => text.replace(/^#/gm, "\\#");
+
+/** Folds the sources of `provider` into one optional, untrusted source `records:<kind>`; none when it yields none. */
+export function grouped(kind: string, title: string, provider: Provider): Provider {
+	const id = `records:${kind}`;
+	return {
+		name: id,
+		async run(cx) {
+			const inner = await provider.run(cx);
+			if (inner.length === 0) return [];
+			const text = inner.map((p) => `#### ${p.source.id}\n${escapeHeadings(p.source.text)}`).join("\n\n");
+			return [placed({ id, version: sha256(text), title, text, untrusted: true, required: false })];
+		},
+	};
+}

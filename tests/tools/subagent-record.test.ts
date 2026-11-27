@@ -68,6 +68,18 @@ describe("inline fallback", () => {
 		expect(summary?.data).not.toHaveProperty("agentId");
 	});
 
+	test("a reviewer recording without optional sources is accepted", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		await h.seed("decision", "tags.d0", { tags: ["x"] });
+		await h.start("U1");
+		const footer = footerIds(textOf(await h.call("subagent_packet", { role: "reviewer", unit: "U1", subject: "unit" })));
+		expect(footer).toContain("records:decisions");
+		const cited = footer.filter((id) => !id.startsWith("records:"));
+		const out = await h.call("subagent_record", { role: "reviewer", unit: "U1", subject: "unit", result: reviewResult({ findings: [], sources_used: cited }) });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await h.latest("finding-summary"))?.data).toMatchObject({ completed: true });
+	});
+
 	test("an inline BLOCKED missing-prerequisite result names new_dependency", async () => {
 		const h = await subagentHarness({ units: [U1] });
 		await h.start("U1");

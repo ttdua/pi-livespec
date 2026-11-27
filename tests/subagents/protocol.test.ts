@@ -18,3 +18,11 @@ describe("protocol", () => {
 		expect(text).toContain(`version ${PROTOCOL_VERSION}`);
 	});
 });
+
+describe("protocol v2", () => {
+	test("explains optional sources", () => {
+		expect(protocolText()).toContain("every required source");
+		expect(protocolText()).toContain("optional");
+		expect(PROTOCOL_VERSION).toBe(2);
+	});
+});

@@ -22,7 +22,8 @@ export function renderPrefix(flow: Flow): string {
 const sourceLine = (s: { id: string; version: string }): string => `${s.id} ${s.version}`;
 
 export function renderSource(s: PacketSource): string {
-	return `### ${s.id} — ${s.title}\nversion: ${s.version}\n${s.untrusted ? untrusted(s.text) : s.text}\n`;
+	const optional = s.required ? "" : "optional: list in sources_used only if you used it\n";
+	return `### ${s.id} — ${s.title}\nversion: ${s.version}\n${optional}${s.untrusted ? untrusted(s.text) : s.text}\n`;
 }
 
 export type Spilled = { source: PacketSource; path: string };
@@ -35,7 +36,7 @@ export function renderTask(t: { target: Target; unitText: string | undefined; no
 	if (target.subject) head.push(`Subject: ${target.subject}`, `Rubric: ${rubricFor(target.subject as ReviewSubject)}`);
 	const parts = [head.join("\n"), t.unitText === undefined ? "" : `### Unit\n${t.unitText}\n`, "### Sources", ...t.inline.map(renderSource)];
 	if (t.notes?.length) parts.push("### Search scope", ...t.notes);
-	parts.push("### Spilled sources", t.spilled.length === 0 ? "none" : t.spilled.map((s) => `- ${s.source.id} ${s.source.version} ${s.path}`).join("\n"));
+	parts.push("### Spilled sources", t.spilled.length === 0 ? "none" : t.spilled.map((s) => `- ${s.source.id} ${s.source.version} ${s.path}${s.source.required ? "" : " (optional)"}`).join("\n"));
 	if (t.verify !== undefined) parts.push(`### Verify\n${t.verify}`);
 	parts.push(`### Files\n${t.files.length === 0 ? "none" : t.files.join("\n")}`, `### Prohibitions\n${PROHIBITIONS.map((p) => `- ${p}`).join("\n")}`);
 	return `${parts.join("\n")}\n`;
