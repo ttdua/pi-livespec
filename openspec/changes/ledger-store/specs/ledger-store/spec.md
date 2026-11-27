@@ -46,7 +46,7 @@ Before a tool reads or writes the change state of change `<n>`, the session SHAL
 - **THEN** `unit_start U2` runs against the local ledger and the result carries a warning that it may be out of date
 
 ### Requirement: Entry version
-The version of an entry SHALL be the SHA-256 of the JSON of its `ref`, `kind`, `id`, `at`, `after` and `data`, with object keys sorted and no whitespace. `seq` MUST NOT be part of it, so a replay never changes a version.
+The version of an entry SHALL be the SHA-256 of the JSON of its `ref`, `kind`, `id`, `at`, `after`, `from` and `data` (absent optional fields left out), with object keys sorted and no whitespace. `seq` MUST NOT be part of it, so a replay never changes a version.
 
 #### Scenario: Version kept across a replay
 - **WHEN** an entry is replayed onto a remote tip and gets a new `seq`
