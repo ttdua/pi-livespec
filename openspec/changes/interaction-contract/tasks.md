@@ -18,11 +18,11 @@ Blocked by: none
 
 Blocked by: none
 
-- [ ] 3.1 `unit_amend` requires a briefing with `recommended` and `rationale`, refused before any `decide:` request (`src/tools/unit-amend.ts`; unit-planning "Unit amendments")
-- [ ] 3.2 Proposer tools require a briefing: `proposerBriefing` refuses a missing one (`src/tools/spec-gate.ts`, `initiative-propose.ts`, `new-dependency.ts`; phase-gates "Gate tool")
-- [ ] 3.3 Describe the `new-dependency` options and drop the default label (`src/deps/new-dependency.ts`; discovered-dependencies "New dependency tool")
-- [ ] 3.4 Legacy stuck resend builds a briefing and option descriptions (`src/tools/spec-stuck.ts`; questions-and-stuck "Stuck reports")
-- [ ] 3.5 `checkRuleAsk` throws without `recommended`, `rationale` or option descriptions; `behaviorChangeRule` recommends `unchanged` (`src/decide/seam.ts`, `src/tools/decide-ask.ts`, `src/docs/behavior-change.ts`; decision-seam "Decision seam", durable-doc-checks "Behavior change rule")
+- [x] 3.1 `unit_amend` requires a briefing with `recommended` and `rationale`, refused before any `decide:` request (`src/tools/unit-amend.ts`; unit-planning "Unit amendments")
+- [x] 3.2 Proposer tools require a briefing: `proposerBriefing` refuses a missing one (`src/tools/spec-gate.ts`, `initiative-propose.ts`, `new-dependency.ts`; phase-gates "Gate tool")
+- [x] 3.3 Describe the `new-dependency` options and drop the default label (`src/deps/new-dependency.ts`; discovered-dependencies "New dependency tool")
+- [x] 3.4 Legacy stuck resend builds a briefing and option descriptions (`src/tools/spec-stuck.ts`; questions-and-stuck "Stuck reports")
+- [x] 3.5 `checkRuleAsk` throws without `recommended`, `rationale` or option descriptions; `behaviorChangeRule` recommends `unchanged` (`src/decide/seam.ts`, `src/tools/decide-ask.ts`, `src/docs/behavior-change.ts`; decision-seam "Decision seam", durable-doc-checks "Behavior change rule")
 
 ## 4. Request contract guard
 
