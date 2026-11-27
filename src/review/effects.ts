@@ -11,6 +11,7 @@ import { openRequestFor } from "../interaction/requests.ts";
 import type { Forge } from "../forge/types.ts";
 import { type AggregateFinding, type FindingSummaryData, findingKey } from "../subagents/records.ts";
 import { untrusted } from "../hooks/phase-card.ts";
+import type { SpecQuestionParams } from "../tools/spec-question.ts";
 import { CHECK_PREFIX, normalizeLocation } from "./route.ts";
 import { findingState } from "./status.ts";
 
@@ -21,10 +22,10 @@ export type EffectDeps = {
 	issue: number;
 	/** The change branch, whose open pull request gets the review comments. */
 	branch: string | undefined;
-	/** Raises `text` as a non-blocking question (`spec_question`); returns the tool's error text, if any. */
-	ask(text: string): Promise<string | undefined>;
-	/** Sends the open question `id` again (`spec_question { reask }`); returns the tool's error text, if any. */
-	reask(id: string): Promise<string | undefined>;
+	/** Raises `{ text, ...candidates }` as a non-blocking question (`spec_question`); returns the tool's error text, if any. */
+	ask(p: SpecQuestionParams): Promise<string | undefined>;
+	/** Sends the open question again (`spec_question { reask, ...candidates }`); returns the tool's error text, if any. */
+	reask(p: SpecQuestionParams): Promise<string | undefined>;
 	/** Called after each own write, so later reads see it. */
 	afterWrite(): Promise<void>;
 };
@@ -88,17 +89,28 @@ const hasOpenRequest = (state: ChangeState, id: string): boolean => {
 	return isSubject(subject) && openRequestFor(state.requests, subject) !== undefined;
 };
 
+/** The fixed candidates of every routing question (finding-routing "Route effects"). */
+export const ROUTING_CANDIDATES = {
+	candidates: [
+		{ label: "apply the proposed fix", description: "The agent applies the reviewer's proposed fix in this change." },
+		{ label: "leave it out of this change", description: "The finding is not fixed in this change." },
+	],
+	recommended: "A",
+	rationale: "The reviewer proposed a fix; applying it keeps the change consistent.",
+} as const satisfies SpecQuestionParams;
+
 /** A question already added for the finding is sent again unless it is answered or has an open request. */
 async function raiseQuestion(deps: EffectDeps, state: ChangeState, key: string, f: AggregateFinding, out: RouteEffects): Promise<string | undefined> {
 	const body = (await deps.forge.getIssue(deps.issue)).body;
 	const asked = parseChange(body).questions.find((q) => namesFinding(q.text, key));
 	if (asked !== undefined) {
 		if (asked.checked || hasOpenRequest(state, asked.id)) return undefined;
-		const again = await deps.reask(asked.id);
+		const again = await deps.reask({ reask: asked.id, ...ROUTING_CANDIDATES });
 		if (again === undefined) out.posted.push(`question ${key}`);
 		return again;
 	}
-	const error = await deps.ask(oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${locationText(f.location)}. Proposed fix: ${f.fix}`));
+	const text = oneLine(`Review finding:${key} needs a decision: ${f.severity} ${f.kind} at ${locationText(f.location)}. Proposed fix: ${f.fix}`);
+	const error = await deps.ask({ text, ...ROUTING_CANDIDATES });
 	if (error === undefined) out.posted.push(`question ${key}`);
 	return error;
 }

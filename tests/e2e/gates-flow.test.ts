@@ -137,7 +137,7 @@ describe("gates and decisions", () => {
 		expect(parseChange(await h.world.bodyOf(n)).units.find((u) => u.id === "U1")?.done).toBe(true);
 
 		// 7. A plain answer: Q1 is answered and the change stays where it is.
-		const asked = await h.call("spec_question", { text: "Is the cap per IP or per token?" });
+		const asked = await h.call("spec_question", { text: "Is the cap per IP or per token?", candidates: [{ label: "per IP", description: "One cap per client IP." }, { label: "per token", description: "One cap per client token." }], recommended: "A", rationale: "The spec names client IPs." });
 		expect(asked.isError, textOf(asked)).toBe(false);
 		await writerSays(h, n, "/livespec answer Q1 per client token");
 		expect(parseChange(await h.world.bodyOf(n)).questions.find((q) => q.id === "Q1")?.checked).toBe(true);

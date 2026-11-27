@@ -146,9 +146,9 @@ describe("spec-diff cascade through the triggers", () => {
 	});
 
 	test("Answer in build changes nothing else", async () => {
-		const answerNow: SelectFn = async (_title, options) => options.find((o) => o.startsWith(ENTRY_LABELS.answerNow));
+		const answerNow: SelectFn = async (_title, options) => options.find((o) => o.startsWith(ENTRY_LABELS.own));
 		const h = await locked({ ui: { hasUI: true, select: answerNow, input: async () => ANSWER } });
-		ok(await h.call("spec_question", { text: "Is the cap per IP or per token?" }), "spec_question");
+		ok(await h.call("spec_question", { text: "Is the cap per IP or per token?", candidates: [{ label: "per IP", description: "One cap per client IP." }, { label: "per token", description: "One cap per client token." }], recommended: "A", rationale: "The spec names client IPs." }), "spec_question");
 		const [question] = parseChange(await h.world.bodyOf(h.n)).questions;
 		expect(question).toMatchObject({ id: "Q1", checked: true, answer: ANSWER });
 		expect(await h.world.bodyOf(h.n)).toContain(`- [x] Q1 (blocking): Is the cap per IP or per token? — Answer: ${ANSWER}`);

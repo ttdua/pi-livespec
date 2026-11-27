@@ -151,8 +151,14 @@ describe("in-session approver", () => {
 		const result = await createInSessionApprover(ui, login).request(request);
 		expect(ui.calls.filter((c) => c.method === "select")).toHaveLength(1);
 		expect(ui.calls.filter((c) => c.method === "input")).toHaveLength(0);
-		expect(result).toMatchObject({ status: "answered", outcome: "approved", answer: "per-user limits", questionClass: "blocking", adapter: "in-session" });
+		expect(result).toMatchObject({ status: "answered", outcome: "approved", answer: "per-user limits", adapter: "in-session" });
 		expect(result).not.toHaveProperty("changesRequirement");
+	});
+
+	test("in-session question answer has no questionClass", async () => {
+		const request = { ...questionRequest(), options: [{ id: "A", label: "per-user limits" }, { id: "B", label: "per-IP limits" }] };
+		const result = await createInSessionApprover(scriptedUI(["per-user limits"]), login).request(request);
+		expect(result).not.toHaveProperty("questionClass");
 	});
 
 	test("an own answer is one input call after the entry select", async () => {
@@ -170,7 +176,7 @@ describe("in-session approver", () => {
 		expect(result).toMatchObject({ outcome: "dismissed" });
 	});
 
-	test("answer later returns deferred", async () => {
+	test("answer later defers as non-blocking", async () => {
 		const ui = scriptedUI(["answer later (non-blocking)"]);
 		const result = await createInSessionApprover(ui, login).request(questionRequest());
 		expect(result).toEqual({ status: "deferred", questionClass: "non-blocking" });

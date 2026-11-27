@@ -117,7 +117,7 @@ describe("createDialog", () => {
 		const r = request({ kind: "question", subject: "question:Q1", question: { id: "Q1", class: "blocking" } });
 		const { done, press } = mount(r);
 		press("1", "n", "o", " ", "l", "i", "m", "i", "t", KEY.enter, KEY.enter, KEY.enter);
-		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "", answer: "no limit", questionClass: "blocking" } });
+		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "", answer: "no limit" } });
 	});
 
 	test("plan gate: tags prefilled with the current tags; unchanged → no override", () => {

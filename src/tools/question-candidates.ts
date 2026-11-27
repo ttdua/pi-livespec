@@ -40,27 +40,24 @@ function optionsOf(raw: unknown[]): RequestOption[] | { refused: string } {
 	return options;
 }
 
-/** True when any candidate field is present. */
-export const hasCandidateFields = (p: CandidateParams): boolean => p.candidates !== undefined || p.recommended !== undefined || p.rationale !== undefined;
-
-/** The shape rules that need no question text; refuses recommended/rationale without candidates. */
+/** The shape rules that need no question text: candidates, `recommended` and `rationale` are required. */
 export function candidateShape(p: CandidateParams): { refused: string } | undefined {
-	if (p.candidates === undefined) return hasCandidateFields(p) ? refuse("recommended and rationale need candidates.") : undefined;
+	if (p.candidates === undefined) return refuse(`give ${MIN} to ${MAX} candidates, each { label, description }, with recommended and rationale.`);
 	if (!Array.isArray(p.candidates) || p.candidates.length < MIN || p.candidates.length > MAX) return refuse(`give ${MIN} to ${MAX} candidates.`);
+	if (p.recommended === undefined) return refuse(`recommended is required: the id (${IDS.slice(0, p.candidates.length).join(", ")}) of the candidate you recommend.`);
+	if (p.rationale === undefined) return refuse("rationale is required: why you recommend that candidate.");
 	return undefined;
 }
 
-/** Options and briefing for `text`, or a refusal naming the bad candidate or field. Undefined without candidates. */
-export function candidateRequest(p: CandidateParams, text: string): CandidateRequest | { refused: string } | undefined {
+/** Options and briefing for `text`, or a refusal naming the bad candidate or field. */
+export function candidateRequest(p: CandidateParams, text: string): CandidateRequest | { refused: string } {
 	const shape = candidateShape(p);
-	if (shape || p.candidates === undefined) return shape;
+	if (shape) return shape;
 	const options = optionsOf(p.candidates as unknown[]);
 	if ("refused" in options) return options;
 	const described = validateOptionTexts(options, { requireDescription: true });
 	if ("refused" in described) return refuse(`${described.refused.replace(/^option ([A-D])/, (_, id: string) => `candidate ${IDS.indexOf(id) + 1}`)}.`);
-	const raw: Record<string, unknown> = { summary: text };
-	if (p.recommended !== undefined) raw.recommended = p.recommended;
-	if (p.rationale !== undefined) raw.rationale = p.rationale;
+	const raw = { summary: text, recommended: p.recommended, rationale: p.rationale };
 	const briefing = validateBriefing(raw, IDS.slice(0, described.length), { author: "agent" });
 	if ("refused" in briefing) return refuse(`${briefing.refused.replace("briefing.summary", "the question text").replace("briefing.", "")}.`);
 	return { options: described, briefing };

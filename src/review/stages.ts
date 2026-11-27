@@ -16,7 +16,7 @@ import { entriesFor } from "../subagents/policy.ts";
 import type { ReviewSubject } from "../subagents/roles.ts";
 import type { ApproverCtx } from "../tools/approver-for.ts";
 import { afterForgeWrite, type WriteContext } from "../tools/guard.ts";
-import { runSpecQuestion } from "../tools/spec-question.ts";
+import { runSpecQuestion, type SpecQuestionParams } from "../tools/spec-question.ts";
 import { dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "../tools/subagent-request.ts";
 import { respawnLine } from "../tools/subagent-outcome.ts";
 import { argsOf, type Target, type ToolCtx, warn } from "../tools/subagent-target.ts";
@@ -174,13 +174,9 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 
 // --- route ---------------------------------------------------------------------------
 
-async function askQuestion(c: StageCtx, text: string): Promise<string | undefined> {
-	const result = await runSpecQuestion({ text, class: "non-blocking" }, c.tool);
-	return result.isError ? result.content.map((x) => x.text).join("\n") : undefined;
-}
-
-async function reaskQuestion(c: StageCtx, id: string): Promise<string | undefined> {
-	const result = await runSpecQuestion({ reask: id }, c.tool);
+/** Livespec's own question: non-blocking through `origin: "routing"`; the error text, if any. */
+async function routingQuestion(c: StageCtx, p: SpecQuestionParams): Promise<string | undefined> {
+	const result = await runSpecQuestion(p, c.tool, { origin: "routing" });
 	return result.isError ? result.content.map((x) => x.text).join("\n") : undefined;
 }
 
@@ -193,8 +189,8 @@ async function routeStage(c: StageCtx): Promise<StageReport> {
 	try {
 		effects = await applyRoutes({
 			forge: c.w.forge, issue, branch: c.state.change.header.branch,
-			ask: (text) => askQuestion(c, text),
-			reask: (id) => reaskQuestion(c, id),
+			ask: (p) => routingQuestion(c, p),
+			reask: (p) => routingQuestion(c, p),
 			afterWrite: () => afterForgeWrite(c.w.session, issue),
 		}, c.state, aggregate, { postReviewComments: run.source !== "pull-request" });
 	} catch (error) {

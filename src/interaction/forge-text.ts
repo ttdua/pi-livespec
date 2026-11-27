@@ -161,7 +161,7 @@ function answers(r: ApprovalRequest): string[] {
 function acceptedCommands(r: ApprovalRequest): string[] {
 	if (r.kind === "question") {
 		const id = questionId(r);
-		return [`/livespec answer ${id} <text> [--class blocking|non-blocking]`, `/livespec class ${id} blocking|non-blocking`, "/livespec dismiss [notes]"];
+		return [`/livespec answer ${id} <text>`, "/livespec dismiss [notes]"];
 	}
 	if (r.kind === "stuck" || r.subject.startsWith("decide:")) return ["/livespec choose <option-id> [notes]", "/livespec dismiss [notes]"];
 	const approve = failingWaivableOf(r.record.snapshot).length > 0 ? [] : ["/livespec approve [notes]"];

@@ -223,16 +223,16 @@ describe("toResult", () => {
 	test("Question answered in the dialog", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
-		expect(toResult(m, { ...initialState(m), picked: 0 }, r)).toEqual({ outcome: "approved", notes: "", answer: "Option A", questionClass: "blocking" });
+		expect(toResult(m, { ...initialState(m), picked: 0 }, r)).toEqual({ outcome: "approved", notes: "", answer: "Option A" });
 		const none = toResult(m, { ...initialState(m), picked: 1 }, r);
-		expect(none).toEqual({ outcome: "approved", notes: "", answer: "Option B", questionClass: "blocking" });
+		expect(none).toEqual({ outcome: "approved", notes: "", answer: "Option B" });
 	});
 
 	test("Own answer typed in the dialog", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
 		const state = picked(m, "own", { answer: "  mine  " });
-		expect(toResult(m, state, r)).toEqual({ outcome: "approved", notes: "", answer: "mine", questionClass: "blocking" });
+		expect(toResult(m, state, r)).toEqual({ outcome: "approved", notes: "", answer: "mine" });
 	});
 
 	test("later is deferred", () => {

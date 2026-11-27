@@ -180,9 +180,7 @@ async function questionFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict
 	if (step.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
 	const answer = step.kind === "candidate" ? step.label : await ask(ui, "Answer");
 	if (answer === CANCELLED || answer === "") return CANCELLED;
-	const verdict: Verdict = { outcome: "approved", notes: "", answer };
-	if (r.question) verdict.questionClass = r.question.class;
-	return verdict;
+	return { outcome: "approved", notes: "", answer };
 }
 
 /** Stuck and decide requests: a choice among the request's options. */

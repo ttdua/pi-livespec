@@ -385,6 +385,21 @@ describe("completion engine", () => {
 		expect(state.change.questions.find((q) => q.id === "Q1")?.checked).toBe(true);
 	});
 
+	test("complete question reads class from the line", async () => {
+		const f = await fixture("define", q1Open);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For" }));
+		expect(ofKind((await stateOf(f)).state.marked, "question")[0]?.data).toMatchObject({ class: "blocking", answer: "X-Forwarded-For" });
+		expect(await f.world.bodyOf(f.n)).toContain("- [x] Q1 (blocking): ");
+	});
+
+	test("an old answer that stored a questionClass still completes with it", async () => {
+		const f = await fixture("define", q1Open);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For", questionClass: "non-blocking" }));
+		expect(ofKind((await stateOf(f)).state.marked, "question")[0]?.data).toMatchObject({ class: "non-blocking" });
+	});
+
 	test("A stored snapshot that still carries requirements completes", async () => {
 		const f = await fixture("define", q1Open);
 		const legacy = { id: "Q1", text: "header?", requirements: [REQUIREMENT] } as unknown as RequestSnapshot;

@@ -22,11 +22,9 @@ export function overridesOf(model: DialogModel, state: DialogState): Override[] 
 	return out;
 }
 
-function questionVerdict(entry: DialogEntry, state: DialogState, r: ApprovalRequest): Verdict {
+function questionVerdict(entry: DialogEntry, state: DialogState): Verdict {
 	const answer = entry.action.kind === "candidate" ? entry.action.label : state.answer.trim();
-	const verdict: Verdict = { outcome: "approved", notes: "", answer };
-	if (r.question) verdict.questionClass = r.question.class;
-	return verdict;
+	return { outcome: "approved", notes: "", answer };
 }
 
 /** The gate outcome of a picked entry: empty notes approve, notes approve with notes. */
@@ -60,7 +58,7 @@ export function toResult(model: DialogModel, state: DialogState, r: ApprovalRequ
 	const { action } = entry;
 	if (action.kind === "dismiss") return CANCELLED;
 	if (action.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
-	if (action.kind === "candidate" || action.kind === "own") return questionVerdict(entry, state, r);
+	if (action.kind === "candidate" || action.kind === "own") return questionVerdict(entry, state);
 	if (action.kind === "changes") return { outcome: "changes_requested", notes: state.notes.trim() };
 	if (model.kind === "choice" && action.kind === "option") return { outcome: "approved", notes: "", choice: action.id };
 	return gateVerdict(model, entry, state);

@@ -272,7 +272,7 @@ describe("spec_review refusals write nothing", () => {
 	test("pending blocking request", async () => {
 		const h = await reviewHarness({ config: "integrationBranch: main\ninteraction: { adapter: [forge] }\n" });
 		await h.call("spec_gate", { target: "review", briefing: BRIEFING }).catch(() => undefined);
-		await h.call("spec_question", { text: "Which store?" });
+		await h.call("spec_question", { text: "Which store?", candidates: [{ label: "Redis", description: "Shared." }, { label: "memory", description: "Local." }], recommended: "A", rationale: "Shared counters." });
 		await refusedWith(h, "Q1");
 	});
 

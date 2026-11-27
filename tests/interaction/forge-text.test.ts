@@ -196,9 +196,11 @@ describe("renderForgeRequest", () => {
 		}
 	});
 
-	test("question request text offers --class and no --changes", () => {
+	test("question request text offers no --class, class command or --changes", () => {
 		const text = renderForgeRequest(request(QUESTION));
-		expect(text).toContain("/livespec answer Q2 <text> [--class blocking|non-blocking]");
+		expect(text).toContain("/livespec answer Q2 <text>");
+		expect(text).not.toContain("--class");
+		expect(text).not.toContain("/livespec class");
 		expect(text).not.toContain("--changes");
 	});
 
