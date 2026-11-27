@@ -27,6 +27,6 @@ Blocked by: none
 
 Blocked by: 1, 2, 3
 
-- [ ] 4.1 Unit tests in `tests/subagents/dispatch.test.ts`: missing optional source accepted without return; blocked reason names omitted required ids
-- [ ] 4.2 Harness test in `tests/tools/subagent-dispatch.test.ts` (and an inline `subagent_record` case in `tests/tools/subagent-record.test.ts`): change review round 1 with 29 decision records and 14 parent answers, reviewer lists only the required ids → accepted on first dispatch, `completed: true`, no resume
-- [ ] 4.3 Update `docs/architecture.md` (packet sources and `finding-summary` fields) and run the full test suite and typecheck
+- [x] 4.1 Unit tests in `tests/subagents/dispatch.test.ts`: missing optional source accepted without return; blocked reason names omitted required ids
+- [x] 4.2 Harness test in `tests/tools/subagent-dispatch.test.ts` (and an inline `subagent_record` case in `tests/tools/subagent-record.test.ts`): change review round 1 with 29 decision records and 14 parent answers, reviewer lists only the required ids → accepted on first dispatch, `completed: true`, no resume
+- [x] 4.3 Update `docs/architecture.md` (packet sources and `finding-summary` fields) and run the full test suite and typecheck
