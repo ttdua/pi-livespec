@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 Rename `MarkedComment.commentId` to `ref` and add `source: "forge" | "ledger"` and `createdAt` in `src/forge/markers.ts`; `filterMarked` sets `source: "forge"`
-- [ ] 1.2 Update every reader and writer of `MarkedComment.commentId` in `src/` and `tests/` mechanically (gate `commentId` fields in `src/engine/locks.ts` keep their name); no behaviour change
-- [ ] 1.3 Pin the spec-cascade `stale` id for a fixed lock before the rename (`tests/interaction/spec-cascade-plan.test.ts`) so the rename provably keeps it
-- [ ] 1.4 `bun run typecheck` and `bun run test` green
+- [x] 1.1 Rename `MarkedComment.commentId` to `ref` and add `source: "forge" | "ledger"` and `createdAt` in `src/forge/markers.ts`; `filterMarked` sets `source: "forge"`
+- [x] 1.2 Update every reader and writer of `MarkedComment.commentId` in `src/` and `tests/` mechanically (gate `commentId` fields in `src/engine/locks.ts` keep their name); no behaviour change
+- [x] 1.3 Pin the spec-cascade `stale` id for a fixed lock before the rename (`tests/interaction/spec-cascade-plan.test.ts`) so the rename provably keeps it
+- [x] 1.4 `bun run typecheck` and `bun run test` green
 
 ## 2. Ledger core: entries, store, commit and read
 
