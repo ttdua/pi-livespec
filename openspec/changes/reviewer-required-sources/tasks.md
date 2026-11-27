@@ -19,9 +19,9 @@ Blocked by: 1
 
 Blocked by: none
 
-- [ ] 3.1 Add optional `notes` and `evidence` to `FindingSummaryData` in `src/subagents/records.ts`, accept `notes`/`evidence` in `isSummaryData` in `src/subagents/validate.ts`
-- [ ] 3.2 Record `notes`, `reason` and `evidence` for every role in `summaryData` in `src/subagents/run-record.ts`
-- [ ] 3.3 Tests in `tests/subagents/records.test.ts` and `tests/subagents/dispatch.test.ts`: why of a run kept, parent-written block names omitted ids, older summary still valid
+- [x] 3.1 Add optional `notes` and `evidence` to `FindingSummaryData` in `src/subagents/records.ts`, accept `notes`/`evidence` in `isSummaryData` in `src/subagents/validate.ts`
+- [x] 3.2 Record `notes`, `reason` and `evidence` for every role in `summaryData` in `src/subagents/run-record.ts`
+- [x] 3.3 Tests in `tests/subagents/records.test.ts` and `tests/subagents/dispatch.test.ts`: why of a run kept, parent-written block names omitted ids, older summary still valid
 
 ## 4. Result handling and #268-shaped review fixture
 
