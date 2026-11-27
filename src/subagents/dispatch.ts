@@ -197,7 +197,7 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 
 /** Resumes the child naming the missing sources and waits for its next run; a refused resume blocks. */
 async function returnToChild(deps: DispatchDeps, agentId: string, missing: string[]): Promise<RecordLike | string> {
-	const message = `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every source you used.`;
+	const message = `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every required source.`;
 	const disposeCancel = abortChildOnCancel(deps.service, agentId, deps.signal);
 	try {
 		const resumed = (await deps.service.resume(agentId, message)) as { kind?: string; reason?: string } | undefined;
