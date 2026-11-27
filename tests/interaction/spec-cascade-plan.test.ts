@@ -193,8 +193,20 @@ describe("planSpecCascade", () => {
 		expect(planSpecCascade(input)).toEqual({ kind: "none" });
 	});
 
-	test("integration removal merged → excluded", () => {
-		expect(planSpecCascade(inputOf({ heads: { [CAP]: A }, reference: { [CAP]: A } }))).toEqual({ kind: "none" });
+	test("integration removal merged → not excluded, cascades once", () => {
+		const input = inputOf({ heads: { [CAP]: A }, reference: { [CAP]: A } });
+		expect(excludedIds(input, [BURST])).toEqual(new Set());
+		const plan = cascadeOf(planSpecCascade(input));
+		expect(plan.data.requirements).toEqual({ [BURST]: REMOVED_DIGEST });
+		expect(planSpecCascade(applied(input, plan))).toEqual({ kind: "none" });
+	});
+
+	test("own requirement added before the lock and removed after → cascade", () => {
+		// The capability is new on the branch: absent at the reference, recorded in the baseline, BURST deleted at HEAD.
+		const plan = cascadeOf(planSpecCascade(inputOf({ heads: { [CAP]: A }, reference: {} })));
+		expect(plan.data.requirements).toEqual({ [BURST]: REMOVED_DIGEST });
+		expect(plan.data.units).toEqual(["U2"]);
+		expect(plan.untick).toEqual(["U2"]);
 	});
 
 	test("conflict combined from both sides is not excluded", () => {
@@ -260,6 +272,12 @@ describe("planSpecCascade", () => {
 		});
 		expect(isBaselineStale(posted(plan))).toBe(true);
 		expect(isSpecCascade(posted(plan))).toBe(false);
+	});
+
+	test("legacy gate without head_sha → baseline.unknown", () => {
+		const gate = marked("gate", "plan.nohead", { phase: "plan", outcome: "approved", notes: "", by: "alice", at: "t", adapter: "forge", waivers: [], locked: {} });
+		const plan = planSpecCascade(inputOf({ baseline: undefined, marked: [gate] }));
+		expect(plan).toMatchObject({ kind: "legacy-missing", id: "baseline.unknown", data: { reason: "the plan-lock commit unknown is missing; approve the spec and the plan again", baseline: "unknown" } });
 	});
 
 	test("legacy comment exists, move failed → complete with moveBack", () => {

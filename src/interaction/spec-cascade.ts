@@ -139,8 +139,13 @@ async function cascadeChange(t: Target): Promise<boolean> {
 		r.session.record(STEP, error);
 	}
 	if (r.wrote) {
-		await r.session.comments?.invalidate(r.state.issue.number);
-		await r.session.refresh();
+		// The writes stand even when the refresh fails: report them, record the failure.
+		try {
+			await r.session.comments?.invalidate(r.state.issue.number);
+			await r.session.refresh();
+		} catch (error) {
+			r.session.record(STEP, error);
+		}
 	}
 	return r.wrote;
 }

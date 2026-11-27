@@ -46,6 +46,8 @@ const SPEC_PREFIX = "spec.";
 const BASELINE_PREFIX = "baseline.";
 const ID_HEX = 12;
 const NONE: SpecCascadePlan = { kind: "none" };
+/** Stands in for the lock commit of a gate that recorded no `head_sha`. */
+const UNKNOWN_SHA = "unknown";
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -96,13 +98,15 @@ export function acknowledgedDigests(input: CascadeInput): Record<string, string>
 
 /**
  * Changed ids the integration branch changed after the lock and HEAD took as-is: no own cascade named them,
- * their digest at HEAD equals the reference, and the reference differs from the baseline.
+ * their digest at HEAD equals the reference, and the reference differs from the baseline. An id absent at the
+ * reference is never excluded, so a removal always cascades: a missed cascade would leave units ticked against
+ * a removed requirement, a spurious one costs one define round.
  */
 export function excludedIds(input: CascadeInput, changed: string[]): Set<string> {
 	const { reference, heads, baseline = {} } = input;
 	if (reference === undefined) return new Set();
 	const named = new Set(afterBaseline(input, isSpecCascade).flatMap(({ m }) => Object.keys(recordedRequirements(m))));
-	return new Set(changed.filter((id) => !named.has(id) && reference[id] === heads[id] && reference[id] !== baseline[id]));
+	return new Set(changed.filter((id) => !named.has(id) && reference[id] !== undefined && reference[id] === heads[id] && reference[id] !== baseline[id]));
 }
 
 const cascadePhases = (pack: Pack): string[] => [DEFINE, ...phasesAfter(pack, DEFINE)];
@@ -131,7 +135,7 @@ const planLegacyMissing: SubPlanner = (input) => {
 	const lockGate = input.lock.baseline;
 	if (input.baseline !== undefined || lockGate === undefined) return undefined;
 	if (afterBaseline(input, isBaselineStale).length > 0) return undefined;
-	const sha = lockGate.headSha ?? "";
+	const sha = lockGate.headSha ?? UNKNOWN_SHA;
 	const data: StaleData = { reason: `the plan-lock commit ${sha} is missing; approve the spec and the plan again`, phases: cascadePhases(input.pack), units: [], after_plan: false, baseline: sha };
 	return { kind: "legacy-missing", id: `${BASELINE_PREFIX}${sha.slice(0, ID_HEX)}`, data, moveBack: needsMoveBack(input.pack, input.phase) };
 };

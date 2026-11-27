@@ -3,7 +3,7 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { deriveIterations } from "../../src/engine/iterations.ts";
-import { requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
+import { REMOVED_DIGEST, requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -371,6 +371,32 @@ describe("runSpecCascade", () => {
 		Object.assign(h.session.git, { fetch });
 		expect(await runSpecCascade(h.session)).toBe(false);
 		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	test("refresh failure after a write still returns true and is recorded", async () => {
+		const h = await harness();
+		await lock(h);
+		await editSpec(h, "Each IP SHALL be capped at 100.");
+		vi.spyOn(h.session, "refresh").mockRejectedValueOnce(new Error("injected refresh failure"));
+		expect(await runSpecCascade(h.session)).toBe(true);
+		expect(h.session.errors.some((e) => e.startsWith("spec-cascade") && e.includes("injected refresh failure"))).toBe(true);
+		expect(await stales(h, "spec.")).toHaveLength(1);
+	});
+
+	test("removed requirement cascades once with REMOVED_DIGEST through the forge record", async () => {
+		const h = await harness();
+		await lock(h);
+		const withoutBurst = spec().replace(`### Requirement: Burst\n${BURST_TEXT}\n\n`, "");
+		await writeIn(h.root, SPEC_PATH, withoutBurst);
+		commitAll(h.root, "remove Burst");
+		expect(await runSpecCascade(h.session)).toBe(true);
+		const [cascade] = await stales(h, "spec.");
+		expect(dataOf(cascade)).toMatchObject({ units: ["U2"], requirements: { [BURST]: REMOVED_DIGEST } });
+		expect(await doneUnits(h)).toEqual(["U1", "U3"]);
+		h.faults.ops.length = 0;
+		expect(await runSpecCascade(h.session)).toBe(false);
+		expect(h.faults.ops).toEqual([]);
+		expect(await stales(h, "spec.")).toHaveLength(1);
 	});
 
 	test("no lock → nothing written", async () => {

@@ -50,6 +50,7 @@ The brainstorm fixes the behaviour; this document fixes how.
 - Exclusion: an id is excluded when no spec-cascade comment after the baseline names it, `reference[id] === heads[id]`, and `reference[id] !== baseline[id]`. That means the integration branch changed it after the lock and HEAD took that content.
   - Edits from `change_sync`, a hand merge or the forge's update button never cascade.
   - A revert of the change's own edit still does, because an acknowledged id is never excluded.
+  - An id absent at the integration reference is never excluded, so a removal always cascades, including one merged from the integration branch. Why: a missed cascade leaves units ticked against a removed requirement, while a spurious one costs one define round.
 - Integration reference: `git merge-base HEAD origin/<integration branch>`.
   - Fetch first with a best-effort `git.fetch("origin", branch)` under the git runner's existing timeout; a failure is ignored and the local ref is used.
   - `integrationBranch(project, git)` resolves the branch; skip this step when `config.project` is null.
