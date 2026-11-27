@@ -49,6 +49,8 @@
 | `BRIEFING_SCHEMA` | modified | `recommended` and `rationale` documented as required; listed in `required` of `unit_amend`, `initiative_propose`, `new_dependency` | public |
 | `gateResultDecision(phase, successor, result, atHead, forecast?)` | modified | optional `forecast?: { outcome: "self"\|"human"; reason: string }` | internal |
 | `MatchResult.classes`, `ClassChange` | modified | removed | internal |
+| `GateOption.description` (`src/engine/gates.ts`) | modified | required (was optional) — deviation in Task 4: registered named-gate options must be described so `spec_gate` builds contract-valid requests | internal |
+| `amendRequest(..., briefing: Briefing)` | modified | `briefing` required (was optional) — deviation in Task 4, production always passes one | internal |
 | `escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: "self"\|"human"; reason: string } \| undefined` | new | pure; undefined when the phase is not covered | internal |
 | `DialogModel.unitsAvailable: boolean`, `DialogState.unitsOpen: boolean`, action `{ type: "openUnits" }` | new | `tabs` derives from `unitsOpen` | internal |
 | `NEW_DEPENDENCY_OPTIONS` | modified | each `{ id, label, description }`; label of A without `(default)` | internal |

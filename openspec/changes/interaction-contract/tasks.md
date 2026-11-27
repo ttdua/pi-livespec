@@ -28,8 +28,8 @@ Blocked by: none
 
 Blocked by: 1, 2, 3
 
-- [ ] 4.1 Add `assertContract` to `prepareRequest` (`src/interaction/requests.ts`): throw when the briefing, `recommended` or `rationale` is missing, `recommended` is not offered, or an offered option has no description (design D1; approver-adapters "Contract enforced at construction")
-- [ ] 4.2 Update the request fixtures that build requests directly in tests to be contract-valid; keep stored-request read paths tolerant (approver-adapters "Stored request without a briefing still answered")
+- [x] 4.1 Add `assertContract` to `prepareRequest` (`src/interaction/requests.ts`): throw when the briefing, `recommended` or `rationale` is missing, `recommended` is not offered, or an offered option has no description (design D1; approver-adapters "Contract enforced at construction")
+- [x] 4.2 Update the request fixtures that build requests directly in tests to be contract-valid; keep stored-request read paths tolerant (approver-adapters "Stored request without a briefing still answered")
 
 ## 5. Plan gate escalation
 
