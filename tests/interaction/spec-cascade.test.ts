@@ -1,16 +1,31 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
-import { unitDigest } from "../../src/core/digest.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
-import { deriveIterations } from "../../src/engine/iterations.ts";
-import { REMOVED_DIGEST, requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
-import type { Forge } from "../../src/forge/types.ts";
+import { REMOVED_DIGEST, requirementDigests } from "../../src/engine/requirement-diff.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { runSpecCascade } from "../../src/interaction/spec-cascade.ts";
-import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
-import { cleanupDirs, type ToolHarness, toolHarness } from "../tools/helpers.ts";
+import {
+	BURST,
+	burstBlock,
+	CAP,
+	CAP_TEXT,
+	type CascadeHarness as H,
+	cascadeHarness,
+	dataOf,
+	doneUnits,
+	editSpec,
+	GONE_SHA,
+	iterations,
+	lock,
+	mainEdits,
+	own,
+	phaseOf,
+	spec,
+	SPEC_PATH,
+	stales,
+} from "../helpers/spec-cascade-fixture.ts";
+import { cleanupDirs } from "../tools/helpers.ts";
 
 afterEach(async () => {
 	setSession(undefined);
@@ -18,126 +33,8 @@ afterEach(async () => {
 	await cleanupDirs();
 });
 
-const CAP = "rate-limit/Requirement: Per-IP cap";
-const BURST = "rate-limit/Requirement: Burst";
-const SPEC_PATH = "specs/rate-limit/spec.md";
-const CAP_TEXT = "Each IP SHALL be capped.";
-const BURST_TEXT = "Short spikes SHALL be absorbed.";
-const GONE_SHA = "0123456789abcdef".repeat(2) + "01234567";
-const LOCKED_AT = "2026-11-15T10:00:00.000Z";
-
-const spec = (cap = CAP_TEXT, burst = BURST_TEXT): string =>
-	["# rate-limit", "", "## Requirements", "### Requirement: Per-IP cap", cap, "", "#### Scenario: Capped", "- **WHEN** x", "- **THEN** y", "", "### Requirement: Burst", burst, "", "### Requirement: Window", "The window SHALL slide.", ""].join("\n");
-
-type U = { id: string; requirement: string; done: boolean };
-
-const block = (u: U): string =>
-	[`### ${u.id} — Unit ${u.id}`, `Covers: rate-limit/Requirement: ${u.requirement}`, "Difficulty: low", "Tags: []", `Files: src/${u.id.toLowerCase()}.ts`, "Done means:", "- [a] works", "Scenarios:", `- [a] t.test.ts › ${u.id}`, "Depends: —", "Verify: `true`", u.done ? "- [x] done" : "- [ ] pending", ""].join("\n");
-
-/** U4 is pending, so an all-done build does not advance to review on refresh. */
-const UNITS: U[] = [
-	{ id: "U1", requirement: "Window", done: true },
-	{ id: "U2", requirement: "Burst", done: true },
-	{ id: "U3", requirement: "Per-IP cap", done: true },
-	{ id: "U4", requirement: "Per-IP cap", done: false },
-];
-
-const body = ["Depends: —", "Capabilities: new [], modified [rate-limit]", "Product impact: —", "", "## Proposal", "Limit.", "## Design", "Counter.", "## Questions", "", "## Units", ...UNITS.map(block), "## Durable docs", ""].join("\n");
-
-/** Forge faults a test arms; each fires once. `ops` lists every mutation in order. */
-type Faults = { ops: string[]; conflictOnce: boolean; commentFailsOnce: boolean; labelsFailOnce: boolean };
-
-function faultyForge(inner: Forge, f: Faults): Forge {
-	const wrapped: Partial<Forge> = {
-		createComment: async (n, text) => {
-			if (f.commentFailsOnce) {
-				f.commentFailsOnce = false;
-				throw new Error("injected createComment failure");
-			}
-			f.ops.push("comment");
-			return inner.createComment(n, text);
-		},
-		updateIssueBody: async (n, text, version) => {
-			if (f.conflictOnce) {
-				f.conflictOnce = false;
-				return { status: "conflict", current: version, changed: ["body"] };
-			}
-			f.ops.push("body");
-			return inner.updateIssueBody(n, text, version);
-		},
-		addLabels: async (n, labels) => {
-			if (f.labelsFailOnce) {
-				f.labelsFailOnce = false;
-				throw new Error("injected addLabels failure");
-			}
-			f.ops.push("labels");
-			return inner.addLabels(n, labels);
-		},
-	};
-	return new Proxy(inner, {
-		get(target, prop) {
-			if (prop in wrapped) return wrapped[prop as keyof Forge];
-			const value = Reflect.get(target, prop, target);
-			return typeof value === "function" ? value.bind(target) : value;
-		},
-	});
-}
-
-type H = ToolHarness & { faults: Faults };
-
-/** The change in `build` on its branch, the spec committed at the harness HEAD, no lock yet. */
-async function harness(phase = "build"): Promise<H> {
-	const faults: Faults = { ops: [], conflictOnce: false, commentFailsOnce: false, labelsFailOnce: false };
-	const h = await toolHarness({ change: { body, phase }, files: { [SPEC_PATH]: spec() }, forge: (world) => faultyForge(world.forge, faults) });
-	return { ...h, faults };
-}
-
-const gateData = (h: H, headSha: string, record?: { requirements: Record<string, string>; requirement_scope: string[] }) => ({
-	phase: "plan",
-	outcome: "approved",
-	notes: "",
-	by: "alice",
-	at: LOCKED_AT,
-	adapter: "in-session",
-	head_sha: headSha,
-	waivers: [],
-	locked: Object.fromEntries(parseChange(body).units.map((u) => [u.id, unitDigest(u)])),
-	...(record ?? {}),
-});
-
-/** Seeds an approved plan gate at `headSha`, with the requirement record at the harness HEAD unless `legacy`. */
-async function lock(h: H, o: { headSha?: string; legacy?: boolean } = {}): Promise<void> {
-	const scope = requirementScope(parseChange(await h.world.bodyOf(h.n)));
-	const record = o.legacy ? undefined : { requirements: await requirementDigests(h.session.git, h.head, scope), requirement_scope: scope };
-	await h.world.postComment(h.n, BOT_LOGIN, writeMarked("gate", "plan.self-1", gateData(h, o.headSha ?? h.head, record)));
-	await h.session.comments?.invalidate(h.n);
-	await h.session.refresh();
-	h.faults.ops.length = 0;
-}
-
-async function editSpec(h: H, cap = CAP_TEXT, burst = BURST_TEXT): Promise<void> {
-	await writeIn(h.root, SPEC_PATH, spec(cap, burst));
-	commitAll(h.root, "spec edit");
-}
-
-const own = async (h: H): Promise<MarkedComment[]> => filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
-const stales = async (h: H, prefix: string) => (await own(h)).filter((m) => m.kind === "stale" && m.id.startsWith(prefix));
-const doneUnits = async (h: H) => parseChange(await h.world.bodyOf(h.n)).units.filter((u) => u.done).map((u) => u.id);
-const phaseOf = async (h: H) => (await h.world.forge.getIssue(h.n)).labels.filter((l) => l.startsWith("livespec:phase/"));
-const iterations = async (h: H) => deriveIterations(await own(h)).count;
-const dataOf = (m: MarkedComment | undefined) => (m?.data ?? {}) as Record<string, unknown>;
-
-/** Lands `files` on origin/main from the main branch, then returns to the change branch. */
-async function mainEdits(h: H, files: Record<string, string>): Promise<string> {
-	const branch = h.git("branch", "--show-current");
-	h.git("switch", "-q", "main");
-	for (const [path, text] of Object.entries(files)) await writeIn(h.root, path, text);
-	commitAll(h.root, "main edit");
-	h.git("push", "-q", "origin", "main");
-	const tip = h.git("rev-parse", "HEAD");
-	h.git("switch", "-q", branch);
-	return tip;
-}
+/** The change in `phase` on its branch, the spec committed at the harness HEAD, no lock yet. */
+const harness = (phase = "build"): Promise<H> => cascadeHarness({ phase });
 
 describe("runSpecCascade", () => {
 	test("applies stale, untick, move in order", async () => {
@@ -386,7 +283,7 @@ describe("runSpecCascade", () => {
 	test("removed requirement cascades once with REMOVED_DIGEST through the forge record", async () => {
 		const h = await harness();
 		await lock(h);
-		const withoutBurst = spec().replace(`### Requirement: Burst\n${BURST_TEXT}\n\n`, "");
+		const withoutBurst = spec().replace(burstBlock(), "");
 		await writeIn(h.root, SPEC_PATH, withoutBurst);
 		commitAll(h.root, "remove Burst");
 		expect(await runSpecCascade(h.session)).toBe(true);

@@ -1,6 +1,6 @@
-// The spec-diff cascade fixture shared by the cascade's integration and end-to-end tests: a change in `build`
-// on its branch whose `rate-limit` spec passes every define check, a forge with one-shot faults, and the
-// helpers that seed the plan lock and read what the cascade wrote.
+// The spec-diff cascade fixture shared by tests/interaction/spec-cascade.test.ts and tests/e2e/spec-cascade.test.ts:
+// a change on its branch whose `rate-limit` spec is valid (every requirement has a scenario), a forge with
+// one-shot faults, and the helpers that seed the plan lock, edit the spec and read what the cascade wrote.
 
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -19,7 +19,7 @@ export const BURST = "rate-limit/Requirement: Burst";
 export const WINDOW = "rate-limit/Requirement: Window";
 export const SPEC_PATH = "specs/rate-limit/spec.md";
 export const CAP_TEXT = "Each IP SHALL be capped.";
-export const BURST_TEXT = "Short spikes SHALL be absorbed.";
+const BURST_TEXT = "Short spikes SHALL be absorbed.";
 export const GONE_SHA = "0123456789abcdef".repeat(2) + "01234567";
 const LOCKED_AT = "2026-11-15T10:00:00.000Z";
 
@@ -32,9 +32,9 @@ export const burstBlock = (burst = BURST_TEXT): string => requirement("Burst", b
 export const spec = (cap = CAP_TEXT, burst = BURST_TEXT): string =>
 	["# rate-limit", "", "## Requirements", ...requirement("Per-IP cap", cap), ...requirement("Burst", burst), ...requirement("Window", "The window SHALL slide.")].join("\n");
 
-export type U = { id: string; requirement: string; done: boolean; verify?: string; capability?: string };
+type U = { id: string; requirement: string; done: boolean; verify?: string; capability?: string };
 
-export const block = (u: U): string =>
+const block = (u: U): string =>
 	[
 		`### ${u.id} — Unit ${u.id}`,
 		`Covers: ${u.capability ?? "rate-limit"}/Requirement: ${u.requirement}`,
@@ -64,7 +64,7 @@ export const changeBody = (units: U[] = UNITS, header: string[] = []): string =>
 	[...header, "Depends: —", "Capabilities: new [], modified [rate-limit]", "Product impact: none — test fixture", "", "## Proposal", "Limit.", "## Design", "Counter.", "## Questions", "", "## Units", ...units.map(block), "## Durable docs", ""].join("\n");
 
 /** Forge faults a test arms; each fires once. `ops` lists every mutation in order. */
-export type Faults = { ops: string[]; conflictOnce: boolean; commentFailsOnce: boolean; labelsFailOnce: boolean };
+type Faults = { ops: string[]; conflictOnce: boolean; commentFailsOnce: boolean; labelsFailOnce: boolean };
 
 export const noFaults = (): Faults => ({ ops: [], conflictOnce: false, commentFailsOnce: false, labelsFailOnce: false });
 
@@ -121,7 +121,7 @@ export async function cascadeHarness(o: CascadeHarnessOptions = {}): Promise<Cas
 	return { ...h, faults };
 }
 
-export type LockOptions = { headSha?: string; legacy?: boolean; scope?: string[] };
+type LockOptions = { headSha?: string; legacy?: boolean; scope?: string[] };
 
 /**
  * Posts an approved plan gate locking the issue's units, bound to `headSha` (default HEAD); unless `legacy`,
