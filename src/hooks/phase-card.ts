@@ -5,6 +5,7 @@
 import { formatPackError } from "../commands/messages.ts";
 import type { PackError } from "../engine/pack-types.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
+import { incompleteTitle } from "../engine/incomplete-items.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import type { LaneOutcome } from "../fix/lane.ts";
 
@@ -79,11 +80,6 @@ function phaseOfState(state: ChangeState): string {
 	if (p.kind === "ok") return phaseText(p.id);
 	if (p.kind === "missing") return "no phase";
 	return p.ids.map(phaseText).join(" + ");
-}
-
-/** The `Incomplete` line is labelled when the state it was read from may be out of date. */
-function incompleteTitle(state: ChangeState): string {
-	return state.stale || state.readOnly ? "Incomplete (may be stale)" : "Incomplete";
 }
 
 function counterText(c: NextStep["counters"][number]): string {

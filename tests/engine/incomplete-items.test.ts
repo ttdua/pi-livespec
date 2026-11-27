@@ -14,6 +14,10 @@ describe("reconcileIncomplete", () => {
 		expect(reconcileIncomplete(["review pending for U2", "U2 started"], {})).toEqual(["review pending for U2", "U2 started"]);
 	});
 
+	test("ignores inherited keys of the started record", () => {
+		expect(reconcileIncomplete(["toString is started"], {})).toEqual([]);
+	});
+
 	test("drops an item for an id that is not a started unit", () => {
 		expect(reconcileIncomplete(["x is started"], {})).toEqual([]);
 	});

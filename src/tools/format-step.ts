@@ -5,6 +5,7 @@
 import type { Question, Unit } from "../core/change.ts";
 import { isKebabName } from "../core/names.ts";
 import type { OpenChange } from "../engine/resolve-change.ts";
+import { incompleteTitle } from "../engine/incomplete-items.ts";
 import type { ChangeState, NextStep } from "../engine/state-types.ts";
 import { type FixCard, fixLaneText, fixNextStep, readinessText, untrusted } from "../hooks/phase-card.ts";
 import { pendingText } from "../interaction/card.ts";
@@ -35,11 +36,6 @@ function phaseText(state: ChangeState, step: NextStep): string {
 
 function headerLine(state: ChangeState): string {
 	return `Change #${state.issue.number} ${untrusted(state.issue.title)}`;
-}
-
-/** The `Incomplete` line is labelled when the state it was read from may be out of date. */
-function incompleteTitle(state: ChangeState): string {
-	return state.stale || state.readOnly ? "Incomplete (may be stale)" : "Incomplete";
 }
 
 function counterText(c: NextStep["counters"][number]): string {

@@ -284,6 +284,7 @@ describe("Incomplete line", () => {
 	test("drops a finished unit", () => {
 		const card = renderCard(changeCard(stateFor("build", { incomplete: ["U2 is started"] })));
 		expect(card).not.toContain("Incomplete");
+		expect(card).not.toContain("U2 is started");
 	});
 
 	test("labels possibly stale items", () => {
