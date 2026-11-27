@@ -5,6 +5,8 @@
 import { gateDigest } from "../engine/locks.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import { neutralise } from "./briefing.ts";
+import { choiceKindOf, offeredChoiceIds } from "./describe-actions.ts";
+import { failingWaivableOf, WAIVE } from "./waive-rule.ts";
 import {
 	ANSWER_KIND,
 	type Answered,
@@ -75,8 +77,28 @@ export function newRequestId(subject: Subject, now: Date): string {
 	return `${token}${ID_SEPARATOR}${now.getTime().toString(BASE36)}`;
 }
 
+/** The contract refusal of `input`, or undefined: a recommendation naming an offered choice and every option described. */
+function contractViolation(input: PrepareInput): string | undefined {
+	const options = input.options ?? [];
+	const { briefing } = input;
+	if (briefing?.recommended === undefined) return "briefing.recommended is required";
+	if (briefing.rationale === undefined) return "briefing.rationale is required";
+	const failing = failingWaivableOf(input.snapshot);
+	const offered = offeredChoiceIds({ kind: choiceKindOf(input), options, failingWaivable: failing });
+	if (!offered.includes(briefing.recommended)) return `briefing.recommended ${briefing.recommended} is not an offered choice (${offered.join(", ")})`;
+	const undescribed = options.find((o) => o.id !== WAIVE && o.description === undefined);
+	return undescribed === undefined ? undefined : `option ${undescribed.id} has no description`;
+}
+
+/** Programming-error guard (approver-adapters "Interaction contract"): no request is built without a full recommendation. */
+function assertContract(input: PrepareInput): void {
+	const violation = contractViolation(input);
+	if (violation !== undefined) throw new Error(`request ${input.subject}: ${violation}`);
+}
+
 /** The durable request envelope, built before any adapter runs; a gate also records the gate digest. */
 export function prepareRequest(input: PrepareInput): RequestRecord {
+	assertContract(input);
 	const record: RequestRecord = {
 		id: newRequestId(input.subject, input.now),
 		kind: input.kind,

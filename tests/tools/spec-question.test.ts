@@ -1,4 +1,4 @@
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, validBriefing } from "../helpers/briefing.ts";
 import { pickByLabel } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
@@ -275,7 +275,7 @@ describe("spec_question", () => {
 	test("a duplicate request after the append names reask", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		// A pending forge request for question:Q3 already exists, so sending the new Q3 is a duplicate.
-		await seedMarked(h, requestComment("question-Q3.lx0", prepareRequest({ kind: "question", subject: "question:Q3", mode: "blocking", head: h.head, body: "", snapshot: { id: "Q3", text: "old" }, summary: "old", now: new Date(Date.UTC(2026, 0, 1)) }), "plain"));
+		await seedMarked(h, requestComment("question-Q3.lx0", prepareRequest({ kind: "question", subject: "question:Q3", mode: "blocking", options: [{ id: "A", label: "Redis", description: "Keep counters in Redis." }, { id: "B", label: "Postgres", description: "Keep counters in Postgres." }], briefing: { ...validBriefing("A"), author: "agent" }, head: h.head, body: "", snapshot: { id: "Q3", text: "old" }, summary: "old", now: new Date(Date.UTC(2026, 0, 1)) }), "plain"));
 		await h.session.refresh();
 		const out = await h.ask(asked("Which store keeps the counters?"));
 		expect(out.isError).toBe(true);

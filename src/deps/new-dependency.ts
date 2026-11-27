@@ -31,7 +31,7 @@ export const depsInitiativeName = (title: string): string => `${title}-deps`;
 type Node = number | string;
 
 /** The gate's registered options, in the order the request offers them; A is the default. */
-export const NEW_DEPENDENCY_OPTIONS: RequestOption[] = [
+export const NEW_DEPENDENCY_OPTIONS: (RequestOption & { description: string })[] = [
 	{ id: "A", label: "A: create the prerequisite change and park this one until it merges", description: "Creates the prerequisite change in shape, lists it in an initiative, and parks this change until it merges." },
 	{ id: "B", label: "B: add the missing work to this change as new units (unit_amend --add)", description: "Changes nothing now; the missing work is added to this change as new units with unit_amend --add." },
 	{ id: "C", label: "C: stub the missing part now and create a follow-up change", description: "Creates a follow-up change in shape for the missing part; this change stubs it with unit_amend." },

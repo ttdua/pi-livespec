@@ -235,7 +235,7 @@ function proposerRefusal(target: string): string | undefined {
 	return proposer === undefined ? undefined : `The ${target} gate is requested by ${proposer}, which sends it with its drafts: run ${proposer} instead.`;
 }
 
-const BRIEFING_REQUIRED = "A human gate needs an agent briefing: pass `briefing` with a `summary` (required: what the human is deciding and what changed), and optionally `watch`, `recommended` and `rationale`.";
+const BRIEFING_REQUIRED = "A human gate needs an agent briefing: pass `briefing` with a `summary` (required: what the human is deciding and what changed), `recommended` (an offered choice) and `rationale`, and optionally `watch`.";
 const BUILT_IN_IDS = ["approve", "changes", "dismiss", WAIVE];
 
 type BriefingStep = { ok: true; briefing?: Briefing } | { ok: false; message: string };
@@ -255,7 +255,7 @@ export function briefingStep(target: string, pack: Pack, raw: unknown): Briefing
 	if (!human) return { ok: true };
 	if (raw === undefined) return { ok: false, message: BRIEFING_REQUIRED };
 	const ids = [...BUILT_IN_IDS, ...(named?.options ?? []).map((o) => o.id)];
-	const checked = validateBriefing(raw, ids, { author: "agent" });
+	const checked = validateRequiredBriefing(raw, ids, { author: "agent" });
 	return "refused" in checked ? { ok: false, message: `${checked.refused}. ${BRIEFING_REQUIRED}` } : { ok: true, briefing: checked };
 }
 

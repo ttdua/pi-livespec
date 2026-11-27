@@ -4,6 +4,7 @@ import { parseCommand } from "../../src/interaction/commands.ts";
 import { gateChoices, offeredChoiceIds } from "../../src/interaction/describe-actions.ts";
 import { renderForgeRequest } from "../../src/interaction/forge-text.ts";
 import { prepareRequest } from "../../src/interaction/requests.ts";
+import { contractFields } from "../helpers/briefing.ts";
 
 const HEAD = "f".repeat(40);
 const NOW = new Date("2026-01-01T00:00:00.000Z");
@@ -23,15 +24,18 @@ type Spec = {
 
 function request(s: Spec): ApprovalRequest {
 	const kind = s.kind ?? "gate";
+	const snapshot = s.snapshot ?? { target: s.subject.slice("gate:".length), failingWaivable: [] };
+	const fields = contractFields(kind, s.subject, snapshot, s.options);
+	const briefing = { ...fields.briefing, ...s.briefing };
 	const record = prepareRequest({
 		kind,
 		subject: s.subject,
 		mode: "blocking",
-		...(s.options ? { options: s.options } : {}),
-		...(s.briefing ? { briefing: s.briefing } : {}),
+		...(fields.options ? { options: fields.options } : {}),
+		briefing,
 		head: HEAD,
 		body: "body",
-		snapshot: s.snapshot ?? { target: s.subject.slice("gate:".length), failingWaivable: [] },
+		snapshot,
 		summary: s.summary ?? `Review ${s.subject}`,
 		now: NOW,
 	});
@@ -46,8 +50,8 @@ function request(s: Spec): ApprovalRequest {
 		links: s.links ?? [],
 		files: s.files ?? [],
 		mode: "blocking",
-		...(s.options ? { options: s.options } : {}),
-		...(s.briefing ? { briefing: s.briefing } : {}),
+		...(fields.options ? { options: fields.options } : {}),
+		briefing,
 	};
 }
 
@@ -334,7 +338,7 @@ describe("final review fixes", () => {
 		const before = (summary: string) => {
 			const text = renderForgeRequest(request({ subject: "gate:define", summary }));
 			expect(headings(text)).toHaveLength(1);
-			return text.slice(text.indexOf("### Review"), text.indexOf("### How to answer"));
+			return text.slice(text.indexOf("### Review"), text.indexOf(`### ${AGENT_HEADING}`));
 		};
 
 		test("a quoted fence is not counted, so an unquoted open fence is still closed", () => {
@@ -366,5 +370,26 @@ describe("final review fixes", () => {
 		const text = renderForgeRequest(failingPlan({ summary: "S", recommended: "waive", rationale: "Because.", author: "agent" }));
 		expect(text).toContain("> Recommended: Waive size-limits\n>\n> Rationale: Because.");
 		expect(text).not.toContain("Recommended: waive");
+	});
+});
+
+describe("every request kind carries a recommendation", () => {
+	const cases: [string, Spec][] = [
+		["gate", { subject: "gate:define" }],
+		["amendment", { subject: "amend:1" }],
+		["question", { subject: "question:Q1", kind: "question", snapshot: { id: "Q1", text: "Which store?" }, options: [{ id: "A", label: "Redis", description: "Keep counters in Redis." }, { id: "B", label: "Postgres", description: "Keep counters in Postgres." }] }],
+		["stuck report", { subject: "stuck:S1", kind: "stuck", snapshot: { id: "S1" } }],
+		["rule ask", { subject: "decide:tags.U1", kind: "stuck", snapshot: { point: "tags", subject: "U1", facts: {} } }],
+	];
+
+	test.each(cases)("%s has a briefing with recommended and rationale, the recommended row first", (_name, spec) => {
+		const r = request(spec);
+		expect(r.briefing?.recommended).toBeDefined();
+		expect(r.briefing?.rationale).toBeDefined();
+		const text = renderForgeRequest(r);
+		expect(text).toContain("Recommended:");
+		expect(text).toContain("Rationale:");
+		const rows = text.split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Choice") && !l.startsWith("| ---"));
+		if (rows.length > 0) expect(rows[0]).toContain("(recommended)");
 	});
 });

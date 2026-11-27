@@ -1,4 +1,4 @@
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -69,7 +69,7 @@ afterEach(async () => {
 describe("verify-red-on-base", () => {
 	test("Green on base refuses the plan gate", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }, { id: "U2", verify: "true" }]);
-		const out = await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
@@ -91,7 +91,7 @@ describe("verify-red-on-base", () => {
 
 	test("Refactor without a test", async () => {
 		const missing = await planChange([{ id: "U2", verify: "true", kind: "refactor", files: ["tests/u2.test.ts"] }]);
-		await missing.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await missing.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		const first = await requestOf(missing);
 		expect(first.data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(first.text).toContain("refactor needs an existing test");
@@ -106,7 +106,7 @@ describe("verify-red-on-base", () => {
 
 	test("Missing toolchain is not red", async () => {
 		const h = await planChange([{ id: "U1", verify: "nosuchtool-livespec test" }]);
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(text).toContain("could not run");
@@ -114,7 +114,7 @@ describe("verify-red-on-base", () => {
 
 	test("Blocked Verify is never run", async () => {
 		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG && git push" }]);
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
 		expect(text).toContain("blocked");
@@ -147,7 +147,7 @@ describe("verify-red-on-base", () => {
 
 	test("missing environment cannot be approved without a waiver", async () => {
 		const h = await planChange([{ id: "U1", verify: COUNT }], {}, false);
-		const out = await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		const { data, text } = await requestOf(h);
 		expect(data.snapshot.failingWaivable).toEqual(["verify-red-on-base"]);
@@ -197,9 +197,9 @@ describe("gate-only check at the gate", () => {
 describe("memo of invalid runs", () => {
 	test("a not-runnable Verify runs once across two gates", async () => {
 		const h = await planChange([{ id: "U1", verify: "echo run >> $LOG; exit 127" }]);
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(h.runs()).toBe(1);
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(h.runs()).toBe(1);
 		const { text } = await requestOf(h);
 		expect(text).toContain("could not run");
@@ -230,9 +230,9 @@ describe("memo of blocked runs", () => {
 			const guard = env.run.guard;
 			return { ...env, run: { ...env.run, guard: (cmd: string) => (consulted++, guard(cmd)) } };
 		});
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(consulted).toBe(1);
-		await h.call("spec_gate", { target: GATE, briefing: BRIEFING });
+		await h.call("spec_gate", { target: GATE, briefing: WAIVE_BRIEFING });
 		expect(consulted).toBe(1);
 		expect(h.runs()).toBe(0);
 		expect((await requestOf(h)).text).toContain("blocked");

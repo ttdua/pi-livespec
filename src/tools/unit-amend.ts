@@ -195,9 +195,9 @@ export function amendSubject(state: ChangeState): Subject {
 }
 
 /** The light gate request: only the affected unit, with its classification overridable unless it is dropped. */
-export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, now: Date, briefing?: Briefing): ApprovalRequest {
+export function amendRequest(state: ChangeState, plan: AmendPlan, body: string, now: Date, briefing: Briefing): ApprovalRequest {
 	const subject = amendSubject(state);
-	const extra = briefing === undefined ? {} : { briefing };
+	const extra = { briefing };
 	const record = prepareRequest({ kind: "gate", subject, mode: "blocking", ...extra, head: state.git.head, body, snapshot: plan.snapshot, summary: plan.summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", ...extra };

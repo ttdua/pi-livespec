@@ -4,6 +4,7 @@ import type { Comment, Forge } from "../../src/forge/types.ts";
 import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
+import { contractFields } from "../helpers/briefing.ts";
 import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
@@ -17,18 +18,20 @@ type Spec = { kind?: RequestKind; subject: Subject; mode?: RequestMode; options?
 
 function approval(s: Spec): ApprovalRequest {
 	const kind = s.kind ?? "gate";
+	const snapshot = s.snapshot ?? { target: s.subject.slice(5), failingWaivable: [] };
+	const fields = contractFields(kind, s.subject, snapshot, s.options);
 	const record = prepareRequest({
 		kind,
 		subject: s.subject,
 		mode: s.mode ?? "blocking",
-		...(s.options ? { options: s.options } : {}),
+		...fields,
 		head: HEAD,
 		body: "body",
-		snapshot: s.snapshot ?? { target: s.subject.slice(5), failingWaivable: [] },
+		snapshot,
 		summary: `Review ${s.subject}`,
 		now: s.now ?? NOW,
 	});
-	return { id: record.id, kind, subject: s.subject, record, change: 1, phase: "define", summary: record.summary, links: [], files: [], mode: record.mode, ...(s.options ? { options: s.options } : {}) };
+	return { id: record.id, kind, subject: s.subject, record, change: 1, phase: "define", summary: record.summary, links: [], files: [], mode: record.mode, ...(fields.options ? { options: fields.options } : {}), briefing: fields.briefing };
 }
 
 async function setup() {

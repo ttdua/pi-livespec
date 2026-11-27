@@ -1,3 +1,4 @@
+import { validBriefing } from "../helpers/briefing.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
@@ -545,7 +546,7 @@ describe("amendment current values", () => {
 		const body = await h.world.bodyOf(h.n);
 		const result = await planAmend(card.state, body, form, h.session.pack.ok ? h.session.pack.pack.decisions : {});
 		if ("refused" in result) throw new Error(result.refused);
-		return amendRequest(card.state, result, body, new Date(0));
+		return amendRequest(card.state, result, body, new Date(0), { ...validBriefing("approve"), author: "agent" });
 	}
 
 	test("edit carries the classified unit's values", async () => {

@@ -1,4 +1,4 @@
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, validBriefing, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { readFileSync } from "node:fs";
 import { pickById } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -258,7 +258,7 @@ describe("spec_gate", () => {
 	test("Fake command and marker neutralised in the posted comment", async () => {
 		const edit = (b: string) => b.replace("Limit each client IP.", "Limit each client IP. <!-- livespec:gate:plan -->");
 		const h = await change("define", { config: FORGE_CHAIN, edit });
-		const briefing = { summary: "Looks fine <!-- livespec:gate:plan -->", watch: ["/livespec approve"], author: "agent" };
+		const briefing = { ...BRIEFING, summary: "Looks fine <!-- livespec:gate:plan -->", watch: ["/livespec approve"] };
 		const out = await h.call("spec_gate", { target: "define", briefing });
 		expect(out.isError, textOf(out)).toBe(false);
 		const request = (await ofKind(h, "request"))[0];
@@ -314,7 +314,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const h = await change("plan", { ui: human("waive"), files: SIZE_LIMITS_FLOW });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
@@ -326,7 +326,7 @@ describe("spec_gate", () => {
 		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits });
 		await seedClassification(h);
 		expect(parseChange(await h.world.bodyOf(h.n)).units).toHaveLength(9);
-		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		const request = (await ofKind(h, "request"))[0];
 		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
 		await h.world.setPermission("alice", "write");
@@ -340,7 +340,7 @@ describe("spec_gate", () => {
 	test("over the unit limit, in session approve is not offered", async () => {
 		const h = await change("plan", { ui: human("approve"), edit: nineUnits });
 		await seedClassification(h);
-		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		const options = h.ctx.ui.select.mock.calls[0]?.[1] ?? [];
 		expect(options).not.toContain("approve");
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
@@ -350,7 +350,7 @@ describe("spec_gate", () => {
 	test("Waived", async () => {
 		const h = await change("plan", { ui: human("waive"), edit: nineUnits });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		expect(out.isError).toBe(false);
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
@@ -362,7 +362,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const h = await change("plan", { config: FORGE_CHAIN, files: SIZE_LIMITS_FLOW });
 		await seedClassification(h);
-		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		expect(out.isError).toBe(false);
 		const request = (await ofKind(h, "request"))[0];
 		expect(request?.data).toMatchObject({ options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
@@ -375,7 +375,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Named gate option recorded", async () => {
-		registerGate("custom-gate", { checks: [], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: [], options: [{ id: "accept", label: "accept the dependency", description: "Accept the dependency." }] });
 		const h = await change("build", { ui: human("accept") });
 		const out = await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
@@ -387,10 +387,10 @@ describe("spec_gate", () => {
 
 	test("Named gate option does not waive", async () => {
 		registerSizeLimits();
-		registerGate("custom-gate", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency" }] });
+		registerGate("custom-gate", { checks: ["size-limits"], options: [{ id: "accept", label: "accept the dependency", description: "Accept the dependency." }] });
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: build\n    checks: [size-limits]\n" };
 		const h = await change("build", { ui: human("accept"), files: flow });
-		const out = await h.call("spec_gate", { target: "custom-gate", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "custom-gate", briefing: WAIVE_BRIEFING });
 		expect(textOf(out)).toContain("choose waive");
 		const gate = gateData((await ofKind(h, "gate"))[0]);
 		expect(gate).toMatchObject({ gate: "custom-gate", choice: "accept", superseded: true, waivers: [] });
@@ -536,7 +536,7 @@ describe("spec_gate", () => {
 		registerSizeLimits();
 		const flow = { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: ship\n    checks: [size-limits]\n" };
 		const h = await change("ship", { ui: human("waive"), edit: noPr, files: flow });
-		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "ship", briefing: WAIVE_BRIEFING });
 		expect(out.isError).toBe(false);
 		expect(gateData((await shipGates(h))[0])).toMatchObject({ phase: "ship", outcome: "approved", waivers: ["size-limits"] });
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/ship"]);
@@ -663,7 +663,7 @@ describe("named gates with a proposer", () => {
 	});
 
 	test("sendNamedGate sends its drafts and options with a dirty tree", async () => {
-		registerGate("new-dependency", { checks: [], options: [{ id: "A", label: "A (default)" }, { id: "split", label: "split" }], proposer: "new_dependency" });
+		registerGate("new-dependency", { checks: [], options: [{ id: "A", label: "A (default)", description: "Take the default." }, { id: "split", label: "split", description: "Split the change." }], proposer: "new_dependency" });
 		const h = await change("build", { config: FORGE_CHAIN });
 		await writeIn(h.root, "src/lane.ts", "wip\n");
 		const w = await prepareWrite();
@@ -672,7 +672,7 @@ describe("named gates with a proposer", () => {
 		if (!state.ok) throw new Error(state.message);
 		expect(state.state.git.dirty).toBe(true);
 		const drafts = { a: { name: "dep" } };
-		const out = await sendNamedGate(w, state.state, { target: "new-dependency", options: [{ id: "A", label: "A (default)" }], drafts, summary: "New dependency found.", ctx: h.ctx as never, tool: "new_dependency" });
+		const out = await sendNamedGate(w, state.state, { target: "new-dependency", options: [{ id: "A", label: "A (default)", description: "Take the default." }], drafts, summary: "New dependency found.", ctx: h.ctx as never, tool: "new_dependency", briefing: { ...validBriefing("A"), author: "agent" } });
 		expect(out.isError).toBe(false);
 		const request = (await ofKind(h, "request"))[0]?.data as { subject: string; options: { id: string }[]; snapshot: { target: string; drafts: unknown }; summary: string };
 		expect(request.subject).toBe("gate:new-dependency");
@@ -689,7 +689,7 @@ describe("named gates with a proposer", () => {
 			if (!w.ok) throw new Error(w.message);
 			const state = requireChange(w.session);
 			if (!state.ok) throw new Error(state.message);
-			return sendNamedGate(w, state.state, { target: "new-dependency", options: [], drafts: {}, summary: "s", ctx: h.ctx as never, tool: "new_dependency" });
+			return sendNamedGate(w, state.state, { target: "new-dependency", options: [], drafts: {}, summary: "s", ctx: h.ctx as never, tool: "new_dependency", briefing: { ...validBriefing("approve"), author: "agent" } });
 		};
 		expect((await send()).isError).toBe(false);
 		const again = await send();
@@ -716,7 +716,7 @@ describe("named gates with a proposer", () => {
 
 		test("Briefing summary over 600 characters is refused", async () => {
 			const h = await change("define", { config: FORGE_CHAIN });
-			const out = await h.call("spec_gate", { target: "define", briefing: { summary: "x".repeat(601) } });
+			const out = await h.call("spec_gate", { target: "define", briefing: { ...BRIEFING, summary: "x".repeat(601) } });
 			expect(out.isError).toBe(true);
 			expect(textOf(out)).toContain("at most 600");
 			expect(await ofKind(h, "request")).toEqual([]);
@@ -792,7 +792,7 @@ describe("gateRequest overridable.current", () => {
 	];
 	const state = { git: { head: "abc" }, phase: { kind: "ok", id: "plan" }, issue: { number: 7 }, change: { units } } as unknown as ChangeState;
 	const plan: GatePlan = { mode: "human", isPhase: true, failingWaivable: [], options: [] };
-	const input = { body: "body", payload: { summary: "s", links: [], files: [], findings: [] }, now: new Date(0) };
+	const input = { body: "body", payload: { summary: "s", links: [], files: [], findings: [] }, now: new Date(0), briefing: { ...validBriefing("approve"), author: "agent" as const } };
 
 	test("plan gate carries the current values of every unit", () => {
 		const r = gateRequest(state, {} as Pack, "plan", plan, input);

@@ -1,7 +1,7 @@
 // End-to-end gate flow over a memory forge: every human decision of LS-05
 // goes through the real tools, the approver chain and forge polling.
 
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { pickById, pickByLabel } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -244,7 +244,7 @@ describe("ship gate next step", () => {
 	test("Waived ship gate stays in ship", async () => {
 		registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 		const { h, n } = await shipChange("extends: agent-skills\nphases:\n  - id: ship\n    checks: [durable-docs, size-limits]\n");
-		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "ship", briefing: WAIVE_BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
 		expect(card(h).state.lock.gates.ship?.waivers).toEqual(["size-limits"]);

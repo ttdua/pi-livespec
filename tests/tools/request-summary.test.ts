@@ -1,3 +1,4 @@
+import { validBriefing } from "../helpers/briefing.ts";
 import { describe, expect, test } from "vitest";
 import type { ApprovalRequest } from "../../src/interaction/approver.ts";
 import { decisionRequest } from "../../src/tools/decide-ask.ts";
@@ -33,6 +34,6 @@ describe("the request summary is the stored record summary", () => {
 
 	test("amend", () => {
 		const snapshot = { action: "add", unit: "U1", lines: [], records: [] } as never;
-		expectMatches(amendRequest(state, { snapshot, summary: RAW }, "body", NOW));
+		expectMatches(amendRequest(state, { snapshot, summary: RAW }, "body", NOW, { ...validBriefing("approve"), author: "agent" }));
 	});
 });

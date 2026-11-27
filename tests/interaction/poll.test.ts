@@ -8,6 +8,7 @@ import type { Forge } from "../../src/forge/types.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import type { RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
+import { contractFields } from "../helpers/briefing.ts";
 import { answerComment, prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH, cardText, cleanupHomes, harness, resumeBody } from "../hooks/helpers.ts";
@@ -34,7 +35,7 @@ async function postRequest(world: MemoryWorld, n: number, r: RequestRecord): Pro
 }
 
 function request(kind: RequestRecord["kind"], subject: Subject, snapshot: RequestSnapshot, body: string, head: string, at: number, options?: RequestRecord["options"]): RequestRecord {
-	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head, body, snapshot, summary: `Review ${subject}`, now: new Date(Date.UTC(2026, 0, 1, 0, 0, at)) });
+	return prepareRequest({ kind, subject, mode: "blocking", ...contractFields(kind, subject, snapshot, options), head, body, snapshot, summary: `Review ${subject}`, now: new Date(Date.UTC(2026, 0, 1, 0, 0, at)) });
 }
 
 async function ownMarked(world: MemoryWorld, n: number): Promise<MarkedComment[]> {

@@ -1,7 +1,7 @@
 // End-to-end initiative and discovered-dependency flows (issue #34 "Done when"): every human decision goes through
 // the real tools and an in-session approver over a memory forge with a real bare origin.
 
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -107,7 +107,7 @@ describe("initiatives and discovered dependencies", () => {
 		// Nine units exceed max_units 8: the human is not offered approve, and the gate does not pass.
 		const pick = { current: "approve" };
 		const h = await plannedChange(pick, 9);
-		ok(await h.call("spec_gate", { target: "plan", briefing: BRIEFING }), "plan gate over the limits");
+		ok(await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING }), "plan gate over the limits");
 		const offered = (h.ctx.ui.select.mock.calls[0]?.[1] ?? []) as string[];
 		expect(offered).not.toContain("approve");
 		expect(offered.some((o) => o.startsWith("Waive size-limits"))).toBe(true);
@@ -125,7 +125,7 @@ describe("initiatives and discovered dependencies", () => {
 
 		// Separately, a human waives size-limits for another nine-unit plan.
 		const waived = await plannedChange({ current: "waive" }, 9);
-		ok(await waived.call("spec_gate", { target: "plan", briefing: BRIEFING }), "plan gate waived");
+		ok(await waived.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING }), "plan gate waived");
 		expect(await latestGate(waived)).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
 		expect(await phaseOf(waived)).toEqual(["livespec:phase/build"]);
 		expect(parseChange(await waived.world.bodyOf(waived.n)).units).toHaveLength(9);
