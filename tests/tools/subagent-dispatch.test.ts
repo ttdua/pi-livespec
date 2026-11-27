@@ -1,14 +1,17 @@
 // Tests of `subagent_dispatch` and `subagent_packet` through the registered tools, with a fake executor service.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { claim, targetKey } from "../../src/subagents/in-flight.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { clearInFlight } from "../../src/subagents/in-flight.ts";
 import { done, SERVICE_KEY, publish, unpublish } from "../subagents/fake-executor.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { footerIds, subagentHarness } from "./subagent-helpers.ts";
 
 afterEach(async () => {
+	clearInFlight();
 	unpublish();
 	setSession(undefined);
 	await cleanupDirs();
@@ -402,5 +405,114 @@ describe("outcome text", () => {
 		const out = outcomeText(t, { kind: "stuck", reason: "r", result: prerequisite, prerequisite: true });
 		expect(out.split("needs a token store")).toHaveLength(2);
 		expect(out).toContain("new_dependency U1");
+	});
+	test("a respawn is named before the outcome line", async () => {
+		const { outcomeText } = await import("../../src/tools/subagent-outcome.ts");
+		const out = outcomeText(t, { kind: "blocked", reason: "r", respawn: { from: "agent-1", to: "agent-2", reason: "boom <x>" } });
+		expect(out.indexOf("agent-1")).toBeGreaterThanOrEqual(0);
+		expect(out.indexOf("agent-2")).toBeLessThan(out.indexOf("is BLOCKED"));
+		expect(out).toContain("<untrusted>boom &lt;x></untrusted>");
+	});
+});
+
+describe("one live dispatch per target", () => {
+	test("Second dispatch while one runs", async () => {
+		const h = await subagentHarness({ executor: {} });
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		h.fake.service.wait = (async (id: string) => {
+			await gate;
+			return { id, status: "completed", structuredResult: citing(h)() };
+		}) as never;
+		const first = h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await vi.waitFor(() => expect(h.fake.spawned).toHaveLength(1));
+		const second = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(second.isError).toBe(true);
+		expect(textOf(second)).toContain("agent-1");
+		expect(h.fake.spawned).toHaveLength(1);
+		release();
+		await first;
+		next(h, citing(h));
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(h.fake.spawned).toHaveLength(2);
+	});
+
+	test("Dispatch while a question waits", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		const again = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(again.isError).toBe(true);
+		expect(textOf(again)).toContain("agent-1");
+		expect(textOf(again)).toContain("subagent_answer");
+		expect(h.fake.spawned).toHaveLength(1);
+	});
+
+	test("Stale question does not block", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }], unknownIds: ["agent-1"] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(h.fake.spawned).toHaveLength(2);
+	});
+
+	test("the claim is released after a pending-question refusal", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		const claimed = claim(targetKey(h.n, { role: "implementer", unit: "U1" }));
+		expect(claimed).toBeUndefined();
+	});
+
+	test("the claim is released after a cancelled dispatch", async () => {
+		const h = await subagentHarness({ executor: {} });
+		const cancel = new AbortController();
+		hangUntilAborted(h, [], cancel);
+		const out = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }, cancel.signal);
+		expect(out.isError).toBe(true);
+		h.fake.service.wait = (async (id: string) => ({ id, status: "completed", structuredResult: done({ sources_used: footerIds(h.fake.spawned.at(-1)?.prompt ?? "") }) })) as never;
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		expect(h.fake.spawned).toHaveLength(2);
+	});
+});
+
+describe("guard race", () => {
+	/** Holds the first packet build (its first `whoami`) until `open`; `entered` resolves once a build is held. */
+	function holdFirstBuild(h: Awaited<ReturnType<typeof subagentHarness>>) {
+		const forge = h.session.forge as unknown as { whoami: () => Promise<unknown> };
+		const real = forge.whoami.bind(forge);
+		let open = (): void => undefined;
+		let entered = (): void => undefined;
+		const held = new Promise<void>((r) => { open = r; });
+		const inBuild = new Promise<void>((r) => { entered = r; });
+		let first = true;
+		forge.whoami = async () => {
+			if (first) {
+				first = false;
+				entered();
+				await held;
+			}
+			return real();
+		};
+		return { open, inBuild };
+	}
+
+	test("two concurrent dispatches of one target never spawn two children", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		const gate = holdFirstBuild(h);
+		const b = h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		await gate.inBuild;
+		const a = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		gate.open();
+		const outs = [a, await b];
+		expect(h.fake.spawned).toHaveLength(1);
+		expect(outs.filter((o) => o.isError)).toHaveLength(1);
+		expect(textOf(outs.find((o) => o.isError) as never)).toMatch(/agent-1|already running/);
+	});
+
+	test("the claim is released when the pending-question check throws", async () => {
+		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
+		(h.fake.service as { getRecord: unknown }).getRecord = () => { throw new Error("boom"); };
+		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" }).catch(() => undefined);
+		expect(claim(targetKey(h.n, { role: "implementer", unit: "U1" }))).toBeUndefined();
 	});
 });

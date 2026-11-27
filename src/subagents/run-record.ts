@@ -1,7 +1,7 @@
 // The forge record of one settled run, dispatched or inline: a `dispatch` comment for writers and scouts, a `finding-summary` for reviewers and verifiers.
 
 import type { MarkedComment } from "../forge/markers.ts";
-import { computeCompleted, current, isLaunchMismatch, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
+import { computeCompleted, current, isLaunchMismatch, NON_RUN_STATUSES, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
 import type { ReviewSubject, Role, SubagentResult } from "./roles.ts";
 import type { Packet } from "./source-types.ts";
 
@@ -35,7 +35,7 @@ const isReviewRole = (role: Role): boolean => role === "reviewer" || role === "v
 export function nextAttempt(marked: MarkedComment[], role: Role, unit: string | undefined): number {
 	return current(marked).filter((m) => {
 		const d = m.data as Partial<DispatchData>;
-		const settled = d.status !== undefined && !["QUESTION", "ANSWERED"].includes(d.status);
+		const settled = d.status !== undefined && !NON_RUN_STATUSES.includes(d.status);
 		return m.kind === "dispatch" && d.role === role && d.unit === unit && settled && !isLaunchMismatch(d) && d.contextRequest === undefined;
 	}).length + 1;
 }

@@ -191,4 +191,12 @@ describe("dispatch outcomes of a stage", () => {
 		expect(line.line).toContain(text);
 		expect(line.inline).toBe(inline);
 	});
+
+	test("a respawn is named in the line", async () => {
+		const { outcomeLine } = await import("../../src/review/stages.ts");
+		const { line } = outcomeLine(t, { kind: "blocked", reason: "r", respawn: { from: "agent-1", to: "agent-2", reason: "boom" } });
+		expect(line).toContain("agent-1");
+		expect(line).toContain("agent-2");
+		expect(line.indexOf("agent-2")).toBeLessThan(line.indexOf("BLOCKED"));
+	});
 });

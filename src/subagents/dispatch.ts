@@ -3,19 +3,24 @@
 import { BUILTIN_SOURCE, type LaunchFacts, type RecordLike, type SubagentsServiceLike } from "./executor.ts";
 import { checkLaunch, type EventsLike, type Mismatch, spawnOptions, watchLaunch } from "./launch.ts";
 import { dispatchComment, type QuestionLaunch, type Thinking } from "./records.ts";
+import { retryRun, resumeChild } from "./resume.ts";
 import { type DispatchHistory, interpret, type ResultDecision } from "./result.ts";
 import { AGENT_OF, type ReviewSubject, type Role, type SubagentEntry, type SubagentResult } from "./roles.ts";
 import { blockedResult, LAUNCH_MISMATCH, mismatchComment, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
 import type { Packet } from "./source-types.ts";
 
-export type DispatchOutcome =
+/** A fallback child replaced `from` because it could not be resumed. */
+export type Respawn = { from: string; to: string; reason: string };
+
+export type DispatchOutcome = (
 	| { kind: "result"; result: SubagentResult; facts: LaunchFacts; sourcesNamed?: string[] }
 	| { kind: "question"; id: string; text: string }
 	| { kind: "inline"; reason: string; packet: Packet }
 	| { kind: "sequential"; reason: string }
 	| { kind: "blocked"; reason: string; result?: SubagentResult }
 	| { kind: "stuck"; reason: string; result?: SubagentResult; prerequisite?: true }
-	| { kind: "cancelled"; reason: string };
+	| { kind: "cancelled"; reason: string }
+) & { respawn?: Respawn };
 
 export type AgentInfo = { name: string; source: string; filePath?: string };
 
@@ -29,6 +34,8 @@ export type DispatchDeps = RecordDeps & {
 	signal?: AbortSignal;
 	/** How long to wait for an aborted child to settle before the forge write; defaults to `ABORT_SETTLE_MS`. */
 	abortSettleMs?: number;
+	/** Called with the id of every child the dispatch spawns, right after the spawn. */
+	onLaunch?(agentId: string): void;
 };
 
 /** Bound on waiting for an aborted child to settle. */
@@ -55,11 +62,12 @@ export type DispatchRequest = {
 /** One launch's identity and the facts the record needs. */
 export type Run = { agentId: string; facts: LaunchFacts; thinking: Thinking; agentSource: string };
 
-type Launched = { kind: "settled"; run: Run; record: RecordLike } | { kind: "stop"; outcome: DispatchOutcome };
+/** `lost`: the wait rejected, so the record is made up and the child may still run. */
+export type Launched = { kind: "settled"; run: Run; record: RecordLike; lost?: true } | { kind: "stop"; outcome: DispatchOutcome };
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-function runFacts(request: DispatchRequest, run: Run): RunFacts {
+export function runFacts(request: DispatchRequest, run: Run): RunFacts {
 	return {
 		role: request.role, ...(request.unit === undefined ? {} : { unit: request.unit }), ...(request.subject === undefined ? {} : { subject: request.subject }),
 		agentId: run.agentId, attempt: request.attempt, round: request.round, packet: request.packet, agentSource: run.agentSource,
@@ -111,7 +119,7 @@ async function waitWithFacts(deps: DispatchDeps, agentId: string, watch: ReturnT
 }
 
 /** Spawns one child and checks its effective launch before waiting for its result. */
-async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource: string): Promise<Launched> {
+export async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource: string): Promise<Launched> {
 	const options = spawnOptions(request.packet, request.role, request.entry, request.difficulty, request.failedAttempts, request.exclusions, {
 		change: request.change, ...(request.unit === undefined ? {} : { unit: request.unit }), ...(request.subject === undefined ? {} : { subject: request.subject }), ...(request.lane === undefined ? {} : { lane: request.lane }),
 	});
@@ -125,6 +133,7 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 		} catch (error) {
 			return { kind: "stop", outcome: { kind: "inline", reason: `the executor refused the launch: ${messageOf(error)}; ${request.role} runs inline`, packet: request.packet } };
 		}
+		deps.onLaunch?.(agentId);
 		disposeCancel = abortChildOnCancel(deps.service, agentId, deps.signal);
 		const { facts, waited } = await waitWithFacts(deps, agentId, watch, settled);
 		if (isCancelled(deps.signal)) {
@@ -134,7 +143,12 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 		const run: Run = { agentId, facts: facts ?? { context: "unknown", cwd: "unknown" }, thinking: options.thinkingLevel, agentSource };
 		const check = checkLaunch(options, facts);
 		if (!check.ok) return { kind: "stop", outcome: await mismatchOutcome(deps, request, run, check, waited) };
-		return { kind: "settled", run, record: await waited.catch((error: unknown): RecordLike => ({ id: agentId, status: "error", error: messageOf(error) })) };
+		let lost = false;
+		const record = await waited.catch((error: unknown): RecordLike => {
+			lost = true;
+			return { id: agentId, status: "error", error: messageOf(error) };
+		});
+		return { kind: "settled", run, record, ...(lost ? { lost: true as const } : {}) };
 	} finally {
 		disposeCancel();
 		watch.dispose();
@@ -145,7 +159,7 @@ async function launch(deps: DispatchDeps, request: DispatchRequest, agentSource:
 const mismatchEvidence = (found: Mismatch[]): string => found.map((m) => `${m.field}: requested ${m.requested}, effective ${m.effective}`).join("; ");
 
 /** True once `run` settles (a rejection counts as settled), false when `ms` pass first. */
-async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean> {
+export async function settledWithin(run: Promise<unknown>, ms: number): Promise<boolean> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const expired = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), ms); });
 	try {
@@ -176,10 +190,10 @@ function questionLaunch(facts: RunFacts): QuestionLaunch {
 }
 
 /** Records a decision that ends the dispatch, and turns it into the outcome. */
-async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: LaunchFacts, decision: Exclude<ResultDecision, { kind: "retry" } | { kind: "return" }>): Promise<DispatchOutcome> {
+export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: LaunchFacts, decision: Exclude<ResultDecision, { kind: "retry" } | { kind: "return" }>): Promise<DispatchOutcome> {
 	switch (decision.kind) {
 		case "question":
-			await deps.post(dispatchComment({ status: "QUESTION", role: run.role, ...(run.unit === undefined ? {} : { unit: run.unit }), ...(run.subject === undefined ? {} : { subject: run.subject }), agentId: run.agentId as string, attempt: run.attempt, question: decision.text, launch: questionLaunch(run) }));
+			await deps.post(dispatchComment({ status: "QUESTION", role: run.role, ...(run.unit === undefined ? {} : { unit: run.unit }), ...(run.subject === undefined ? {} : { subject: run.subject }), ...(run.finding === undefined ? {} : { finding: run.finding }), agentId: run.agentId as string, attempt: run.attempt, question: decision.text, launch: questionLaunch(run) }));
 			return { kind: "question", id: run.agentId as string, text: decision.text };
 		case "blocked":
 			await recordResult(deps, run, cwd, blockedResult(decision.reason));
@@ -195,46 +209,41 @@ async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: Lau
 	}
 }
 
-/** Resumes the child naming the missing sources and waits for its next run; a refused resume blocks. */
-async function returnToChild(deps: DispatchDeps, agentId: string, missing: string[]): Promise<RecordLike | string> {
-	const message = `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every source you used.`;
-	const disposeCancel = abortChildOnCancel(deps.service, agentId, deps.signal);
-	try {
-		const resumed = (await deps.service.resume(agentId, message)) as { kind?: string; reason?: string } | undefined;
-		if (resumed?.kind === "refused") return `the executor refused to resume ${agentId}: ${resumed.reason ?? "no reason"}`;
-		return await waitFor(deps.service, agentId, deps.signal);
-	} catch (error) {
-		return `resuming ${agentId} failed: ${messageOf(error)}`;
-	} finally {
-		disposeCancel();
-	}
-}
+/** What the child is told when its result omits required sources. */
+const returnMessage = (missing: string[]): string => `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every source you used.`;
 
-/** Interprets settled runs until one ends the dispatch: a retry relaunches with the same packet, a return resumes the child once. */
-export async function settle(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory): Promise<DispatchOutcome> {
+/** Interprets settled runs until one ends the dispatch: a retry resumes the child (one fallback child at most), a return resumes it naming the missing sources once. */
+async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory, trace: { respawn?: Respawn }): Promise<DispatchOutcome> {
 	let { run, record } = first;
 	let seen = history;
 	for (;;) {
 		if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
-		const facts = runFacts(request, run);
 		const decision = interpret(record, request.packet, request.role, seen);
 		if (decision.kind === "retry") {
-			const again = await launch(deps, request, run.agentSource);
-			if (again.kind === "stop") return again.outcome;
-			({ run, record } = again);
-			seen = { ...seen, retries: seen.retries + 1 };
+			const step = await retryRun(deps, request, run, decision.reason, decision.shown, seen);
+			if (step.kind === "stop") return step.outcome;
+			({ run, record } = step);
+			if (step.respawn !== undefined) trace.respawn = step.respawn;
+			seen = { ...seen, retries: seen.retries + 1, respawned: seen.respawned || step.respawn !== undefined };
 			continue;
 		}
 		if (decision.kind === "return") {
-			const next = await returnToChild(deps, run.agentId, decision.missing);
+			const next = await resumeChild(deps, run.agentId, returnMessage(decision.missing));
 			if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
-			if (typeof next === "string") return finish(deps, facts, request.packet.cwd, run.facts, { kind: "blocked", reason: next });
+			if (typeof next === "string") return finish(deps, runFacts(request, run), request.packet.cwd, run.facts, { kind: "blocked", reason: next });
 			record = next;
 			seen = { ...seen, returns: seen.returns + 1 };
 			continue;
 		}
-		return finish(deps, facts, request.packet.cwd, run.facts, decision);
+		return finish(deps, runFacts(request, run), request.packet.cwd, run.facts, decision);
 	}
+}
+
+/** `settleLoop`, with the fallback swap (if any) named on the outcome. */
+export async function settle(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory): Promise<DispatchOutcome> {
+	const trace: { respawn?: Respawn } = {};
+	const outcome = await settleLoop(deps, request, first, history, trace);
+	return trace.respawn === undefined ? outcome : { ...outcome, respawn: trace.respawn };
 }
 
 /** One dispatch: the role's agent, a checked launch, then the interpreted result. */
@@ -244,7 +253,7 @@ export async function runDispatch(deps: DispatchDeps, request: DispatchRequest):
 	if ("kind" in agent) return agent;
 	const launched = await launch(deps, request, agent.source);
 	if (launched.kind === "stop") return launched.outcome;
-	return settle(deps, request, launched, { needsContext: request.needsContext, retries: 0, returns: 0 });
+	return settle(deps, request, launched, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: false });
 }
 
 /** A run resumed by `subagent_answer`: its launch facts come from the `QUESTION` record. */

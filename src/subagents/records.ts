@@ -39,8 +39,18 @@ export const isLaunchMismatch = (d: unknown): boolean => (d as { launchMismatch?
 
 /** A child's question, or its answer; both carry the agent id that links them to the later result. */
 export type DispatchQuestionData =
-	| { status: "QUESTION"; role: Role; unit?: string; subject?: ReviewSubject; agentId: string; attempt?: number; question: string; launch?: QuestionLaunch }
-	| { status: "ANSWERED"; role: Role; unit?: string; agentId: string; attempt?: number; answer: string };
+	| { status: "QUESTION"; role: Role; unit?: string; subject?: ReviewSubject; finding?: string; agentId: string; attempt?: number; question: string; launch?: QuestionLaunch }
+	| { status: "ANSWERED"; role: Role; unit?: string; agentId: string; attempt?: number; answer: string }
+	| { status: "RETRY"; role: Role; unit?: string; subject?: ReviewSubject; finding?: string; agentId: string; newAgentId: string; attempt: number; reason: string };
+
+/** An open or settled `QUESTION` record. */
+export type QuestionData = Extract<DispatchQuestionData, { status: "QUESTION" }>;
+
+/** The run a question belongs to: role, unit, subject and verified finding. */
+export type QuestionTarget = { role: Role; unit?: string; subject?: ReviewSubject; finding?: string };
+
+/** Statuses of parent-made records that are no settled run and no attempt. */
+export const NON_RUN_STATUSES: readonly string[] = ["QUESTION", "ANSWERED", "RETRY"];
 
 /** What `subagent_answer` needs to record the resumed run as the dispatch would have: the packet and the launch facts. */
 export type QuestionLaunch = { packet: string; agentSource: string; requested: { thinking: Thinking }; effective: { model?: string; thinking?: string }; advisory?: boolean };
@@ -107,7 +117,9 @@ function runSuffix(data: DispatchData): string {
 
 export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}` : runSuffix(data);
+	if (data.status === "RETRY") return writeMarked("dispatch", `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data);
+	// A question and its answer name their child: two children of one role and attempt (verifiers of other findings) must not supersede each other. Older comments without the child still read.
+	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}.${token(data.agentId)}` : runSuffix(data);
 	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
 }
 
@@ -127,7 +139,7 @@ export function rebuttalComment(data: RebuttalData): string {
 const isResultRecord = (m: MarkedComment): boolean => {
 	if (m.kind !== "dispatch") return false;
 	const status = (m.data as { status?: unknown }).status;
-	return status !== "QUESTION" && status !== "ANSWERED" && !isLaunchMismatch(m.data);
+	return !NON_RUN_STATUSES.includes(status as string) && !isLaunchMismatch(m.data);
 };
 
 /** The unit's latest settled `dispatch` record (questions and answers excluded), optionally of one role. */
@@ -311,18 +323,34 @@ export function gatesShownKeys(marked: MarkedComment[]): Set<string> {
 	return keys;
 }
 
-/** The latest launched run whose last record is an unanswered `QUESTION`; rebuilt from comments only. */
-export function pendingQuestion(marked: MarkedComment[]): PendingQuestion | undefined {
+/** Open `QUESTION`s (the asking agent's last record is the question), oldest first; rebuilt from comments only. */
+export function openQuestions(marked: MarkedComment[]): QuestionData[] {
 	const lastByAgent = new Map<string, MarkedComment>();
 	for (const m of current(marked)) {
 		if (m.kind !== "dispatch" && m.kind !== "finding-summary") continue;
 		const agentId = (m.data as { agentId?: unknown } | null)?.agentId;
 		if (typeof agentId === "string") lastByAgent.delete(agentId), lastByAgent.set(agentId, m);
 	}
-	const open = [...lastByAgent.values()].filter((m) => m.kind === "dispatch" && (m.data as { status?: unknown }).status === "QUESTION");
-	const data = open.at(-1)?.data as Extract<DispatchQuestionData, { status: "QUESTION" }> | undefined;
-	if (data === undefined) return undefined;
-	return { ...(data.unit === undefined ? {} : { unit: data.unit }), role: data.role, agentId: data.agentId, question: data.question };
+	return [...lastByAgent.values()].filter((m) => m.kind === "dispatch" && (m.data as { status?: unknown }).status === "QUESTION").map((m) => m.data as QuestionData);
+}
+
+const toPending = (data: QuestionData): PendingQuestion => ({ ...(data.unit === undefined ? {} : { unit: data.unit }), role: data.role, agentId: data.agentId, question: data.question });
+
+/** The latest open question of any target. */
+export function pendingQuestion(marked: MarkedComment[]): PendingQuestion | undefined {
+	const data = openQuestions(marked).at(-1);
+	return data === undefined ? undefined : toPending(data);
+}
+
+/** The latest open question of exactly the target `t` (role, unit, subject and finding). */
+export function pendingQuestionFor(marked: MarkedComment[], t: QuestionTarget): PendingQuestion | undefined {
+	const data = openQuestions(marked).filter((q) => q.role === t.role && q.unit === t.unit && q.subject === t.subject && q.finding === t.finding).at(-1);
+	return data === undefined ? undefined : toPending(data);
+}
+
+/** True when `agentId` was launched as the fallback of an earlier child: a `RETRY` record names it as `newAgentId`. */
+export function isFallbackChild(marked: MarkedComment[], agentId: string): boolean {
+	return current(marked).some((m) => m.kind === "dispatch" && (m.data as { status?: unknown; newAgentId?: unknown }).status === "RETRY" && (m.data as { newAgentId?: unknown }).newAgentId === agentId);
 }
 
 /** The `QUESTION` record of `agentId` when it is the agent's latest record, so the question is still open. */

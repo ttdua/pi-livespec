@@ -18,6 +18,7 @@ import type { ApproverCtx } from "../tools/approver-for.ts";
 import { afterForgeWrite, type WriteContext } from "../tools/guard.ts";
 import { runSpecQuestion } from "../tools/spec-question.ts";
 import { dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "../tools/subagent-request.ts";
+import { respawnLine } from "../tools/subagent-outcome.ts";
 import { argsOf, type Target, type ToolCtx, warn } from "../tools/subagent-target.ts";
 import { mergeFindings, withRoutes } from "./aggregate.ts";
 import { applyRoutes, QuestionNotSent, type RouteEffects } from "./effects.ts";
@@ -74,6 +75,11 @@ const inlineArgs = (t: Target): string => `subagent_packet ${argsOf(t)}, then su
 
 /** What one settled run means for the call: recorded and done, or the reason the call stops. */
 export function outcomeLine(t: Target, outcome: DispatchOutcome): { line: string; stop: boolean; inline?: string } {
+	const settled = settledLine(t, outcome);
+	return { ...settled, line: respawnLine(outcome) + settled.line };
+}
+
+function settledLine(t: Target, outcome: DispatchOutcome): { line: string; stop: boolean; inline?: string } {
 	const args = argsOf(t);
 	switch (outcome.kind) {
 		case "result":

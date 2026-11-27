@@ -102,3 +102,9 @@ export function parseLaunchFacts(payload: unknown): { agentId: string; facts: La
 	};
 	return { agentId: p.agentId, facts };
 }
+
+/** `getRecord` is optional in the contract: without it, an unknown id surfaces as a resume failure. */
+export function knows(service: SubagentsServiceLike, id: string): boolean {
+	const getRecord = (service as { getRecord?: unknown }).getRecord;
+	return typeof getRecord !== "function" || getRecord.call(service, id) !== undefined;
+}
