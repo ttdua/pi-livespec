@@ -4,7 +4,7 @@
 import type { Unit } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import type { Pack } from "../engine/pack-types.ts";
-import type { ChangeState } from "../engine/state-types.ts";
+import type { ChangeState, PhaseState } from "../engine/state-types.ts";
 import { displayUnitId } from "../interaction/display-ids.ts";
 import { unitRoot } from "../subagents/state.ts";
 
@@ -50,11 +50,13 @@ const dirtyTree: Rule = ({ state }) => (state.git.dirty ? "The working tree is d
 
 // --- unit_start -----------------------------------------------------------------------
 
-const notPerUnit: Rule = ({ state, pack }) => {
-	const id = state.phase.kind === "ok" ? state.phase.id : undefined;
-	const phase = pack.phases.find((p) => p.id === id);
-	return phase?.per === "unit" ? undefined : `The change is not in a per: unit phase (phase ${id ?? "unknown"}); units are built in the build phase.`;
-};
+/** The refusal text when `phase` is not a `per: unit` phase of `pack`, or undefined. */
+export function notPerUnitText(phase: PhaseState, pack: Pack): string | undefined {
+	const id = phase.kind === "ok" ? phase.id : undefined;
+	return pack.phases.find((p) => p.id === id)?.per === "unit" ? undefined : `The change is not in a per: unit phase (phase ${id ?? "unknown"}); units are built in the build phase.`;
+}
+
+const notPerUnit: Rule = ({ state, pack }) => notPerUnitText(state.phase, pack);
 
 const notLocked: Rule = ({ state }) => (state.lock.locked === undefined ? "The plan is not locked yet: pass the plan gate first." : undefined);
 
@@ -127,9 +129,9 @@ const digestChanged: Rule = ({ state, unit, target }) => {
 const openLane: Rule = ({ state, unit }) =>
 	unit in state.subagents.lanes ? `${displayUnitId(unit)} has an open lane: merge it with lane_merge ${displayUnitId(unit)} first.` : undefined;
 
-const RUN_RULES: Rule[] = [parkedChange, unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
+const RUN_RULES: Rule[] = [notPerUnit, parkedChange, unknownUnit, doneForFinish, notStarted, openLane, changedSinceLock, digestChanged, blockedUnit, staleState, dirtyTree];
 const INVARIANT_RULES: Rule[] = [unknownUnit, changedSinceLock, digestChanged, blockedUnit];
-const RECONCILE_RULES: Rule[] = [parkedChange, openLane, dirtyTree, changedSinceLock];
+const RECONCILE_RULES: Rule[] = [notPerUnit, parkedChange, openLane, dirtyTree, changedSinceLock];
 
 const LANE_OPEN_RULES: Rule[] = [notPerUnit, notLocked, ...INVARIANT_RULES];
 

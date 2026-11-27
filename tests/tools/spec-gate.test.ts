@@ -16,6 +16,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
+import { requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
 import { type GatePlan, gateRequest, sendNamedGate } from "../../src/tools/spec-gate.ts";
 import { registerSizeLimits as registerSizeLimitsCheck } from "../../src/initiatives/size-limits.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
@@ -577,6 +578,68 @@ describe("spec_gate gate-only checks", () => {
 	});
 });
 
+describe("plan gate requirement record", () => {
+	const atHead = async (h: Gate) => {
+		const scope = requirementScope(parseChange(await h.world.bodyOf(h.n)));
+		return { requirements: await requirementDigests(h.session.git, h.git("rev-parse", "HEAD"), scope), scope };
+	};
+	const snapshotOfRequest = async (h: Gate) => ((await ofKind(h, "request"))[0]?.data as { snapshot: Record<string, unknown> }).snapshot;
+
+	test("Plan gate records the digests: the request snapshot holds requirements at HEAD and requirement_scope", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN });
+		await seedClassification(h);
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const expected = await atHead(h);
+		expect(Object.keys(expected.requirements)).toContain("rate-limit/Requirement: Per-IP cap");
+		expect(expected.scope).toContain("rate-limit");
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.requirements).toEqual(expected.requirements);
+		expect(snapshot.requirement_scope).toEqual(expected.scope);
+	});
+
+	test("Capabilities edited between refresh and request: requirement_scope matches the bound body", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN });
+		await seedClassification(h);
+		const original = await h.world.bodyOf(h.n);
+		const edited = original.replace("modified [rate-limit]", "modified [rate-limit, quota]");
+		expect(edited).not.toBe(original);
+		// A gate-only check runs after the state is read and before the request is built: the edit lands in between.
+		registerCheck(
+			"verify-red-on-base",
+			async () => {
+				const issue = await h.world.forge.getIssue(h.n);
+				if (issue.body !== edited) await h.world.forge.updateIssueBody(h.n, edited, issue.version);
+				return [];
+			},
+			{ waivable: true, at: "gate", key: () => "edit" },
+		);
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.requirement_scope).toEqual(requirementScope(parseChange(edited)));
+		expect(snapshot.requirement_scope).toContain("quota");
+	});
+
+	test("a define gate request records no requirements", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.target).toBe("define");
+		expect(snapshot.requirements).toBeUndefined();
+		expect(snapshot.requirement_scope).toBeUndefined();
+	});
+
+	test("a self plan gate comment records requirements and requirement_scope", async () => {
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError).toBe(false);
+		const expected = await atHead(h);
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate.requirements).toEqual(expected.requirements);
+		expect(gate.requirement_scope).toEqual(expected.scope);
+	});
+});
+
 describe("named gate payload", () => {
 	test("a named gate's review payload lists its gate-only check results", async () => {
 		registerCheck("dep-audit", async () => [{ code: "dep-audit", severity: "warning", message: "left-pad is unmaintained" }], { at: "gate", key: () => "k" });
@@ -743,5 +806,25 @@ describe("gateRequest overridable.current", () => {
 
 	test("other gates have no overridable units", () => {
 		expect(gateRequest(state, {} as Pack, "define", plan, input).overridable).toBeUndefined();
+	});
+});
+
+describe("spec cascade trigger", () => {
+	test("spec_gate runs the cascade before resolving the change and sees the moved phase", async () => {
+		const cascade = await import("../../src/interaction/spec-cascade.ts");
+		const h = await change("build", { ui: human("approve") });
+		// Stands in for a cascade that moved the change back to define, as the real one does after a covered edit.
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async (session) => {
+			await h.world.forge.removeLabels(h.n, ["livespec:phase/build"]);
+			await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
+			await session.refresh();
+			return true;
+		});
+		const out = await h.call("spec_gate", { target: "build", briefing: BRIEFING });
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("current phase (define)");
+		expect(await ofKind(h, "gate")).toEqual([]);
+		run.mockRestore();
 	});
 });

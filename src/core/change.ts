@@ -39,6 +39,8 @@ export type Unit = {
 	raw: Record<string, string[]>;
 };
 
+export const declaredCapabilities = (change: Change): string[] => [...(change.header.capabilities?.new ?? []), ...(change.header.capabilities?.modified ?? [])];
+
 export type Change = {
 	header: {
 		base?: string;

@@ -29,7 +29,6 @@ export type DialogModel = {
 	briefing?: { heading: string; lines: string[] };
 	entries: DialogEntry[];
 	units: { unit: string; label: string; difficulty?: Difficulty; tags: string[] }[];
-	requirements: { id: string; label: string }[];
 	notes: boolean;
 };
 
@@ -102,11 +101,6 @@ function unitsOf(r: ApprovalRequest): DialogModel["units"] {
 	return units.map((unit) => ({ unit, label: sanitize(unit), ...currentOf(current, unit) }));
 }
 
-/** Raw names are the identity (deduped raw); only `label` is sanitised for display. */
-function requirementsOf(r: ApprovalRequest): DialogModel["requirements"] {
-	return [...new Set(r.question?.requirements ?? [])].map((id) => ({ id, label: sanitize(id) }));
-}
-
 /** The tabs, entries and units a request shows; entry order matches the select flows. */
 export function buildModel(r: ApprovalRequest): DialogModel {
 	const kind = kindOf(r);
@@ -121,7 +115,6 @@ export function buildModel(r: ApprovalRequest): DialogModel {
 		...(briefing === undefined ? {} : { briefing }),
 		entries: entriesOf(r, kind, choices),
 		units: unitsOf(r),
-		requirements: requirementsOf(r),
 		notes: kind === "gate",
 	};
 }

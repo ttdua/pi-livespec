@@ -58,7 +58,7 @@ const failingPlan = (briefing?: Briefing) =>
 const QUESTION: Spec = {
 	subject: "question:Q2",
 	kind: "question",
-	snapshot: { id: "Q2", text: "Which limit?", requirements: [] },
+	snapshot: { id: "Q2", text: "Which limit?" },
 	summary: "Which limit?",
 	options: [
 		{ id: "A", label: "per-user limits", description: "One budget per account." },
@@ -179,6 +179,12 @@ describe("renderForgeRequest", () => {
 		for (const r of [request(QUESTION), bare]) {
 			expect(answerRows(renderForgeRequest(r)).some((row) => row.includes("`/livespec answer Q2 <text>`"))).toBe(true);
 		}
+	});
+
+	test("question request text offers --class and no --changes", () => {
+		const text = renderForgeRequest(request(QUESTION));
+		expect(text).toContain("/livespec answer Q2 <text> [--class blocking|non-blocking]");
+		expect(text).not.toContain("--changes");
 	});
 
 	test("Prefilled answer parses back", () => {

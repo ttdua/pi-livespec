@@ -8,7 +8,7 @@ Defines how livespec brings gates, questions, stuck reports and decision asks to
 
 ### Requirement: Approver contract
 The system SHALL bring every human decision (gate, question, stuck report, amendment and rule `ask`) to a human through an `Approver` with `request(r)`. Answers that arrive later SHALL be collected by polling (see "Polling pending requests"), not through the adapter. A request MUST carry kind (`gate`, `question` or `stuck`), change, phase, summary, links, files, optional options and mode (`blocking` or `async`). An option MAY carry a description, and a request MAY carry a briefing, as request-briefing "Briefing shape" defines. The summary SHALL hold livespec's payload, which MAY include the subject text an agent gave as data (a question's text, a stuck report), and SHALL never hold the briefing. The kind SHALL follow the subject: `gate:` and `amend:` use `gate`, `question:` uses `question`, and `stuck:` and `decide:` use `stuck`. The answer is `answered`, `pending`, or, for the in-session adapter only, `deferred`:
-- `answered` carries outcome (`approved`, `approved_with_notes`, `changes_requested` or `dismissed`), optional choice, notes, by, at, the adapter name, for questions the optional `changesRequirement` and class, and for plan and amendment gates the optional Difficulty and Tags `overrides` per unit.
+- `answered` carries outcome (`approved`, `approved_with_notes`, `changes_requested` or `dismissed`), optional choice, notes, by, at, the adapter name, for questions the optional class, and for plan and amendment gates the optional Difficulty and Tags `overrides` per unit. A question answer SHALL NOT carry a changed requirement; requirement changes are derived from the spec diff (see questions-and-stuck "Spec-diff requirement cascade").
 - `pending` carries the request id.
 - `deferred` means the human chose "answer later".
 
@@ -34,8 +34,12 @@ An answer MUST come only from the human through the adapter. No tool parameter, 
 - **WHEN** `spec_stuck` runs with options A and B, recommends A, and the in-session dialog is cancelled
 - **THEN** the stuck answer has outcome `dismissed` and `choice: ""`
 
+#### Scenario: Question request lists no requirements
+- **WHEN** `spec_question` sends Q1 on a change declaring capability `rate-limit` with three requirements
+- **THEN** the request and its stored snapshot name no requirement, and the forge request text does not mention `--changes`
+
 ### Requirement: In-session adapter
-The in-session adapter SHALL be available only when `ctx.hasUI` is true. When the session can draw custom UI (`ctx.mode` is `tui` and `ctx.ui.custom` is available), it SHALL ask the human through one dialog per request drawn with `ctx.ui.custom`, as "In-session dialog" defines. Otherwise, and whenever that dialog resolves `undefined`, it SHALL ask through `ctx.ui.select` and `ctx.ui.input`; the dialog itself never resolves `undefined`, a cancel in it resolves an explicit cancel. Both paths are called by livespec code, and the adapter MUST use only the values they return. For every answer the human submits, both paths SHALL produce the same outcome, choice, notes, answer, changed requirement and class, and the same overrides for every value the human changed. Where the dialog blocks submitting an empty required text (a request-changes note, a typed answer, a typed requirement), the `select` fallback SHALL treat that empty text as `dismissed`. Every yes/no question MUST be an explicit choice between labelled entries, never `ctx.ui.confirm`, because `ctx.ui.confirm` returns the same value for "no" and for a cancelled dialog. A cancelled dialog MUST be treated as `dismissed`. For a question, the human MAY choose "answer later": the question SHALL become non-blocking and the request SHALL move on, as `async`, to the next adapter in the chain; when no adapter is left, the question stays open. It SHALL present the request as request-briefing "In-session presentation" defines. For a question with candidate answers, the human SHALL be offered each candidate, writing an own answer, and answering later; a picked candidate's label SHALL be the answer, and the adapter SHALL then still ask whether the answer changes a requirement. The adapter MUST NOT use `ask_user_question` from `rpiv-ask-user-question` or any other tool or event that another extension can answer. The answer's `by` SHALL be the current forge login, and its adapter `in-session`.
+The in-session adapter SHALL be available only when `ctx.hasUI` is true. When the session can draw custom UI (`ctx.mode` is `tui` and `ctx.ui.custom` is available), it SHALL ask the human through one dialog per request drawn with `ctx.ui.custom`, as "In-session dialog" defines. Otherwise, and whenever that dialog resolves `undefined`, it SHALL ask through `ctx.ui.select` and `ctx.ui.input`; the dialog itself never resolves `undefined`, a cancel in it resolves an explicit cancel. Both paths are called by livespec code, and the adapter MUST use only the values they return. For every answer the human submits, both paths SHALL produce the same outcome, choice, notes, answer and class, and the same overrides for every value the human changed. Where the dialog blocks submitting an empty required text (a request-changes note, a typed answer), the `select` fallback SHALL treat that empty text as `dismissed`. Every yes/no question MUST be an explicit choice between labelled entries, never `ctx.ui.confirm`, because `ctx.ui.confirm` returns the same value for "no" and for a cancelled dialog. A cancelled dialog MUST be treated as `dismissed`. For a question, the human MAY choose "answer later": the question SHALL become non-blocking and the request SHALL move on, as `async`, to the next adapter in the chain; when no adapter is left, the question stays open. It SHALL present the request as request-briefing "In-session presentation" defines. For a question with candidate answers, the human SHALL be offered each candidate, writing an own answer, and answering later; a picked candidate's label SHALL be the answer. Answering a question SHALL take one step: neither path SHALL ask whether the answer changes a requirement, and neither SHALL list requirements. The adapter MUST NOT use `ask_user_question` from `rpiv-ask-user-question` or any other tool or event that another extension can answer. The answer's `by` SHALL be the current forge login, and its adapter `in-session`.
 
 #### Scenario: Approve in the TUI
 - **WHEN** `spec_gate define` runs with `hasUI` true and the human selects approve without notes
@@ -50,8 +54,8 @@ The in-session adapter SHALL be available only when `ctx.hasUI` is true. When th
 - **THEN** the question line shows `(non-blocking)` and a forge request with mode `async` is posted
 
 #### Scenario: Question candidate picked in session
-- **WHEN** `spec_question` sends Q2 with candidates `per-user limits` and `per-IP limits` in session, the human picks `per-user limits` and answers that no requirement changes
-- **THEN** Q2 is answered `per-user limits`
+- **WHEN** `spec_question` sends Q2 with candidates `per-user limits` and `per-IP limits` through the `select` path, and the human picks `per-user limits`
+- **THEN** Q2 is answered `per-user limits` and no further prompt is shown
 
 #### Scenario: Own answer instead of a candidate
 - **WHEN** `spec_question` sends Q2 with candidates in session and the human chooses to write their own answer and types `no limit`
@@ -94,10 +98,12 @@ The forge adapter SHALL read answers only from plain comments whose first line s
 - `changes <notes>`
 - `dismiss [notes]`
 - `choose <option-id> [notes]`
-- `answer Q<n> <text> [--changes <capability>/Requirement: <name>] [--class blocking|non-blocking]`
+- `answer Q<n> <text> [--class blocking|non-blocking]`
 - `class Q<n> blocking|non-blocking`
 - `set U<n> difficulty <low|medium|high>`
 - `set U<n> tags <a,b,…>`
+
+An `answer` command that contains the removed `--changes` flag MUST NOT answer the question; it SHALL be treated as a comment that cannot be parsed, and its card warning SHALL say that `--changes` was removed and that requirement changes now follow from spec edits.
 
 An answer SHALL count only when `getPermission(author)` returns `write` or `admin`. A comment from an author without that permission, created before the request, that cannot be parsed, or that is ambiguous among pending requests MUST be ignored and reported as a card warning naming the reason. A comment whose author is the plugin's own login SHALL be accepted like any other.
 
@@ -116,8 +122,12 @@ A `class` command SHALL take effect once. When a poll handles it, the plugin SHA
 - **THEN** it does not answer the request
 
 #### Scenario: Answer that changes a requirement
-- **WHEN** a writer comments `/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap`
-- **THEN** Q2 is answered with `changesRequirement` `rate-limit/Requirement: Per-IP cap`
+- **WHEN** a writer comments `/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap` on Q2's pending request
+- **THEN** Q2 stays open, its request stays pending, and the card warns that `--changes` was removed
+
+#### Scenario: Answer with a class
+- **WHEN** a writer comments `/livespec answer Q2 use per-user limits --class non-blocking` on Q2's pending request
+- **THEN** Q2 is answered `use per-user limits` with class `non-blocking`
 
 #### Scenario: Class command applied once
 - **WHEN** a writer's `/livespec class Q2 non-blocking` was applied by a poll, someone then edits Q2's line back to `(blocking)` on the web, and Q2's request is still pending at the next poll
@@ -195,7 +205,7 @@ Doctor SHALL report the configured chain, where it comes from (project, user or 
 - **THEN** it reports `ok` with chain `[in-session]`, source `default`, and in-session as the adapter in use
 
 ### Requirement: In-session dialog
-The dialog SHALL show one request on tabs: Decision, Adjust units (only with overridable units), Review. Decision SHALL show the entries as request-briefing "In-session presentation" defines; the first nine MAY be picked by number. Every answer SHALL pass the Review tab and SHALL be sent only when the human submits it there. The Review tab SHALL show what will be sent: outcome, option, notes, overrides, and for a question the answer and the changed requirement.
+The dialog SHALL show one request on tabs: Decision, Adjust units (only with overridable units), Review. Decision SHALL show the entries as request-briefing "In-session presentation" defines; the first nine MAY be picked by number. Every answer SHALL pass the Review tab and SHALL be sent only when the human submits it there. The Review tab SHALL show what will be sent: outcome, option, notes, overrides, and for a question the answer.
 
 #### Scenario: Approve through Review
 - **WHEN** a define gate is shown in the dialog, and the human picks approve and submits on the Review tab
@@ -210,7 +220,7 @@ The dialog SHALL show one request on tabs: Decision, Adjust units (only with ove
 - **THEN** the dialog has the Decision and Review tabs only
 
 ### Requirement: Dialog exits without Review
-Two picks SHALL end the dialog without the Review tab: "dismiss", which is `dismissed`, and, for a question, "answer later", which is `deferred`. `Esc` SHALL cancel the request, which is `dismissed`; while any text editor in the dialog is open (a note, a typed answer, tags or a typed requirement), `Esc` SHALL only close that editor.
+Two picks SHALL end the dialog without the Review tab: "dismiss", which is `dismissed`, and, for a question, "answer later", which is `deferred`. `Esc` SHALL cancel the request, which is `dismissed`; while any text editor in the dialog is open (a note, a typed answer or tags), `Esc` SHALL only close that editor.
 
 #### Scenario: Answer later skips Review
 - **WHEN** a question is shown in the dialog and the human picks "answer later"
@@ -251,15 +261,19 @@ The Adjust units tab SHALL list each overridable unit with its current Difficult
 - **THEN** the Review tab shows the override as discarded, and the submitted answer is `changes_requested` with no overrides
 
 ### Requirement: Dialog questions
-For a question, the Decision tab SHALL offer the candidates, if any, then "write my own answer" with the text typed inside the dialog, and "answer later". The Review tab SHALL ask whether the answer changes a requirement, offering `no`, each declared requirement, and a typed one. Submit SHALL be blocked while the typed answer or the typed requirement is empty.
+For a question, the Decision tab SHALL offer the candidates, if any, then "write my own answer" with the text typed inside the dialog, and "answer later". The Review tab SHALL show the answer and SHALL NOT ask whether the answer changes a requirement or list any requirement. Submit SHALL be blocked while the typed answer is empty.
 
 #### Scenario: Question answered in the dialog
-- **WHEN** Q2 with candidates `per-user limits` and `per-IP limits` is shown in the dialog, the human picks `per-IP limits` and, on the Review tab, picks the declared requirement `rate-limiting/Requirement: Limits`
-- **THEN** Q2 is answered `per-IP limits` with `changesRequirement` `rate-limiting/Requirement: Limits`
+- **WHEN** Q2 with candidates `per-user limits` and `per-IP limits` is shown in the dialog, the human picks `per-IP limits` and submits on the Review tab
+- **THEN** Q2 is answered `per-IP limits`, and the Review tab showed no requirement
 
 #### Scenario: Own answer typed in the dialog
-- **WHEN** a question is shown in the dialog, the human picks "write my own answer", types `no limit`, answers `no` on the Review tab and submits
+- **WHEN** a question is shown in the dialog, the human picks "write my own answer", types `no limit` and submits on the Review tab
 - **THEN** the question is answered `no limit`
+
+#### Scenario: Empty own answer blocked
+- **WHEN** a question is shown in the dialog, the human picks "write my own answer", leaves the text empty and tries to submit on the Review tab
+- **THEN** the answer is not submitted
 
 #### Scenario: Question without candidates
 - **WHEN** a question with no candidates is shown in the dialog

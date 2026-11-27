@@ -87,6 +87,8 @@ export interface Git {
 	listTree(rev: string): Promise<string[]>;
 	/** `git show <rev>:<path>`; undefined when the path does not exist at `rev`. */
 	showFile(rev: string, path: string): Promise<string | undefined>;
+	/** `git cat-file -e <sha>^{commit}`: whether the commit object is still in the clone (a reset can drop it). */
+	hasCommit(sha: string): Promise<boolean>;
 	/** `git branch -m -- <from> <to>`. */
 	renameBranch(from: string, to: string): Promise<void>;
 	/** `git ls-files --error-unmatch -- <path>`. */
@@ -341,6 +343,7 @@ export function createGit(root: string, exec: GitExec = defaultGitExec): Git {
 		diffNumstat: async (from, to) => parseNumstat((await run(["diff", "--numstat", "-z", "-M", END_OF_OPTIONS, `${from}..${to}`])) ?? ""),
 		listTree: async (rev) => ((await run(["ls-tree", "-r", "--name-only", "-z", END_OF_OPTIONS, rev])) ?? "").split("\0").filter((p) => p !== ""),
 		showFile: (rev, path) => run(["show", END_OF_OPTIONS, `${rev}:${path}`], EXIT_NO_OBJECT),
+		hasCommit: async (sha) => (await run(["cat-file", "-e", END_OF_OPTIONS, `${sha}^{commit}`], EXIT_NO_OBJECT)) !== undefined,
 		renameBranch: async (from, to) => {
 			await run(["branch", "-m", "--", from, to]);
 		},

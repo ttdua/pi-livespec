@@ -27,7 +27,6 @@ const BOTH_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session
 const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
 const ANSWER_NOW = "answer now";
 const ANSWER_LATER = "answer later (non-blocking)";
-const CHANGES_TITLE = "Does the answer change a requirement?";
 
 type Opts = { config?: string; ui?: FakeUI; edit?: (b: string) => string; forge?: (world: MemoryWorld) => Forge };
 type Q = ToolHarness & { n: number; ask(params: unknown): ReturnType<ToolHarness["call"]> };
@@ -44,18 +43,14 @@ async function change(phase: string, o: Opts = {}): Promise<Q> {
 	return { ...h, n, ask: (params) => h.call("spec_question", params) };
 }
 
-/** A scripted in-session human: answer now or later, an answer text, and the changed requirement ("no" by default). */
-type Script = { later?: boolean; cancel?: boolean; answer?: string; changes?: string; typed?: string };
+/** A scripted in-session human: answer now or later, and an answer text. */
+type Script = { later?: boolean; cancel?: boolean; answer?: string };
 function human(s: Script): FakeUI {
-	const select: SelectFn = async (title, options) => {
-		if (title === CHANGES_TITLE) {
-			if (s.typed !== undefined) return "other";
-			return s.changes === undefined ? "no" : options.find((o) => o === s.changes);
-		}
+	const select: SelectFn = async () => {
 		if (s.cancel) return undefined;
 		return s.later ? ANSWER_LATER : ANSWER_NOW;
 	};
-	const input = async (title: string) => (title === "Changed requirement" ? s.typed : s.answer);
+	const input = async () => s.answer;
 	return { hasUI: true, select, input };
 }
 
@@ -102,7 +97,7 @@ describe("spec_question", () => {
 		expect(await lineOf(h, "Q3")).toBe("- [ ] Q3 (blocking): Which store keeps the counters?");
 		const requests = await ofKind(h, "request");
 		expect(requests).toHaveLength(1);
-		expect(requests[0]?.data).toMatchObject({ kind: "question", subject: "question:Q3", mode: "blocking", snapshot: { id: "Q3", text: "Which store keeps the counters?", requirements: [PER_IP] } });
+		expect(requests[0]?.data).toMatchObject({ kind: "question", subject: "question:Q3", mode: "blocking", snapshot: { id: "Q3", text: "Which store keeps the counters?" } });
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "question:Q3", mode: "blocking", adapter: "forge" })]);
 	});
 
@@ -137,49 +132,20 @@ describe("spec_question", () => {
 		expect((await ofKind(h, "request")).map((m) => (m.data as { subject: string }).subject)).toEqual(["question:Q3", "gate:define"]);
 	});
 
-	test("Answer sends the change back", async () => {
-		const h = await change("build", { config: SESSION_CHAIN, ui: human({ answer: "per client token", changes: PER_IP }), edit: allDone });
+	test("Answer in build changes nothing else", async () => {
+		const h = await change("build", { config: SESSION_CHAIN, ui: human({ answer: "per client token" }), edit: allDone });
 		await lockPlan(h);
-		const u1Before = parseChange(await h.world.bodyOf(h.n)).units[0]!;
+		const labels = await phaseLabels(h);
+		const before = parseChange(await h.world.bodyOf(h.n)).units;
 		const out = await h.ask({ text: "Is the cap per IP or per token?" });
 		expect(out.isError).toBe(false);
-		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
+		expect(await phaseLabels(h)).toEqual(labels);
 		const units = parseChange(await h.world.bodyOf(h.n)).units;
-		expect(units.find((u) => u.id === "U3")?.done).toBe(false);
-		expect(unitDigest(units.find((u) => u.id === "U1")!)).toBe(unitDigest(u1Before));
-		expect(units.find((u) => u.id === "U1")?.done).toBe(true);
-		expect(card(h).state.lock.staleUnits).toEqual(["U3"]);
-		expect(card(h).state.counters.change_iterations).toBe(1);
-		expect(await lineOf(h, "Q3")).toBe("- [x] Q3 (blocking): Is the cap per IP or per token? — Answer: per client token");
-		// The requirement list came from the declared capability's living spec.
-		const changes = h.ctx.ui.select.mock.calls.find((c) => c[0] === CHANGES_TITLE);
-		expect(changes?.[1]).toEqual(["no", PER_IP, "other"]);
-	});
-
-	test("Cascade before the plan", async () => {
-		const h = await change("define", { config: SESSION_CHAIN, ui: human({ answer: "per token", changes: PER_IP }) });
-		await h.ask({ text: "Is the cap per IP or per token?" });
-		const stale = await ofKind(h, "stale");
-		expect(stale).toHaveLength(1);
-		expect(stale[0]).toMatchObject({ id: "Q3", data: { after_plan: false } });
+		expect(units.find((u) => u.id === "U3")?.done).toBe(true);
+		expect(units.map((u) => unitDigest(u))).toEqual(before.map((u) => unitDigest(u)));
+		expect(await ofKind(h, "stale")).toEqual([]);
 		expect(card(h).state.counters.change_iterations).toBe(0);
-	});
-
-	test("Second answer while in define", async () => {
-		const ui = human({ answer: "per token", changes: PER_IP });
-		const h = await change("build", { config: SESSION_CHAIN, ui, edit: allDone });
-		await lockPlan(h);
-		await h.ask({ text: "Is the cap per IP or per token?" });
-		expect(card(h).state.counters.change_iterations).toBe(1);
-		const second = human({ answer: "use X-Real-IP", typed: "request-context/Requirement: Client IP" });
-		h.ctx.ui.select.mockImplementation(second.select!);
-		h.ctx.ui.input.mockImplementation(second.input!);
-		const out = await h.ask({ text: "Which header carries the IP?" });
-		expect(out.isError).toBe(false);
-		const stale = await ofKind(h, "stale");
-		expect(stale.map((m) => m.id)).toEqual(["Q3", "Q4"]);
-		expect(stale[1]?.data).toMatchObject({ after_plan: false });
-		expect(card(h).state.counters.change_iterations).toBe(1);
+		expect(await lineOf(h, "Q3")).toBe("- [x] Q3 (blocking): Is the cap per IP or per token? — Answer: per client token");
 	});
 
 	test("Cap reached", async () => {
@@ -262,7 +228,7 @@ describe("spec_question", () => {
 	test("a duplicate request after the append names reask", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		// A pending forge request for question:Q3 already exists, so sending the new Q3 is a duplicate.
-		await seedMarked(h, requestComment("question-Q3.lx0", prepareRequest({ kind: "question", subject: "question:Q3", mode: "blocking", head: h.head, body: "", snapshot: { id: "Q3", text: "old", requirements: [] }, summary: "old", now: new Date(Date.UTC(2026, 0, 1)) }), "plain"));
+		await seedMarked(h, requestComment("question-Q3.lx0", prepareRequest({ kind: "question", subject: "question:Q3", mode: "blocking", head: h.head, body: "", snapshot: { id: "Q3", text: "old" }, summary: "old", now: new Date(Date.UTC(2026, 0, 1)) }), "plain"));
 		await h.session.refresh();
 		const out = await h.ask({ text: "Which store keeps the counters?" });
 		expect(out.isError).toBe(true);
@@ -430,7 +396,6 @@ describe("spec_question candidates", () => {
 		const ui: FakeUI = {
 			hasUI: true,
 			select: async (title, options) => {
-				if (title === CHANGES_TITLE) return "no";
 				seen.push(options);
 				return pickByLabel(options, "In-memory");
 			},

@@ -12,11 +12,11 @@ import type { Unit } from "../core/change.ts";
 import "../deps/markers.ts";
 import { parseChange } from "../core/change.ts";
 import { setHeaderLine } from "../core/sections.ts";
-import { parseSpec, type Requirement } from "../core/spec.ts";
 import { untickUnit } from "../core/tick.ts";
 import { advancePhase } from "../engine/advance.ts";
 import { type Git, integrationBranch } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
+import { capabilityOf, changedIds, coversId, requirementDigests } from "../engine/requirement-diff.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { classifyRun } from "../evidence/red-green.ts";
 import { runVerify } from "../evidence/runner.ts";
@@ -38,7 +38,6 @@ export type RegressionData = { base_from: string; base_to: string; head: string;
 const REMOTE = "origin";
 const BUILD_PHASE = "build";
 const BASE_KEY = "Base";
-const COVERS_SEPARATOR = "/Requirement:";
 
 /** `own` holds the ids of own marked comments, read fresh, so a rerun at the same HEAD posts nothing twice. */
 type Synced = { ctx: SyncContext; pack: Pack; git: Git; oldBase: string; base: string; head: string; own: Set<string> };
@@ -101,37 +100,21 @@ async function regressionRuns(s: Synced): Promise<RegressionUnit[] | undefined> 
 
 // --- step 4: stale units ---------------------------------------------------------
 
-type Requirements = Map<string, string>;
-
-/** The whole requirement block, body text and scenarios, without line numbers, so only content changes count. */
-const requirementContent = (r: Requirement): string =>
-	JSON.stringify({ text: r.text, scenarios: r.scenarios.map(({ name, given, when, then }) => ({ name, given, when, then })) });
-
-/** Requirement name to its content in `specs/<capability>/spec.md` at `rev`; empty when the file is absent. */
-async function requirementsAt(git: Git, rev: string, capability: string): Promise<Requirements> {
-	const text = await git.showFile(rev, `specs/${capability}/spec.md`);
-	return new Map(text === undefined ? [] : parseSpec(text, capability).requirements.map((r) => [r.name, requirementContent(r)]));
+/** Requirement ids whose content differs between the bases, for the capabilities the done units cover. */
+async function changedRequirementIds(s: Synced, done: Unit[]): Promise<Set<string>> {
+	if (s.oldBase === s.base) return new Set();
+	const caps = [...new Set(done.flatMap((u) => u.covers.map(capabilityOf)).filter((c): c is string => c !== undefined))];
+	const before = await requirementDigests(s.git, s.oldBase, caps);
+	const after = await requirementDigests(s.git, s.base, caps);
+	return new Set(changedIds(before, after));
 }
 
-/** `<capability>/Requirement: <name>` entries added, removed or changed in text between the bases. */
-async function changedRequirements(s: Synced, covers: string[]): Promise<Set<string>> {
-	const changed = new Set<string>();
-	const capabilities = [...new Set(covers.map((c) => c.split(COVERS_SEPARATOR)[0]?.trim() ?? ""))].filter((c) => c !== "");
-	for (const capability of capabilities) {
-		const [before, after] = await Promise.all([requirementsAt(s.git, s.oldBase, capability), requirementsAt(s.git, s.base, capability)]);
-		for (const name of new Set([...before.keys(), ...after.keys()])) {
-			if (before.get(name) !== after.get(name)) changed.add(`${capability}${COVERS_SEPARATOR} ${name}`);
-		}
-	}
-	return changed;
-}
-
-/** Done units whose run was not green, or whose `Covers` names a changed requirement, in unit order. */
+/** Done units whose run was not green, or whose `Covers` names a requirement changed between the bases, in unit order. */
 async function staleUnits(s: Synced, runs: RegressionUnit[]): Promise<string[]> {
 	const done = s.ctx.state.change.units.filter((u) => u.done);
-	const changed = s.oldBase === s.base ? new Set<string>() : await changedRequirements(s, done.flatMap((u) => u.covers));
+	const changed = await changedRequirementIds(s, done);
 	const red = new Set(runs.filter((r) => r.verdict !== "green").map((r) => r.unit));
-	return done.filter((u) => red.has(u.id) || u.covers.some((c) => changed.has(c.trim()))).map((u) => u.id);
+	return done.filter((u) => red.has(u.id) || u.covers.some((c) => changed.has(coversId(c)))).map((u) => u.id);
 }
 
 /**

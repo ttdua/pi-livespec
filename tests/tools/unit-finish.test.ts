@@ -1,5 +1,5 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerSessionHooks } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
@@ -78,6 +78,55 @@ describe("unit-evidence", () => {
 		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
 		await expectFinishRefusal(h, "U1", ["run unit_start U1"]);
 		expect(h.runs()).toBe(0);
+	});
+
+	/** Moves the change from the build phase to `phase`, as another client would. */
+	async function movePhase(h: UnitHarness, phase: string): Promise<void> {
+		await h.world.dropLabel("livespec:phase/build");
+		await h.world.forge.addLabels?.(h.n, [`livespec:phase/${phase}`]);
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+	}
+
+	test("Not in a per-unit phase", async () => {
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		await movePhase(h, "define");
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase define)"]);
+		expect(h.runs()).toBe(runs);
+		expect((await h.units())[0]?.done).toBe(false);
+	});
+
+	test("Receipted unit outside a per-unit phase", async () => {
+		const h = await started({ update: (call) => (call === 1 ? "throw" : undefined) });
+		await h.commit({ "src/u1.ts": "x\n" });
+		await expect(h.finish("U1")).rejects.toThrow("transport failed");
+		await movePhase(h, "plan");
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase plan)"]);
+		expect(h.runs()).toBe(runs);
+		expect((await h.units())[0]?.done).toBe(false);
+	});
+
+	test("phase changed during Verify is not ticked", async () => {
+		const h = await unitHarness({ units: [U1], scripts: { "check.sh": check("src/u1.ts", "sleep 1\n") } });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const runs = h.runs();
+		const pending = h.finish("U1");
+		await waitFor(() => h.runs() > runs);
+		await h.world.dropLabel("livespec:phase/build");
+		await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
+		const out = await pending;
+		expect(out.isError, textOf(out)).toBe(true);
+		expect(textOf(out)).toContain("not in a per: unit phase (phase define)");
+		expect(await h.ofKind("receipt")).toHaveLength(1);
+		expect((await h.units())[0]?.done).toBe(false);
+		expect(h.writes.written).toBe(0);
+		expect((await h.ofKind("decision")).filter((m) => m.id === "progress.U1")).toEqual([]);
+		await h.session.refresh();
+		expect(cardState(h).state.counters["unit_attempts.U1"]).toBeUndefined();
 	});
 
 	test("Crash between receipt and tick", async () => {
@@ -495,5 +544,61 @@ describe("rebuild marker", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(await h.ofKind("receipt")).toHaveLength(2);
 		expect((await h.units())[1]?.done).toBe(true);
+	});
+});
+
+describe("spec cascade trigger", () => {
+	const cascadeModule = () => import("../../src/interaction/spec-cascade.ts");
+
+	test("unit_finish runs the cascade before resolving the change and refuses in the phase it moved to", async () => {
+		const cascade = await cascadeModule();
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async (session) => {
+			await h.world.dropLabel("livespec:phase/build");
+			await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
+			await session.refresh();
+			return true;
+		});
+		const runs = h.runs();
+		await expectFinishRefusal(h, "U1", ["not in a per: unit phase (phase define)"]);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(h.runs()).toBe(runs);
+		run.mockRestore();
+	});
+
+	test("unit_finish runs the cascade under the evidence lock", async () => {
+		const cascade = await cascadeModule();
+		const { withEvidenceLock } = await import("../../src/evidence/lock.ts");
+		const h = await started();
+		await h.commit({ "src/u1.ts": "x\n" });
+		const order: string[] = [];
+		let release!: () => void;
+		const gate = new Promise<void>((r) => (release = r));
+		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async () => {
+			order.push("cascade");
+			await gate;
+			return false;
+		});
+		const finish = h.finish("U1");
+		await waitFor(() => order.length > 0);
+		const queued = withEvidenceLock(async () => void order.push("next lock holder"));
+		await new Promise((r) => setTimeout(r, 50));
+		// Still held: the cascade runs inside the lock, so the next holder waits for it.
+		expect(order).toEqual(["cascade"]);
+		release();
+		await Promise.all([finish, queued]);
+		expect(order).toEqual(["cascade", "next lock holder"]);
+		run.mockRestore();
+	});
+
+	test("unit_start and lane_merge do not run the cascade", async () => {
+		const cascade = await cascadeModule();
+		const run = vi.spyOn(cascade, "runSpecCascade").mockResolvedValue(false);
+		const h = await unitHarness({ units: [U1, U2], scripts: SCRIPTS });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		await h.call("lane_merge", { unit: "U1" });
+		expect(run).not.toHaveBeenCalled();
+		run.mockRestore();
 	});
 });

@@ -44,6 +44,12 @@ describe("deriveIterations", () => {
 		expect(state).toEqual({ count: 0, cap: 5, blocking: false, stuckOpen: "S2" });
 	});
 
+	test("a spec cascade with after_plan true counts once; a missing-baseline record does not count", () => {
+		const spec = marked("stale", "spec.0123456789ab", { reason: "r", phases: ["define", "plan"], units: ["U3"], after_plan: true, requirements: { "rate-limit/Requirement: Per-IP cap": "a".repeat(64) } });
+		const baseline = marked("stale", "baseline.0123456789ab", { reason: "r", phases: ["define", "plan"], units: [], after_plan: false, baseline: "0123456789ab" });
+		expect(deriveIterations([spec, baseline]).count).toBe(1);
+	});
+
 	test("a dismissed stuck answer does not lift the cap", () => {
 		const dismissed = deriveIterations([...fiveCascades(), stuck("S1"), stuckAnswer("S1", "dismissed", "")], 5);
 		expect(dismissed).toEqual({ count: 5, cap: 5, blocking: true, stuckOpen: undefined });

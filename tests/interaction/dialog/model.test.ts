@@ -25,7 +25,7 @@ const question = (over: Partial<ApprovalRequest> = {}): ApprovalRequest =>
 		kind: "question",
 		subject: "question:Q2",
 		summary: "Q2: Which limit?",
-		question: { id: "Q2", class: "blocking", requirements: ["rate-limit/Requirement: Per-IP cap", "auth/Requirement: Login"] },
+		question: { id: "Q2", class: "blocking" },
 		...over,
 	});
 
@@ -93,10 +93,7 @@ describe("buildModel", () => {
 		expect(m.kind).toBe("question");
 		expect(m.entries.map((e) => e.action.kind)).toEqual(["candidate", "candidate", "own", "later"]);
 		expect(m.entries[2]?.label).toBe("write my own answer");
-		expect(m.requirements).toEqual([
-			{ id: "rate-limit/Requirement: Per-IP cap", label: "rate-limit/Requirement: Per-IP cap" },
-			{ id: "auth/Requirement: Login", label: "auth/Requirement: Login" },
-		]);
+		expect(m).not.toHaveProperty("requirements");
 		expect(m.notes).toBe(false);
 	});
 
@@ -144,16 +141,6 @@ describe("buildModel", () => {
 });
 
 describe("toResult", () => {
-	test("a requirement name with control characters stays raw in changesRequirement", () => {
-		const raw = "a/Requirement: <!-- x\ty";
-		const r = question({ options: OPTIONS, question: { id: "Q2", class: "blocking", requirements: [raw, `${raw}\u202e`] } });
-		const m = buildModel(r);
-		expect(m.requirements).toHaveLength(2);
-		expect(m.requirements[0]?.label).not.toContain("\t");
-		const result = toResult(m, { ...initialState(m), picked: 0, requirement: { kind: "named", name: m.requirements[0]!.id } }, r);
-		expect(result).toMatchObject({ changesRequirement: raw });
-	});
-
 	test("a unit id stays raw in Override.unit", () => {
 		const raw = "U\t1";
 		const r = request({ overridable: { units: [raw], current: {} } });
@@ -236,17 +223,16 @@ describe("toResult", () => {
 	test("Question answered in the dialog", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
-		const named = toResult(m, { ...initialState(m), picked: 0, requirement: { kind: "named", name: "auth/Requirement: Login" } }, r);
-		expect(named).toEqual({ outcome: "approved", notes: "", answer: "Option A", changesRequirement: "auth/Requirement: Login", questionClass: "blocking" });
-		const none = toResult(m, { ...initialState(m), picked: 1, requirement: { kind: "none" } }, r);
+		expect(toResult(m, { ...initialState(m), picked: 0 }, r)).toEqual({ outcome: "approved", notes: "", answer: "Option A", questionClass: "blocking" });
+		const none = toResult(m, { ...initialState(m), picked: 1 }, r);
 		expect(none).toEqual({ outcome: "approved", notes: "", answer: "Option B", questionClass: "blocking" });
 	});
 
 	test("Own answer typed in the dialog", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
-		const state = picked(m, "own", { answer: "  mine  ", requirement: { kind: "other", text: " cap/Requirement: X " } });
-		expect(toResult(m, state, r)).toEqual({ outcome: "approved", notes: "", answer: "mine", changesRequirement: "cap/Requirement: X", questionClass: "blocking" });
+		const state = picked(m, "own", { answer: "  mine  " });
+		expect(toResult(m, state, r)).toEqual({ outcome: "approved", notes: "", answer: "mine", questionClass: "blocking" });
 	});
 
 	test("later is deferred", () => {

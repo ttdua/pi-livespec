@@ -56,7 +56,7 @@ export const threadNumbers = (state: ChangeState): number[] => {
 	return pr === undefined ? [state.issue.number] : [state.issue.number, pr];
 };
 
-export const declaredCapabilities = (change: Change): string[] => [...(change.header.capabilities?.new ?? []), ...(change.header.capabilities?.modified ?? [])];
+export { declaredCapabilities } from "../core/change.ts";
 
 /** Lines of the `## <name>` section without its heading; the header is `name === ""`. */
 export function sectionText(change: Change, name: string): string {

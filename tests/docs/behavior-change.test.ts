@@ -51,7 +51,7 @@ async function specRoot(): Promise<string> {
 }
 
 function checkCtx(root: string, files: string[], comments: MarkedComment[]): CheckContext {
-	const git = { diff: async () => "", diffNameStatus: async () => files.map((path) => ({ status: "M", path })), head: async () => "h", showFile: async () => undefined, listTree: async () => [] };
+	const git = { diff: async () => "", diffNameStatus: async () => files.map((path) => ({ status: "M", path })), head: async () => "h", showFile: async () => undefined, listTree: async () => [], hasCommit: async () => true };
 	return { root, change: parseChange("Base: abc123\n"), marked: comments, phase: "define", git };
 }
 

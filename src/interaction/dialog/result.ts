@@ -25,9 +25,6 @@ export function overridesOf(model: DialogModel, state: DialogState): Override[] 
 function questionVerdict(entry: DialogEntry, state: DialogState, r: ApprovalRequest): Verdict {
 	const answer = entry.action.kind === "candidate" ? entry.action.label : state.answer.trim();
 	const verdict: Verdict = { outcome: "approved", notes: "", answer };
-	const changed = state.requirement;
-	if (changed?.kind === "named") verdict.changesRequirement = changed.name;
-	if (changed?.kind === "other") verdict.changesRequirement = changed.text.trim();
 	if (r.question) verdict.questionClass = r.question.class;
 	return verdict;
 }

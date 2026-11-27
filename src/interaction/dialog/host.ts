@@ -54,7 +54,6 @@ const dialogThemeOf = (theme: Theme): DialogTheme => ({
 function prefillOf(model: DialogModel, state: DialogState, editor: EditorName): string {
 	if (editor === "note") return state.notes;
 	if (editor === "answer") return state.answer;
-	if (editor === "requirement") return state.requirement?.kind === "other" ? state.requirement.text : "";
 	const unit = model.units[state.focus];
 	return unit === undefined ? "" : (state.overrides[unit.unit]?.tags ?? unit.tags).join(", ");
 }

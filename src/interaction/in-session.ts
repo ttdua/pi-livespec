@@ -151,22 +151,6 @@ async function gateFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | C
 	return verdict;
 }
 
-type RequirementPick = { kind: "none" } | { kind: "requirement"; name: string } | { kind: "other" };
-
-/** Does the answer change a requirement: no, one of the declared requirements, or a typed one. */
-async function askChangedRequirement(ui: ApproverUI, requirements: string[]): Promise<string | undefined | Cancelled> {
-	const selected = await choose<RequirementPick>(ui, "Does the answer change a requirement?", [
-		["no", { kind: "none" }],
-		...plainEntries(requirements).map(([label, name]) => [label, { kind: "requirement", name }] as const),
-		["other", { kind: "other" }],
-	]);
-	if (selected === CANCELLED) return CANCELLED;
-	if (selected.kind === "none") return undefined;
-	if (selected.kind === "requirement") return selected.name;
-	const typed = await ask(ui, "Changed requirement", "<capability>/Requirement: <name>");
-	return typed === CANCELLED || typed === "" ? CANCELLED : typed;
-}
-
 /** What the human does with a question: pick a candidate, type an answer, or answer later. */
 type QuestionStep = { kind: "candidate"; label: string } | { kind: "own" } | { kind: "later" };
 
@@ -196,10 +180,7 @@ async function questionFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict
 	if (step.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
 	const answer = step.kind === "candidate" ? step.label : await ask(ui, "Answer");
 	if (answer === CANCELLED || answer === "") return CANCELLED;
-	const changed = await askChangedRequirement(ui, r.question?.requirements ?? []);
-	if (changed === CANCELLED) return CANCELLED;
 	const verdict: Verdict = { outcome: "approved", notes: "", answer };
-	if (changed !== undefined) verdict.changesRequirement = changed;
 	if (r.question) verdict.questionClass = r.question.class;
 	return verdict;
 }

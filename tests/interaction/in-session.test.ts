@@ -63,7 +63,7 @@ function questionRequest(): ApprovalRequest {
 		kind: "question",
 		subject: "question:Q2",
 		summary: "Q2: Which limit applies?",
-		question: { id: "Q2", class: "blocking", requirements: ["rate-limit/Requirement: Per-IP cap", "auth/Requirement: Login"] },
+		question: { id: "Q2", class: "blocking" },
 	});
 }
 
@@ -145,34 +145,23 @@ describe("in-session approver", () => {
 		expect(result).toMatchObject({ outcome: "approved", choice: "waive" });
 	});
 
-	test("question answer goes into answer, and the requirement choice into changesRequirement", async () => {
-		const ui = scriptedUI(["answer now", "use per-user limits", "rate-limit/Requirement: Per-IP cap"]);
-		const result = await createInSessionApprover(ui, login).request(questionRequest());
-		expect(ui.calls[2]).toMatchObject({
-			method: "select",
-			options: ["no", "rate-limit/Requirement: Per-IP cap", "auth/Requirement: Login", "other"],
-		});
-		expect(result).toMatchObject({
-			status: "answered",
-			outcome: "approved",
-			answer: "use per-user limits",
-			changesRequirement: "rate-limit/Requirement: Per-IP cap",
-			questionClass: "blocking",
-			adapter: "in-session",
-		});
-	});
-
-	test("question answer without a requirement change", async () => {
-		const ui = scriptedUI(["answer now", "yes", "no"]);
-		const result = await createInSessionApprover(ui, login).request(questionRequest());
-		expect(result).toMatchObject({ outcome: "approved", answer: "yes" });
+	test("picking a candidate is one select call and no requirement step", async () => {
+		const request = { ...questionRequest(), options: [{ id: "A", label: "per-user limits" }, { id: "B", label: "per-IP limits" }] };
+		const ui = scriptedUI(["per-user limits"]);
+		const result = await createInSessionApprover(ui, login).request(request);
+		expect(ui.calls.filter((c) => c.method === "select")).toHaveLength(1);
+		expect(ui.calls.filter((c) => c.method === "input")).toHaveLength(0);
+		expect(result).toMatchObject({ status: "answered", outcome: "approved", answer: "per-user limits", questionClass: "blocking", adapter: "in-session" });
 		expect(result).not.toHaveProperty("changesRequirement");
 	});
 
-	test("question requirement other opens an input", async () => {
-		const ui = scriptedUI(["answer now", "yes", "other", "billing/Requirement: Invoices"]);
+	test("an own answer is one input call after the entry select", async () => {
+		const ui = scriptedUI(["answer now", "no limit"]);
 		const result = await createInSessionApprover(ui, login).request(questionRequest());
-		expect(result).toMatchObject({ changesRequirement: "billing/Requirement: Invoices" });
+		expect(ui.calls.filter((c) => c.method === "input")).toHaveLength(1);
+		expect(ui.calls).toHaveLength(2);
+		expect(result).toMatchObject({ outcome: "approved", answer: "no limit" });
+		expect(result).not.toHaveProperty("changesRequirement");
 	});
 
 	test("cancelled question answer is dismissed", async () => {
@@ -546,10 +535,10 @@ describe("in-session dialog path", () => {
 				select: ["approve", "Add notes", "ok", "Adjust Difficulty or Tags", "U1", "difficulty", "high", "done"],
 			},
 			{
-				name: "question with a candidate and a changed requirement",
+				name: "question with a candidate",
 				request: candidates,
-				keys: ["2", KEY.down, KEY.enter, KEY.enter],
-				select: ["per-user limits — change", "rate-limit/Requirement: Per-IP cap"],
+				keys: ["2", KEY.enter],
+				select: ["per-user limits — change"],
 			},
 			{ name: "stuck report", request: () => stuckRequest(), keys: ["1", KEY.enter], select: ["B-label — B-desc (Recommended)"] },
 			{ name: "decide ask", request: decide, keys: ["2", KEY.enter], select: ["Behavior changed; the spec must be updated"] },

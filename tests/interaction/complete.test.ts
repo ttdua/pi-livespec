@@ -166,6 +166,33 @@ describe("completion engine", () => {
 		expect(gate.agent_skills).toBe(AGENT_SKILLS);
 	});
 
+	test("Plan gate records the digests: the approved gate comment copies the snapshot record without reading git", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const requirements = { [REQUIREMENT]: "d".repeat(64) };
+		const record = await prepare(f, "gate", "gate:plan", { ...gateSnapshot("plan"), requirements, requirement_scope: ["rate-limit"] });
+		const showFile = vi.fn(async () => {
+			throw new Error("completion must not read git for the baseline");
+		});
+		const ctx = { ...(await ctxOf(f)), git: { ...f.git, showFile } };
+		const out = await completeAnswer(ctx, record, answer());
+		expect(out.status).toBe("completed");
+		const gate = ofKind(await markedOf(f), "gate").at(-1)?.data as Record<string, unknown>;
+		expect(gate.requirements).toEqual(requirements);
+		expect(gate.requirement_scope).toEqual(["rate-limit"]);
+		expect(showFile).not.toHaveBeenCalled();
+	});
+
+	test("an approved plan request stored without a requirement record writes neither field", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		await completeAnswer(await ctxOf(f), record, answer());
+		const gate = ofKind(await markedOf(f), "gate").at(-1)?.data as Record<string, unknown>;
+		expect(gate).not.toHaveProperty("requirements");
+		expect(gate).not.toHaveProperty("requirement_scope");
+	});
+
 	test("HEAD moved before the answer", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
@@ -345,32 +372,25 @@ describe("completion engine", () => {
 		expect(units.find((u) => u.id === "U4")?.title).toBe("Other");
 	});
 
-	test("Answer sends the change back", async () => {
+	test("Answer writes only the answer line and leaves the change where it is", async () => {
 		const f = await fixture("build", (b) => u3Done(q1Open(b)));
 		await seedLock(f);
-		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
-		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For", changesRequirement: REQUIREMENT }));
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For" }));
 		const { state } = await stateOf(f);
-		expect(state.issue.labels).toContain("livespec:phase/define");
-		const [u1, u3] = state.change.units;
-		expect(u3?.done).toBe(false);
-		expect(state.lock.staleUnits).toEqual(["U3"]);
-		expect(u1?.done).toBe(true);
-		expect(state.counters.change_iterations).toBe(1);
+		expect(state.issue.labels).toContain("livespec:phase/build");
+		expect(state.change.units.find((u) => u.id === "U3")?.done).toBe(true);
+		expect(ofKind(state.marked, "stale")).toHaveLength(0);
+		expect(state.counters.change_iterations).toBe(0);
+		expect(state.change.questions.find((q) => q.id === "Q1")?.checked).toBe(true);
 	});
 
-	test("Retried cascade counts once", async () => {
-		const f = await fixture("build", (b) => u3Done(q1Open(b)));
-		await seedLock(f);
-		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
-		const failing = failingOnce(f.world.forge, (op) => op === "addLabels");
-		await expect(completeAnswer(await ctxOf(f, failing), record, answer({ answer: "X-Forwarded-For", changesRequirement: REQUIREMENT }))).rejects.toThrow("injected");
-		expect(ofKind(await markedOf(f), "stale", "Q1")).toHaveLength(1);
-		await finishApplying(await ctxOf(f));
-		const { state } = await stateOf(f);
-		expect(state.issue.labels).toContain("livespec:phase/define");
-		expect(ofKind(state.marked, "stale", "Q1")).toHaveLength(1);
-		expect(state.counters.change_iterations).toBe(1);
+	test("A stored snapshot that still carries requirements completes", async () => {
+		const f = await fixture("define", q1Open);
+		const legacy = { id: "Q1", text: "header?", requirements: [REQUIREMENT] } as unknown as RequestSnapshot;
+		const record = await prepare(f, "question", "question:Q1", legacy);
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For" }));
+		expect(ofKind((await stateOf(f)).state.marked, "question")).toHaveLength(1);
 	});
 
 	test("Override recorded", async () => {
@@ -546,7 +566,7 @@ describe("completion engine", () => {
 		const cases: [RequestKind, Subject, RequestSnapshot][] = [
 			["gate", "gate:define", gateSnapshot("define")],
 			["gate", "amend:1", { action: "drop", unit: "U9", records: [] }],
-			["question", "question:Q1", { id: "Q1", text: "header?", requirements: [] }],
+			["question", "question:Q1", { id: "Q1", text: "header?" }],
 			["stuck", "stuck:S1", { id: "S1" }],
 			["stuck", "decide:difficulty.U1", { point: "difficulty", subject: "U1", facts: {}, digest: "d", proposal: true }],
 		];
@@ -595,18 +615,18 @@ describe("completion engine", () => {
 		expect(out.result).toContain(`Notes: ${untrusted("split U3 first")}`);
 	});
 
-	test("completion result of a question carries the answer and the changed requirement", async () => {
+	test("completion result of a question carries the answer", async () => {
 		const f = await fixture("build", (b) => u3Done(q1Open(b)));
 		await seedLock(f);
-		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
-		const out = await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For", changesRequirement: REQUIREMENT }));
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		const out = await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For" }));
 		expect(out.result).toContain(`Answer: ${untrusted("X-Forwarded-For")}`);
-		expect(out.result).toContain(`Changes requirement: ${untrusted(REQUIREMENT)}`);
+		expect(out.result).not.toContain("Changes requirement");
 	});
 
 	test("completion result of a forge question answer carries the answer", async () => {
 		const f = await fixture("define", q1Open);
-		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
 		const polled = await forgeAnswer(f, record, "/livespec answer Q1 use X-Real-IP");
 		const out = await completeAnswer(await ctxOf(f), record, polled);
 		expect(out.result).toContain(`Answer: ${untrusted("use X-Real-IP")}`);
@@ -614,25 +634,21 @@ describe("completion engine", () => {
 
 	const STEPS: [name: string, failsOn: (op: string, args: unknown[]) => boolean][] = [
 		["body write", (op) => op === "updateIssueBody"],
-		["stale comment", commentOfKind("stale")],
-		["add label", (op) => op === "addLabels"],
-		["remove label", (op) => op === "removeLabels"],
 		["result comment", commentOfKind("question")],
 	];
 
 	test.each(STEPS)("completion resumes after each failing step (%s)", async (_name, failsOn) => {
 		const f = await fixture("build", (b) => u3Done(q1Open(b)));
 		await seedLock(f);
-		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?", requirements: [REQUIREMENT] });
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
 		const failing = failingOnce(f.world.forge, failsOn);
-		await expect(completeAnswer(await ctxOf(f, failing), record, answer({ answer: "X-Forwarded-For", changesRequirement: REQUIREMENT }))).rejects.toThrow("injected");
+		await expect(completeAnswer(await ctxOf(f, failing), record, answer({ answer: "X-Forwarded-For" }))).rejects.toThrow("injected");
 		const finished = await finishApplying(await ctxOf(f));
 		expect(finished.errors).toEqual([]);
 		const { state } = await stateOf(f);
-		expect(ofKind(state.marked, "stale")).toHaveLength(1);
+		expect(ofKind(state.marked, "stale")).toHaveLength(0);
 		expect(ofKind(state.marked, "question")).toHaveLength(1);
-		expect(state.counters.change_iterations).toBe(1);
-		expect(state.issue.labels.filter((l) => l.startsWith("livespec:phase/"))).toEqual(["livespec:phase/define"]);
+		expect(state.issue.labels.filter((l) => l.startsWith("livespec:phase/"))).toEqual(["livespec:phase/build"]);
 		expect(readRequests(state.marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
 	});

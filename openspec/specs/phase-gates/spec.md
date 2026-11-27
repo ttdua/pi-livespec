@@ -186,7 +186,7 @@ On `approved` or `approved_with_notes`, a phase gate SHALL move the change to th
 - **THEN** the change moves to `plan`
 
 #### Scenario: Old approval not reused after a cascade
-- **WHEN** define and plan were approved, an answer in `build` sends the change back to `define`, and every define check passes
+- **WHEN** define and plan were approved, a spec edit in `build` cascades the change back to `define`, and every define check passes
 - **THEN** the change stays in `define` and the next step says it is ready for the `define` gate
 
 #### Scenario: Superseded result does not fall back

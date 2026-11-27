@@ -35,6 +35,7 @@ import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
 import { pollApprovals } from "../interaction/poll.ts";
+import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount, cardAudit } from "./card-input.ts";
@@ -114,6 +115,8 @@ export class Session {
 	readonly mainTurns: { turnsCompleted: number; contextPercent?: number } = { turnsCompleted: 0 };
 	/** The approval poll in flight; concurrent callers share it, so one answer completes once per session. */
 	pollInFlight?: Promise<void>;
+	/** The spec-diff requirement cascade in flight; concurrent triggers share it, so one edit cascades once per session. */
+	cascadeInFlight?: Promise<boolean>;
 	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
 	feedbackPollInFlight?: Promise<FeedbackPollResult>;
 	private first = true;
@@ -548,6 +551,7 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	session.bind({ deps: d, ui: accountUI(ctx) });
 	await session.reconnect();
 	await pollApprovals(session);
+	await runSpecCascade(session);
 	await pollFeedback(session);
 	await suggestAudits(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");

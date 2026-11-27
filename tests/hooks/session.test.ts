@@ -337,17 +337,20 @@ describe("derived advance with a pull request", () => {
 });
 
 describe("pull request feedback poll at session start", () => {
-	test("runs after the approval poll", async () => {
+	test("runs after the approval poll and the spec cascade", async () => {
 		const poll = await import("../../src/interaction/poll.ts");
+		const cascade = await import("../../src/interaction/spec-cascade.ts");
 		const feedback = await import("../../src/ship/feedback-poll.ts");
 		const order: string[] = [];
 		const a = vi.spyOn(poll, "pollApprovals").mockImplementation(async () => void order.push("approvals"));
+		const c = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async () => (order.push("cascade"), false));
 		const f = vi.spyOn(feedback, "pollFeedback").mockImplementation(async () => (order.push("feedback"), { skipped: true }));
 		const h = await harness({ branch: CHANGE_BRANCH });
 		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
 		await h.start();
-		expect(order).toEqual(["approvals", "feedback"]);
+		expect(order).toEqual(["approvals", "cascade", "feedback"]);
 		a.mockRestore();
+		c.mockRestore();
 		f.mockRestore();
 	});
 

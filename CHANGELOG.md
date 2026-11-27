@@ -4,6 +4,15 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 ## [Unreleased]
 
+### Breaking
+
+- `/livespec answer --changes` is removed: the forge refuses it with a message that names the replacement. Edit the spec instead; livespec cascades requirement edits from the spec diff.
+- `unit_finish` refuses outside the per-unit phase (`build`).
+
+### Changed
+
+- The requirement cascade is derived from the spec diff, with whitespace-only edits ignored. Plan gates record requirement digests as the cascade baseline.
+
 ## [0.2.0] - 2026-11-26
 
 Human requests are now prepared by the agent and easier to answer: briefings with a recommendation, readable forge comments, and one dialog per request in the pi TUI.

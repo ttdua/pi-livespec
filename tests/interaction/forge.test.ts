@@ -134,7 +134,7 @@ describe("forge adapter", () => {
 	});
 
 	test("command between two pending requests, before its target, is warned", () => {
-		const question = pending("question:Q3", { mode: "async", snapshot: { id: "Q3", text: "x", requirements: [] } }, "question");
+		const question = pending("question:Q3", { mode: "async", snapshot: { id: "Q3", text: "x" } }, "question");
 		const gate = { ...pending("gate:define"), id: "gate-define.later" };
 		gate.data = { ...gate.data, id: gate.id };
 		const early = comment("9", "alice", "/livespec approve", LATER);
@@ -145,23 +145,23 @@ describe("forge adapter", () => {
 
 	test("choose on a pending question with candidates is ignored", () => {
 		const options = [{ id: "A", label: "redis" }, { id: "B", label: "memory" }];
-		const q = pending("question:Q3", { options, snapshot: { id: "Q3", text: "which store?", requirements: [] } }, "question");
+		const q = pending("question:Q3", { options, snapshot: { id: "Q3", text: "which store?" } }, "question");
 		const out = matchThread([q], [comment("9", "alice", "/livespec choose A", LATER)], writers("alice"));
 		expect(out.matches).toEqual([]);
 		expect(out.warnings).toEqual([expect.stringContaining("no pending request it can answer")]);
 	});
 
-	test("Answer that changes a requirement", () => {
-		const q = pending("question:Q2", { snapshot: { id: "Q2", text: "limits?", requirements: [] } }, "question");
+	test("A --changes answer is not matched and warns with the removal message", () => {
+		const q = pending("question:Q2", { snapshot: { id: "Q2", text: "limits?" } }, "question");
 		const body = "/livespec answer Q2 use per-user limits --changes rate-limit/Requirement: Per-IP cap";
 		const out = matchThread([q], [comment("9", "alice", body, LATER)], writers("alice"));
-		expect(out.matches).toHaveLength(1);
-		expect(out.matches[0]?.answer).toMatchObject({ answer: "use per-user limits", changesRequirement: "rate-limit/Requirement: Per-IP cap" });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([expect.stringContaining("--changes was removed")]);
 	});
 
 	test("approve with a pending stuck and an async question is ambiguous only between gate-like requests", () => {
 		const stuck = pending("stuck:S1", { options: [{ id: "A", label: "a" }, { id: "B", label: "b" }] }, "stuck");
-		const question = pending("question:Q3", { mode: "async", snapshot: { id: "Q3", text: "x", requirements: [] } }, "question");
+		const question = pending("question:Q3", { mode: "async", snapshot: { id: "Q3", text: "x" } }, "question");
 		const gate = pending("gate:plan");
 		const approve = [comment("9", "alice", "/livespec approve", LATER)];
 

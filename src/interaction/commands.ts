@@ -9,7 +9,7 @@ export type Command =
 	| { verb: "changes"; notes: string }
 	| { verb: "dismiss"; notes: string }
 	| { verb: "choose"; option: string; notes: string }
-	| { verb: "answer"; question: string; text: string; changes?: string; class?: QuestionClass }
+	| { verb: "answer"; question: string; text: string; class?: QuestionClass }
 	| { verb: "class"; question: string; class: QuestionClass }
 	| { verb: "set"; unit: string; field: "difficulty"; value: Difficulty }
 	| { verb: "set"; unit: string; field: "tags"; value: string[] };
@@ -22,6 +22,7 @@ const UNIT_ID = /^U[0-9]+$/;
 const CLASSES: readonly string[] = ["blocking", "non-blocking"];
 const DIFFICULTIES: readonly string[] = ["low", "medium", "high"];
 const CHANGES_FLAG = "--changes";
+const CHANGES_REMOVED = "--changes was removed: edit the spec instead; livespec cascades requirement edits from the spec diff";
 const CLASS_FLAG = "--class";
 
 /** Splits the first whitespace-separated token off `text`; `rest` is trimmed. */
@@ -44,7 +45,7 @@ function parseChoose(rest: string): Command | ParseError {
 	return { verb: "choose", option, notes };
 }
 
-/** `Q<n> <text> [--class blocking|non-blocking] [--changes <rest of line>]`. */
+/** `Q<n> <text> [--class blocking|non-blocking]`. */
 function parseAnswer(rest: string): Command | ParseError {
 	const { token: question, rest: afterId } = takeToken(rest);
 	if (!QUESTION_ID.test(question)) return { error: `answer needs a question id like Q1, got "${question}"` };
@@ -52,14 +53,9 @@ function parseAnswer(rest: string): Command | ParseError {
 	const words: string[] = [];
 	let remaining = afterId;
 	let cls: QuestionClass | undefined;
-	let changes: string | undefined;
 	while (remaining) {
 		const { token, rest: next } = takeToken(remaining);
-		if (token === CHANGES_FLAG) {
-			if (!next) return { error: "--changes needs <capability>/Requirement: <name>" };
-			changes = next;
-			break;
-		}
+		if (token === CHANGES_FLAG) return { error: CHANGES_REMOVED };
 		if (token === CLASS_FLAG) {
 			const { token: value, rest: afterValue } = takeToken(next);
 			if (!CLASSES.includes(value)) return { error: `--class must be blocking or non-blocking, got "${value}"` };
@@ -73,7 +69,6 @@ function parseAnswer(rest: string): Command | ParseError {
 	if (words.length === 0) return { error: `answer ${question} needs answer text` };
 
 	const command: Command = { verb: "answer", question, text: words.join(" ") };
-	if (changes !== undefined) command.changes = changes;
 	if (cls !== undefined) command.class = cls;
 	return command;
 }

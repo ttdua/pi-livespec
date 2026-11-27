@@ -43,14 +43,13 @@ function recordedAnswer(run: Run, id: string): AnswerData | undefined {
 	return readRequests(run.marked).applying.find((a) => a.id === id)?.record;
 }
 
-const HUMAN_FIELDS: [label: string, key: "answer" | "changesRequirement" | "notes"][] = [
+const HUMAN_FIELDS: [label: string, key: "answer" | "notes"][] = [
 	["Answer", "answer"],
-	["Changes requirement", "changesRequirement"],
 	["Notes", "notes"],
 ];
 
 /**
- * The human's own words (question answer, changed requirement, notes), one line each. A recorded answer
+ * The human's own words (question answer, notes), one line each. A recorded answer
  * comes back from comment yaml, so a field that is not a non-empty string is skipped.
  */
 function humanLines(answer: Answered): string[] {

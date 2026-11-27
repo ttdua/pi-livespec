@@ -168,6 +168,11 @@ describe("unitFinishRefusal", () => {
 		else expect(refusal).toContain(expected);
 	});
 
+	test("a finish outside a per: unit phase is refused", () => {
+		expect(unitFinishRefusal(state({ phase: "define", started: { U1: start("U1") } }), pack, "U1", "run")).toContain("not in a per: unit phase (phase define)");
+		expect(unitFinishRefusal(state({ phase: "plan", unticked: ["U1"] }), pack, "U1", "reconcile")).toContain("not in a per: unit phase (phase plan)");
+	});
+
 	test("not started comes before a dirty tree", () => {
 		expect(unitFinishRefusal(state({ dirty: true }), pack, "U1", "run")).toContain("unit_start U1");
 	});
