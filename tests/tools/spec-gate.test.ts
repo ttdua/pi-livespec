@@ -16,6 +16,7 @@ import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
+import { requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
 import { type GatePlan, gateRequest, sendNamedGate } from "../../src/tools/spec-gate.ts";
 import { registerSizeLimits as registerSizeLimitsCheck } from "../../src/initiatives/size-limits.ts";
 import { MEMORY_WEB_URL, type MemoryWorld } from "../forge/memory-forge.ts";
@@ -574,6 +575,46 @@ describe("spec_gate gate-only checks", () => {
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("verify-red-on-base");
 		expect(await ofKind(h, "gate")).toEqual([]);
+	});
+});
+
+describe("plan gate requirement record", () => {
+	const atHead = async (h: Gate) => {
+		const scope = requirementScope(parseChange(await h.world.bodyOf(h.n)));
+		return { requirements: await requirementDigests(h.session.git, h.git("rev-parse", "HEAD"), scope), scope };
+	};
+	const snapshotOfRequest = async (h: Gate) => ((await ofKind(h, "request"))[0]?.data as { snapshot: Record<string, unknown> }).snapshot;
+
+	test("Plan gate records the digests: the request snapshot holds requirements at HEAD and requirement_scope", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN });
+		await seedClassification(h);
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const expected = await atHead(h);
+		expect(Object.keys(expected.requirements)).toContain("rate-limit/Requirement: Per-IP cap");
+		expect(expected.scope).toContain("rate-limit");
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.requirements).toEqual(expected.requirements);
+		expect(snapshot.requirement_scope).toEqual(expected.scope);
+	});
+
+	test("a define gate request records no requirements", async () => {
+		const h = await change("define", { config: FORGE_CHAIN });
+		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.target).toBe("define");
+		expect(snapshot.requirements).toBeUndefined();
+		expect(snapshot.requirement_scope).toBeUndefined();
+	});
+
+	test("a self plan gate comment records requirements and requirement_scope", async () => {
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError).toBe(false);
+		const expected = await atHead(h);
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		expect(gate.requirements).toEqual(expected.requirements);
+		expect(gate.requirement_scope).toEqual(expected.scope);
 	});
 });
 

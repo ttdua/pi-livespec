@@ -13,6 +13,7 @@ import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
+import { type RequirementRecord, requirementRecord } from "../engine/requirement-diff.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, Briefing, GateSnapshot, RequestOption, Subject } from "../interaction/approver.ts";
 import { validateBriefing } from "../interaction/briefing.ts";
@@ -82,7 +83,7 @@ function unitDigests(state: ChangeState): Record<string, string> {
 }
 
 /** The gate comment of a passing self gate; the plan gate also records the locked digests and the agent-skills commit. */
-export function selfGateComment(state: ChangeState, target: string, now: Date, agentSkills: string | undefined): string {
+export function selfGateComment(state: ChangeState, target: string, now: Date, agentSkills: string | undefined, record?: RequirementRecord): string {
 	const input: GateCommentInput = {
 		target,
 		isPhase: true,
@@ -93,6 +94,10 @@ export function selfGateComment(state: ChangeState, target: string, now: Date, a
 	if (target === PLAN) {
 		input.locked = unitDigests(state);
 		if (agentSkills !== undefined) input.agentSkills = agentSkills;
+		if (record !== undefined) {
+			input.requirements = record.requirements;
+			input.requirementScope = record.scope;
+		}
 	}
 	return gateComment(`self-${now.getTime().toString(BASE36)}`, input);
 }
@@ -110,13 +115,14 @@ export function gateRequest(
 	pack: Pack,
 	target: string,
 	plan: GatePlan,
-	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing },
+	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing; requirements?: RequirementRecord },
 ): ApprovalRequest {
 	const snapshot: GateSnapshot = {
 		target,
 		failingWaivable: plan.failingWaivable,
 		...(input.payload.findings.length === 0 ? {} : { findings: input.payload.findings }),
 		...(input.drafts === undefined ? {} : { drafts: input.drafts }),
+		...(input.requirements === undefined ? {} : { requirements: input.requirements.requirements, requirement_scope: input.requirements.scope }),
 	};
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
@@ -132,9 +138,18 @@ export function gateRequest(
 
 async function passSelf(w: WriteContext, state: ChangeState, target: string): Promise<ToolResult<undefined>> {
 	const n = state.issue.number;
-	await w.forge.createComment(n, selfGateComment(state, target, new Date(), agentSkillsOf(w.session)));
+	const record = await planRecord(w, state, target);
+	await w.forge.createComment(n, selfGateComment(state, target, new Date(), agentSkillsOf(w.session), record));
 	await afterForgeWrite(w.session, n);
 	return toolResult(withStep(w.session, `The ${target} self gate passed.`), undefined);
+}
+
+/**
+ * The plan gate's requirement baseline at `state.git.head`, the HEAD the request binds as `head_sha` (or the
+ * self gate records), so the approved record matches what was reviewed; undefined for every other target.
+ */
+function planRecord(w: WriteContext, state: ChangeState, target: string): Promise<RequirementRecord | undefined> {
+	return target === PLAN ? requirementRecord(w.session.git, state.git.head, state.change) : Promise.resolve(undefined);
 }
 
 type RequestExtras = { drafts?: unknown; summary?: string; briefing?: Briefing };
@@ -145,7 +160,8 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
 	const payload = gatePayload(state, w.pack, target, withLink);
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing });
+	const requirements = await planRecord(w, state, target);
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements });
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, briefing: Briefing | undefined): Promise<ToolResult<undefined>> {

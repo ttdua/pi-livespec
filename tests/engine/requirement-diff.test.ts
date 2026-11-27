@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { createGit } from "../../src/engine/git.ts";
 import { parseChange } from "../../src/core/change.ts";
-import { changedIds, requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
+import { changedIds, coversId, requirementDigests, requirementScope } from "../../src/engine/requirement-diff.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
 const SPEC_PATH = "specs/rate-limit/spec.md";
@@ -109,5 +109,12 @@ describe("changedIds over requirement digests", () => {
 		const id = "rate-limit/Requirement: Burst";
 		const content = JSON.stringify({ text: "Short spikes are absorbed.", scenarios: [] });
 		expect(map[id]).toBe(createHash("sha256").update(content).digest("hex"));
+	});
+
+	test("requirement name with inner whitespace runs matches its coversId", async () => {
+		const { digests } = await repoWith(BASE_SPEC.replace("### Requirement: Per-IP cap", "### Requirement: Per-IP  cap"));
+		const map = await digests();
+		expect(Object.keys(map)).toContain(coversId("rate-limit/Requirement:  Per-IP   cap"));
+		expect(Object.keys(map)).toContain("rate-limit/Requirement: Per-IP cap");
 	});
 });

@@ -49,6 +49,10 @@ export interface GateSnapshot {
 	findings?: string[];
 	/** The proposer's payload of a named gate with a proposer (initiative entries, new-dependency drafts). */
 	drafts?: unknown;
+	/** Plan gate only: requirement id to content digest at the request's `head_sha`, the cascade baseline. */
+	requirements?: Record<string, string>;
+	/** Plan gate only: the capabilities `requirements` scanned. */
+	requirement_scope?: string[];
 }
 
 export interface AmendSnapshot {

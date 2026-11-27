@@ -26,14 +26,22 @@ export type GateResult = {
 	commentId: string;
 };
 
+/**
+ * The plan gate the lock comes from, the requirement cascade's baseline: `at` is its index in `marked`.
+ * `requirements` and `scope` are absent on a gate approved before plan gates recorded them.
+ */
+export type LockBaseline = { at: number; commentId: string; headSha?: string; requirements?: Record<string, string>; scope?: string[] };
+
 export type LockState = {
 	locked: Record<string, string> | undefined;
+	/** Kept while a `stale` listing `plan` drops `gates.plan`: the lock, not the gate result, defines it. */
+	baseline?: LockBaseline;
 	frozen: string[];
 	staleUnits: string[];
 	gates: Record<string, GateResult | undefined>;
 };
 
-type GateData = Omit<GateResult, "commentId"> & { name: string; locked?: Record<string, string> };
+type GateData = Omit<GateResult, "commentId"> & { name: string; locked?: Record<string, string>; requirements?: Record<string, string>; scope?: string[] };
 type AmendData = { action: "edit" | "add" | "drop"; unit: string; digest?: string; approved: boolean };
 type StaleData = { phases: string[]; units: string[] };
 
@@ -88,6 +96,9 @@ function gateData(d: unknown): GateData | undefined {
 	if (typeof d.head_sha === "string") data.headSha = d.head_sha;
 	const locked = stringRecord(d.locked);
 	if (locked) data.locked = locked;
+	const requirements = stringRecord(d.requirements);
+	if (requirements) data.requirements = requirements;
+	if (isStringList(d.requirement_scope)) data.scope = [...d.requirement_scope];
 	return data;
 }
 
@@ -133,11 +144,27 @@ function stalesOf(facts: Fact[]): Extract<Fact, { kind: "stale" }>[] {
 	return facts.filter((f): f is Extract<Fact, { kind: "stale" }> => f.kind === "stale");
 }
 
-/** The latest approved, non-superseded plan gate's `locked` map, then every later approved amendment in order. */
-function lockOf(facts: Fact[]): Record<string, string> | undefined {
-	const base = gatesOf(facts)
+/** The latest approved, non-superseded plan gate: the one the lock and the requirement baseline come from. */
+function lockGateOf(facts: Fact[]): Extract<Fact, { kind: "gate" }> | undefined {
+	return gatesOf(facts)
 		.filter((g) => g.data.name === PLAN_PHASE && validApproval(g.data))
 		.pop();
+}
+
+function baselineOf(gate: Extract<Fact, { kind: "gate" }> | undefined): LockBaseline | undefined {
+	if (!gate) return undefined;
+	const { headSha, requirements, scope } = gate.data;
+	return {
+		at: gate.at,
+		commentId: gate.commentId,
+		...(headSha === undefined ? {} : { headSha }),
+		...(requirements === undefined ? {} : { requirements }),
+		...(scope === undefined ? {} : { scope }),
+	};
+}
+
+/** The lock gate's `locked` map, then every later approved amendment in order. */
+function lockOf(facts: Fact[], base: Extract<Fact, { kind: "gate" }> | undefined): Record<string, string> | undefined {
 	if (!base) return undefined;
 	const locked: Record<string, string> = { ...(base.data.locked ?? {}) };
 	for (const a of amendmentsOf(facts)) {
@@ -180,7 +207,7 @@ function validGatesOf(facts: Fact[]): Record<string, GateResult | undefined> {
 	const stales = stalesOf(facts);
 	for (const g of gatesOf(facts)) {
 		if (stales.some((s) => s.at > g.at && s.data.phases.includes(g.data.name))) continue;
-		const { name, locked: _locked, ...result } = g.data;
+		const { name, locked: _locked, requirements: _requirements, scope: _scope, ...result } = g.data;
 		results[name] = { ...result, commentId: g.commentId };
 	}
 	return results;
@@ -188,9 +215,12 @@ function validGatesOf(facts: Fact[]): Record<string, GateResult | undefined> {
 
 export function deriveLocks(change: Change, marked: MarkedComment[]): LockState {
 	const facts = readFacts(marked);
-	const locked = lockOf(facts);
+	const gate = lockGateOf(facts);
+	const locked = lockOf(facts, gate);
+	const baseline = baselineOf(gate);
 	return {
 		locked,
+		...(baseline === undefined ? {} : { baseline }),
 		frozen: frozenOf(change, locked),
 		staleUnits: staleUnitsOf(facts),
 		gates: validGatesOf(facts),

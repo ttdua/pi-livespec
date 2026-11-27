@@ -166,6 +166,33 @@ describe("completion engine", () => {
 		expect(gate.agent_skills).toBe(AGENT_SKILLS);
 	});
 
+	test("Plan gate records the digests: the approved gate comment copies the snapshot record without reading git", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const requirements = { [REQUIREMENT]: "d".repeat(64) };
+		const record = await prepare(f, "gate", "gate:plan", { ...gateSnapshot("plan"), requirements, requirement_scope: ["rate-limit"] });
+		const showFile = vi.fn(async () => {
+			throw new Error("completion must not read git for the baseline");
+		});
+		const ctx = { ...(await ctxOf(f)), git: { ...f.git, showFile } };
+		const out = await completeAnswer(ctx, record, answer());
+		expect(out.status).toBe("completed");
+		const gate = ofKind(await markedOf(f), "gate").at(-1)?.data as Record<string, unknown>;
+		expect(gate.requirements).toEqual(requirements);
+		expect(gate.requirement_scope).toEqual(["rate-limit"]);
+		expect(showFile).not.toHaveBeenCalled();
+	});
+
+	test("an approved plan request stored without a requirement record writes neither field", async () => {
+		const f = await fixture("plan");
+		await seedClassification(f);
+		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
+		await completeAnswer(await ctxOf(f), record, answer());
+		const gate = ofKind(await markedOf(f), "gate").at(-1)?.data as Record<string, unknown>;
+		expect(gate).not.toHaveProperty("requirements");
+		expect(gate).not.toHaveProperty("requirement_scope");
+	});
+
 	test("HEAD moved before the answer", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));

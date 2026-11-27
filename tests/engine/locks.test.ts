@@ -202,6 +202,50 @@ describe("deriveLocks", () => {
 		expect(superseded.locked).toEqual(digests(change));
 	});
 
+	test("baseline is the gate the lock uses, with its requirement record parsed", () => {
+		const change = parseChange(BODY);
+		const requirements = { "rate-limit/Requirement: Per-IP cap": "a".repeat(64) };
+		const first = planGate(digests(change));
+		const second = planGate(digests(change), { requirements, requirement_scope: ["rate-limit"] });
+		const lock = deriveLocks(change, [first, second]);
+		expect(lock.baseline).toEqual({ at: 1, commentId: second.commentId, headSha: "f", requirements, scope: ["rate-limit"] });
+	});
+
+	test("baseline without a requirement record has neither field", () => {
+		const change = parseChange(BODY);
+		const gate = planGate(digests(change), { requirements: "bad", requirement_scope: [1] });
+		expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.commentId, headSha: "f" });
+		expect(deriveLocks(change, []).baseline).toBeUndefined();
+	});
+
+	test("baseline survives a later stale listing plan", () => {
+		const change = parseChange(BODY);
+		const gate = planGate(digests(change), { requirements: {}, requirement_scope: [] });
+		const lock = deriveLocks(change, [gate, stale("spec.abc", ["define", ...LATER], ["U3"], true)]);
+		expect(lock.gates.plan).toBeUndefined();
+		expect(lock.baseline).toMatchObject({ at: 0, commentId: gate.commentId });
+		expect(lock.locked).toBeDefined();
+	});
+
+	test("a spec cascade naming U3 makes it stale until a later approved amendment", () => {
+		const change = parseChange(BODY);
+		const cascade = stale("spec.0123456789ab", ["define", ...LATER], ["U3"], true);
+		const before = deriveLocks(change, [planGate(digests(change)), cascade]);
+		expect(before.staleUnits).toEqual(["U3"]);
+		const after = deriveLocks(change, [planGate(digests(change)), cascade, amendment("edit", "U3", { new: unitDigest(change.units.find((u) => u.id === "U3")!) })]);
+		expect(after.staleUnits).toEqual([]);
+	});
+
+	test("a missing-baseline record invalidates the define and plan results and keeps the lock", () => {
+		const change = parseChange(BODY);
+		const record = stale("baseline.0123456789ab", ["define", ...LATER], []);
+		const lock = deriveLocks(change, [gate("define", "approved"), planGate(digests(change)), record]);
+		expect(lock.gates.define).toBeUndefined();
+		expect(lock.gates.plan).toBeUndefined();
+		expect(lock.locked).toEqual(digests(change));
+		expect(lock.staleUnits).toEqual([]);
+	});
+
 	test("foreign or malformed comments are ignored", () => {
 		const change = parseChange(BODY);
 		const lock = deriveLocks(change, [marked("gate", "plan.x", "not an object"), marked("stale", "Q1", { phases: "define" })]);

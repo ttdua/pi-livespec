@@ -36,7 +36,8 @@ export async function requirementDigests(git: Git, rev: string, capabilities: st
 			if (text === undefined) return [];
 			return parseSpec(text, capability).requirements.map((r) => {
 				const digest = createHash("sha256").update(requirementContent(r)).digest("hex");
-				return [`${capability}${COVERS_SEPARATOR} ${r.name}`, digest] as const;
+				// Collapsed like `coversId`, so a name with doubled inner spaces still matches its `Covers` entry.
+				return [coversId(`${capability}${COVERS_SEPARATOR} ${r.name}`), digest] as const;
 			});
 		}),
 	);
@@ -56,6 +57,15 @@ export const coversId = (entry: string): string => collapse(entry);
 export function capabilityOf(covers: string): string | undefined {
 	const capability = (coversId(covers).split(COVERS_SEPARATOR)[0] ?? "").trim();
 	return capability === "" ? undefined : capability;
+}
+
+/** What a plan gate records as the requirement baseline: the digests at one revision and the capabilities scanned. */
+export type RequirementRecord = { requirements: Record<string, string>; scope: string[] };
+
+/** The requirement record of `change` at `rev`, over `requirementScope(change)`. */
+export async function requirementRecord(git: Git, rev: string, change: Change): Promise<RequirementRecord> {
+	const scope = requirementScope(change);
+	return { requirements: await requirementDigests(git, rev, scope), scope };
 }
 
 /** The capabilities whose living specs the change touches: declared, plus those its units cover; sorted, unique. */

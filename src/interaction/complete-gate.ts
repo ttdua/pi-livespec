@@ -29,6 +29,9 @@ export type GateCommentInput = {
 	agentSkills?: string;
 	/** Keys of the subagent findings the gate payload listed. */
 	findings?: string[];
+	/** Approved plan gate: the requirement digests and scope of the cascade baseline. */
+	requirements?: Record<string, string>;
+	requirementScope?: string[];
 };
 
 /** The `gate` result comment, id `<phase|gate>.<request id | self-<base36 ms>>`. */
@@ -45,6 +48,8 @@ export function gateComment(id: string, g: GateCommentInput): string {
 	if (g.locked) data.locked = g.locked;
 	if (g.agentSkills !== undefined) data.agent_skills = g.agentSkills;
 	if (g.findings !== undefined && g.findings.length > 0) data.findings = g.findings;
+	if (g.requirements !== undefined) data.requirements = g.requirements;
+	if (g.requirementScope !== undefined) data.requirement_scope = g.requirementScope;
 	return writeMarked("gate", `${g.target}.${id}`, data);
 }
 
@@ -72,7 +77,8 @@ async function runEffects(run: Run, record: AnswerData, target: string): Promise
 
 export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const { request, answer } = record;
-	const target = gateSnapshotOf(request).target;
+	const snapshot = gateSnapshotOf(request);
+	const target = snapshot.target;
 	const isPhase = run.ctx.pack.phases.some((p) => p.id === target);
 	const superseded = record.verdict === "superseded";
 	const approvedPlan = validApproval({ outcome: answer.outcome, superseded }) && target === PLAN;
@@ -85,14 +91,17 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 		isPhase,
 		answer,
 		headSha: request.head_sha,
-		waivers: !superseded && answer.choice === WAIVE ? [...gateSnapshotOf(request).failingWaivable] : [],
+		waivers: !superseded && answer.choice === WAIVE ? [...snapshot.failingWaivable] : [],
 	};
-	const shown = gateSnapshotOf(request).findings;
+	const shown = snapshot.findings;
 	if (shown !== undefined) input.findings = shown;
 	if (superseded) input.superseded = true;
 	if (approvedPlan) {
 		input.locked = await lockedDigests(run);
 		if (run.ctx.agentSkills !== undefined) input.agentSkills = run.ctx.agentSkills;
+		// Recorded at the request's HEAD by `spec_gate`; a request stored before that release has neither.
+		if (snapshot.requirements !== undefined) input.requirements = snapshot.requirements;
+		if (snapshot.requirement_scope !== undefined) input.requirementScope = snapshot.requirement_scope;
 	}
 	return gateComment(request.id, input);
 };
