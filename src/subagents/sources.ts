@@ -60,7 +60,7 @@ function registered(role: Role): Provider[] {
 	}));
 }
 
-/** The required sources of `target` in manifest order, first occurrence of an id wins. A failing provider rejects with its name. */
+/** The sources of `target`, required and optional, in manifest order, first occurrence of an id wins. A failing provider rejects with its name. */
 export async function collectSources(ctx: PacketContext, target: Target, reads: Reads = makeReads(ctx.forge)): Promise<Placed[]> {
 	const cx: Cx = { ctx, target, reads };
 	const providers = [...manifest(target.role, target.subject), ...rubric(target.role === "reviewer" ? target.subject : undefined), productExcerpt, ...registered(target.role)];

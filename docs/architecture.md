@@ -238,7 +238,7 @@ A launch whose facts differ from the request is aborted and runs inline, so an e
 
 - a missing structured result is retried once;
 - a result that omits a required source is returned to the child once, then recorded `BLOCKED` with a reason that names the omitted ids;
-- an optional source is marked as optional in the packet and is never required, returned or blocked on. A reviewer packet holds the change's decision records and the parent's answers to children as two optional grouped sources, `records:decisions` and `records:dispatch-answers`, so these records do not grow its required list; an implementer still has each answer as a required `answer:<agentId>:<n>` source;
+- an optional source is marked as optional in the packet and is never required, returned or blocked on. A reviewer packet with subject `unit`, `change` or `persona:<name>` holds the change's decision records and the parent's answers to children as two optional grouped sources, `records:decisions` and `records:dispatch-answers`, each present only when it has records, so these records do not grow its required list; an implementer still has each answer as a required `answer:<agentId>:<n>` source;
 - `NEEDS_CONTEXT` is not a failed attempt, and a third `NEEDS_CONTEXT` for a unit makes the next step `spec_stuck`.
 
 A child question either reaches the parent, which answers with `subagent_answer`, or goes to the user through `spec_question`. Cancelling `subagent_dispatch` or `subagent_answer` (the tool call's abort signal) aborts the child and records no result.

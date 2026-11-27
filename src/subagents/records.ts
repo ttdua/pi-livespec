@@ -66,11 +66,11 @@ export type FindingSummaryData = {
 	contextRequest?: number;
 	/** Set only by lane code for a record the parent makes itself: never a review, a round or a resolution of other findings. */
 	system?: "files-violation";
-	/** A verifier record: the finding key it verifies, its verdict and reason. */
+	/** A verifier record: the finding key it verifies and its verdict. */
 	verifies?: string;
 	verdict?: "confirmed" | "refuted";
+	/** The run's own reason, notes and evidence, kept for every role; absent when empty. */
 	reason?: string;
-	/** The run's own notes and evidence, kept for every role; absent when empty. */
 	notes?: string;
 	evidence?: string;
 	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
