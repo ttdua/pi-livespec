@@ -62,7 +62,7 @@ function prefillOf(model: DialogModel, state: DialogState, editor: EditorName): 
 function outcomeOf(model: DialogModel, state: DialogState, r: ApprovalRequest): DialogOutcome | undefined {
 	if (state.done === undefined) return undefined;
 	if (state.done === "cancelled") return { kind: "cancelled" };
-	const result = toResult(model, state, r);
+	const result = toResult(model, state);
 	return result === CANCELLED ? { kind: "cancelled" } : { kind: "result", result };
 }
 

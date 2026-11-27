@@ -30,7 +30,7 @@ export const depsInitiativeName = (title: string): string => `${title}-deps`;
 /** Option A's graph edges: the drafted prerequisite is a node by name, every existing change by number. */
 type Node = number | string;
 
-/** The gate's registered options, in the order the request offers them; A is the default. */
+/** The gate's registered options, in the order the request offers them; a plain approve counts as A. */
 export const NEW_DEPENDENCY_OPTIONS: (RequestOption & { description: string })[] = [
 	{ id: "A", label: "A: create the prerequisite change and park this one until it merges", description: "Creates the prerequisite change in shape, lists it in an initiative, and parks this change until it merges." },
 	{ id: "B", label: "B: add the missing work to this change as new units (unit_amend --add)", description: "Changes nothing now; the missing work is added to this change as new units with unit_amend --add." },

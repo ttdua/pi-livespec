@@ -247,21 +247,21 @@ describe("outcome label agrees with toResult", () => {
 	])("%s", (_name, kind, notes) => {
 		const m = define();
 		const state = at(m, { tab: 1, picked: pickOf(m, kind), notes });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 
 	test("an option on a waive gate", () => {
 		const m = failing();
 		const state = at(m, { tab: 1, picked: pickOf(m, "waive"), notes: "why" });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 
 	test("a choice approves even with stale notes", () => {
 		const m = buildModel(request({ kind: "stuck", subject: "stuck:S1", options: [{ id: "A", label: "Option A" }] }));
 		const state = at(m, { tab: 1, picked: 0, notes: "stale" });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 });

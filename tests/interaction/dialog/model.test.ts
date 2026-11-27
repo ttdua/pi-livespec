@@ -147,37 +147,37 @@ describe("toResult", () => {
 		const r = request({ overridable: { units: [raw], current: {} } });
 		const m = buildModel(r);
 		expect(m.units[0]?.label).not.toContain("\t");
-		expect(toResult(m, picked(m, "approve", { overrides: { [raw]: { difficulty: "high" } } }), r)).toMatchObject({ overrides: [{ unit: raw, difficulty: "high" }] });
+		expect(toResult(m, picked(m, "approve", { overrides: { [raw]: { difficulty: "high" } } }))).toMatchObject({ overrides: [{ unit: raw, difficulty: "high" }] });
 	});
 
 	test("stuck choice ignores notes and overrides", () => {
 		const r = stuck({ overridable: { units: ["U1"], current: {} } });
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "B", { notes: "x", overrides: { U1: { difficulty: "high" } } }), r)).toEqual({ outcome: "approved", notes: "", choice: "B" });
+		expect(toResult(m, picked(m, "B", { notes: "x", overrides: { U1: { difficulty: "high" } } }))).toEqual({ outcome: "approved", notes: "", choice: "B" });
 	});
 
 	test("approve with empty notes", () => {
 		const r = request();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "approve"), r)).toEqual({ outcome: "approved", notes: "" });
+		expect(toResult(m, picked(m, "approve"))).toEqual({ outcome: "approved", notes: "" });
 	});
 
 	test("approve with notes", () => {
 		const r = request();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "approve", { notes: " ok " }), r)).toEqual({ outcome: "approved_with_notes", notes: "ok" });
+		expect(toResult(m, picked(m, "approve", { notes: " ok " }))).toEqual({ outcome: "approved_with_notes", notes: "ok" });
 	});
 
 	test("option waive", () => {
 		const r = failing();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "waive"), r)).toEqual({ outcome: "approved", notes: "", choice: "waive" });
+		expect(toResult(m, picked(m, "waive"))).toEqual({ outcome: "approved", notes: "", choice: "waive" });
 	});
 
 	test("changes with notes", () => {
 		const r = request();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "changes", { notes: "fix it" }), r)).toEqual({ outcome: "changes_requested", notes: "fix it" });
+		expect(toResult(m, picked(m, "changes", { notes: "fix it" }))).toEqual({ outcome: "changes_requested", notes: "fix it" });
 	});
 
 	test("overrides only differ from current, in model.units order", () => {
@@ -186,7 +186,7 @@ describe("toResult", () => {
 		const state = picked(m, "approve", {
 			overrides: { U3: { tags: ["x"] }, U2: { difficulty: "high" }, U1: { difficulty: "medium", tags: ["a"] } },
 		});
-		expect(toResult(m, state, r)).toEqual({
+		expect(toResult(m, state)).toEqual({
 			outcome: "approved",
 			notes: "",
 			overrides: [{ unit: "U1", difficulty: "medium" }, { unit: "U3", tags: ["x"] }],
@@ -196,7 +196,7 @@ describe("toResult", () => {
 	test("Value set back to the current one: no override", () => {
 		const r = request({ overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: [] } } } });
 		const m = buildModel(r);
-		const result = toResult(m, picked(m, "approve", { overrides: { U1: { difficulty: "low", tags: [] } } }), r);
+		const result = toResult(m, picked(m, "approve", { overrides: { U1: { difficulty: "low", tags: [] } } }));
 		expect(result).toEqual({ outcome: "approved", notes: "" });
 	});
 
@@ -211,21 +211,21 @@ describe("toResult", () => {
 		const prefill = m.units[0]?.tags.join(", ") ?? "";
 		const onUnits = { ...initialState(m), tab: 1 };
 		const edited = reduce(m, reduce(m, onUnits, { type: "openEditor", editor: "tags" }), { type: "closeEditor", text: prefill });
-		expect(toResult(m, { ...edited, picked: 0 }, r)).toEqual({ outcome: "approved", notes: "" });
+		expect(toResult(m, { ...edited, picked: 0 })).toEqual({ outcome: "approved", notes: "" });
 	});
 
 	test("Overrides discarded with request changes", () => {
 		const r = request({ overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: [] } } } });
 		const m = buildModel(r);
-		const result = toResult(m, picked(m, "changes", { notes: "n", overrides: { U1: { difficulty: "high" } } }), r);
+		const result = toResult(m, picked(m, "changes", { notes: "n", overrides: { U1: { difficulty: "high" } } }));
 		expect(result).toEqual({ outcome: "changes_requested", notes: "n" });
 	});
 
 	test("Question answered in the dialog", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
-		expect(toResult(m, { ...initialState(m), picked: 0 }, r)).toEqual({ outcome: "approved", notes: "", answer: "Option A" });
-		const none = toResult(m, { ...initialState(m), picked: 1 }, r);
+		expect(toResult(m, { ...initialState(m), picked: 0 })).toEqual({ outcome: "approved", notes: "", answer: "Option A" });
+		const none = toResult(m, { ...initialState(m), picked: 1 });
 		expect(none).toEqual({ outcome: "approved", notes: "", answer: "Option B" });
 	});
 
@@ -233,25 +233,25 @@ describe("toResult", () => {
 		const r = question({ options: OPTIONS });
 		const m = buildModel(r);
 		const state = picked(m, "own", { answer: "  mine  " });
-		expect(toResult(m, state, r)).toEqual({ outcome: "approved", notes: "", answer: "mine" });
+		expect(toResult(m, state)).toEqual({ outcome: "approved", notes: "", answer: "mine" });
 	});
 
 	test("later is deferred", () => {
 		const r = question();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "later"), r)).toEqual({ status: "deferred", questionClass: "non-blocking" });
+		expect(toResult(m, picked(m, "later"))).toEqual({ status: "deferred", questionClass: "non-blocking" });
 	});
 
 	test("dismiss and nothing picked are cancelled", () => {
 		const r = request();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "dismiss"), r)).toBe(CANCELLED);
-		expect(toResult(m, initialState(m), r)).toBe(CANCELLED);
+		expect(toResult(m, picked(m, "dismiss"))).toBe(CANCELLED);
+		expect(toResult(m, initialState(m))).toBe(CANCELLED);
 	});
 
 	test("stuck B", () => {
 		const r = stuck();
 		const m = buildModel(r);
-		expect(toResult(m, picked(m, "B"), r)).toEqual({ outcome: "approved", notes: "", choice: "B" });
+		expect(toResult(m, picked(m, "B"))).toEqual({ outcome: "approved", notes: "", choice: "B" });
 	});
 });

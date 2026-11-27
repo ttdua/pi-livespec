@@ -52,7 +52,7 @@ function gateVerdict(model: DialogModel, entry: DialogEntry, state: DialogState)
 }
 
 /** The result of the picked entry; `CANCELLED` when nothing is picked or the entry dismisses. */
-export function toResult(model: DialogModel, state: DialogState, r: ApprovalRequest): Verdict | Deferred | Cancelled {
+export function toResult(model: DialogModel, state: DialogState): Verdict | Deferred | Cancelled {
 	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
 	if (entry === undefined) return CANCELLED;
 	const { action } = entry;

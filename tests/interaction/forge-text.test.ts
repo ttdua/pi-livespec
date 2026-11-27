@@ -106,6 +106,7 @@ describe("gateChoices", () => {
 		const approve = (subject: Subject) => gateChoices(request({ subject })).find((c) => c.id === "approve")?.description;
 		expect(approve("gate:define")).toBe("Accept the spec; the change moves to plan.");
 		expect(approve("gate:ship")).toBe("Accept the ship packet; change_ship can then run.");
+		expect(approve("gate:new-dependency")).toBe("Same as option A: create the prerequisite change and park this one until it merges.");
 		expect(approve("gate:initiative")).toBe("Accept; the gate's effects are applied.");
 		const amend = request({ subject: "amend:2", snapshot: { action: "drop", unit: "U9", records: [] } });
 		expect(gateChoices(amend).find((c) => c.id === "approve")?.description).toBe("Accept; the gate's effects are applied.");

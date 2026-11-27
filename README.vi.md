@@ -405,7 +405,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 ### Câu hỏi: trả lời điều agent không thể biết
 
-**Bạn thấy:** nội dung câu hỏi và việc nó có chặn hay không: `blocking` (gate giữ đóng) hoặc `non-blocking` (sau khi bạn chọn **answer later** trong session), và 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), có thể có một cái được đề xuất kèm lý do.
+**Bạn thấy:** nội dung câu hỏi và việc nó có chặn hay không: `blocking` (gate giữ đóng) hoặc `non-blocking` (sau khi bạn chọn **answer later** trong session), và 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), một cái được đề xuất kèm lý do.
 
 **Trả lời** bằng cách chọn một ứng viên hoặc gõ text riêng. Một bước là đủ:
 
@@ -413,7 +413,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 /livespec answer Q2 use per-user limits, not per-IP
 ```
 
-Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capability>/spec.md` và commit trên branch của change; không có flag nào. Cascade dưới đây chỉ chạy sau khi plan đã được lock; trước đó, thay đổi chỉ là một phần của change. livespec phát hiện thay đổi từ spec diff khi bắt đầu session, khi chạy `/livespec next`, và trước gate kế tiếp hoặc `unit_finish`. Change quay về `define` và các unit đã xong phủ requirement đó bị untick; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ sửa spec khi đáp án thực sự đổi nó. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp.
+Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capability>/spec.md` và commit trên branch của change; không có flag nào. Cascade dưới đây chỉ chạy sau khi plan đã được lock; trước đó, thay đổi chỉ là một phần của change. livespec phát hiện thay đổi từ spec diff khi bắt đầu session, khi chạy `/livespec next`, và trước gate kế tiếp hoặc `unit_finish`. Change quay về `define` và các unit đã xong phủ requirement đó bị untick; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ sửa spec khi đáp án thực sự đổi nó. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp. Với chain không có adapter in-session, câu hỏi vẫn blocking cho đến khi được trả lời: answer later chỉ có trong session (sửa marker `(blocking)` trên issue vẫn được tính).
 
 ### Stuck report: chọn lối ra
 

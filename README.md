@@ -403,7 +403,7 @@ Rules that decide whether your comment counts:
 
 ### Question: answer what the agent cannot know
 
-**You see:** the question text and whether it blocks: `blocking` (gates stay closed) or `non-blocking` (after you choose **answer later** in session), and optionally 2 to 4 **candidate answers** (each a label and a description), possibly one recommended with its reason.
+**You see:** the question text and whether it blocks: `blocking` (gates stay closed) or `non-blocking` (after you choose **answer later** in session), and 2 to 4 **candidate answers** (each a label and a description), one of them recommended with its reason.
 
 **Answer** by picking a candidate, or with your own text. One step is enough:
 
@@ -411,7 +411,7 @@ Rules that decide whether your comment counts:
 /livespec answer Q2 use per-user limits, not per-IP
 ```
 
-If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it on the change's branch; there is no flag. The cascade below runs only after the plan is locked; before that, the edit is simply part of the change. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
+If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it on the change's branch; there is no flag. The cascade below runs only after the plan is locked; before that, the edit is simply part of the change. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter. With a chain that has no in-session adapter, a question stays blocking until answered: answering later exists only in session (editing the `(blocking)` marker on the issue still counts).
 
 ### Stuck report: pick a way out
 
