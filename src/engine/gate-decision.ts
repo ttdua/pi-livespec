@@ -10,8 +10,12 @@ function withNotes(text: string, notes: string): string {
 	return notes === "" ? text : `${text} Notes: ${notes}`;
 }
 
-/** The sentence of a `self` or `human` gate with no gate result yet. */
-function gateReady(phase: Phase): string {
+/** The `gate-escalation` outcome the next step forecasts for a covered `self` gate (phase-gates "Escalation in the next step"). */
+export type GateForecast = { outcome: "self" | "human"; reason: string };
+
+/** The sentence of a `self` or `human` gate with no gate result yet; a forecast `human` names the escalation. */
+function gateReady(phase: Phase, forecast: GateForecast | undefined): string {
+	if (forecast?.outcome === "human") return `The ${phase.id} gate will ask the human: ${forecast.reason}. Pass a briefing to spec_gate ${phase.id}.`;
 	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
 }
 
@@ -20,13 +24,13 @@ function gateReady(phase: Phase): string {
  * result never falls back to an older one, and only an approved valid result advances, never at `ship`.
  * `atHead` is false for an approval of a head-bound gate HEAD moved past, which counts as superseded.
  */
-export function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined, atHead: boolean): Decision {
+export function gateResultDecision(phase: Phase, successor: string, result: GateResult | undefined, atHead: boolean, forecast?: GateForecast): Decision {
 	const id = phase.id;
 	if (atHead) {
 		if (id === SHIP_PHASE) return { next: "The ship gate is approved: run change_ship." };
 		return { next: `The ${id} gate is approved: move to ${successor}.`, advance: successor };
 	}
-	if (result === undefined) return { next: gateReady(phase) };
+	if (result === undefined) return { next: gateReady(phase, forecast) };
 	if (result.superseded || validApproval(result)) {
 		return { next: `The ${id} gate approval no longer matches the change: request the gate again.` };
 	}

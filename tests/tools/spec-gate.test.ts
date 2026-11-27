@@ -1,4 +1,5 @@
 import { BRIEFING, validBriefing, WAIVE_BRIEFING } from "../helpers/briefing.ts";
+import { HUMAN_PLAN_FLOW } from "../helpers/flow.ts";
 import { readFileSync } from "node:fs";
 import { pickById } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -11,6 +12,7 @@ import { pollApprovals } from "../../src/interaction/poll.ts";
 import { readRequests } from "../../src/interaction/requests.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { findingSummaryComment } from "../../src/subagents/records.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareWrite, requireChange } from "../../src/tools/guard.ts";
@@ -149,10 +151,11 @@ function seedGate(h: Gate, phase: string, id: string, extra: Record<string, unkn
 	return seedMarked(h, writeMarked("gate", `${phase}.${id}`, data));
 }
 
-/** Registers a waivable `size-limits` check that always fails and adds it to the plan checks. */
-const SIZE_LIMITS_FLOW = {
-	".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    checks: [units-format, done-maps-scenarios, unit-classification, size-limits]\n",
-};
+const SIZE_LIMITS_PLAN = "extends: agent-skills\nphases:\n  - id: plan\n    checks: [units-format, done-maps-scenarios, unit-classification, size-limits]\n";
+/** No phase consults `gate-escalation`: a self plan gate passes or refuses on its checks alone. */
+const NO_ESCALATION = "decisions:\n  gate-escalation: { mode: rule, phases: [] }\n";
+/** Adds `size-limits` (see `registerSizeLimits`) to the plan checks, with a human plan gate. */
+const SIZE_LIMITS_FLOW = { ".pi/livespec/flow.yaml": `${SIZE_LIMITS_PLAN}    gate: human\n` };
 function registerSizeLimits(): void {
 	registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 }
@@ -178,7 +181,7 @@ describe("spec_gate", () => {
 
 	test("self gate with a failing waivable check is refused", async () => {
 		registerSizeLimits();
-		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": `${SIZE_LIMITS_FLOW[".pi/livespec/flow.yaml"]}    gate: self\n` } });
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": `${SIZE_LIMITS_PLAN}    gate: self\n${NO_ESCALATION}` } });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(true);
@@ -272,7 +275,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Relayed approval refused", async () => {
-		const h = await change("plan", { ui: human(undefined) });
+		const h = await change("plan", { ui: human(undefined) , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
@@ -323,7 +326,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Over the unit limit", async () => {
-		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits });
+		const h = await change("plan", { config: FORGE_CHAIN, edit: nineUnits , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		expect(parseChange(await h.world.bodyOf(h.n)).units).toHaveLength(9);
 		await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
@@ -338,7 +341,7 @@ describe("spec_gate", () => {
 	});
 
 	test("over the unit limit, in session approve is not offered", async () => {
-		const h = await change("plan", { ui: human("approve"), edit: nineUnits });
+		const h = await change("plan", { ui: human("approve"), edit: nineUnits , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		const options = h.ctx.ui.select.mock.calls[0]?.[1] ?? [];
@@ -348,7 +351,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Waived", async () => {
-		const h = await change("plan", { ui: human("waive"), edit: nineUnits });
+		const h = await change("plan", { ui: human("waive"), edit: nineUnits , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
 		expect(out.isError).toBe(false);
@@ -398,7 +401,7 @@ describe("spec_gate", () => {
 	});
 
 	test("plan gate locks digests and offers overrides", async () => {
-		const h = await change("plan", { ui: human("approve") });
+		const h = await change("plan", { ui: human("approve") , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		h.session.activeTree = "/home/u/.pi/livespec/agent-skills/trees/0123abc";
 		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
@@ -502,7 +505,7 @@ describe("spec_gate", () => {
 	});
 
 	test("Dismissed", async () => {
-		const h = await change("plan", { ui: human("dismiss") });
+		const h = await change("plan", { ui: human("dismiss") , files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ phase: "plan", outcome: "dismissed" });
@@ -586,7 +589,7 @@ describe("plan gate requirement record", () => {
 	const snapshotOfRequest = async (h: Gate) => ((await ofKind(h, "request"))[0]?.data as { snapshot: Record<string, unknown> }).snapshot;
 
 	test("Plan gate records the digests: the request snapshot holds requirements at HEAD and requirement_scope", async () => {
-		const h = await change("plan", { config: FORGE_CHAIN });
+		const h = await change("plan", { config: FORGE_CHAIN, files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		const expected = await atHead(h);
@@ -598,7 +601,7 @@ describe("plan gate requirement record", () => {
 	});
 
 	test("Capabilities edited between refresh and request: requirement_scope matches the bound body", async () => {
-		const h = await change("plan", { config: FORGE_CHAIN });
+		const h = await change("plan", { config: FORGE_CHAIN, files: HUMAN_PLAN_FLOW });
 		await seedClassification(h);
 		const original = await h.world.bodyOf(h.n);
 		const edited = original.replace("modified [rate-limit]", "modified [rate-limit, quota]");
@@ -629,7 +632,7 @@ describe("plan gate requirement record", () => {
 	});
 
 	test("a self plan gate comment records requirements and requirement_scope", async () => {
-		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": "extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n" } });
+		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": `extends: agent-skills\n${NO_ESCALATION}` } });
 		await seedClassification(h);
 		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(out.isError).toBe(false);
@@ -702,7 +705,7 @@ describe("named gates with a proposer", () => {
 		test("Human gate without a briefing", async () => {
 			let ran = 0;
 			registerCheck("verify-red-on-base", async () => (ran++, []), { waivable: true, at: "gate", key: () => "stub" });
-			const h = await change("plan", { config: FORGE_CHAIN });
+			const h = await change("plan", { config: FORGE_CHAIN, files: HUMAN_PLAN_FLOW });
 			await seedClassification(h);
 			for (const briefing of [undefined, "text"]) {
 				const out = await h.call("spec_gate", { target: "plan", ...(briefing === undefined ? {} : { briefing }) });
@@ -826,5 +829,154 @@ describe("spec cascade trigger", () => {
 		expect(textOf(out)).toContain("current phase (define)");
 		expect(await ofKind(h, "gate")).toEqual([]);
 		run.mockRestore();
+	});
+});
+
+describe("self gate escalation", () => {
+	/** U1 and U3 untagged: no tag trigger with the default `[security, migration]`. */
+	const untagged = (b: string): string => b.replace("Tags: [security, api]", "Tags: [api]");
+	const tagged = (tag: string) => (b: string): string => b.replace("Tags: [security, api]", `Tags: [${tag}]`);
+	const escalations = async (h: Gate) => (await ofKind(h, "decision")).filter((m) => m.id === "gate-escalation.plan");
+
+	/** A completed advisory plan review at HEAD, inline as `subagent_record` writes it. */
+	async function seedPlanReview(h: Gate, findings: Record<string, unknown>[] = []): Promise<void> {
+		await seedMarked(h, findingSummaryComment({
+			role: "reviewer", subject: "plan", round: 1, status: "DONE", advisory: true, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true,
+			agentSource: "inline", requested: { thinking: "low" }, effective: {}, findings: findings as never,
+		}));
+		await h.session.refresh();
+	}
+
+	const CRITICAL = { severity: "CRITICAL", kind: "defect", location: "issue#Units", evidence: "U3 has no failing test", fix: "add one", scope: "unit" };
+
+	test("Plan without triggers passes alone", async () => {
+		const h = await change("plan", { edit: untagged });
+		await seedClassification(h);
+		await seedPlanReview(h, [{ ...CRITICAL, severity: "WARNING" }]);
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError, textOf(out)).toBe(false);
+		const decision = await escalations(h);
+		expect(decision).toHaveLength(1);
+		expect(decision[0]?.data).toMatchObject({ point: "gate-escalation", subject: "plan", source: "rule", outcome: "self", reason: "no trigger", facts: { phase: "plan", head_sha: h.git("rev-parse", "HEAD"), failing_waivable: [], advisory_review: "clean" } });
+		const gate = gateData((await ofKind(h, "gate"))[0]);
+		const units = parseChange(await h.world.bodyOf(h.n)).units;
+		expect(gate).toMatchObject({ phase: "plan", outcome: "approved", by: "livespec" });
+		expect(gate.locked).toEqual(Object.fromEntries(units.map((u) => [u.id, unitDigest(u)])));
+		expect(gate.requirement_scope).toEqual(requirementScope(parseChange(await h.world.bodyOf(h.n))));
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/build"]);
+	});
+
+	test("Waived size limit asks the human", async () => {
+		registerSizeLimits();
+		const h = await change("plan", { config: FORGE_CHAIN, edit: untagged, files: { ".pi/livespec/flow.yaml": SIZE_LIMITS_PLAN } });
+		await seedClassification(h);
+		await seedPlanReview(h);
+		const out = await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING });
+		expect(out.isError, textOf(out)).toBe(false);
+		const decision = await escalations(h);
+		expect(decision[0]?.data).toMatchObject({ outcome: "human", reason: "size-limits fails" });
+		const request = (await ofKind(h, "request"))[0];
+		expect(request?.data).toMatchObject({ subject: "gate:plan", options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
+		expect(await h.world.commentBodyOf(request?.commentId ?? "")).toContain("Escalated: size-limits fails");
+	});
+
+	test("Security unit asks the human", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: tagged("security") });
+		await seedClassification(h);
+		await seedPlanReview(h);
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError, textOf(out)).toBe(false);
+		const request = (await ofKind(h, "request"))[0];
+		expect(request?.data).toMatchObject({ subject: "gate:plan" });
+		expect((request?.data as { summary: string }).summary).toContain("Escalated: U3 tagged security");
+		expect(await ofKind(h, "gate")).toEqual([]);
+	});
+
+	test("Critical advisory finding asks the human", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: untagged });
+		await seedClassification(h);
+		await seedPlanReview(h, [CRITICAL]);
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError, textOf(out)).toBe(false);
+		const request = (await ofKind(h, "request"))[0];
+		const summary = (request?.data as { summary: string }).summary;
+		expect(summary).toContain("CRITICAL advisory finding in the plan review");
+		expect(summary).toContain("U3 has no failing test");
+	});
+
+	test("Escalated gate without a briefing", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: tagged("migration") });
+		await seedClassification(h);
+		await seedPlanReview(h);
+		const before = (await h.world.forge.listComments(h.n)).length;
+		const out = await h.call("spec_gate", { target: "plan" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing");
+		expect(textOf(out)).toContain("U3 tagged migration");
+		expect(await escalations(h)).toEqual([]);
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect((await h.world.forge.listComments(h.n)).length).toBe(before);
+	});
+
+	test("an invalid briefing on a covered self gate is refused before any check", async () => {
+		let ran = 0;
+		registerCheck("verify-red-on-base", async () => (ran++, []), { waivable: true, at: "gate", key: () => "stub" });
+		const h = await change("plan", { config: FORGE_CHAIN, edit: untagged });
+		await seedClassification(h);
+		const out = await h.call("spec_gate", { target: "plan", briefing: { summary: "" } });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing");
+		expect(ran).toBe(0);
+	});
+
+	test("Project keeps a human plan gate", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: untagged, files: HUMAN_PLAN_FLOW });
+		await seedClassification(h);
+		await seedPlanReview(h);
+		const refused = await h.call("spec_gate", { target: "plan" });
+		expect(refused.isError).toBe(true);
+		expect(textOf(refused)).toContain("briefing");
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await ofKind(h, "request"))[0]?.data).toMatchObject({ subject: "gate:plan" });
+		expect(await escalations(h)).toEqual([]);
+	});
+
+	test("Unlisted self gate unchanged", async () => {
+		const h = await change("shape");
+		const out = await h.call("spec_gate", { target: "shape" });
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await ofKind(h, "decision")).filter((m) => m.id.startsWith("gate-escalation."))).toEqual([]);
+		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
+	});
+
+	test("rerun posts no duplicate escalation decision", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: tagged("security") });
+		await seedClassification(h);
+		await seedPlanReview(h);
+		expect((await h.call("spec_gate", { target: "plan", briefing: BRIEFING })).isError).toBe(false);
+		expect(await escalations(h)).toHaveLength(1);
+		// The pending request refuses the rerun, after the facts were already recorded: no second record.
+		const again = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(again.isError).toBe(true);
+		expect(await escalations(h)).toHaveLength(1);
+		// Dismissed on the forge, the gate is requested again with equal facts: still one record.
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(h.n, "alice", "/livespec dismiss");
+		await h.call("spec_status");
+		expect((await h.call("spec_gate", { target: "plan", briefing: BRIEFING })).isError).toBe(false);
+		expect(await ofKind(h, "request")).toHaveLength(2);
+		expect(await escalations(h)).toHaveLength(1);
+	});
+
+	test("Advisory finding escalates the plan gate", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN, edit: untagged });
+		await seedClassification(h);
+		await seedPlanReview(h, [CRITICAL]);
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		expect(out.isError, textOf(out)).toBe(false);
+		const request = (await ofKind(h, "request"))[0];
+		expect((request?.data as { snapshot: { findings?: string[] } }).snapshot.findings).toHaveLength(1);
 	});
 });

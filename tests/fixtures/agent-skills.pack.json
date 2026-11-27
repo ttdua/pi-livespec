@@ -86,6 +86,16 @@
 		},
 		"drift-severity": {
 			"mode": "rule"
+		},
+		"gate-escalation": {
+			"mode": "rule",
+			"phases": [
+				"plan"
+			],
+			"tags": [
+				"security",
+				"migration"
+			]
 		}
 	},
 	"init": {
@@ -191,7 +201,7 @@
 				"verify-red-on-base",
 				"size-limits"
 			],
-			"gate": "human",
+			"gate": "self",
 			"subagents": [
 				{
 					"role": "scout",

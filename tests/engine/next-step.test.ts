@@ -40,11 +40,14 @@ const SPEC_ERROR: CheckResult = {
 const WARNING: CheckResult = { check: "spec-format", code: "spec-normative", severity: "warning", message: "needs SHALL" };
 
 let pack: Pack;
+/** The default pack with a human plan gate (a project override), for tests about the human gate itself. */
+let humanPlan: Pack;
 
 beforeAll(async () => {
 	const loaded = await loadPack("/nowhere", { readFile: async () => undefined });
 	if (!loaded.ok) throw new Error("default pack must load");
 	pack = loaded.pack;
+	humanPlan = { ...pack, phases: pack.phases.map((p) => (p.id === "plan" ? { ...p, gate: "human" } : p)) };
 });
 
 function state(phase: string, body: string, overrides: Partial<ChangeState> = {}): ChangeState {
@@ -263,7 +266,7 @@ describe("nextStep", () => {
 	});
 
 	test("Human gate ready", () => {
-		const step = nextStep(pack, reviewedState("plan", NO_QUESTION));
+		const step = nextStep(humanPlan, reviewedState("plan", NO_QUESTION));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.advance).toBeUndefined();
 	});
@@ -449,7 +452,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 
 	test("async question request does not block", () => {
 		const body = NO_QUESTION.replace("- [x] Q2 (non-blocking)", "- [ ] Q2 (non-blocking)");
-		const step = nextStep(pack, reviewedState("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
+		const step = nextStep(humanPlan, reviewedState("plan", body, { requests: requests([request("question:Q2", "question", "blocking")]) }));
 		expect(step.next).toBe("Ready for the plan gate.");
 		expect(step.pending).toEqual([{ id: "question-Q2.lx3k2a", subject: "question:Q2", mode: "async", adapter: "forge" }]);
 	});
@@ -461,7 +464,7 @@ describe("nextStep approvals, locks and stuck reports", () => {
 	});
 
 	test("async gate request does not block", () => {
-		const step = nextStep(pack, state("plan", NO_QUESTION, { requests: requests([request("gate:plan", "gate", "async")]) }));
+		const step = nextStep(humanPlan, state("plan", NO_QUESTION, { requests: requests([request("gate:plan", "gate", "async")]) }));
 		expect(step.next).toBe("Ready for the plan gate.");
 	});
 
@@ -846,7 +849,7 @@ describe("phase-level subagent suggestions before the gate", () => {
 	});
 
 	test("a completed review at HEAD clears the suggestion; one at an older HEAD does not", () => {
-		expect(nextStep(pack, reviewedState("plan", NO_QUESTION)).next).toBe("Ready for the plan gate.");
+		expect(nextStep(humanPlan, reviewedState("plan", NO_QUESTION)).next).toBe("Ready for the plan gate.");
 		expect(nextStep(pack, reviewedState("plan", NO_QUESTION, { git: { branch: "b", head: "e".repeat(40), dirty: false, specsChanged: true } })).dispatch?.subject).toBe("plan");
 	});
 
@@ -1156,5 +1159,37 @@ describe("incomplete items reconciled with started units", () => {
 
 	test("keeps other items as recorded", () => {
 		expect(nextStep(pack, state("build", NO_QUESTION, { incomplete: ["review pending for U2"] })).incomplete).toEqual(["review pending for U2"]);
+	});
+});
+
+describe("escalation in the next step", () => {
+	const untagged = NO_QUESTION.replace("Tags: [security, api]", "Tags: [api]");
+
+	test("next step names the escalation", () => {
+		const body = untagged.replace("Tags: []", "Tags: [security]");
+		const s = reviewedState("plan", body);
+		const marked = [...s.marked];
+		const step = nextStep(pack, s);
+		expect(step.next).toBe("The plan gate will ask the human: U1 tagged security. Pass a briefing to spec_gate plan.");
+		expect(step.next).toContain("will ask the human");
+		expect(step.next).toContain("U1");
+		expect(step.next).toContain("security");
+		expect(step.next).toContain("briefing");
+		expect(s.marked).toEqual(marked);
+	});
+
+	test("no trigger keeps the self forecast", () => {
+		const step = nextStep(pack, reviewedState("plan", untagged));
+		expect(step.next).toBe("Checks pass; the plan gate can pass.");
+	});
+
+	test("missing review names the dispatch first", () => {
+		const step = nextStep(pack, state("plan", untagged));
+		expect(step.dispatch).toEqual({ role: "reviewer", subject: "plan", inline: true });
+		expect(step.next).toContain("subagent_packet reviewer plan");
+	});
+
+	test("a human plan gate is not forecast", () => {
+		expect(nextStep(humanPlan, reviewedState("plan", NO_QUESTION)).next).toBe("Ready for the plan gate.");
 	});
 });

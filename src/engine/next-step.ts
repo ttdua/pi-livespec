@@ -6,6 +6,7 @@ import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
 import { gateResultDecision } from "./gate-decision.ts";
+import { escalationForecast } from "./gate-escalation-facts.ts";
 import { approvedAtHead } from "./locks.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { closeStep, prOutcomeStep, shipStep } from "../ship/ship-steps.ts";
@@ -342,7 +343,7 @@ const closePhase: Rule = ({ pack, state }) => closeStep(state, pack);
 function gate({ pack, state, phase }: RuleInput): Decision {
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
-	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id));
+	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id), escalationForecast(pack, state, phase));
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 

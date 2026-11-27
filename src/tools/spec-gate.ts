@@ -8,7 +8,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type Change, isDifficulty, parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
+import { escalationConfigFor, GATE_ESCALATION_POINT } from "../decide/rules/gate-escalation.ts";
+import { decisionComment, latestDecisions, sameFacts } from "../decide/records.ts";
 import { runChecks } from "../engine/checks.ts";
+import { type Escalation, gateEscalation } from "../engine/gate-escalation-facts.ts";
 import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
@@ -44,16 +47,17 @@ export type GatePlan = { mode: "self" | "human"; isPhase: boolean; failingWaivab
 
 /**
  * Plans a gate that `gateRefusal` let through; a self gate never passes with a failing check, waivable or
- * not. A human gate offers `waive` first, then a named gate's own options. A named gate's option choice is
- * not a waive: a named gate with failing waivable checks passes only through `waive`, so the human cannot
- * pick one of its options and waive in the same answer.
+ * not, unless `escalate` (the `gate-escalation` outcome `human`) plans it as a human gate. A human gate offers
+ * `waive` first, then a named gate's own options. A named gate's option choice is not a waive: a named gate
+ * with failing waivable checks passes only through `waive`, so the human cannot pick one of its options and
+ * waive in the same answer.
  */
-export function planGate(state: ChangeState, pack: Pack, target: string): GatePlan | { refused: string } {
+export function planGate(state: ChangeState, pack: Pack, target: string, escalate = false): GatePlan | { refused: string } {
 	const resolved = resolveGateTarget(state, pack, target);
 	if (!resolved) return { refused: `${target} is not a gate.` };
 	const waivable = failingWaivable(state, pack, target);
 	const isPhase = resolved.kind === "phase";
-	if (isPhase && resolved.phase.gate === "self") {
+	if (isPhase && resolved.phase.gate === "self" && !escalate) {
 		if (waivable.length > 0) return { refused: `The ${target} gate is self: it cannot pass while ${waivable.join(", ")} fails; fix it first.` };
 		return { mode: "self", isPhase, failingWaivable: [], options: [] };
 	}
@@ -167,8 +171,8 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements });
 }
 
-async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, briefing: Briefing | undefined): Promise<ToolResult<undefined>> {
-	const request = await buildRequest(w, state, target, plan, { briefing });
+async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, extras: RequestExtras): Promise<ToolResult<undefined>> {
+	const request = await buildRequest(w, state, target, plan, extras);
 	// The waive rule is enforced for every adapter when the answer is validated (`validateAnswer`).
 	return sendRequest(w, state, request, ctx, { tool: "spec_gate", retry: "request the gate again" });
 }
@@ -247,12 +251,16 @@ export function proposerBriefing(raw: unknown, options: RequestOption[]): Briefi
 	return "refused" in checked ? { ok: false, message: checked.refused } : { ok: true, briefing: checked };
 }
 
-/** Requires and validates the briefing of a human gate (a self gate ignores it); runs before any check. */
+/**
+ * Requires and validates the briefing of a human gate; runs before any check. A self gate ignores it, except one
+ * that may escalate (`gate-escalation`), which validates a passed briefing and requires one only when it escalates.
+ */
 export function briefingStep(target: string, pack: Pack, raw: unknown): BriefingStep {
 	const phase = pack.phases.find((ph) => ph.id === target);
 	const named = phase === undefined ? namedGate(target) : undefined;
 	const human = phase === undefined ? named !== undefined : phase.gate === "human";
-	if (!human) return { ok: true };
+	const mayEscalate = phase !== undefined && escalationConfigFor(pack, target) !== undefined;
+	if (!human && !(mayEscalate && raw !== undefined)) return { ok: true };
 	if (raw === undefined) return { ok: false, message: BRIEFING_REQUIRED };
 	const ids = [...BUILT_IN_IDS, ...(named?.options ?? []).map((o) => o.id)];
 	const checked = validateRequiredBriefing(raw, ids, { author: "agent" });
@@ -277,12 +285,30 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
-	const plan = planGate(state, w.pack, target);
+	const escalation = isPhase ? gateEscalation(state, w.pack, target) : undefined;
+	const plan = planGate(state, w.pack, target, escalation?.outcome === "human");
 	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	if (plan.mode === "self") return passSelf(w, state, target);
-	const unrecommendable = recommendationRefusal(briefed.briefing, plan);
+	if (plan.mode === "human" && briefed.briefing === undefined) return toolResult(escalatedWithoutBriefing(target, escalation), undefined, true);
+	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefed.briefing, plan) : undefined;
 	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
-	return askHuman(w, state, target, plan, ctx, briefed.briefing);
+	if (escalation !== undefined) await recordEscalation(w, state, escalation);
+	if (plan.mode === "self") return passSelf(w, state, target);
+	const summary = escalation === undefined ? {} : { summary: `Escalated: ${escalation.reason}` };
+	return askHuman(w, state, target, plan, ctx, { briefing: briefed.briefing, ...summary });
+}
+
+/** Only an escalated self gate reaches the human plan without a briefing: `briefingStep` required it everywhere else. */
+function escalatedWithoutBriefing(target: string, escalation: Escalation | undefined): string {
+	const why = escalation === undefined ? "" : ` (${escalation.reason})`;
+	return `The ${target} gate asks the human${why}. ${BRIEFING_REQUIRED}`;
+}
+
+/** Posts the `gate-escalation.<phase>` decision unless the latest one has the same facts (a rerun records nothing new). */
+async function recordEscalation(w: WriteContext, state: ChangeState, e: Escalation): Promise<void> {
+	const latest = latestDecisions(state.marked).get(`${GATE_ESCALATION_POINT}.${e.facts.phase}`);
+	if (latest !== undefined && sameFacts(latest, e.facts)) return;
+	await w.forge.createComment(state.issue.number, decisionComment({ point: GATE_ESCALATION_POINT, subject: e.facts.phase, source: "rule", outcome: e.outcome, reason: e.reason, facts: e.facts }));
+	await w.session.comments?.invalidate(state.issue.number);
 }
 
 export const BRIEFING_SCHEMA = {
@@ -302,7 +328,7 @@ export function registerSpecGate(pi: ExtensionAPI): void {
 		name: "spec_gate",
 		label: "Request a livespec gate",
 		description:
-			"Request the gate of the current livespec phase, or a registered named gate. A self gate passes when its checks pass; a human gate asks the human through the configured approver chain. The outcome comes only from the human; this tool takes no answer.",
+			"Request the gate of the current livespec phase, or a registered named gate. A self gate passes when its checks pass, unless the gate-escalation rule sends it to the human (then pass a briefing); a human gate asks the human through the configured approver chain. The outcome comes only from the human; this tool takes no answer.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. Only `target`: no outcome or choice parameter.
 		parameters: {
 			type: "object",

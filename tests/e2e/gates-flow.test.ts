@@ -15,7 +15,8 @@ import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { replaceSection } from "../../src/core/sections.ts";
-import { writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { findingSummaryComment } from "../../src/subagents/records.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
@@ -85,6 +86,19 @@ async function writerSays(h: ToolHarness, n: number, text: string): Promise<void
 	expect(out.isError, textOf(out)).toBeFalsy();
 }
 
+/** The latest `gate-escalation.plan` decision record's data. */
+function escalation(marked: MarkedComment[]): unknown {
+	return marked.filter((m) => m.kind === "decision" && m.id === "gate-escalation.plan").at(-1)?.data;
+}
+
+/** A completed advisory plan review at HEAD, as `subagent_record` writes it for an inline run. */
+function planReview(head: string): string {
+	return findingSummaryComment({
+		role: "reviewer", subject: "plan", round: 1, status: "DONE", advisory: true, head, packet: "p", sources_used: [], required: [], completed: true,
+		agentSource: "inline", requested: { thinking: "low" }, effective: {}, findings: [],
+	});
+}
+
 describe("gates and decisions", () => {
 	test("full gate flow over a memory forge", async () => {
 		const h = await toolHarness({ branch: CHANGE_BRANCH, files: { ".pi/livespec/flow.yaml": FLOW }, ui: { hasUI: true, select: approveAll } });
@@ -113,11 +127,13 @@ describe("gates and decisions", () => {
 		const planned = await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] });
 		expect(planned.isError, textOf(planned)).toBe(false);
 
-		// 4. The plan gate over the forge, approved by a writer's command.
+		// 4. The self plan gate escalates (no advisory plan review at HEAD): over the forge, approved by a writer's command.
 		await useAdapters(h, "forge");
+		expect(card(h).step.dispatch).toMatchObject({ role: "reviewer", subject: "plan" });
 		const plan = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(plan.isError, textOf(plan)).toBe(false);
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "gate:plan", adapter: "forge" })]);
+		expect(escalation(card(h).state.marked)).toMatchObject({ outcome: "human", reason: "advisory plan review missing at HEAD" });
 		await writerSays(h, n, "/livespec approve");
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
 		expect(card(h).state.lock.locked).toBeDefined();
@@ -164,6 +180,36 @@ describe("gates and decisions", () => {
 		expect(card(h).step.next).not.toContain("spec_stuck");
 		const reopened = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(reopened.isError, textOf(reopened)).toBe(false);
+	});
+
+	test("plan gate passes alone once the advisory review is clean", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH, ui: { hasUI: true, select: approveAll } });
+		h.git("config", "user.name", "t");
+		h.git("config", "user.email", "t@t");
+		h.git("config", `branch.${CHANGE_BRANCH}.livespecBase`, h.head);
+		await writeIn(h.root, "specs/rate-limit/spec.md", SPEC);
+		commitAll(h.root, "spec");
+		let body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", h.head), "Branch", CHANGE_BRANCH);
+		body = body.replace("Capabilities: new [], modified []", "Capabilities: new [rate-limit], modified []");
+		body = body.replace("Product impact: —", "Product impact: updated");
+		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
+		await h.session.refresh();
+		expect((await h.call("spec_gate", { target: "define", briefing: BRIEFING })).isError).toBe(false);
+		await h.call("spec_status");
+		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
+
+		await h.world.postComment(n, BOT_LOGIN, planReview(h.git("rev-parse", "HEAD")));
+		await h.call("spec_status");
+		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass.");
+		const plan = await h.call("spec_gate", { target: "plan" });
+		expect(plan.isError, textOf(plan)).toBe(false);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
+		expect(escalation(card(h).state.marked)).toMatchObject({ outcome: "self", reason: "no trigger" });
+		expect(card(h).state.lock.locked).toBeDefined();
+		// A self pass: no request was sent, the gate result is not bound to one.
+		expect(card(h).state.lock.gates.plan).toMatchObject({ outcome: "approved", superseded: false });
+		expect(card(h).state.lock.gates.plan?.request).toBeUndefined();
 	});
 
 	test("Stale before the first lock", async () => {

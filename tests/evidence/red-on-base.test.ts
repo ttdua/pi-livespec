@@ -1,4 +1,5 @@
 import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
+import { HUMAN_PLAN_FLOW } from "../helpers/flow.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,12 +25,12 @@ const GATE = "plan";
 
 type Gate = ToolHarness & { log: string; runs(): number };
 
-/** A plan-phase change whose units run on `Base` (the first commit, which holds `files`). */
+/** A plan-phase change whose units run on `Base` (the first commit, which holds `files`); the plan gate stays human. */
 async function planChange(units: UnitSpec[], files: Record<string, string> = {}, withEnv = true): Promise<Gate> {
 	const dir = mkdtempSync(join(tmpdir(), "ls-red-log-"));
 	dirs.push(dir);
 	const log = join(dir, "runs.log");
-	const text = Object.fromEntries(Object.entries(files).map(([p, t]) => [p, t.replaceAll("$LOG", log)]));
+	const text = Object.fromEntries(Object.entries({ ...HUMAN_PLAN_FLOW, ...files }).map(([p, t]) => [p, t.replaceAll("$LOG", log)]));
 	const h = await toolHarness({ config: FORGE_CHAIN, files: text, change: { body: changeBody(units.map((u) => ({ ...u, verify: u.verify.replaceAll("$LOG", log) }))), phase: "plan" } });
 	setRedOnBaseEnv(withEnv ? () => verifyEnv(h.session) : async () => undefined);
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
