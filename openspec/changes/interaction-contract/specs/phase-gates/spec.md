@@ -1,0 +1,160 @@
+## ADDED Requirements
+
+### Requirement: Self gate escalation
+A `self` phase gate listed under the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` when `spec_gate <phase>` runs, after its checks and refusals (decision-seam "Gate escalation facts"). On `human` without a valid `briefing`, `spec_gate` MUST refuse naming `briefing` and write nothing. Otherwise it SHALL record the outcome as the `decision` comment `gate-escalation.<phase>`, unless the latest one has the same facts, then pass as a self gate on `self`, or on `human` send a human gate with `waive` when only waivable checks fail and the reason in the payload. A `human` phase gate MUST NOT consult the rule.
+
+#### Scenario: Plan without triggers passes alone
+- **WHEN** the change is in `plan`, every check passes, the plan reviewer's advisory review at HEAD has no `CRITICAL` finding, no unit is tagged `security` or `migration`, and `spec_gate plan` runs without a briefing
+- **THEN** a `gate-escalation.plan` decision with outcome `self` is posted, a `gate` comment with `by: livespec` records the locked digests, the change moves to `build`, and no request is sent
+
+#### Scenario: Waived size limit asks the human
+- **WHEN** the change is in `plan`, `size-limits` fails, and `spec_gate plan` runs with a briefing recommending `waive`
+- **THEN** a `gate-escalation.plan` decision with outcome `human` names `size-limits`, and a `gate:plan` request offering `waive` is sent
+
+#### Scenario: Security unit asks the human
+- **WHEN** the change is in `plan`, every check passes, U2 is tagged `security`, and `spec_gate plan` runs with a briefing recommending `approve`
+- **THEN** a `gate:plan` request is sent and its payload names U2's `security` tag as the reason
+
+#### Scenario: Critical advisory finding asks the human
+- **WHEN** the plan reviewer's advisory review at HEAD reports a `CRITICAL` finding and `spec_gate plan` runs with a briefing
+- **THEN** a `gate:plan` request is sent
+
+#### Scenario: Escalated gate without a briefing
+- **WHEN** U2 is tagged `migration` and `spec_gate plan` runs without a briefing
+- **THEN** the tool refuses, names `briefing`, sends no request, and posts no `gate-escalation` decision
+
+#### Scenario: Project keeps a human plan gate
+- **WHEN** `.pi/livespec/flow.yaml` sets phase `plan` to `gate: human` and no trigger holds
+- **THEN** `spec_gate plan` requires a briefing and sends a `gate:plan` request, and no `gate-escalation` decision is posted
+
+#### Scenario: Unlisted self gate unchanged
+- **WHEN** the change is in `shape` and `spec_gate shape` runs
+- **THEN** no `gate-escalation` decision is posted and the self gate passes as before
+
+### Requirement: Escalation in the next step
+Before a gate that "Self gate escalation" covers is requested, the next step SHALL forecast the outcome from the same facts without writing anything; gate-only checks that have not run are left out, so the gate MAY still escalate on them. On `human` it SHALL say that the gate will ask the human, name the reasons, and say to pass a briefing; when the reason is a missing advisory review, it SHALL name that review's dispatch first. On `self` it SHALL say the gate can pass unless a gate-only check fails.
+
+#### Scenario: Next step names the escalation
+- **WHEN** the change is in `plan`, every check passes and U1 is tagged `security`
+- **THEN** the next step says the plan gate will ask the human because U1 is tagged `security`, and to pass a briefing, and no comment is written
+
+## MODIFIED Requirements
+
+### Requirement: Gate tool
+`spec_gate <target>` SHALL accept the current phase id or a gate registered with `registerGate(name, { checks, options })`. It SHALL run that phase's or gate's checks, including its gate-only checks, before it evaluates the refusals below, then:
+- for a `self` gate, pass when every check passes, unless "Self gate escalation" sends it to the human;
+- for a `human` gate, send a request through the approver chain, with the briefing the agent passed as the `briefing` parameter.
+
+For a target whose gate is `human`, the `briefing` parameter SHALL be required, and `spec_gate` SHALL validate its shape (request-briefing "Briefing validation and storage") before it runs any check, asks any question or evaluates the refusals below. Its `recommended` choice, when set, MUST be one the request offers; `approve` MUST NOT be recommended while a waivable check fails, which SHALL be refused after the checks run. For a `self` gate the parameter SHALL be ignored, valid or not, unless the gate escalates ("Self gate escalation"). A proposer tool SHALL require a briefing with `recommended` and `rationale` and SHALL refuse without one, naming `briefing`, before it writes or sends anything. Scenarios in any spec that run `spec_gate` on a human gate SHALL be read as passing a valid briefing unless they say otherwise.
+
+A named gate SHALL always be a `human` gate and MUST NOT move the phase, except through an effect it registers. Its `options` SHALL be offered to the human after the `waive` option, and the chosen option id SHALL be recorded as the gate comment's `choice`. Choosing a named gate's option MUST NOT waive a failing check.
+
+A named gate MAY name a `proposer` tool; `spec_gate` for such a gate MUST refuse and name that tool, which sends the request itself with its drafts and may offer a subset of its options. A gate with a proposer SHALL NOT be bound to HEAD or to the issue body: neither the request nor its validation refuses on a dirty tree, a moved HEAD or a changed body, and its validator checks the forge state it depends on instead. A named gate MAY register a validator with `registerGateValidator(name, fn)`, which completion SHALL run when it validates an answer and which supersedes the answer when it returns a reason. A named gate MAY register effects with `registerGateEffect(name, fn)`; completion SHALL run them, in registration order, only for a valid answer with outcome `approved` or `approved_with_notes`, before the `gate` comment is written. Each effect MUST be skippable when already applied, so a completion left applying can be finished again.
+
+It MUST refuse, writing nothing, when:
+- the target is neither the current phase nor a registered named gate;
+- the phase gate is `none`;
+- a blocking question is open;
+- a stuck report is unanswered;
+- the iteration cap blocks, as questions-and-stuck "Iteration cap" defines it;
+- the change is parked, unless the target is `new-dependency` or `initiative`;
+- a request for the same subject is pending;
+- the working tree is dirty;
+- a check that is not waivable fails.
+
+For the `define` and `review` targets whose phase lists the `behavior-change` check, that check is the one exception: `spec_gate` SHALL evaluate the refusals above with the `behavior-change` results left out, and only when none applies MAY it write the `decide:behavior-change.<capability>` requests and their `decision` records of durable-doc-checks "Behavior change question at the gate". It SHALL then run the checks again, `behavior-change` included, and refuse without sending the gate request when one that is not waivable fails.
+
+#### Scenario: Blocking question keeps the gate closed
+- **WHEN** Q1 is an open blocking question and `spec_gate define` runs
+- **THEN** the tool refuses, names Q1, and requests nothing
+
+#### Scenario: Failing check that is not waivable
+- **WHEN** `spec-format` fails in define and `spec_gate define` runs
+- **THEN** the tool refuses and names the failing check
+
+#### Scenario: Gate-only check runs at the gate
+- **WHEN** the change is in `plan`, `verify-red-on-base` has not run in this session, and `spec_gate plan` runs
+- **THEN** `verify-red-on-base` runs before the refusals are evaluated, and its results are in the gate request's review payload
+
+#### Scenario: Forge answer completed without rerunning gate-only checks
+- **WHEN** a forge `gate:plan` request was sent after `verify-red-on-base` passed, and a new session completes its `/livespec approve` with HEAD and the issue unchanged
+- **THEN** the answer is valid, the plan gate is approved, and no unit's `Verify` runs during the completion
+
+#### Scenario: Self gate
+- **WHEN** the change is in `shape`, whose gate is `self`, and `spec_gate shape` runs
+- **THEN** a `gate` comment with `by: livespec` and outcome `approved` is written and the change moves to `define`
+
+#### Scenario: Registered gate
+- **WHEN** a test registers gate `custom-gate` with no checks and `spec_gate custom-gate` is approved
+- **THEN** a `gate` comment for `custom-gate` is written and the phase does not move
+
+#### Scenario: Named gate option recorded
+- **WHEN** a test registers gate `custom-gate` with option `accept`, its checks pass, and the human chooses `accept`
+- **THEN** the `gate` comment for `custom-gate` records choice `accept` and no waivers
+
+#### Scenario: Named gate option does not waive
+- **WHEN** a test registers gate `custom-gate` with option `accept` and waivable check `size-limits`, `size-limits` fails, and the human chooses `accept`
+- **THEN** the `gate` comment is marked `superseded` with no waivers and the tool says to choose `waive`
+
+#### Scenario: Gate with a proposer
+- **WHEN** a test registers gate `initiative` with proposer `initiative_propose` and `spec_gate initiative` runs
+- **THEN** the tool refuses, names `initiative_propose`, and requests nothing
+
+#### Scenario: Gate effect runs once before the result
+- **WHEN** a test registers an effect for gate `new-dependency` and an approved answer is completed twice after a crash between the effect and the `gate` comment
+- **THEN** the effect's write happens once and one `gate` comment is written after it
+
+#### Scenario: Proposer gate survives work in progress
+- **WHEN** `new_dependency` sends its request with uncommitted lane edits, and before the answer a unit is ticked and HEAD moves
+- **THEN** the request is sent, and the approved answer is valid
+
+#### Scenario: Parked change refuses the plan gate
+- **WHEN** the change is parked and `spec_gate plan` runs
+- **THEN** the tool refuses, names the parked state, and requests nothing
+
+#### Scenario: Forge answer on a parked change
+- **WHEN** the change is parked and a forge `/livespec approve` answers a `gate:plan` request sent before the park
+- **THEN** the answer is recorded as superseded and the phase does not move
+
+#### Scenario: Validator supersedes
+- **WHEN** gate `initiative` has a validator that returns a reason, and an approved answer is completed
+- **THEN** the answer is recorded as superseded with that reason and no effect runs
+
+#### Scenario: No effect on changes requested
+- **WHEN** the `new-dependency` request is answered with `changes`
+- **THEN** no registered effect runs
+
+#### Scenario: Behavior answer before a refusal
+- **WHEN** `spec_gate define` runs with no other refusal and one unanswered behavior item, and the human answers `changed` in session
+- **THEN** the `decision` record is written, the tool refuses naming `behavior-change`, and no `gate:define` request is sent
+
+#### Scenario: Human gate without a briefing
+- **WHEN** `spec_gate define` runs without `briefing`
+- **THEN** the tool refuses, names `briefing`, runs no check, asks nothing and sends no request
+
+#### Scenario: Self gate ignores the briefing
+- **WHEN** the change is in `shape` and `spec_gate shape` runs without `briefing`, or with a `briefing` whose `summary` is empty
+- **THEN** the self gate passes as before
+
+#### Scenario: Approve not recommended while a check must be waived
+- **WHEN** waivable check `size-limits` fails at `plan` and `spec_gate plan` runs with a briefing recommending `approve`
+- **THEN** the tool refuses, says to recommend `waive` or another action, and sends no request
+
+#### Scenario: Proposer briefing
+- **WHEN** `initiative_propose` runs with valid drafts and a briefing recommending `approve`
+- **THEN** the `initiative` request carries that briefing, and without a briefing the tool refuses, names `briefing`, and sends nothing
+
+### Requirement: Waivable checks
+`registerCheck(name, fn, { waivable: true })` SHALL mark a check as waivable. When only waivable checks fail at a human gate, the request MUST offer a `waive` option, and the human MAY waive them in the same answer. A plain approve MUST NOT pass a gate with a failing waivable check. Waived checks SHALL be listed in the gate comment's `waivers`. A check waived by the phase's valid gate result MUST NOT hold the next step: the approved gate then moves the change as "Gate outcomes" says, so it moves to the successor except at `ship`, unless a rule earlier in "Next step precedence" holds it. A `self` gate MUST NOT pass with a failing check, waivable or not; when a waivable check fails at a phase that "Self gate escalation" covers, the gate SHALL escalate to the human instead of refusing.
+
+#### Scenario: Waive at the gate
+- **WHEN** a test registers waivable check `size-limits` for `plan`, it fails, and the human chooses `waive`
+- **THEN** the gate is approved, its comment lists `size-limits` under `waivers`, and the change moves to `build`
+
+#### Scenario: Waived ship gate stays in ship
+- **WHEN** a test registers waivable check `size-limits` for `ship`, it fails, and the human chooses `waive` at the ship gate
+- **THEN** the gate is approved with `size-limits` under `waivers`, the change stays in `ship`, and the next step says to run `change_ship`
+
+#### Scenario: Approve without waiving
+- **WHEN** a waivable check fails and a writer comments `/livespec approve`
+- **THEN** the command is ignored with a warning that the failing check must be waived with `choose waive`
