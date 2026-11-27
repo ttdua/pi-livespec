@@ -603,3 +603,28 @@ describe("commonDir", () => {
 		expect(realpathSync(await createGit(linked).commonDir())).toBe(realpathSync(common));
 	});
 });
+
+describe("hasCommit", () => {
+	test("HEAD is a commit", async () => {
+		const { root, git } = await committedRepo();
+		expect(await git.hasCommit(await gitHead(root))).toBe(true);
+	});
+
+	test("a commit dropped by reset --hard HEAD~1 is still a commit object", async () => {
+		const { root, git: repo } = await committedRepo();
+		await writeIn(root, "second.txt", "y\n");
+		commitAll(root, "second");
+		const dropped = await gitHead(root);
+		git(root, "reset", "-q", "--hard", "HEAD~1");
+		expect(await repo.hasCommit(dropped)).toBe(true);
+	});
+
+	test("an unknown sha is not a commit", async () => {
+		const { git } = await committedRepo();
+		expect(await git.hasCommit("0".repeat(40))).toBe(false);
+	});
+});
+
+async function gitHead(root: string): Promise<string> {
+	return git(root, "rev-parse", "HEAD");
+}

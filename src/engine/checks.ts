@@ -10,7 +10,7 @@ import { registerReviewClean } from "../review/status.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { capabilitiesMatchDiff } from "../core/capabilities-diff.ts";
-import type { Change } from "../core/change.ts";
+import { type Change, declaredCapabilities } from "../core/change.ts";
 import { messageOf } from "../core/messages.ts";
 import type { Result } from "../core/result.ts";
 import { parseSpec } from "../core/spec.ts";
@@ -25,11 +25,6 @@ import type { ChangeState, CheckResult } from "./state-types.ts";
 import { unitClassification } from "./unit-classification.ts";
 
 const SPECS_PATH = "specs/";
-
-function declaredCapabilities(change: Change): string[] {
-	const caps = change.header.capabilities;
-	return caps ? [...caps.new, ...caps.modified] : [];
-}
 
 function errorResult(code: string, file: string, message: string): Result {
 	return { code, severity: "error", file, message };

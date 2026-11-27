@@ -105,6 +105,7 @@ describe("Drift detectors", () => {
 				reads.push(`${rev}:${path}`);
 				return files[path];
 			},
+			hasCommit: async () => true,
 		};
 		const view = await repoViewAt(git, "c1");
 		expect(view.commit).toBe("c1");
