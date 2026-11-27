@@ -6,7 +6,7 @@
 // `nextStep` and applied by `Session.refresh`.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isDifficulty } from "../core/change.ts";
+import { type Change, isDifficulty, parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { runChecks } from "../engine/checks.ts";
 import { shipFor } from "../ship/context.ts";
@@ -139,7 +139,7 @@ export function gateRequest(
 
 async function passSelf(w: WriteContext, state: ChangeState, target: string): Promise<ToolResult<undefined>> {
 	const n = state.issue.number;
-	const record = await planRecord(w, state, target);
+	const record = await planRecord(w, state, target, state.change);
 	await w.forge.createComment(n, selfGateComment(state, target, new Date(), agentSkillsOf(w.session), record));
 	await afterForgeWrite(w.session, n);
 	return toolResult(withStep(w.session, `The ${target} self gate passed.`), undefined);
@@ -147,10 +147,11 @@ async function passSelf(w: WriteContext, state: ChangeState, target: string): Pr
 
 /**
  * The plan gate's requirement baseline at `state.git.head`, the HEAD the request binds as `head_sha` (or the
- * self gate records), so the approved record matches what was reviewed; undefined for every other target.
+ * self gate records), over the scope of `change`, the body the record is bound with, so the approved record
+ * matches what was reviewed; undefined for every other target.
  */
-function planRecord(w: WriteContext, state: ChangeState, target: string): Promise<RequirementRecord | undefined> {
-	return target === PLAN ? requirementRecord(w.session.git, state.git.head, state.change) : Promise.resolve(undefined);
+function planRecord(w: WriteContext, state: ChangeState, target: string, change: Change): Promise<RequirementRecord | undefined> {
+	return target === PLAN ? requirementRecord(w.session.git, state.git.head, change) : Promise.resolve(undefined);
 }
 
 type RequestExtras = { drafts?: unknown; summary?: string; briefing?: Briefing };
@@ -161,7 +162,8 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
 	const payload = gatePayload(state, w.pack, target, withLink);
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
-	const requirements = await planRecord(w, state, target);
+	// The scope comes from the body bound as `gate_digest`, not `state.change`, which may predate an edit.
+	const requirements = await planRecord(w, state, target, parseChange(issue.body));
 	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements });
 }
 

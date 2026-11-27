@@ -597,6 +597,28 @@ describe("plan gate requirement record", () => {
 		expect(snapshot.requirement_scope).toEqual(expected.scope);
 	});
 
+	test("Capabilities edited between refresh and request: requirement_scope matches the bound body", async () => {
+		const h = await change("plan", { config: FORGE_CHAIN });
+		await seedClassification(h);
+		const original = await h.world.bodyOf(h.n);
+		const edited = original.replace("modified [rate-limit]", "modified [rate-limit, quota]");
+		expect(edited).not.toBe(original);
+		// A gate-only check runs after the state is read and before the request is built: the edit lands in between.
+		registerCheck(
+			"verify-red-on-base",
+			async () => {
+				const issue = await h.world.forge.getIssue(h.n);
+				if (issue.body !== edited) await h.world.forge.updateIssueBody(h.n, edited, issue.version);
+				return [];
+			},
+			{ waivable: true, at: "gate", key: () => "edit" },
+		);
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const snapshot = await snapshotOfRequest(h);
+		expect(snapshot.requirement_scope).toEqual(requirementScope(parseChange(edited)));
+		expect(snapshot.requirement_scope).toContain("quota");
+	});
+
 	test("a define gate request records no requirements", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
 		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
