@@ -117,7 +117,7 @@ describe("unit-evidence", () => {
 		const pending = h.finish("U1");
 		await waitFor(() => h.runs() > runs);
 		await h.world.dropLabel("livespec:phase/build");
-		await h.world.forge.addLabels?.(h.n, ["livespec:phase/define"]);
+		await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
 		const out = await pending;
 		expect(out.isError, textOf(out)).toBe(true);
 		expect(textOf(out)).toContain("not in a per: unit phase (phase define)");
@@ -553,7 +553,7 @@ describe("spec cascade trigger", () => {
 		await h.commit({ "src/u1.ts": "x\n" });
 		const run = vi.spyOn(cascade, "runSpecCascade").mockImplementation(async (session) => {
 			await h.world.dropLabel("livespec:phase/build");
-			await h.world.forge.addLabels?.(h.n, ["livespec:phase/define"]);
+			await h.world.forge.addLabels(h.n, ["livespec:phase/define"]);
 			await session.refresh();
 			return true;
 		});

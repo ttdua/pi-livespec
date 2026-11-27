@@ -11,6 +11,7 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { decisionComment } from "../../src/decide/records.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
+import { ENTRY_LABELS } from "../../src/interaction/menu.ts";
 import "../../src/initiatives/facts.ts";
 import { REMOVED_DIGEST } from "../../src/engine/requirement-diff.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -60,6 +61,7 @@ afterEach(async () => {
 });
 
 const CAP_EDIT = "Each IP SHALL be capped at 100.";
+const ANSWER = "per client token";
 const DEFINE = ["livespec:phase/define"];
 const BUILD = ["livespec:phase/build"];
 const PLAN = ["livespec:phase/plan"];
@@ -144,8 +146,12 @@ describe("spec-diff cascade through the triggers", () => {
 	});
 
 	test("Answer in build changes nothing else", async () => {
-		const h = await locked();
+		const answerNow: SelectFn = async (_title, options) => options.find((o) => o.startsWith(ENTRY_LABELS.answerNow));
+		const h = await locked({ ui: { hasUI: true, select: answerNow, input: async () => ANSWER } });
 		ok(await h.call("spec_question", { text: "Is the cap per IP or per token?" }), "spec_question");
+		const [question] = parseChange(await h.world.bodyOf(h.n)).questions;
+		expect(question).toMatchObject({ id: "Q1", checked: true, answer: ANSWER });
+		expect(await h.world.bodyOf(h.n)).toContain(`- [x] Q1 (blocking): Is the cap per IP or per token? — Answer: ${ANSWER}`);
 		await next(h);
 		expect(await doneUnits(h)).toEqual(["U1", "U2", "U3"]);
 		expect(await stales(h, "")).toEqual([]);
@@ -310,7 +316,7 @@ describe("spec-diff cascade through the triggers", () => {
 		await h.world.restore();
 		expect(h.forge.isReadOnly()).toBe(true);
 		const out = await next(h);
-		expect(out.length).toBeGreaterThan(0);
+		expect(out).toContain("Next: <untrusted>Build U4 — Unit U4.</untrusted>");
 		expect(h.faults.ops).toEqual([]);
 		expect(await stales(h, "")).toEqual([]);
 		expect(await phaseOf(h)).toEqual(BUILD);
@@ -330,6 +336,12 @@ const U2_PENDING = [UNITS[0], { id: "U2", requirement: "Burst", done: false, ver
 async function approvedGate(h: CascadeHarness, phase: string): Promise<void> {
 	const id = `${phase}.seed-${(await own(h)).length}`;
 	await seedOwn(h, "gate", id, { phase, outcome: "approved", notes: "", by: "alice", at: "2026-11-16T10:00:00.000Z", adapter: "in-session", head_sha: h.git("rev-parse", "HEAD"), waivers: [] });
+}
+
+/** Kind and id of every own comment written after `before`, in order. */
+async function newComments(h: CascadeHarness, before: { commentId: string }[]): Promise<[string, string | undefined][]> {
+	const seen = new Set(before.map((m) => m.commentId));
+	return (await own(h)).filter((m) => !seen.has(m.commentId)).map((m) => [m.kind, m.id]);
 }
 
 async function movePhase(h: CascadeHarness, from: string, to: string): Promise<void> {
@@ -389,12 +401,16 @@ describe("spec-diff cascade through other triggers", () => {
 		await ownSpecDiff(h);
 		await lock(h, { headSha: GONE_SHA, legacy: true });
 		ok(await h.call("unit_start", { unit: "U2" }), "unit_start U2");
+		const before = await own(h);
 		const out = await h.call("unit_finish", { unit: "U2" });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("not in a per: unit phase (phase define)");
 		const records = await stales(h, "baseline.");
 		expect(records).toHaveLength(1);
 		expect(records[0]?.id).toBe(`baseline.${GONE_SHA.slice(0, 12)}`);
+		// unit_finish refused and wrote nothing of its own: the only new comment is the cascade's.
+		expect(await newComments(h, before)).toEqual([["stale", records[0]?.id]]);
+		expect(await doneUnits(h)).toEqual(["U1", "U3"]);
 		expect(await phaseOf(h)).toEqual(DEFINE);
 		expect(nextStep(h)).toBe("Ready for the define gate.");
 		expect(await iterations(h)).toBe(0);
@@ -431,10 +447,14 @@ describe("spec-diff cascade through other triggers", () => {
 		const h = await locked({ units: U2_PENDING });
 		ok(await h.call("unit_start", { unit: "U2" }), "unit_start U2");
 		await editSpec(h, CAP_EDIT);
+		const before = await own(h);
 		const [gate, finish] = await Promise.all([h.call("spec_gate", { target: "build", briefing: BRIEFING }), h.call("unit_finish", { unit: "U2" })]);
 		expect(gate.isError).toBe(true);
 		expect(finish.isError).toBe(true);
-		expect(await stales(h, "spec.")).toHaveLength(1);
+		const cascades = await stales(h, "spec.");
+		expect(cascades).toHaveLength(1);
+		// Neither tool wrote a comment of its own (no gate, receipt or progress): only the cascade's stale.
+		expect(await newComments(h, before)).toEqual([["stale", cascades[0]?.id]]);
 		expect(await iterations(h)).toBe(1);
 		expect(await phaseOf(h)).toEqual(DEFINE);
 	});
