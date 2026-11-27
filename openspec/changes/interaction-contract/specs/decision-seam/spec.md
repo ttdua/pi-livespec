@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Gate escalation facts
-The `gate-escalation` decision point SHALL be registered with `registerRule` and configured as `decisions.gate-escalation: { mode: rule, phases, tags }`, where `phases` and `tags` are lists of names; a project override SHALL replace each list it sets. Its facts SHALL be built by code, never from the agent:
-- `phase`, and `head_sha`;
-- `failing_waivable`: the waivable checks of the phase that fail;
-- `advisory_review`: `none` when the phase has no `always` advisory reviewer entry, `missing` when it has one and no completed review of that subject covers HEAD (a review run inline and recorded with `subagent_record` counts as completed), `critical` when that review holds a `CRITICAL` finding, otherwise `clean`;
+The `gate-escalation` point SHALL be registered with `registerRule` as `decisions.gate-escalation: { mode: rule, phases, tags }` (lists of names; an override replaces each list it sets). Its facts SHALL be built by code, never from the agent:
+- `phase` and `head_sha`;
+- `failing_waivable`: the phase's failing waivable checks;
+- `advisory_review`: `none`, `missing`, `critical` or `clean` (see "Advisory review state");
 - `units`: each unit's id and `Tags`.
 
 #### Scenario: Facts from the ledger
@@ -14,6 +14,17 @@ The `gate-escalation` decision point SHALL be registered with `registerRule` and
 #### Scenario: Project adds a tag
 - **WHEN** `.pi/livespec/flow.yaml` sets `decisions.gate-escalation.tags: [security, migration, api]` and U1 is tagged `api`
 - **THEN** the outcome is `human`
+
+### Requirement: Advisory review state
+`advisory_review` SHALL be `none` when the phase has no `always` advisory reviewer entry; otherwise, over every such entry, `missing` when one has no completed review covering HEAD, else `critical` when one's review holds a `CRITICAL` finding, else `clean`. A review run inline and recorded with `subagent_record` SHALL count as completed.
+
+#### Scenario: Second advisory reviewer counted
+- **WHEN** a project pack gives `plan` two `always` advisory reviewers, subjects `plan` and `persona:security-auditor`, the `plan` review at HEAD is clean and the persona review at HEAD holds a `CRITICAL` finding
+- **THEN** `advisory_review` is `critical`
+
+#### Scenario: One advisory review missing
+- **WHEN** the same pack has a clean `plan` review at HEAD and no persona review at HEAD
+- **THEN** `advisory_review` is `missing`
 
 ### Requirement: Gate escalation rule
 The `gate-escalation` rule MUST return `human` when `failing_waivable` is not empty, `advisory_review` is `missing` or `critical`, or a unit has a tag listed in `tags`, with a reason naming every trigger that holds; otherwise it SHALL return `self` with the reason `no trigger`. It MUST NOT ask a human.

@@ -45,6 +45,7 @@ None.
 - `finding-routing`: the `question` route sends fixed candidates and a recommendation.
 - `unit-planning`: `unit_amend` requires a briefing with a recommendation.
 - `subagent-policy`: an advisory result may escalate a self gate, which is not a block.
+- `flow-engine`: a failing waivable check at an escalating self gate falls through to the gate step.
 - `discovered-dependencies`: `new_dependency` requires a briefing; options are described and no option is labelled default.
 
 ## Impact

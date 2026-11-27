@@ -52,3 +52,12 @@ Blocked by: none
 Blocked by: 1, 2, 3, 4, 5, 6
 
 - [x] 7.1 Update `README.md`, `README.vi.md` and `docs/architecture.md`: self plan gate and its triggers, no question class or `class` commands, required briefings and candidates, hidden units tab
+
+## 8. Verify iteration 1 follow-ups
+
+Blocked by: 5, 6
+
+- [ ] 8.1 Next step: a failing waivable check at a phase covered by `gate-escalation` falls through to the gate step and is reported as an escalation (`src/engine/next-step.ts`, `src/engine/gate-decision.ts`; flow-engine "Next step precedence", phase-gates "Escalation in the next step")
+- [ ] 8.2 `advisory_review` covers every `always` advisory reviewer entry of the phase, `missing` over `critical` over `clean` (`src/engine/gate-escalation-facts.ts`; decision-seam "Advisory review state")
+- [ ] 8.3 Extract the escalation, briefing and record branch of `runSpecGate` into one helper without behaviour change (`src/tools/spec-gate.ts`)
+- [ ] 8.4 Drop the unused `r` parameter of `outcomeOf` and the unused `ApprovalRequest` import (`src/interaction/dialog/host.ts`, `src/interaction/dialog/result.ts`)

@@ -1,19 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Interaction contract
-Every request that livespec sends to a human through the approver (gate, amendment, question, stuck report and rule ask) SHALL:
-1. ask only what only the human can answer: an authority decision, or information the system does not have; a fact that git, the specs, the diff or the ledger can give MUST NOT be asked;
-2. state the consequence of each offered choice in the request itself, as the choice's description;
-3. carry a briefing with `recommended` and `rationale`, with the recommended choice listed first;
-4. be answerable in one action: one pick submitted once; optional extras (notes, unit overrides) MUST NOT be required to submit.
-
-Item 1 SHALL be enforced by review, items 2 to 4 by the request builder and the adapters. Account selection (forge-accounts "Ask once") does not go through the approver and is not covered.
-
-The rubric of every reviewer subject, persona subjects included, SHALL name this requirement, so a new or changed request that breaks it is a review finding.
-
-#### Scenario: Reviewer rubric cites the contract
-- **WHEN** a `reviewer` packet is built for any subject, `persona:<name>` included
-- **THEN** its rubric names approver-adapters "Interaction contract"
+Every approver request (gate, amendment, question, stuck report, rule ask) SHALL:
+1. ask only what only the human can answer; a fact git, the specs, the diff or the ledger can give MUST NOT be asked;
+2. state each choice's consequence as its description;
+3. carry a briefing with `recommended` and `rationale`, the recommended choice first;
+4. be answerable in one action; notes and unit overrides MUST NOT be required to submit.
 
 #### Scenario: Approve in one action
 - **WHEN** a plan gate with overridable units is shown in the dialog and the human picks the recommended `approve` and submits, without opening the units tab or writing a note
@@ -23,8 +15,15 @@ The rubric of every reviewer subject, persona subjects included, SHALL name this
 - **WHEN** a gate, an amendment, a question, a stuck report and a rule ask are each sent through the forge adapter
 - **THEN** each `request` comment holds a briefing with `recommended` and `rationale`, and its "How to answer" table lists the recommended choice first
 
+### Requirement: Contract scope and review
+Item 1 of "Interaction contract" SHALL be enforced by review, items 2 to 4 by the request builder and the adapters. Account selection (forge-accounts "Ask once") does not go through the approver and is not covered. The rubric of every reviewer subject, persona subjects included, SHALL name "Interaction contract", so a new or changed request that breaks it is a review finding.
+
+#### Scenario: Reviewer rubric cites the contract
+- **WHEN** a `reviewer` packet is built for any subject, `persona:<name>` included
+- **THEN** its rubric names approver-adapters "Interaction contract"
+
 ### Requirement: Contract enforced at construction
-The request builder SHALL enforce items 2 and 3 of "Interaction contract": building a request whose briefing, `recommended` or `rationale` is missing, whose `recommended` is not an offered choice, or that offers an option without a description MUST throw, before anything is written or asked. A tool SHALL refuse the missing field by name before it reaches the builder. Built-in gate actions count as described, because livespec describes them (request-briefing "Built-in action descriptions"). Requests stored before this requirement SHALL still be read, shown and answered.
+The request builder MUST throw, before anything is written or asked, when a request lacks a briefing, `recommended` or `rationale`, recommends a choice it does not offer, or offers an option without a description; built-in gate actions and `waive` count as described. A tool SHALL refuse the missing field by name first. Stored requests SHALL still be read, shown and answered.
 
 #### Scenario: Request without a recommendation refused at construction
 - **WHEN** a test builds a stuck request with options A and B and a briefing without `recommended`

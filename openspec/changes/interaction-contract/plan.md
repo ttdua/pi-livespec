@@ -213,6 +213,27 @@
 
 ---
 
+## Task 8: Verify iteration 1 follow-ups — implements 8
+
+**Covers:** 8.1, 8.2, 8.3, 8.4
+**Difficulty:** Normal
+**Blocked by:** Task 5, Task 6
+
+**Files:**
+- Modify: `src/engine/next-step.ts`, `src/engine/gate-decision.ts`, `src/engine/gate-escalation-facts.ts`, `src/tools/spec-gate.ts`, `src/interaction/dialog/host.ts`, `src/interaction/dialog/result.ts`
+- Test: `tests/engine/next-step.test.ts`, `tests/engine/gate-escalation-facts.test.ts`, `tests/tools/spec-gate.test.ts`
+
+**Interfaces:** Consumes `escalationForecast`, `gateEscalationFacts`. No new public contract.
+
+- [ ] **Step 1: Failing test** `Waivable check at an escalating self gate` in `tests/engine/next-step.test.ts`: change in `plan` (default pack), only `size-limits` fails, no other trigger → next step is the gate step, contains `will ask the human`, `size-limits fails`, and says the human can waive it or the agent can fix it; it does not start with `Fix size-limits`. Add `Failing waivable check names the escalation` (phase-gates) as the same assertion through `spec_next`/`nextStep`. A non-waivable failing check at `plan` still gives `Fix <check>: …`; a waivable failing check at a `human` gate phase (project override) still gives `Fix …` as today.
+- [ ] **Step 2:** In `failingCheck` (next-step.ts) skip failures whose check `isWaivable` when the phase is covered by `gate-escalation` (`escalationConfigFor`/the same predicate `escalationForecast` uses) and not waived. In `gateReady` (gate-decision.ts) on a human forecast whose facts list failing waivable checks, append ` The human can waive <checks>, or fix them first.` Run → PASS.
+- [ ] **Step 3: Failing tests** `Second advisory reviewer counted` and `One advisory review missing` in `tests/engine/gate-escalation-facts.test.ts`, using a pack whose `plan` phase has two `always` advisory reviewer entries (`plan` and `persona:security-auditor`). Implement: iterate every matching entry; `missing` beats `critical` beats `clean`. Run → PASS.
+- [ ] **Step 4:** Extract the escalation branch of `runSpecGate` (rule via `decide`, `escalatedBriefing`, recommendation refusal, `recordEscalation`) into one function, e.g. `escalateOrPass(...)`; no behaviour change — existing `tests/tools/spec-gate.test.ts` stays green unchanged.
+- [ ] **Step 5:** Remove `r` from `outcomeOf` (host.ts) and its call site; remove the unused `ApprovalRequest` import in result.ts.
+- [ ] **Step 6:** `bunx tsc --noEmit && bunx vitest run` → green; `openspec validate interaction-contract --strict` exit 0. Commit `fix(phase-gates): verify follow-ups for the escalating plan gate`.
+
+---
+
 ## Scenario → test
 
 Existing tests keep covering unchanged baseline scenarios; "(fixture updated)" marks tests whose requests gain a contract-valid briefing in Tasks 2 to 4.
@@ -283,3 +304,9 @@ Existing tests keep covering unchanged baseline scenarios; "(fixture updated)" m
 **unit-planning**
 - Amendment unfreezes … Amendment with a briefing → existing `tests/tools/unit-amend.test.ts` (fixture updated)
 - Amendment without a briefing → Task 3 Step 1
+
+**Iteration 2 additions**
+- Contract scope and review / Reviewer rubric cites the contract → `tests/subagents/rubrics.test.ts` (moved requirement)
+- Advisory review state: Second advisory reviewer counted, One advisory review missing → Task 8 Step 3
+- Failing waivable check names the escalation (phase-gates) → Task 8 Step 1
+- flow-engine Waivable check at an escalating self gate → Task 8 Step 1
