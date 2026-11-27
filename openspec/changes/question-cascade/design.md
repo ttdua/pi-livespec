@@ -22,7 +22,8 @@ The brainstorm fixes the behaviour; this document fixes how.
 ### D1. One detector: digests at a revision, compared as maps (`src/engine/requirement-diff.ts`)
 - `requirementContent(r)` moves from `sync.ts`. It collapses every run of whitespace in the text and in each GIVEN/WHEN/THEN line to one space before serialising, so re-wrapped or re-indented text is not a change; the parser already drops line positions.
 - `requirementDigests(git, rev, scope)` returns `{ id: sha256(content) }` for every requirement of `specs/<capability>/spec.md` at `rev`, reading the files with `git.showFile`.
-- `changedIds(before, after)` returns the ids whose digest differs, including ids present on one side only, sorted. A missing file contributes nothing to a map. `parseSpec` is lenient and never throws, as `change_sync` relies on today; a broken spec therefore reads as fewer requirements, which cascades visibly and is fixed by the next commit.
+- `changedIds(before, after)` returns the ids whose digest differs, including ids present on one side only, sorted. A missing file contributes nothing to a map. `parseSpec` tolerates malformed Markdown, but malformed YAML frontmatter throws; the run then records the error and writes nothing, as `change_sync` fails today, and resumes once the spec is fixed.
+- Duplicate ids: when two requirements of one capability normalize to the same id, `requirementDigests` throws an error naming the capability and the id instead of keeping the last one; the run fails the same way (records the error, writes nothing).
 - `change_sync` uses the pair: `changedIds(await requirementDigests(git, oldBase, caps), await requirementDigests(git, base, caps))`. It keeps its `oldBase === base` short-circuit, and its behaviour changes only by the whitespace collapse. This is `changedRequirements` refactored into the shared pair, as the issue asks.
 - `src/fix/lane-facts.ts` keeps its own name-level `requirementsAt`, because it compares structure, not content.
 - Why maps of digests and not content pairs: the baseline is a digest record (D3), so both callers compare the same shape. Git is only one way to produce a map.
@@ -38,10 +39,12 @@ The brainstorm fixes the behaviour; this document fixes how.
 - `planSpecCascade(input)` is pure and dispatches to three sub-planners; the first match wins: `planLegacyMissing`, `planCompletion`, `planNewCascade`.
 - `applyCascade(target, plan)` runs `postStale`, then `untickUnits`, then `moveBack`, each skipped when already applied.
 - `runSpecCascade(session)` composes them and adds the target guard, single-flight, error recording, comments-cache invalidation and a refresh after a write.
+- Branch guard and pinned HEAD: the run reads the git branch and the HEAD sha once at its start. Before computing digests or writing, `readCascadeInput` checks that this branch equals the `Branch` header of the issue body it just read; otherwise the run writes nothing and returns false, recording nothing (a switched checkout is not an error). Every digest at HEAD and the merge-base use the pinned sha, so a commit landing mid-run is not mixed in.
 
 ### D3. Baseline, acknowledged digests, and the integration exclusion
 - Scope: `requirementScope(change)` is the declared capabilities (the existing `declaredCapabilities`, moved to `src/core/change.ts` and reused by `engine/checks.ts` and `subagents/source-kit.ts`) plus the capability of every unit `Covers` entry, trimmed.
-- Recording point: `buildRequest` (`spec-gate.ts`) computes `requirements` and `requirement_scope` for `target === "plan"` at `state.git.head`, the sha that `prepareRequest` binds as `head_sha`, and `gateRequest` stores them in the `GateSnapshot`. Plan gates are bound to HEAD and to the issue body (`headBoundReason`, `gate_digest`), so the digests and the scope always match what is approved. `applyGate` copies them from the snapshot into the plan `gate` comment; for a self gate, `passSelf` computes them at the same `state.git.head` and passes them to `selfGateComment`. The completing machine never reads that commit.
+- Recording point: `buildRequest` (`spec-gate.ts`) computes `requirements` and `requirement_scope` for `target === "plan"` at `state.git.head`, the sha that `prepareRequest` binds as `head_sha`, and `gateRequest` stores them in the `GateSnapshot`. Plan gates are bound to HEAD and to the issue body (`headBoundReason`, `gate_digest`); `requirement_scope` is computed from `parseChange` of the same issue body that `prepareRequest` binds as `gate_digest`, not from the refreshed `state.change`, so the digests and the scope always match what is approved.
+- Record parsing: `gateData` accepts `requirements` only together with a valid string-array `requirement_scope`, and vice versa; a half or malformed record is no record, and the gate takes the legacy path (D6). `applyGate` copies them from the snapshot into the plan `gate` comment; for a self gate, `passSelf` computes them at the same `state.git.head` and passes them to `selfGateComment`. The completing machine never reads that commit.
 - Baseline: `LockState.baseline = { at, commentId, headSha?, requirements?, scope? }`, taken from the gate `lockOf` uses. It is not read from `GateResult`, because a cascade `stale` listing `plan` drops `gates.plan` while the lock stays.
 - Acknowledged map: start from the baseline record, then overlay, in comment order, the `requirements` of every spec-cascade `stale` after the baseline gate.
   - An overlaid `REMOVED_DIGEST` deletes the id from the map, so an acknowledged removal is not seen again while the id stays absent; re-adding it cascades.
@@ -51,7 +54,7 @@ The brainstorm fixes the behaviour; this document fixes how.
   - Edits from `change_sync`, a hand merge or the forge's update button never cascade.
   - A revert of the change's own edit still does, because an acknowledged id is never excluded.
   - An id absent at the integration reference is never excluded, so a removal always cascades, including one merged from the integration branch. Why: a missed cascade leaves units ticked against a removed requirement, while a spurious one costs one define round.
-- Integration reference: `git merge-base HEAD origin/<integration branch>`.
+- Integration reference: `git merge-base <pinned HEAD> origin/<integration branch>` (D2).
   - Fetch first with a best-effort `git.fetch("origin", branch)` under the git runner's existing timeout; a failure is ignored and the local ref is used.
   - `integrationBranch(project, git)` resolves the branch; skip this step when `config.project` is null.
   - `git.remoteRef` checks that the ref exists before `mergeBase`.
@@ -84,7 +87,7 @@ Write order is the `stale` comment, then one versioned untick body write, then `
   - id `baseline.<sha12>`, `phases`: `define` and every later phase, `units: []`, `after_plan: false`;
   - `reason`: `the plan-lock commit <sha> is missing; approve the spec and the plan again`;
   - a move to `define` when the change is past it. In `define` it posts the comment without a move, so approving define does not trigger a second return from `plan`.
-- When that comment already exists, `planLegacyMissing` returns `undefined`, `planCompletion` finishes a failed move, and no digest is compared until a new plan gate records digests.
+- When that comment already exists, `planLegacyMissing` returns `undefined`, `planCompletion` finishes a failed move, and no digest is compared until a new plan gate records digests. This fail-closed state is sticky: `failedClosed` holds even when `hasCommit(head_sha)` becomes true again, so the runner reads no digests and `planNewCascade` plans none.
 - Why `define`: without a baseline nobody knows which requirements changed since the lock.
 - Why `git cat-file -e <sha>^{commit}` (exit 128 = absent): it reads by sha, so reachability does not matter. Only the legacy path and the `Base` fallback (D3) use it.
 - `unit_finish` refuses outside a `per: unit` phase:
@@ -118,6 +121,8 @@ Write order is the `stale` comment, then one versioned untick body write, then `
 - [Uncommitted spec edits are not seen] → `unit_finish` requires a clean tree and `spec_gate` runs the detector first, so the edit is caught once committed.
 - [Old pending forge requests still show `--changes` in their text] → The command is refused with a message naming the replacement.
 - [`unit_finish` now refuses outside `build`] → Only reachable after a cascade moved the change back; the unit is finished again in `build`.
+- [A partial cascade in a pack whose define phase has `gate: none` does not complete its move back] → custom packs only; the `stale` comment already invalidates later gate results, so later gates refuse.
+- [An identical amendment and re-lock after a cascade lets a pre-cascade receipt re-tick a unit without rerunning Verify] → pre-existing for every stale source (answers, change_sync); out of scope for #63; follow-up issue.
 
 ## Migration Plan
 
