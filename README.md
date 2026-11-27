@@ -332,7 +332,7 @@ A question's table lists each candidate with the command `/livespec answer Q<n> 
 | `/livespec changes <notes>` | request changes; notes are required |
 | `/livespec dismiss [notes]` | reject without a decision; the agent must ask you how to proceed |
 | `/livespec choose <option-id> [notes]` | pick an option: `waive`, a stuck option, `A`/`B`/…, `unchanged`/`changed` |
-| `/livespec answer Q<n> <text> [--changes <capability>/Requirement: <name>] [--class blocking\|non-blocking]` | answer a question |
+| `/livespec answer Q<n> <text> [--class blocking\|non-blocking]` | answer a question in one step; to change a requirement, edit its spec |
 | `/livespec class Q<n> blocking\|non-blocking` | reclassify a question before answering |
 | `/livespec set U<n> difficulty <low\|medium\|high>` | override a unit (plan gate and amendments; applied only if the gate is approved) |
 | `/livespec set U<n> tags <a,b,…>` | override a unit's tags (same) |
@@ -403,13 +403,13 @@ Rules that decide whether your comment counts:
 
 **You see:** the question text and its class, `blocking` (gates stay closed) or `non-blocking`, and optionally 2 to 4 **candidate answers** (each a label and a description), possibly one recommended with its reason.
 
-**Answer** by picking a candidate, or with your own text, and say whether it changes a requirement:
+**Answer** by picking a candidate, or with your own text. One step is enough:
 
 ```text
-/livespec answer Q2 use per-user limits, not per-IP --changes rate-limit/Requirement: Per-IP cap
+/livespec answer Q2 use per-user limits, not per-IP
 ```
 
-In session you are asked "Does the answer change a requirement?" with the declared requirements as options. **Naming a changed requirement sends the change back to `define`** and unticks the done units that cover it; the counter `change_iterations` rises if the plan was already approved. Use it only when the answer really changes the spec. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
+If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it; there is no flag. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
 
 ### Stuck report: pick a way out
 

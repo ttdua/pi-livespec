@@ -334,7 +334,7 @@ Bảng của câu hỏi liệt kê từng ứng viên với lệnh `/livespec an
 | `/livespec changes <notes>` | yêu cầu sửa; bắt buộc có notes |
 | `/livespec dismiss [notes]` | từ chối mà không quyết định; agent phải hỏi bạn cách tiếp tục |
 | `/livespec choose <option-id> [notes]` | chọn option: `waive`, option của stuck report, `A`/`B`/…, `unchanged`/`changed` |
-| `/livespec answer Q<n> <text> [--changes <capability>/Requirement: <name>] [--class blocking\|non-blocking]` | trả lời câu hỏi |
+| `/livespec answer Q<n> <text> [--class blocking\|non-blocking]` | trả lời câu hỏi trong một bước; muốn đổi requirement thì sửa spec |
 | `/livespec class Q<n> blocking\|non-blocking` | phân loại lại câu hỏi trước khi trả lời |
 | `/livespec set U<n> difficulty <low\|medium\|high>` | override một unit (plan gate và amendment; chỉ áp dụng nếu gate được duyệt) |
 | `/livespec set U<n> tags <a,b,…>` | override tag của unit (tương tự) |
@@ -405,13 +405,13 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 **Bạn thấy:** nội dung câu hỏi và loại của nó, `blocking` (gate giữ đóng) hoặc `non-blocking`, và tùy chọn 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), có thể có một cái được đề xuất kèm lý do.
 
-**Trả lời** bằng cách chọn một ứng viên hoặc gõ text riêng, và cho biết nó có đổi requirement không:
+**Trả lời** bằng cách chọn một ứng viên hoặc gõ text riêng. Một bước là đủ:
 
 ```text
-/livespec answer Q2 use per-user limits, not per-IP --changes rate-limit/Requirement: Per-IP cap
+/livespec answer Q2 use per-user limits, not per-IP
 ```
 
-Trong session bạn được hỏi "Does the answer change a requirement?" với các requirement đã khai báo làm option. **Chỉ ra một requirement bị đổi sẽ đưa change về `define`** và untick các unit đã xong có phủ requirement đó; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ dùng khi câu trả lời thực sự đổi spec. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp.
+Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capability>/spec.md` và commit; không có flag nào. livespec phát hiện thay đổi từ spec diff khi bắt đầu session, khi chạy `/livespec next`, và trước gate kế tiếp hoặc `unit_finish`. Change quay về `define` và các unit đã xong phủ requirement đó bị untick; bộ đếm `change_iterations` tăng nếu plan đã được duyệt. Chỉ sửa spec khi đáp án thực sự đổi nó. Chọn "Answer later" trong session làm câu hỏi thành non-blocking và chuyển nó sang adapter kế tiếp.
 
 ### Stuck report: chọn lối ra
 
