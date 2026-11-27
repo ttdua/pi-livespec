@@ -149,7 +149,7 @@ Dùng cho mọi change thêm hoặc đổi hành vi. Một change = một issue 
 |---|---|---|
 | `shape` | agent phỏng vấn bạn | self gate (chỉ check) |
 | `define` | agent viết proposal và phần thay đổi spec | **human gate** |
-| `plan` | agent chia việc thành unit | **human gate** |
+| `plan` | agent chia việc thành unit | self gate, **human** khi escalate |
 | `build` | agent (hoặc child implementer) build từng unit | mọi unit được tick kèm receipt |
 | `review` | reviewer, verifier, agent sửa | self gate (`review-clean`) |
 | `ship` | agent điền bảng durable docs và mở PR | **human gate**, rồi `change_ship` |
@@ -261,9 +261,9 @@ Tiêu đề dialog là tóm tắt request (các fact), rồi đến briefing (xe
 3. **dismiss**;
 4. các option bổ sung, ví dụ `waive`, kèm mô tả.
 
-Câu hỏi hiển thị các đáp án ứng viên (nếu agent đưa 2 đến 4), **write my own answer** và **answer later (non-blocking)**. Chọn một ứng viên là trả lời bằng label của nó.
+Câu hỏi hiển thị 2 đến 4 đáp án ứng viên, **write my own answer** và **answer later (non-blocking)**. Chọn một ứng viên là trả lời bằng label của nó.
 
-Trong pi TUI, request là một dialog với các tab **Decision**, **Adjust units** (chỉ khi unit có thể override) và **Review**. Ghi note bên trong bằng `n`; không gì được gửi cho đến khi bạn gửi ở **Review**. **answer later** và **dismiss** đóng dialog ngay, không qua Review.
+Trong pi TUI, request là một dialog với các tab **Decision** và **Review**. **Adjust units** mở bằng `u` ở Decision, ở plan gate và với amendment, khi unit có thể override. Ghi note bên trong bằng `n`; không gì được gửi cho đến khi bạn gửi ở **Review**. **answer later** và **dismiss** đóng dialog ngay, không qua Review.
 
 Ở RPC host và các mode khác, cùng các câu trả lời đó đến từ select prompt: sau approve hoặc một option, bạn chọn **No notes** hoặc **Add notes**; ở plan gate và với amendment là **Keep classification** hoặc **Adjust Difficulty or Tags**.
 
@@ -271,6 +271,7 @@ Trong pi TUI, request là một dialog với các tab **Decision**, **Adjust uni
 
 - `↑` `↓` di chuyển; `1`–`9` chọn entry có số đó.
 - `n` ghi note.
+- `u` mở **Adjust units** (Decision, khi unit có thể override).
 - `Tab` / `Shift+Tab` tab kế tiếp / trước.
 - `←` / `→` đổi Difficulty; `e` sửa tags (Adjust units).
 - `PgUp` / `PgDn` cuộn fact và briefing.
@@ -286,7 +287,7 @@ Mỗi request cần con người đều kèm một **briefing** bên cạnh các
 - **Text của agent là vô hại.** livespec vô hiệu hóa `<!--` và `/livespec` ở đầu dòng trong đó, nên briefing không thể thêm lệnh hay giả marker.
 - Request tạo trước tính năng này không có briefing và vẫn hoạt động.
 
-`spec_gate` bắt buộc có briefing cho gate của con người. `unit_amend`, `initiative_propose` và `new_dependency` nhận briefing tùy chọn.
+`spec_gate` bắt buộc có briefing cho gate của con người hoặc gate bị escalate; `unit_amend`, `initiative_propose` và `new_dependency` cũng bắt buộc có briefing. Mỗi briefing cần lựa chọn `recommended` và `rationale`. `spec_question` cần 2 đến 4 candidate kèm `recommended` và `rationale`.
 
 ### Trả lời trên forge
 
@@ -334,8 +335,7 @@ Bảng của câu hỏi liệt kê từng ứng viên với lệnh `/livespec an
 | `/livespec changes <notes>` | yêu cầu sửa; bắt buộc có notes |
 | `/livespec dismiss [notes]` | từ chối mà không quyết định; agent phải hỏi bạn cách tiếp tục |
 | `/livespec choose <option-id> [notes]` | chọn option: `waive`, option của stuck report, `A`/`B`/…, `unchanged`/`changed` |
-| `/livespec answer Q<n> <text> [--class blocking\|non-blocking]` | trả lời câu hỏi trong một bước; muốn đổi requirement thì sửa spec |
-| `/livespec class Q<n> blocking\|non-blocking` | phân loại lại câu hỏi trước khi trả lời |
+| `/livespec answer Q<n> <text>` | trả lời câu hỏi trong một bước; muốn đổi requirement thì sửa spec |
 | `/livespec set U<n> difficulty <low\|medium\|high>` | override một unit (plan gate và amendment; chỉ áp dụng nếu gate được duyệt) |
 | `/livespec set U<n> tags <a,b,…>` | override tag của unit (tương tự) |
 
@@ -377,6 +377,8 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 **Bạn thấy:** id, tiêu đề, `Difficulty`, `Tags` và `Covers` của từng unit, lý do của mỗi quyết định phân loại, các tag agent thêm vào, và kết quả `verify-red-on-base`.
 
+**Gate:** `self` mặc định: agent tự pass gate khi các check pass, trừ khi rule `gate-escalation` hỏi bạn. Nó hỏi khi một waivable check fail (ví dụ `size-limits`), advisory plan review tại `HEAD` thiếu hoặc có finding CRITICAL, hoặc một unit có tag `security` hoặc `migration`. Request kết thúc bằng `Escalated: <reason>` và bắt buộc có briefing. Muốn luôn hỏi, đặt `gate: human` cho phase `plan` trong `.pi/livespec/flow.yaml` (kèm `extends: agent-skills`); muốn đổi trigger, đặt `decisions.gate-escalation` (`phases`, `tags`).
+
 **Cần đọc:**
 
 1. **Độ phủ**: mọi requirement và scenario từ define đều được một unit nào đó phủ (`Covers`, `Scenarios`).
@@ -386,7 +388,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 5. **Difficulty và Tags**: tag quyết định reviewer nào chạy (`security` thêm security auditor). Override nếu thấy sai.
 6. **Kích thước**: quá 8 unit hoặc 3 capability sẽ làm `size-limits` fail. Hoặc bảo agent tách (`change_split`), hoặc chủ động `choose waive`.
 
-**Trả lời:** approve để khóa plan. Override bằng `/livespec set U3 difficulty high` hoặc bước "Adjust Difficulty or Tags", rồi approve. Request changes khi thiếu độ phủ hoặc `Verify` không tốt.
+**Trả lời:** approve để khóa plan. Override bằng `/livespec set U3 difficulty high`, bằng `u` (Adjust units) trong pi TUI, hoặc bước "Adjust Difficulty or Tags", rồi approve. Request changes khi thiếu độ phủ hoặc `Verify` không tốt.
 
 ### Ship gate: đã sẵn sàng publish chưa?
 
@@ -403,7 +405,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 ### Câu hỏi: trả lời điều agent không thể biết
 
-**Bạn thấy:** nội dung câu hỏi và loại của nó, `blocking` (gate giữ đóng) hoặc `non-blocking`, và tùy chọn 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), có thể có một cái được đề xuất kèm lý do.
+**Bạn thấy:** nội dung câu hỏi và việc nó có chặn hay không: `blocking` (gate giữ đóng) hoặc `non-blocking` (sau khi bạn chọn **answer later** trong session), và 2 đến 4 **đáp án ứng viên** (mỗi cái có label và mô tả), có thể có một cái được đề xuất kèm lý do.
 
 **Trả lời** bằng cách chọn một ứng viên hoặc gõ text riêng. Một bước là đủ:
 
@@ -464,7 +466,7 @@ Khi implementer báo một unit cần việc nằm ngoài change (`missing-prere
 
 | Option | Chọn khi | Tiếp theo |
 |---|---|---|
-| **A** (mặc định) | phần tiên quyết đáng là một change riêng | tạo change mới ở `shape`; change này bị **park** |
+| **A** | phần tiên quyết đáng là một change riêng | tạo change mới ở `shape`; change này bị **park** |
 | **B** | phần thiếu nhỏ và thuộc về change này | thêm unit qua `unit_amend --add` |
 | **C** | có thể làm stub trước | một unit stub ở đây và một change follow-up |
 | **D** | change này sai hướng | quay về `shape`, hoặc bỏ change |

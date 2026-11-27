@@ -8,6 +8,8 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 - `/livespec answer --changes` is removed: the forge refuses it with a message that names the replacement. Edit the spec instead; livespec cascades requirement edits from the spec diff.
 - `unit_finish` refuses outside the per-unit phase (`build`).
+- `/livespec class` and `/livespec answer --class` are removed: the question class is no longer a human choice. Use **answer later** in session to make a question non-blocking.
+- The plan gate is `self` by default and asks the human only when `gate-escalation` escalates it.
 
 ### Changed
 
