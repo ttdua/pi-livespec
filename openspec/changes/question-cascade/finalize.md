@@ -10,13 +10,13 @@
 
 - **Branch**: `fix/question-cascade`
 - **Base branch**: `main`
-- **Final state**: `pr-updated` (fast-forwarded locally to `6d5d72b`; push pending)
-- **PR URL**: `N/A` (no PR exists for `fix/question-cascade`; the branch has no upstream yet)
+- **Final state**: `pr-updated` (fast-forwarded to `6d5d72b`, pushed to `origin`; PR opened at finalize step 11)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/73`
 
 Deviations from the canonical flow, made under the project `AGENTS.md` policy:
 - Steps 3–4 ran in the session worktree `/Users/naicoi/Projects/oss/pi-livespec.fix-question-cascade`, which already has `fix/question-cascade` checked out. The feature branch was not checked out in the main checkout. There was no `git pull`, because the branch has no upstream.
 - Step 7 was skipped: `git branch -d question-cascade` refused, because the branch is still checked out in the preserved Worktrunk worktree. Worktree and branch cleanup is done with `wt remove question-cascade` (AGENTS.md: Worktrunk only), after the work is merged.
-- Steps 10–12 (push, opening a PR, the PR comment) are pending. AGENTS.md forbids pushing, merging or opening a PR without explicit permission in chat.
+- Steps 10–12 ran after explicit permission in chat (AGENTS.md: no push, merge or PR without it). The push went over HTTPS with the `gh` credential helper as the `ttdua` account (AGENTS.md: `ttdua/*` repositories).
 
 ---
 
@@ -29,7 +29,7 @@ Deviations from the canonical flow, made under the project `AGENTS.md` policy:
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/73#issuecomment-7216889635)
 
 ---
 
@@ -51,6 +51,5 @@ Deviations from the canonical flow, made under the project `AGENTS.md` policy:
 
 ## Next step
 
-1. With your permission, push `fix/question-cascade` to `origin` and open a PR (suggested title: `fix(questions-and-stuck): question-cascade`). Then post the code-reviewer orientation comment and update the PR comment status in this receipt.
-2. Wait for the PR code review. After approval, run `/opsx-archive` on `fix/question-cascade`, push the archive commits to update the PR, then merge the PR with `gh pr merge --squash --delete-branch` or the GitHub UI. That one merge lands both the implementation and the archive in `main`.
-3. After the merge, run `wt remove question-cascade` from the `main` worktree.
+1. Wait for the PR code review. After approval, run `/opsx-archive` on `fix/question-cascade`, push the archive commits to update the PR, then merge the PR with `gh pr merge --squash --delete-branch` or the GitHub UI. That one merge lands both the implementation and the archive in `main`.
+2. After the merge, run `wt remove question-cascade` from the `main` worktree.
