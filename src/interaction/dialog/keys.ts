@@ -4,7 +4,7 @@
 
 import { decodeKittyPrintable, type KeybindingsManager, matchesKey } from "@earendil-works/pi-tui";
 import type { DialogModel, TabName } from "./model.ts";
-import type { DialogAction, DialogState } from "./state.ts";
+import { type DialogAction, type DialogState, tabsOf } from "./state.ts";
 
 /** Lines one PageUp/PageDown scrolls the facts and briefing. */
 export const SCROLL_PAGE_LINES = 5;
@@ -36,11 +36,12 @@ function commonKey(data: string, kb: KeybindingsManager): DialogAction | undefin
 	return undefined;
 }
 
-function decisionKey(data: string, kb: KeybindingsManager, model: DialogModel): DialogAction | undefined {
+function decisionKey(data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState): DialogAction | undefined {
 	if (kb.matches(data, "tui.select.confirm")) return { type: "pick" };
 	const char = printableOf(data);
 	const index = digitIndex(char);
 	if (index !== undefined) return index < model.entries.length ? { type: "pick", index } : undefined;
+	if (char === "u" && model.unitsAvailable && !state.unitsOpen) return { type: "openUnits" };
 	return char === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
 }
 
@@ -56,7 +57,7 @@ function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel): Di
 	return printableOf(data) === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
 }
 
-const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel) => DialogAction | undefined> = {
+const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState) => DialogAction | undefined> = {
 	decision: decisionKey,
 	units: unitsKey,
 	review: reviewKey,
@@ -71,6 +72,6 @@ export function keyToAction(
 	field: { value(): string },
 ): DialogAction | undefined {
 	if (state.editor !== undefined) return editorKey(data, kb, field);
-	const tab = model.tabs[state.tab];
-	return commonKey(data, kb) ?? (tab === undefined ? undefined : TAB_KEYS[tab](data, kb, model));
+	const tab = tabsOf(model, state)[state.tab];
+	return commonKey(data, kb) ?? (tab === undefined ? undefined : TAB_KEYS[tab](data, kb, model, state));
 }

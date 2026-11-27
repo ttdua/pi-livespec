@@ -23,7 +23,9 @@ export type DialogEntry = { label: string; description?: string; recommended: bo
 
 export type DialogModel = {
 	kind: DialogKind;
+	/** Tabs shown before the units tab is opened; `tabsOf` (state.ts) adds it once opened. */
 	tabs: TabName[];
+	unitsAvailable: boolean;
 	facts: string;
 	status: { symbol: "✓" | "!" | "✗"; text: string }[];
 	briefing?: { heading: string; lines: string[] };
@@ -109,7 +111,8 @@ export function buildModel(r: ApprovalRequest): DialogModel {
 	const briefing = briefingOf(r.briefing, labelled);
 	return {
 		kind,
-		tabs: r.overridable ? ["decision", "units", "review"] : ["decision", "review"],
+		tabs: ["decision", "review"],
+		unitsAvailable: r.overridable !== undefined,
 		facts: sanitize(r.summary),
 		status: statusOf(r),
 		...(briefing === undefined ? {} : { briefing }),

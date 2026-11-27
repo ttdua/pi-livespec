@@ -537,7 +537,7 @@ describe("in-session dialog path", () => {
 			{
 				name: "plan gate with overrides",
 				request: plan,
-				keys: ["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter],
+				keys: ["u", KEY.right, KEY.right, "\x1b[Z", "1", KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter],
 				select: ["approve", "Add notes", "ok", "Adjust Difficulty or Tags", "U1", "difficulty", "high", "done"],
 			},
 			{
@@ -560,7 +560,7 @@ describe("in-session dialog path", () => {
 		});
 
 		test("Same answer on both paths: plan gate approve, note ok, U1 high", async () => {
-			const viaDialog = withDialog(["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter]);
+			const viaDialog = withDialog(["u", KEY.right, KEY.right, "\x1b[Z", "1", KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter]);
 			const result = await createInSessionApprover(viaDialog.ui, login).request(plan());
 			expect(result).toMatchObject({ outcome: "approved_with_notes", notes: "ok", overrides: [{ unit: "U1", difficulty: "high" }] });
 		});

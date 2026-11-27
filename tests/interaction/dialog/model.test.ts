@@ -74,9 +74,10 @@ describe("buildModel", () => {
 		expect(m.briefing?.heading).toBe("Livespec rule recommendation");
 	});
 
-	test("plan gate with overridable adds the units tab with current values", () => {
+	test("plan gate with overridable offers units but hides the tab by default", () => {
 		const m = buildModel(request({ overridable: { units: ["U1", "U2"], current: { U1: { difficulty: "high", tags: ["security"] } } } }));
-		expect(m.tabs).toEqual(["decision", "units", "review"]);
+		expect(m.tabs).toEqual(["decision", "review"]);
+		expect(m.unitsAvailable).toBe(true);
 		expect(m.units).toEqual([{ unit: "U1", label: "U1", difficulty: "high", tags: ["security"] }, { unit: "U2", label: "U2", tags: [] }]);
 	});
 

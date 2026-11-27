@@ -123,10 +123,30 @@ describe("createDialog", () => {
 	test("plan gate: tags prefilled with the current tags; unchanged → no override", () => {
 		const r = request({ subject: "gate:plan", overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: ["a", "b"] } } } });
 		const { done, press, field } = mount(r);
-		press(KEY.tab, "e");
+		press("u", "e");
 		expect(field.sets).toEqual(["a, b"]);
 		press(KEY.enter, KEY.right, KEY.right, KEY.tab, KEY.tab, "1", KEY.enter, KEY.enter);
 		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "", overrides: [{ unit: "U1", difficulty: "high" }] } });
+	});
+
+	test("u at 50 columns still opens the units tab", () => {
+		const { press, component } = mount(request({ subject: "gate:plan", overridable: { units: ["U1"], current: {} } }));
+		component.render(50);
+		press("u");
+		expect(component.render(50)[0]).toContain("[Adjust units]");
+	});
+
+	test("u in the note editor is text", () => {
+		const { press, field, component } = mount(request({ subject: "gate:plan", overridable: { units: ["U1"], current: {} } }));
+		press("n", "u");
+		expect(field.received).toEqual(["u"]);
+		expect(component.render(80)[0]).not.toContain("Adjust units");
+	});
+
+	test("approve in one action: units never opened → approved, no overrides", () => {
+		const { done, press } = mount(request({ subject: "gate:plan", overridable: { units: ["U1"], current: {} } }));
+		press(KEY.enter, KEY.enter);
+		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "" } });
 	});
 
 	test("no field is made until an editor opens", () => {
@@ -197,7 +217,7 @@ describe("createDialog", () => {
 	test("tags with blanks in the current values: submitting them unchanged is no override", () => {
 		const r = request({ subject: "gate:plan", overridable: { units: ["U1"], current: { U1: { difficulty: "low", tags: [" a ", "", "b"] } } } });
 		const { done, press, field } = mount(r);
-		press(KEY.tab, "e");
+		press("u", "e");
 		expect(field.sets).toEqual(["a, b"]);
 		press(KEY.enter, KEY.tab, KEY.tab, "1", KEY.enter, KEY.enter);
 		expect(done).toHaveBeenCalledWith({ kind: "result", result: { outcome: "approved", notes: "" } });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { ApprovalRequest, RequestOption } from "../../../src/interaction/approver.ts";
 import { buildModel, type DialogModel } from "../../../src/interaction/dialog/model.ts";
-import { canSubmit, type DialogAction, type DialogState, initialState, reduce } from "../../../src/interaction/dialog/state.ts";
+import { canSubmit, type DialogAction, type DialogState, initialState, reduce, tabsOf } from "../../../src/interaction/dialog/state.ts";
 
 function request(over: Partial<ApprovalRequest> = {}): ApprovalRequest {
 	return {
@@ -51,8 +51,28 @@ describe("move and scroll and tabs", () => {
 
 	test("nextTab and previousTab wrap", () => {
 		const m = plan();
-		expect(run(m, [{ type: "previousTab" }]).tab).toBe(2);
-		expect(run(m, [{ type: "nextTab" }, { type: "nextTab" }, { type: "nextTab" }]).tab).toBe(0);
+		const opened = run(m, [{ type: "pick", index: 0 }, { type: "previousTab" }, { type: "openUnits" }]);
+		expect(opened.tab).toBe(1);
+		expect(run(m, [{ type: "openUnits" }, { type: "nextTab" }, { type: "nextTab" }]).tab).toBe(0);
+		expect(run(m, [{ type: "openUnits" }, { type: "previousTab" }, { type: "previousTab" }]).tab).toBe(2);
+	});
+});
+
+describe("openUnits", () => {
+	test("units tab hidden by default; openUnits shows it and moves to it", () => {
+		const m = plan();
+		expect(tabsOf(m, initialState(m))).toEqual(["decision", "review"]);
+		const s = run(m, [{ type: "openUnits" }]);
+		expect(tabsOf(m, s)).toEqual(["decision", "units", "review"]);
+		expect(tabsOf(m, s)[s.tab]).toBe("units");
+	});
+
+	test("no units to adjust, or not on the decision tab: nothing opens", () => {
+		const g = gate();
+		expect(run(g, [{ type: "openUnits" }]).unitsOpen).toBe(false);
+		const m = plan();
+		const onReview = run(m, [{ type: "nextTab" }]);
+		expect(run(m, [{ type: "openUnits" }], onReview)).toEqual(onReview);
 	});
 });
 
@@ -166,9 +186,9 @@ describe("submit and canSubmit", () => {
 
 	test("review state keeps overrides when changes is picked, so the view can list them as discarded", () => {
 		const m = plan();
-		const s = run(m, [{ type: "nextTab" }, { type: "cycleDifficulty", delta: 1 }, { type: "previousTab" }, { type: "pick", index: 1 }], { ...initialState(m), notes: "n" });
+		const s = run(m, [{ type: "openUnits" }, { type: "cycleDifficulty", delta: 1 }, { type: "previousTab" }, { type: "pick", index: 1 }], { ...initialState(m), notes: "n" });
 		expect(s.overrides.U1?.difficulty).toBe("medium");
-		expect(m.tabs[s.tab]).toBe("units");
+		expect(tabsOf(m, s)[s.tab]).toBe("units");
 	});
 });
 
@@ -193,7 +213,7 @@ describe("cancel and editor", () => {
 
 	test("closeEditor on tags parses a, b", () => {
 		const m = plan();
-		const s = run(m, [{ type: "nextTab" }, { type: "openEditor", editor: "tags" }, { type: "closeEditor", text: "a, b ,, " }]);
+		const s = run(m, [{ type: "openUnits" }, { type: "openEditor", editor: "tags" }, { type: "closeEditor", text: "a, b ,, " }]);
 		expect(s.overrides.U1?.tags).toEqual(["a", "b"]);
 	});
 });
@@ -201,20 +221,20 @@ describe("cancel and editor", () => {
 describe("cycleDifficulty", () => {
 	test("from undefined: low, then low → medium → high → low", () => {
 		const m = plan();
-		const toU2: DialogAction[] = [{ type: "nextTab" }, { type: "move", delta: 1 }];
+		const toU2: DialogAction[] = [{ type: "openUnits" }, { type: "move", delta: 1 }];
 		const levels = [1, 2, 3, 4].map((n) => run(m, [...toU2, ...Array.from({ length: n }, () => ({ type: "cycleDifficulty", delta: 1 }) as DialogAction)]).overrides.U2?.difficulty);
 		expect(levels).toEqual(["low", "medium", "high", "low"]);
 	});
 
 	test("from a current value", () => {
 		const m = plan();
-		expect(run(m, [{ type: "nextTab" }, { type: "cycleDifficulty", delta: 1 }]).overrides.U1?.difficulty).toBe("medium");
-		expect(run(m, [{ type: "nextTab" }, { type: "cycleDifficulty", delta: -1 }]).overrides.U1?.difficulty).toBe("high");
+		expect(run(m, [{ type: "openUnits" }, { type: "cycleDifficulty", delta: 1 }]).overrides.U1?.difficulty).toBe("medium");
+		expect(run(m, [{ type: "openUnits" }, { type: "cycleDifficulty", delta: -1 }]).overrides.U1?.difficulty).toBe("high");
 	});
 
 	test("delta -1 from undefined: high", () => {
 		const m = plan();
-		const s = run(m, [{ type: "nextTab" }, { type: "move", delta: 1 }, { type: "cycleDifficulty", delta: -1 }]);
+		const s = run(m, [{ type: "openUnits" }, { type: "move", delta: 1 }, { type: "cycleDifficulty", delta: -1 }]);
 		expect(s.overrides.U2?.difficulty).toBe("high");
 	});
 
