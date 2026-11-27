@@ -69,9 +69,10 @@ describe("manifest", () => {
 		const decision = world.post(BOT, writeMarked("decision", "decision.d1", { answer: "push now" }));
 		const text = (await buildPacket(world.refreshed(), "implementer", "U3")) as { ok: true; packet: { text: string } };
 		const review = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
-		for (const [packet, id] of [[text, discovery.id], [text, gate.id], [text, findings.id], [review, decision.id]] as const) {
-			const section = packet.packet.text.split(`### comment:${id}`)[1]?.split("\n### ")[0] ?? "";
-			expect(section, `comment:${id}`).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
+		for (const [packet, id, heading] of [[text, discovery.id, `comment:${discovery.id}`], [text, gate.id, `comment:${gate.id}`], [text, findings.id, `comment:${findings.id}`], [review, decision.id, "records:decisions"]] as const) {
+			const section = packet.packet.text.split(`### ${heading}`)[1]?.split("\n### ")[0] ?? "";
+			expect(section, heading).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
+			if (heading === "records:decisions") expect(section).toContain(`#### comment:${id}`);
 		}
 	});
 
@@ -326,5 +327,64 @@ describe("Persona file", () => {
 		const summary = world.post(BOT, writeMarked("finding-summary", "finding-summary.change.review.1", { subject: "change", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "e", fix: "f", scope: "unit" }] }));
 		const got = ids(await sourcesOf(world, "reviewer", undefined, "change"));
 		expect(got).not.toContain(`comment:${summary.id}`);
+	});
+});
+
+describe("grouped records", () => {
+	const required = (placed: { source: { id: string; required: boolean } }[]) => placed.filter((p) => p.source.required).map((p) => p.source.id);
+	const answered = (agentId: string, extra: Record<string, unknown> = {}) => dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId, answer: "a", ...extra } as Parameters<typeof dispatchComment>[0]);
+
+	test("records do not grow the required list", async () => {
+		const world = await makeWorld();
+		const a = await sourcesOf(world, "reviewer", undefined, "change");
+		for (let i = 0; i < 30; i++) world.post(BOT, writeMarked("decision", `decision.d${i}`, { note: i }));
+		for (let i = 0; i < 15; i++) world.post(BOT, answered(`agent-${i}`));
+		const b = await sourcesOf(world, "reviewer", undefined, "change");
+		expect(required(a)).toEqual(required(b));
+		expect(ids(a)).not.toContain("records:decisions");
+		expect(ids(a)).not.toContain("records:dispatch-answers");
+		for (const id of ["records:decisions", "records:dispatch-answers"]) expect(b.find((p) => p.source.id === id)?.source.required).toBe(false);
+		expect(ids(b).filter((id) => id.startsWith("comment:") || id.startsWith("answer:agent-"))).toEqual([]);
+	});
+
+	test("grouped records keep their ids", async () => {
+		const world = await makeWorld();
+		const decision = world.post(BOT, writeMarked("decision", "decision.d1", { answer: "push now" }));
+		const built = (await buildPacket(world.refreshed(), "reviewer", "U3", "unit")) as { ok: true; packet: { text: string } };
+		const section = built.packet.text.split("### records:decisions")[1]?.split("\n### ")[0] ?? "";
+		expect(section).toContain(`comment:${decision.id}`);
+		expect(section).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
+		expect(ids(await sourcesOf(world, "reviewer", "U3", "unit"))).not.toContain(`comment:${decision.id}`);
+	});
+
+	test("two answers to one child keep their numbers", async () => {
+		const world = await makeWorld();
+		world.post(BOT, answered("agent-1"));
+		world.post(BOT, answered("agent-1"));
+		const text = (await sourcesOf(world, "reviewer", "U3", "unit")).find((p) => p.source.id === "records:dispatch-answers")?.source.text ?? "";
+		expect(text).toContain("answer:agent-1:1");
+		expect(text).toContain("answer:agent-1:2");
+	});
+
+	test("implementer answers stay required", async () => {
+		const world = await makeWorld();
+		world.post(BOT, answered("agent-1"));
+		const got = await sourcesOf(world, "implementer", "U3");
+		expect(got.find((p) => p.source.id === "answer:agent-1:1")?.source.required).toBe(true);
+		expect(ids(got)).not.toContain("records:dispatch-answers");
+	});
+
+	test("a new record changes the grouped version, not the required ids", async () => {
+		const world = await makeWorld();
+		world.post(BOT, writeMarked("decision", "decision.d1", { note: 1 }));
+		const first = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { hash: string } };
+		const before = await sourcesOf(world, "reviewer", undefined, "change");
+		world.post(BOT, writeMarked("decision", "decision.d2", { note: 2 }));
+		const second = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { hash: string } };
+		const after = await sourcesOf(world, "reviewer", undefined, "change");
+		const version = (p: typeof after) => p.find((x) => x.source.id === "records:decisions")?.source.version;
+		expect(version(after)).not.toBe(version(before));
+		expect(second.packet.hash).not.toBe(first.packet.hash);
+		expect(required(after)).toEqual(required(before));
 	});
 });

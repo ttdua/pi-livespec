@@ -8,7 +8,7 @@ import { answeredQuestions, changeIssue, coveredRequirements, initiativeIssue } 
 import { closedWork, closingSummaries, pullRequestAndChecks, referencedIssues, reviewComments } from "./sources-forge.ts";
 import { codeDiff, constraints, declaredSpecs, findingAndCode, owningUnit, productExcerpt, specsDiff } from "./sources-git.ts";
 import { personaFile } from "./sources-persona.ts";
-import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, planGateNotes, receiptsOf, unitFindings } from "./sources-records.ts";
+import { allReceipts, decisionRecords, dependencyRecords, dispatchAnswers, grouped, planGateNotes, receiptsOf, unitFindings } from "./sources-records.ts";
 
 const extra = new Map<Role, SourceProvider[]>();
 
@@ -29,7 +29,7 @@ const IMPLEMENTER: Provider[] = [
 	coveredRequirements, constraints, answeredQuestions(false), dispatchAnswers(false), planGateNotes, unitFindings,
 	dependencyRecords, referencedIssues, reviewComments(true),
 ];
-const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, constraints, allReceipts, changeIssue("body"), answeredQuestions(true), dispatchAnswers(true), decisionRecords, reviewComments(false), pullRequestAndChecks];
+const REVIEWER_ALL: Provider[] = [codeDiff, declaredSpecs, constraints, allReceipts, changeIssue("body"), answeredQuestions(true), grouped("dispatch-answers", "Answers the parent gave to children", dispatchAnswers(true)), grouped("decisions", "Decision records", decisionRecords), reviewComments(false), pullRequestAndChecks];
 const REVIEW_BASE: Provider[] = [changeIssue("header"), initiativeIssue, declaredSpecs, constraints, closingSummaries];
 
 function manifest(role: Role, subject: ReviewSubject | undefined): Provider[] {
