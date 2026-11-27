@@ -290,10 +290,12 @@ describe("settle-continuation", () => {
 		const h = await u2Started();
 		const s = settler(h);
 		await recordedRun(s);
+		const before = (await h.world.forge.listComments(h.n)).length;
 		const update = vi.spyOn(h.forge, "updateComment");
 		await s.settle();
 		await s.settle();
 		expect(update).not.toHaveBeenCalled();
+		expect(await h.world.forge.listComments(h.n)).toHaveLength(before);
 	});
 
 	test("Rewritten after the continuation", async () => {

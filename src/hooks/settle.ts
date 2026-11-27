@@ -7,11 +7,11 @@
 
 import type { AgentBeforeSettleEvent, AgentBeforeSettleEventResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { messageOf } from "../core/messages.ts";
+import { startedItem } from "../engine/incomplete-items.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import type { Forge } from "../forge/types.ts";
-import { startedItem } from "../engine/incomplete-items.ts";
 import { isChildSession } from "../subagents/child.ts";
 import { requireWritable } from "../tools/guard.ts";
 import type { Session } from "./session.ts";
