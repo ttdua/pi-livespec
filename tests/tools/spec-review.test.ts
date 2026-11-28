@@ -9,6 +9,9 @@ import { aggregates, latestRun, type ReviewRunData } from "../../src/review/reco
 import type { AggregateFinding } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 import { registerSpecReview, runSpecReview } from "../../src/tools/spec-review.ts";
+import { registerFindingRebut } from "../../src/tools/finding-rebut.ts";
+import { behaviorConclusionComment } from "../../src/docs/behavior-change.ts";
+import { subagentFindingsSection } from "../../src/subagents/payload.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
@@ -190,6 +193,33 @@ describe("spec_review end to end", () => {
 		await h.review();
 		const persona = h.fake.spawned.find((s) => s.options.metadata.subject === "persona:security-auditor");
 		expect(persona?.prompt).not.toContain("CHANGE-REVIEWER-SECRET");
+	});
+});
+
+describe("behavior conclusion disputed by the reviewer", () => {
+	const CAP = "src/limits/cap.ts";
+	const ITEM = { capability: "rate-limit", files: [CAP] };
+	const RATIONALE = "the cap constant only moved";
+	const behavior = [{ capability: "rate-limit", outcome: "unchanged", rationale: RATIONALE }];
+
+	test("Reviewer dispute blocks review", async () => {
+		const h = await reviewHarness({ diff: { [CAP]: "export const cap = 99;\n", "src/limit.ts": "export const limit = 1;\n", "src/u1.ts": "export {};\n" } });
+		registerFindingRebut(h.pi.api as never);
+		const { data } = behaviorConclusionComment(ITEM, { outcome: "unchanged", reason: RATIONALE });
+		await h.seed("decision", "behavior-change.rate-limit", data);
+		h.reviews.set("change", [{ ...DEFECT, location: `${CAP}:12`, evidence: "the cap now rejects at 99", fix: "conclude rate-limit changed and update its spec" }]);
+		const out = await h.review();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const blocked = await h.call("spec_gate", { target: "review", briefing: BRIEFING, behavior });
+		expect(blocked.isError).toBe(true);
+		expect(textOf(blocked)).toContain(`${CAP}:12`);
+		const aggregate = await h.latestAggregate();
+		const rebut = await h.call("finding_rebut", { ref: aggregate?.commentId, index: 0, reason: "99 is the old limit minus one, unchanged", evidence: "tests/limit.test.ts still green" });
+		expect(rebut.isError, textOf(rebut)).toBeFalsy();
+		// The rebuttal is listed in the next human gate payload.
+		expect(subagentFindingsSection(await h.marked()).lines.join("\n")).toContain("99 is the old limit minus one, unchanged");
+		const gate = await h.call("spec_gate", { target: "review", briefing: BRIEFING, behavior });
+		expect(gate.isError, textOf(gate)).toBeFalsy();
 	});
 });
 

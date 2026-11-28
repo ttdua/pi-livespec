@@ -369,7 +369,7 @@ Rules that decide whether your comment counts:
 
 **Answer:** approve when the spec says exactly what should be built. Otherwise request changes with concrete notes, for example `/livespec changes split "Per-IP cap" into burst and sustained limits; add a scenario for IPv6`.
 
-**Behavior-change question.** At the define and review gates, livespec may first ask, per capability, whether code changed under that spec's `paths` without a spec edit changes behavior. Choose `unchanged` when it is a refactor; choose `changed` and the gate refuses until the spec is updated.
+**Behavior conclusions.** For each capability whose code changed under its `paths` without a spec edit, the agent concludes at `spec_gate define` or `spec_gate review` whether behavior changed, with a one-line rationale. The gate lists them under "Behavior conclusions (please check)". If `changed`, the gate refuses until the spec is updated. To disagree, request changes with notes that name the capability: the agent must conclude again, and `spec_gate define` refuses to restate the same `unchanged` rationale. The `change` reviewer disputes a conclusion with a `WARNING` finding at one of the item's files, which blocks review until it is fixed or rebutted. There is no override and no extra command. Conclusions are ledger entries.
 
 ### Plan gate: is this the right way to build it?
 
@@ -422,7 +422,7 @@ If the answer changes a requirement, edit its `specs/<capability>/spec.md` and c
 ### Amendment, decisions and other named gates
 
 - **Amendment (`amend:<n>`):** the agent wants to edit, add or drop a locked unit. Read the old and new unit; answer like the plan gate.
-- **Decision (`decide:<point>.<subject>`):** a rule could not decide (for example `behavior-change`). Choose one of the listed options.
+- **Decision (`decide:<point>.<subject>`):** a rule could not decide. No built-in rule asks; a project or pack rule may. Choose one of the listed options.
 - **`initiative` and `new-dependency`:** see Workflows [3](#workflow-3-an-initiative-of-several-changes) and [4](#workflow-4-a-dependency-found-mid-build).
 
 ## Workflow 2: a small fix

@@ -3,6 +3,7 @@
 // `gatePayload` is pure.
 
 import type { Unit } from "../core/change.ts";
+import type { BehaviorItem } from "../docs/behavior-change.ts";
 import { sectionText } from "../core/sections.ts";
 import { unitDigest } from "../core/digest.ts";
 import { currentDecision, type DecisionRecord } from "../decide/records.ts";
@@ -13,7 +14,7 @@ import { isGateOnly } from "./registry.ts";
 import { subagentFindingsSection } from "../subagents/payload.ts";
 import type { ChangeState } from "./state-types.ts";
 
-export type ReviewFacts = { specsStat: string; specsFiles: string[]; specsDiff: string; issueUrl?: string };
+export type ReviewFacts = { specsStat: string; specsFiles: string[]; specsDiff: string; issueUrl?: string; behaviorItems?: BehaviorItem[] };
 export type GatePayload = { summary: string; links: string[]; files: string[]; findings: string[] };
 
 const SPECS_PATH = "specs/";

@@ -394,3 +394,14 @@ describe("every request kind carries a recommendation", () => {
 		if (rows.length > 0) expect(rows[0]).toContain("(recommended)");
 	});
 });
+
+describe("behavior conclusions text", () => {
+	const define = (over: Partial<ApprovalRequest> = {}) => ({ ...request({ subject: "gate:define", summary: "Define\n\nBehavior conclusions (please check):\n- rate-limit: unchanged (agent) — x; files: 1" }), ...over });
+
+	test("the Behavior conclusions section comes before the briefing", () => {
+		const text = renderForgeRequest(define());
+		const section = text.indexOf("Behavior conclusions (please check):");
+		expect(section).toBeGreaterThan(-1);
+		expect(section).toBeLessThan(text.indexOf("Agent recommendation"));
+	});
+});

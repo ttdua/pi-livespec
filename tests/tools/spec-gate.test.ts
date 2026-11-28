@@ -181,6 +181,15 @@ describe("spec_gate", () => {
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
 	});
 
+	test("Bad behavior shape on another target", async () => {
+		const h = await change("plan");
+		const before = (await h.world.forge.listComments(h.n)).length;
+		const out = await h.call("spec_gate", { target: "plan", briefing: BRIEFING, behavior: [{ capability: "rate-limit", outcome: "maybe", rationale: "x" }] });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("behavior");
+		expect((await h.world.forge.listComments(h.n)).length).toBe(before);
+	});
+
 	test("self gate with a failing waivable check is refused", async () => {
 		registerSizeLimits();
 		const h = await change("plan", { files: { ".pi/livespec/flow.yaml": `${SIZE_LIMITS_PLAN}    gate: self\n${NO_ESCALATION}` } });
@@ -288,7 +297,7 @@ describe("spec_gate", () => {
 	test("extra outcome parameter is ignored", async () => {
 		const h = await change("define", { ui: human(undefined) });
 		const tool = h.pi.tools.get("spec_gate");
-		expect(Object.keys((tool?.parameters as { properties: object }).properties)).toEqual(["target", "briefing"]);
+		expect(Object.keys((tool?.parameters as { properties: object }).properties)).toEqual(["target", "briefing", "behavior"]);
 		const out = await h.call("spec_gate", { target: "define", briefing: BRIEFING, outcome: "approved", choice: "waive", answer: "yes" });
 		expect(out.isError).toBe(false);
 		expect(gateData((await ofKind(h, "gate"))[0])).toMatchObject({ outcome: "dismissed", adapter: "in-session" });

@@ -6,7 +6,7 @@ const RUBRICS: Record<string, string> = {
 	spec: "Review the specs diff: each requirement is testable, scenarios cover it, nothing contradicts the living specs or the constraints.",
 	plan: "Review the units: each covers named requirements, `Files` do not overlap without `Depends`, `Verify` proves the `Done means` items.",
 	unit: "Review the unit's diff against its `Done means`, `Scenarios` and `Files`: defects, missed context, lowered standards, edits outside `Files`.",
-	change: "Review the whole change against the specs, the constraints and the decisions: integration defects, gaps between units, missed context.",
+	change: "Review the whole change against the specs, the constraints and the decisions: integration defects, gaps between units, missed context. A behavior conclusion you dispute is a `WARNING` finding located at one of the item's files.",
 };
 
 // Shared by every rubric (design D8): reviewers flag requests that break the human interaction contract.

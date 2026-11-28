@@ -7,12 +7,13 @@ import type { Signature } from "../evidence/signature.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { isBacked } from "./answered.ts";
+import { BEHAVIOR_POINT } from "./points.ts";
 
 export type DecisionRecord = {
 	point: string;
 	subject: string;
 	digest?: string;
-	source: "rule" | "human";
+	source: "rule" | "human" | "agent";
 	outcome: unknown;
 	facts?: unknown;
 	facts_hash?: string;
@@ -59,10 +60,16 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	return true;
 }
 
+/** `rule` and `human` for any point; `agent` only for `BEHAVIOR_POINT`. */
+function isAllowedSource(v: Record<string, unknown>): boolean {
+	if (v.source === "rule" || v.source === "human") return true;
+	return v.point === BEHAVIOR_POINT && v.source === "agent";
+}
+
 /** A decision record: required fields present (`outcome` may be any value, including falsy), optional fields well-typed. */
 function isRecord(v: unknown): v is DecisionRecord {
 	if (!isObject(v)) return false;
-	const required = isString(v.point) && isString(v.subject) && (v.source === "rule" || v.source === "human") && isString(v.reason) && has(v, "outcome");
+	const required = isString(v.point) && isString(v.subject) && isAllowedSource(v) && isString(v.reason) && has(v, "outcome");
 	return required && optionalFieldsValid(v);
 }
 
@@ -83,9 +90,14 @@ export function decisionComment(r: DecisionRecord): AppendInput {
 	return { kind: "decision", id: `${r.point}.${r.subject}`, data: compactFacts(r) };
 }
 
+/** Every valid `decision` record with the ref of its record, in merged order; malformed data is skipped. */
+export function validDecisionEntries(marked: MarkedComment[]): { record: DecisionRecord; ref: string }[] {
+	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [{ record: m.data, ref: m.ref }] : []));
+}
+
 /** Every valid `decision` record, in comment order; malformed data is skipped. */
 export function validDecisions(marked: MarkedComment[]): DecisionRecord[] {
-	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [m.data] : []));
+	return validDecisionEntries(marked).map((e) => e.record);
 }
 
 /** The latest valid `decision` record per id, keyed in first-seen order. */

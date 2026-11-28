@@ -60,8 +60,8 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 - **THEN** a new request is sent, because the facts include the tags
 
 #### Scenario: Rule ask carries descriptions
-- **WHEN** the `behavior-change` rule asks for capability `rate-limit`
-- **THEN** the request's options `unchanged` and `changed` each carry a description, and its briefing, headed as a livespec rule, recommends `unchanged`
+- **WHEN** a test rule asks with options `x` and `y`, both described, recommending `x` with a rationale
+- **THEN** the request's options `x` and `y` each carry their description, and its briefing, headed as a livespec rule, recommends `x`
 
 #### Scenario: Rule recommends an option it does not offer
 - **WHEN** a test rule asks with options `x` and `y` and recommends `z`
@@ -87,7 +87,7 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 
 ### Requirement: Decision records
 Every decision of a change SHALL be recorded as a `decision` ledger entry (see `ledger-store`) with id `<point>.<subject>` and these YAML fields:
-- `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`;
+- `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`; `source` SHALL be `rule` or `human`, and for point `behavior-change` also `agent`; a record of another point with source `agent` MUST be invalid;
 - `facts`, or `facts_hash` when the facts' YAML exceeds 2,000 characters;
 - for point `behavior-change`, `files`: the item's files, kept when `facts` becomes `facts_hash`;
 - `agent_additions`;
@@ -110,6 +110,10 @@ The latest record for an id SHALL win, except that a record with `proposal: true
 #### Scenario: Proposal record is not current
 - **WHEN** `difficulty.U1` has a rule record `low` for U1's digest followed by a human record `high` with `proposal: true` for the same digest
 - **THEN** the current `difficulty` decision of U1 is the rule record `low`
+
+#### Scenario: Agent source only for behavior-change
+- **WHEN** a `decision` entry `difficulty.U1` has source `agent`
+- **THEN** it is invalid and not read as a decision, while a `behavior-change.rate-limit` entry with source `agent` is valid
 
 #### Scenario: Behavior files kept with hashed facts
 - **WHEN** a `behavior-change` record's facts serialize to more than 2,000 characters of YAML
