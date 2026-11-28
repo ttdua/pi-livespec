@@ -12,7 +12,7 @@
 - **THEN** no `decision` record is written for it and the gate proceeds as before
 
 ### Requirement: Behavior conclusion at the gate
-When the target phase lists the `behavior-change` check, `spec_gate define|review` SHALL first evaluate the gate refusals with the `behavior-change` results left out, refusing with any that applies. Then, when the change has behavior items, it SHALL refuse unless `behavior` lists each item's capability once and no other, naming each missing or extra capability. Both refusals write nothing. Otherwise it SHALL post one `agent` `decision` record per item, skipping one whose latest `agent` record at that digest has the same outcome and reason. It SHALL then refresh the state and re-run the checks and refusals, `behavior-change` included, before the gate passes or sends. It MUST NOT send a `decide:behavior-change` request.
+When the target phase lists the `behavior-change` check, `spec_gate define|review` SHALL first evaluate the gate refusals with the `behavior-change` results left out, refusing with any that applies. Then, when the change has behavior items, it SHALL refuse unless `behavior` lists each item's capability once and no other, naming each missing or extra capability. It SHALL also refuse while an open legacy `decide:behavior-change.<capability>` request exists for a current behavior item, naming the request and telling the human to answer or dismiss it. These refusals write nothing. Otherwise it SHALL post one `agent` `decision` record per item, skipping one whose latest `agent` record at that digest has the same outcome and reason. It SHALL then refresh the state and re-run the checks and refusals, `behavior-change` included, before the gate passes or sends. It MUST NOT send a `decide:behavior-change` request.
 
 #### Scenario: Two capabilities, no dialog
 - **WHEN** the diff changes `src/limit/cap.ts` under `rate-limit` and `src/forge/read.ts` under `forge-read`, neither spec changes, and `spec_gate define` runs in session with `behavior` concluding both `unchanged` with rationales
@@ -25,6 +25,10 @@ When the target phase lists the `behavior-change` check, `spec_gate define|revie
 #### Scenario: Unknown capability listed
 - **WHEN** the change has one behavior item for `rate-limit` and `behavior` also lists `cache`
 - **THEN** the tool refuses naming `cache` and writes nothing
+
+#### Scenario: Legacy request still open
+- **WHEN** a `decide:behavior-change.rate-limit` request from before this rule is still open, `rate-limit` is a behavior item, and `spec_gate define` runs with a valid `behavior` list
+- **THEN** the tool refuses naming that request and saying to answer or dismiss it, and no `decision` comment or request is written
 
 #### Scenario: Other refusal writes nothing
 - **WHEN** `spec_gate define` runs with a valid `behavior` list and `spec-format` reports an error (or the tree is dirty, or a blocking question is open)

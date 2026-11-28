@@ -7,14 +7,17 @@ import { pickById } from "../helpers/menu.ts";
 import { registerSpecGate } from "../../src/tools/spec-gate.ts";
 import { FakePi } from "../hooks/fake-pi.ts";
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import * as cascade from "../../src/interaction/spec-cascade.ts";
+import { pollApprovals } from "../../src/interaction/poll.ts";
+import { prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerDocChecks } from "../../src/docs/register.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -245,15 +248,68 @@ describe("spec_gate behavior conclusions", () => {
 		expect((await ofKind(h, "gate"))[0]?.data).toMatchObject({ phase: "define", outcome: "approved" });
 	});
 
-	test("a legacy open request gets no new request", async () => {
-		const h = await change("define", { config: FORGE_CHAIN });
-		const legacy = "decide:behavior-change.rate-limit";
-		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", "decide-behavior-change.rate-limit.r1", { subject: legacy, kind: "stuck", mode: "blocking", snapshot: {} }));
-		await h.session.comments?.invalidate(h.n);
-		await h.session.refresh();
+	describe("Legacy request still open", () => {
+		const LEGACY = "decide:behavior-change.rate-limit";
+		const LEGACY_ID = "decide-behavior-change.rate-limit.r1";
+
+		/** A full stored legacy request, as the old rule asked it, then a poll so the session reads it. */
+		async function withLegacyRequest(h: Gate): Promise<void> {
+			const item = { capability: "rate-limit", files: [CAP] };
+			const record = prepareRequest({
+				kind: "stuck", subject: LEGACY, mode: "blocking", head: h.git("rev-parse", "HEAD"), body: "", now: new Date(),
+				options: [{ id: "unchanged", label: "Unchanged", description: "Behavior is the same." }, { id: "changed", label: "Changed", description: "Update the spec." }],
+				briefing: { summary: "Did rate-limit change?", recommended: "unchanged", rationale: "legacy", author: "rule" },
+				snapshot: { point: "behavior-change", subject: "rate-limit", facts: item, digest: behaviorDigest(item.files) },
+				summary: "Did the behavior of rate-limit change?",
+			});
+			await h.world.postComment(h.n, BOT_LOGIN, requestComment(LEGACY_ID, { ...record, id: LEGACY_ID }, "Answer with /livespec choose."));
+			await h.session.comments?.invalidate(h.n);
+			await pollApprovals(h.session);
+			await h.session.refresh();
+		}
+
+		test("spec_gate define refuses naming the legacy request and writes nothing", async () => {
+			const h = await change("define", { config: FORGE_CHAIN });
+			await withLegacyRequest(h);
+			const before = (await marked(h)).length;
+			const out = await gate(h, [unchanged("rate-limit")]);
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain(LEGACY);
+			expect(textOf(out)).toContain("answer or dismiss");
+			expect((await marked(h)).length).toBe(before);
+			expect(await behaviorRequests(h)).toEqual([LEGACY]);
+		});
+
+		test("spec_gate review refuses while the legacy request is open", async () => {
+			const h = await change("review", { config: FORGE_CHAIN, edit: allDone });
+			await withLegacyRequest(h);
+			const before = (await marked(h)).length;
+			const out = await gate(h, [unchanged("rate-limit")], "review");
+			expect(out.isError).toBe(true);
+			expect(textOf(out)).toContain(LEGACY);
+			expect((await marked(h)).length).toBe(before);
+		});
+	});
+
+	test("a failing waivable check with an approve recommendation refuses before any decision", async () => {
+		registerCheck("stub-waivable", async () => [{ code: "stub-waivable", severity: "error", message: "stub fails" }], { waivable: true });
+		const h = await change("define", { flow: FLOW.replace("behavior-change]", "behavior-change, stub-waivable]") });
 		const out = await gate(h, [unchanged("rate-limit")]);
-		expect(out.isError).toBe(false);
-		expect(await behaviorRequests(h)).toEqual([legacy]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing.recommended cannot be approve");
+		expect(await ofKind(h, "decision")).toEqual([]);
+	});
+
+	test("a malformed behavior is refused before the spec cascade runs", async () => {
+		const h = await change("define");
+		const run = vi.spyOn(cascade, "runSpecCascade");
+		const before = (await marked(h)).length;
+		const out = await gate(h, [{ capability: "rate-limit", outcome: "maybe", rationale: "x" }]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("behavior[0].outcome");
+		expect(run).not.toHaveBeenCalled();
+		expect((await marked(h)).length).toBe(before);
+		run.mockRestore();
 	});
 
 	test("read-only forge refuses before writing", async () => {

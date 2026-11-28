@@ -130,6 +130,17 @@ export const behaviorChangeSchema: RuleSchema = {
 
 export const behaviorSubject = (capability: string): `decide:${string}` => `decide:${BEHAVIOR_POINT}.${capability}`;
 
+/** The refusal while a legacy `decide:behavior-change.<capability>` request is open for one of the items; undefined otherwise. */
+export function legacyRequestRefusal(items: BehaviorItem[], marked: MarkedComment[]): string | undefined {
+	const requests = readRequests(marked);
+	for (const item of items) {
+		const subject = behaviorSubject(item.capability);
+		const open = openRequestFor(requests, subject);
+		if (open !== undefined) return `spec_gate refused: request ${open} for ${subject} from before the behavior parameter is still open: answer or dismiss it first (/livespec choose or /livespec dismiss); nothing was written.`;
+	}
+	return undefined;
+}
+
 /** The check's results for the items: pure over the marked comments. */
 export function behaviorResults(items: BehaviorItem[], marked: MarkedComment[], phase: string | undefined): Result[] {
 	const requests = readRequests(marked);

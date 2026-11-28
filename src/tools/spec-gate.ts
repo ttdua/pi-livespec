@@ -223,17 +223,20 @@ function asksBehavior(pack: Pack, target: string): boolean {
 }
 
 /**
- * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals are evaluated with the
- * `behavior-change` results left out, and only when none applies the agent's conclusions are recorded. After a
- * post the state is re-read and `checked` is false, so the caller's full check run sees the new records.
+ * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals, the plan, the escalation and
+ * the recommendation are evaluated with the `behavior-change` results left out, and only when none refuses the agent's
+ * conclusions are recorded. After a post the state is re-read and `checked` is false, so the caller's full check run
+ * and refusals see the new records.
  */
 type BehaviorStep = { ok: true; state: ChangeState; checked: boolean } | { ok: false; message: string };
 
-async function behaviorStep(w: WriteContext, state: ChangeState, target: string, entries: BehaviorConclusionInput[]): Promise<BehaviorStep> {
-	const checked = await withGateChecks(w, state, target);
+async function behaviorStep(w: WriteContext, state: ChangeState, g: GateInput, entries: BehaviorConclusionInput[]): Promise<BehaviorStep> {
+	const checked = await withGateChecks(w, state, g.target);
 	const others = { ...checked, checks: checked.checks.filter((c) => c.check !== BEHAVIOR_CHECK) };
-	const refusal = gateRefusal(others, w.pack, target);
+	const refusal = gateRefusal(others, w.pack, g.target);
 	if (refusal) return { ok: false, message: refusalText(others, refusal) };
+	const passing = await passingPlan(w, others, g);
+	if (!passing.ok) return passing;
 	const recorded = await recordBehaviorConclusions(w, state, entries);
 	if (!recorded.ok) return recorded;
 	// Nothing posted: the checks already ran on this state, `behavior-change` included.
@@ -297,6 +300,9 @@ async function decideEscalation(state: ChangeState, pack: Pack, target: string):
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
+	// Pure, so before the cascade: a malformed `behavior` refuses with nothing written.
+	const behavior = validateBehaviorParam(p.behavior);
+	if (!behavior.ok) return toolResult(behavior.message, undefined, true);
 	// Before the change is resolved, so a cascade that moved the phase back is what the gate sees (design D7).
 	await runSpecCascade(w.session);
 	const change = requireChange(w.session);
@@ -307,33 +313,44 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	if (byProposer) return toolResult(byProposer, undefined, true);
 	const briefed = briefingStep(target, w.pack, p.briefing);
 	if (!briefed.ok) return toolResult(briefed.message, undefined, true);
-	const behavior = validateBehaviorParam(p.behavior);
-	if (!behavior.ok) return toolResult(behavior.message, undefined, true);
-	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, behavior.entries) : { ok: true as const, state: change.state, checked: false };
+	const g: GateInput = { target, isPhase, briefed, rawBriefing: p.briefing };
+	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, g, behavior.entries) : { ok: true as const, state: change.state, checked: false };
 	if (!asked.ok) return toolResult(asked.message, undefined, true);
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
-	const escalation = isPhase ? await decideEscalation(state, w.pack, target) : undefined;
-	return escalateOrPass(w, state, target, { escalation, briefed, rawBriefing: p.briefing }, ctx);
+	return escalateOrPass(w, state, g, ctx);
 }
 
+/** What `runSpecGate` knows of the call before the checks: the target and its briefing. */
+type GateInput = { target: string; isPhase: boolean; briefed: BriefingStep; rawBriefing: unknown };
+
+type Passing = { ok: true; plan: GatePlan; briefing: Briefing | undefined; escalation: Escalation | undefined } | { ok: false; message: string };
+
 /**
- * The gate after its checks pass: the rule's escalation (if any) decides the mode, a human gate needs a valid
- * briefing and a recommendation that is not approve over a check to waive, then the gate passes or asks.
+ * The gate's plan once its checks pass: the rule's escalation (if any) decides the mode, a human gate needs a valid
+ * briefing and a recommendation that is not approve over a check to waive. Writes nothing.
  */
-async function escalateOrPass(w: WriteContext, state: ChangeState, target: string, i: { escalation: Escalation | undefined; briefed: BriefingStep; rawBriefing: unknown }, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
-	const { escalation } = i;
-	const plan = planGate(state, w.pack, target, escalation?.outcome === "human");
-	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	const briefing = escalation?.outcome === "human" ? escalatedBriefing(target, i.rawBriefing, escalation) : i.briefed;
-	if (!briefing.ok) return toolResult(briefing.message, undefined, true);
+async function passingPlan(w: WriteContext, state: ChangeState, g: GateInput): Promise<Passing> {
+	const escalation = g.isPhase ? await decideEscalation(state, w.pack, g.target) : undefined;
+	const plan = planGate(state, w.pack, g.target, escalation?.outcome === "human");
+	if ("refused" in plan) return { ok: false, message: plan.refused };
+	const briefing = escalation?.outcome === "human" ? escalatedBriefing(g.target, g.rawBriefing, escalation) : g.briefed;
+	if (!briefing.ok) return briefing;
 	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefing.briefing, plan) : undefined;
-	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
+	if (unrecommendable) return { ok: false, message: unrecommendable };
+	return { ok: true, plan, briefing: briefing.briefing, escalation };
+}
+
+/** The gate after its checks pass: records the escalation, then passes the self gate or asks the human. */
+async function escalateOrPass(w: WriteContext, state: ChangeState, g: GateInput, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
+	const passing = await passingPlan(w, state, g);
+	if (!passing.ok) return toolResult(passing.message, undefined, true);
+	const { plan, escalation } = passing;
 	if (escalation !== undefined) await recordEscalation(w, state, escalation);
-	if (plan.mode === "self") return passSelf(w, state, target);
+	if (plan.mode === "self") return passSelf(w, state, g.target);
 	const summary = escalation === undefined ? {} : { summary: `Escalated: ${escalation.reason}` };
-	return askHuman(w, state, target, plan, ctx, { briefing: briefing.briefing, ...summary });
+	return askHuman(w, state, g.target, plan, ctx, { ...(passing.briefing === undefined ? {} : { briefing: passing.briefing }), ...summary });
 }
 
 /** Posts the `gate-escalation.<phase>` decision unless the latest one has the same facts (a rerun records nothing new). */

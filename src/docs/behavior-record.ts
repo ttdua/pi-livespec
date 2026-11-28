@@ -1,11 +1,12 @@
 // Records the agent's `behavior` conclusions at `spec_gate define|review` (durable-doc-checks "Behavior conclusion
 // at the gate"): the list must cover every behavior item and no other capability; each conclusion that differs from
-// the latest agent record at the same digest is posted. Nothing is written when the coverage refusal applies.
+// the latest agent record at the same digest is posted. Nothing is written when the coverage refusal, or the refusal
+// for a legacy `decide:behavior-change` request still open for an item, applies.
 
 import { validDecisionEntries } from "../decide/records.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { WriteContext } from "../tools/guard.ts";
-import { BEHAVIOR_POINT, type BehaviorConclusionInput, type BehaviorItem, behaviorConclusionComment, behaviorDigest } from "./behavior-change.ts";
+import { BEHAVIOR_POINT, type BehaviorConclusionInput, type BehaviorItem, behaviorConclusionComment, behaviorDigest, legacyRequestRefusal } from "./behavior-change.ts";
 import { changeBehaviorItems } from "./behavior-check.ts";
 
 export type BehaviorRecordResult = { ok: true; posted: boolean } | { ok: false; message: string };
@@ -32,7 +33,7 @@ function alreadyRecorded(state: ChangeState, item: BehaviorItem, e: BehaviorConc
 /** Posts one agent `decision` per conclusion not already recorded; `posted` says whether anything was written. */
 export async function recordBehaviorConclusions(w: WriteContext, state: ChangeState, entries: BehaviorConclusionInput[]): Promise<BehaviorRecordResult> {
 	const items = await changeBehaviorItems(w.session.cwd, w.session.git, state.change.header.base);
-	const refusal = coverageRefusal(items, entries);
+	const refusal = legacyRequestRefusal(items, state.marked) ?? coverageRefusal(items, entries);
 	if (refusal !== undefined) return { ok: false, message: refusal };
 	let posted = false;
 	for (const item of items) {
