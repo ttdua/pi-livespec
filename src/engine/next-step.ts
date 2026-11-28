@@ -6,7 +6,9 @@ import type { Question, Unit } from "../core/change.ts";
 import { ADAPTER_NAMES, type AdapterName, type RequestMode } from "../interaction/approver.ts";
 import { atOrAfterUnits } from "./gates.ts";
 import { gateResultDecision } from "./gate-decision.ts";
+import { escalationForecast } from "./gate-escalation-facts.ts";
 import { approvedAtHead } from "./locks.ts";
+import { isWaivable } from "./registry.ts";
 import { SHIP_PHASE } from "../ship/phase.ts";
 import { closeStep, prOutcomeStep, shipStep } from "../ship/ship-steps.ts";
 import type { Pack, Phase, PhaseOutput } from "./pack-types.ts";
@@ -243,11 +245,13 @@ function waivedChecks(state: ChangeState, phase: Phase): Set<string> {
 
 /**
  * Rule 9: the first check result with severity `error`, named by its check; warnings never block, and
- * neither do checks the phase's valid approved gate waived.
+ * neither do checks the phase's valid approved gate waived, nor a waivable check at a gate whose escalation forecast is `human`
+ * (flow-engine "Next step precedence": the gate step names it as an escalation).
  */
-const failingCheck: Rule = ({ state, phase }) => {
+const failingCheck: Rule = ({ pack, state, phase }) => {
 	const waived = waivedChecks(state, phase);
-	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error" && !waived.has(r.check));
+	const escalates = escalationForecast(pack, state, phase)?.outcome === "human";
+	const failure: CheckResult | undefined = state.checks.find((r) => r.severity === "error" && !waived.has(r.check) && !(escalates && isWaivable(r.check)));
 	return failure ? { next: `Fix ${failure.check}: ${sentence(failure.message)}.` } : undefined;
 };
 
@@ -342,7 +346,7 @@ const closePhase: Rule = ({ pack, state }) => closeStep(state, pack);
 function gate({ pack, state, phase }: RuleInput): Decision {
 	const successor = successorOf(pack, phase.id);
 	if (successor === undefined) return { next: "The flow has no further phase." };
-	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id));
+	if (phase.gate !== "none") return gateResultDecision(phase, successor, state.lock.gates[phase.id], approvedAtHead(state, phase.id), escalationForecast(pack, state, phase));
 	return { next: `Move to ${successor}.`, advance: successor };
 }
 

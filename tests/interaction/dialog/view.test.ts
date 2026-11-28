@@ -247,29 +247,44 @@ describe("outcome label agrees with toResult", () => {
 	])("%s", (_name, kind, notes) => {
 		const m = define();
 		const state = at(m, { tab: 1, picked: pickOf(m, kind), notes });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 
 	test("an option on a waive gate", () => {
 		const m = failing();
 		const state = at(m, { tab: 1, picked: pickOf(m, "waive"), notes: "why" });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
 	});
 
 	test("a choice approves even with stale notes", () => {
 		const m = buildModel(request({ kind: "stuck", subject: "stuck:S1", options: [{ id: "A", label: "Option A" }] }));
 		const state = at(m, { tab: 1, picked: 0, notes: "stale" });
-		const result = toResult(m, state, request()) as { outcome: string };
+		const result = toResult(m, state) as { outcome: string };
 		expect(shown(m, state)).toBe(`Outcome: ${OUTCOME_TEXT[result.outcome]}`);
+	});
+});
+
+describe("units hint", () => {
+	test("units tab hidden by default; the Decision tab hints u", () => {
+		const m = plan();
+		const lines = draw(m);
+		expect(lines[0]).toBe("[Decision]  Review");
+		expect(lines.join("\n")).toContain("u adjust units");
+	});
+
+	test("the hint goes once the tab is open, and is hidden below 60 columns", () => {
+		const m = plan();
+		expect(draw(m, at(m, { unitsOpen: true })).join("\n")).not.toContain("u adjust units");
+		expect(draw(m, at(m), 50).join("\n")).not.toContain("u adjust units");
 	});
 });
 
 describe("units tab", () => {
 	test("units show current difficulty and tags; a unit without values shows — and []", () => {
 		const m = plan();
-		const lines = draw(m, at(m, { tab: 1 }));
+		const lines = draw(m, at(m, { unitsOpen: true, tab: 1 }));
 		expect(lines[0]).toBe("Decision  [Adjust units]  Review");
 		expect(lines.some((l) => /^› U1 +low +\[security\]$/.test(l))).toBe(true);
 		expect(lines.some((l) => /^ {2}U2 +— +\[\]$/.test(l))).toBe(true);
@@ -277,7 +292,7 @@ describe("units tab", () => {
 
 	test("a changed value is shown with a changed mark", () => {
 		const m = plan();
-		const lines = draw(m, at(m, { tab: 1, overrides: { U1: { difficulty: "high" } } }));
+		const lines = draw(m, at(m, { unitsOpen: true, tab: 1, overrides: { U1: { difficulty: "high" } } }));
 		expect(lines.some((l) => /^› U1 +high +\[security\] +\(changed\)$/.test(l))).toBe(true);
 	});
 
@@ -285,7 +300,7 @@ describe("units tab", () => {
 		const units = Array.from({ length: 30 }, (_, i) => `U${i + 1}`);
 		const m = buildModel(request({ subject: "gate:plan", overridable: { units, current: {} } }));
 		for (const focus of [0, 17, 29]) {
-			const lines = draw(m, at(m, { tab: 1, focus }), 80, 12);
+			const lines = draw(m, at(m, { unitsOpen: true, tab: 1, focus }), 80, 12);
 			expect(lines.length).toBeLessThanOrEqual(12);
 			expect(lines.some((l) => new RegExp(`^› U${focus + 1} `).test(l))).toBe(true);
 			expect(lines.some((l) => /^… \d+ more$/.test(l))).toBe(true);
@@ -294,7 +309,7 @@ describe("units tab", () => {
 
 	test("the tags editor is drawn below the list", () => {
 		const m = plan();
-		const lines = draw(m, at(m, { tab: 1, editor: "tags" }), 80, 40, ["│security│"]);
+		const lines = draw(m, at(m, { unitsOpen: true, tab: 1, editor: "tags" }), 80, 40, ["│security│"]);
 		expect(lines).toContain("Tags of U1 (comma-separated):");
 		expect(lines).toContain("│security│");
 	});
@@ -311,7 +326,7 @@ describe("review tab", () => {
 
 	test("notes and overrides are listed", () => {
 		const m = plan();
-		const lines = draw(m, at(m, { tab: 2, picked: pickOf(m, "approve"), notes: "ok", overrides: { U1: { difficulty: "high" } } }));
+		const lines = draw(m, at(m, { unitsOpen: true, tab: 2, picked: pickOf(m, "approve"), notes: "ok", overrides: { U1: { difficulty: "high" } } }));
 		expect(lines).toContain("Outcome: approved with notes");
 		expect(lines).toContain("Note: ok (n: edit)");
 		expect(lines).toContain("Overrides:");
@@ -320,7 +335,7 @@ describe("review tab", () => {
 
 	test("overrides are listed as discarded with request changes", () => {
 		const m = plan();
-		const lines = draw(m, at(m, { tab: 2, picked: pickOf(m, "changes"), notes: "split U1", overrides: { U1: { difficulty: "high", tags: ["a", "b"] } } }));
+		const lines = draw(m, at(m, { unitsOpen: true, tab: 2, picked: pickOf(m, "changes"), notes: "split U1", overrides: { U1: { difficulty: "high", tags: ["a", "b"] } } }));
 		expect(lines).toContain("Outcome: changes requested");
 		expect(lines).toContain("Discarded with request changes:");
 		expect(lines).toContain("  U1: difficulty high, tags [a, b]");

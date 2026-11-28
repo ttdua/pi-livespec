@@ -7,7 +7,7 @@ import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works
 import type { Override } from "../approver.ts";
 import { type DialogEntry, type DialogModel, outcomeLabel, overridesOf, type TabName } from "./model.ts";
 import { sanitize } from "./sanitize.ts";
-import type { DialogState, EditorName } from "./state.ts";
+import { type DialogState, type EditorName, tabsOf } from "./state.ts";
 
 export type DialogTheme = { accent: (s: string) => string; muted: (s: string) => string; bold: (s: string) => string };
 
@@ -57,7 +57,7 @@ function rowPrefix(ctx: Ctx, index: number): string {
 }
 
 function tabStrip(ctx: Ctx): string {
-	return ctx.model.tabs.map((tab, i) => (i === ctx.state.tab ? ctx.theme.bold(`[${TAB_TITLES[tab]}]`) : TAB_TITLES[tab])).join("  ");
+	return tabsOf(ctx.model, ctx.state).map((tab, i) => (i === ctx.state.tab ? ctx.theme.bold(`[${TAB_TITLES[tab]}]`) : TAB_TITLES[tab])).join("  ");
 }
 
 // --- decision ---------------------------------------------------------------------------------
@@ -153,7 +153,8 @@ function editorTitle(ctx: Ctx, editor: EditorName): string {
 function hintOf(ctx: Ctx, tab: TabName): string {
 	if (ctx.state.editor !== undefined) return "Enter save · Esc close editor";
 	const note = ctx.model.notes ? " · n note" : "";
-	if (tab === "decision") return `↑↓ move · 1-9 pick${note} · Tab next tab · Enter select · Esc cancel`;
+	const units = ctx.model.unitsAvailable && !ctx.state.unitsOpen ? " · u adjust units" : "";
+	if (tab === "decision") return `↑↓ move · 1-9 pick${note}${units} · Tab next tab · Enter select · Esc cancel`;
 	if (tab === "units") return "↑↓ move · ←→ difficulty · e tags · Tab next tab · Enter next · Esc cancel";
 	if (ctx.model.kind === "question") return "Enter submit · Tab tabs · Esc cancel";
 	return `Enter submit${note} · Tab tabs · Esc cancel`;
@@ -227,7 +228,7 @@ const clip = (line: string, width: number): string => (visibleWidth(line) > widt
 
 /** The layout the size allows: full, or on a short terminal without descriptions and hints so the entries stay visible. */
 function arrange(model: DialogModel, state: DialogState, size: { width: number; height: number }, theme: DialogTheme, editorLines: string[]): Arranged {
-	const tab = model.tabs[state.tab] ?? "decision";
+	const tab = tabsOf(model, state)[state.tab] ?? "decision";
 	const draw = (full: boolean): Arranged => {
 		const ctx: Ctx = { model, state, width: size.width, full, theme, editorLines };
 		const layout = LAYOUTS[tab](ctx);

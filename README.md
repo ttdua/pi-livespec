@@ -147,7 +147,7 @@ Use this for any change that adds or changes behavior. One change = one issue = 
 |---|---|---|
 | `shape` | agent interviews you | self gate (checks only) |
 | `define` | agent writes the proposal and the spec delta | **human gate** |
-| `plan` | agent splits the work into units | **human gate** |
+| `plan` | agent splits the work into units | self gate, **human** when it escalates |
 | `build` | agent (or implementer children) builds unit by unit | every unit ticked with a receipt |
 | `review` | reviewers, verifier, agent fixes | self gate (`review-clean`) |
 | `ship` | agent fills the durable docs table and opens the PR | **human gate**, then `change_ship` |
@@ -259,9 +259,9 @@ The dialog title is the request summary (the facts), then the briefing (see [The
 3. **dismiss**;
 4. any extra options, for example `waive`, with their descriptions.
 
-A question offers its candidate answers (if the agent gave 2 to 4), **write my own answer** and **answer later (non-blocking)**. Picking a candidate answers with its label as the text.
+A question offers its 2 to 4 candidate answers, **write my own answer** and **answer later (non-blocking)**. Picking a candidate answers with its label as the text.
 
-In the pi TUI the request is one dialog with the tabs **Decision**, **Adjust units** (only when units can be overridden) and **Review**. Notes are written inside it with `n`, and nothing is sent until you submit on **Review**. **answer later** and **dismiss** end the dialog at once, without Review.
+In the pi TUI the request is one dialog with the tabs **Decision** and **Review**. **Adjust units** opens with `u` on Decision, at the plan gate and for amendments, when units can be overridden. Notes are written inside it with `n`, and nothing is sent until you submit on **Review**. **answer later** and **dismiss** end the dialog at once, without Review.
 
 In RPC hosts and other modes the same answers come from select prompts: after approve or an option you choose **No notes** or **Add notes**, and at the plan gate and for amendments **Keep classification** or **Adjust Difficulty or Tags**.
 
@@ -269,6 +269,7 @@ In RPC hosts and other modes the same answers come from select prompts: after ap
 
 - `↑` `↓` move; `1`–`9` pick the entry with that number.
 - `n` write a note.
+- `u` open **Adjust units** (Decision, when units can be overridden).
 - `Tab` / `Shift+Tab` next / previous tab.
 - `←` / `→` change Difficulty; `e` edit tags (Adjust units).
 - `PgUp` / `PgDn` scroll the facts and briefing.
@@ -284,7 +285,7 @@ Every human request carries a **briefing** next to the facts: a short summary, u
 - **Agent text is inert.** livespec neutralises `<!--` and a leading `/livespec` in it, so the briefing cannot add a command or fake a marker.
 - A request written before this feature has no briefing and still works.
 
-`spec_gate` requires a briefing for human gates. `unit_amend`, `initiative_propose` and `new_dependency` accept an optional one.
+`spec_gate` requires a briefing for a human or escalated gate, and `unit_amend`, `initiative_propose` and `new_dependency` require one too; each needs a `recommended` choice and a `rationale`. A `spec_question` requires 2 to 4 candidates with a `recommended` choice and a `rationale`.
 
 ### Answering on the forge
 
@@ -332,8 +333,7 @@ A question's table lists each candidate with the command `/livespec answer Q<n> 
 | `/livespec changes <notes>` | request changes; notes are required |
 | `/livespec dismiss [notes]` | reject without a decision; the agent must ask you how to proceed |
 | `/livespec choose <option-id> [notes]` | pick an option: `waive`, a stuck option, `A`/`B`/…, `unchanged`/`changed` |
-| `/livespec answer Q<n> <text> [--class blocking\|non-blocking]` | answer a question in one step; to change a requirement, edit its spec |
-| `/livespec class Q<n> blocking\|non-blocking` | reclassify a question before answering |
+| `/livespec answer Q<n> <text>` | answer a question in one step; to change a requirement, edit its spec |
 | `/livespec set U<n> difficulty <low\|medium\|high>` | override a unit (plan gate and amendments; applied only if the gate is approved) |
 | `/livespec set U<n> tags <a,b,…>` | override a unit's tags (same) |
 
@@ -375,6 +375,8 @@ Rules that decide whether your comment counts:
 
 **You see:** each unit's id, title, `Difficulty`, `Tags` and `Covers`, the reason of each classification decision, any tags the agent added, and the `verify-red-on-base` results.
 
+**Gate:** `self` by default: the agent passes the gate alone when its checks pass, unless the `gate-escalation` rule asks you. It asks when a waivable check fails (for example `size-limits`), the advisory plan review at `HEAD` is missing or has a CRITICAL finding, or a unit is tagged `security` or `migration`. The request ends with `Escalated: <reason>` and needs a briefing. To always ask, set `gate: human` on the `plan` phase in `.pi/livespec/flow.yaml` (with `extends: agent-skills`); to change the triggers, set `decisions.gate-escalation` (`phases`, `tags`).
+
 **Read:**
 
 1. **Coverage**: every requirement and scenario from define is covered by some unit (`Covers`, `Scenarios`).
@@ -384,7 +386,7 @@ Rules that decide whether your comment counts:
 5. **Difficulty and Tags**: tags drive which reviewers run (`security` adds the security auditor). Override them if they look wrong.
 6. **Size**: over 8 units or 3 capabilities fails `size-limits`. Either ask the agent to split (`change_split`) or `choose waive` deliberately.
 
-**Answer:** approve to lock the plan. Override with `/livespec set U3 difficulty high` or the "Adjust Difficulty or Tags" step, then approve. Request changes for missing coverage or a bad `Verify`.
+**Answer:** approve to lock the plan. Override with `/livespec set U3 difficulty high`, with `u` (Adjust units) in the pi TUI, or with the "Adjust Difficulty or Tags" step, then approve. Request changes for missing coverage or a bad `Verify`.
 
 ### Ship gate: is this ready to publish?
 
@@ -401,7 +403,7 @@ Rules that decide whether your comment counts:
 
 ### Question: answer what the agent cannot know
 
-**You see:** the question text and its class, `blocking` (gates stay closed) or `non-blocking`, and optionally 2 to 4 **candidate answers** (each a label and a description), possibly one recommended with its reason.
+**You see:** the question text and whether it blocks: `blocking` (gates stay closed) or `non-blocking` (after you choose **answer later** in session), and 2 to 4 **candidate answers** (each a label and a description), one of them recommended with its reason.
 
 **Answer** by picking a candidate, or with your own text. One step is enough:
 
@@ -409,7 +411,7 @@ Rules that decide whether your comment counts:
 /livespec answer Q2 use per-user limits, not per-IP
 ```
 
-If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it on the change's branch; there is no flag. The cascade below runs only after the plan is locked; before that, the edit is simply part of the change. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter.
+If the answer changes a requirement, edit its `specs/<capability>/spec.md` and commit it on the change's branch; there is no flag. The cascade below runs only after the plan is locked; before that, the edit is simply part of the change. livespec finds the edit from the spec diff at session start, on `/livespec next`, and before the next gate or `unit_finish`. The change goes back to `define` and the done units that cover the requirement are unticked; the counter `change_iterations` rises if the plan was already approved. Edit the spec only when the answer really changes it. "Answer later" in session makes the question non-blocking and passes it to the next adapter. With a chain that has no in-session adapter, a question stays blocking until answered: answering later exists only in session (editing the `(blocking)` marker on the issue still counts).
 
 ### Stuck report: pick a way out
 
@@ -462,7 +464,7 @@ When an implementer reports that a unit needs work outside the change (`missing-
 
 | Option | Choose when | What follows |
 |---|---|---|
-| **A** (default) | the prerequisite deserves its own change | a new change in `shape` is created; this change is **parked** |
+| **A** | the prerequisite deserves its own change | a new change in `shape` is created; this change is **parked** |
 | **B** | the missing work is small and belongs here | new units via `unit_amend --add` |
 | **C** | you can stub it now | a stub unit here and a follow-up change |
 | **D** | the change was wrong | back to `shape`, or drop the change |

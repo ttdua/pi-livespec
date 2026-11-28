@@ -1,7 +1,7 @@
 // The decision seam: runs the registered rule for a point and, when the rule
 // asks, hands the question to the caller's approver. It never writes anything.
 
-import { validateBriefing, validateOptionTexts } from "../interaction/briefing.ts";
+import { validateOptionTexts, validateRequiredBriefing } from "../interaction/briefing.ts";
 import { type RuleResult, ruleFor } from "./registry.ts";
 
 export type DecisionAsk = {
@@ -10,9 +10,9 @@ export type DecisionAsk = {
 	digest?: string;
 	facts: unknown;
 	summary: string;
-	options: { id: string; label: string; description?: string }[];
-	recommended?: string;
-	rationale?: string;
+	options: { id: string; label: string; description: string }[];
+	recommended: string;
+	rationale: string;
 };
 
 /** Structurally compatible with the approver's `Answered` (only the fields the seam reads). */
@@ -38,15 +38,15 @@ export type Decided = {
 	data?: { agentAdditions?: string[] };
 };
 
-/** A rule's ask is a programming contract: option texts within limits, a recommendation naming an offered option. */
+/** A rule's ask is a programming contract: described options within limits, a recommendation naming an offered option, with a rationale. */
 function checkRuleAsk(point: string, ask: Extract<RuleResult, { ask: unknown }>["ask"]): void {
-	const texts = validateOptionTexts(ask.options, { requireDescription: false });
+	const texts = validateOptionTexts(ask.options, { requireDescription: true });
 	if ("refused" in texts) throw new Error(`decision \`${point}\` ${texts.refused}`);
-	if (ask.recommended !== undefined && !ask.options.some((o) => o.id === ask.recommended)) {
+	if (ask.recommended === undefined) throw new Error(`decision \`${point}\` asks without a recommended option`);
+	if (!ask.options.some((o) => o.id === ask.recommended)) {
 		throw new Error(`decision \`${point}\` recommends \`${ask.recommended}\`, which it does not offer`);
 	}
-	if (ask.recommended === undefined) return;
-	const briefing = validateBriefing({ summary: ask.summary, recommended: ask.recommended, rationale: ask.rationale }, ask.options.map((o) => o.id), { author: "rule" });
+	const briefing = validateRequiredBriefing({ summary: ask.summary, recommended: ask.recommended, rationale: ask.rationale }, ask.options.map((o) => o.id), { author: "rule" });
 	if ("refused" in briefing) throw new Error(`decision \`${point}\` ${briefing.refused}`);
 }
 

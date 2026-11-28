@@ -9,7 +9,7 @@ Defines the flow pack: its schema and validation errors with line and column, th
 ### Requirement: Default flow pack
 The package SHALL ship the default flow pack `agent-skills` at `src/packs/agent-skills.yaml` with:
 - `name: agent-skills`, `version: 1` and `content: agent-skills`;
-- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, `progress: { mode: rule }`, `finding-scope: { mode: rule }`, `durable-docs: { mode: rule }`, `lane: { mode: rule, max_files: 3, max_lines: 100 }`, `split: { mode: rule }`, `behavior-change: { mode: rule }` and `drift-severity: { mode: rule }`, each with `mode: rule`;
+- the `limits`, `loops`, `decisions` and `init` keys, where `decisions` holds the `tags` and `difficulty` rule config from issue #5, `progress: { mode: rule }`, `finding-scope: { mode: rule }`, `durable-docs: { mode: rule }`, `lane: { mode: rule, max_files: 3, max_lines: 100 }`, `split: { mode: rule }`, `behavior-change: { mode: rule }`, `drift-severity: { mode: rule }` and `gate-escalation: { mode: rule, phases: [plan], tags: [security, migration] }`, each with `mode: rule`;
 - the phases `shape`, `define`, `plan`, `build`, `review`, `ship` and `close`, with the skills, outputs, redirects, checks and gates listed in issue #4, plus the `product-impact`, `glossary-terms` and `behavior-change` checks after the existing checks in `define` and before `review-clean` in `review`, the `unit-classification`, `verify-red-on-base` and `size-limits` checks in `plan`, the `review-clean` check and the `subagents` entries of review-phase "Reviewer selection" in `review`, and the output `issue#Durable docs` and the check `durable-docs` in `ship`.
 
 The pack MUST NOT name a model or a lane count.
@@ -20,11 +20,11 @@ The pack MUST NOT name a model or a lane count.
 
 #### Scenario: Default pack contents
 - **WHEN** the default pack is loaded
-- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5, #6, #8, #10, #32, #33 and #34, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks, gate and `subagents`
+- **THEN** it deep-equals the canonical fixture `tests/fixtures/agent-skills.pack.json`, transcribed from issues #4, #5, #6, #8, #10, #32, #33, #34 and #65, covering `limits`, `loops`, `decisions`, `init.skills` and every phase's `requires`, `per`, skills, outputs, redirects, checks, gate and `subagents`
 
 #### Scenario: Spot check
 - **WHEN** the default pack is loaded
-- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format`, `capabilities-match-diff`, `product-impact`, `glossary-terms` and `behavior-change`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification`, `verify-red-on-base` and `size-limits`; phase `review` checks `product-impact`, `glossary-terms`, `behavior-change` and `review-clean` and has `gate: self`; phase `ship` lists output `issue#Durable docs`, checks `durable-docs` and has `gate: human`; `decisions.difficulty.mode`, `decisions.progress.mode`, `decisions.finding-scope.mode`, `decisions.durable-docs.mode`, `decisions.lane.mode`, `decisions.split.mode`, `decisions.behavior-change.mode` and `decisions.drift-severity.mode` are `rule`, with `decisions.lane.max_files` 3 and `decisions.lane.max_lines` 100; and `limits` is `{ max_units: 8, max_capabilities: 3 }` and `loops.discovered_deps` is 2
+- **THEN** phase `define` requires `spec-driven-development`, lists outputs `issue#Capabilities`, `issue#Proposal` and `specs-diff`, checks `spec-format`, `capabilities-match-diff`, `product-impact`, `glossary-terms` and `behavior-change`, and has `gate: human`; phase `build` has `per: unit`; phase `plan` checks `units-format`, `done-maps-scenarios`, `unit-classification`, `verify-red-on-base` and `size-limits` and has `gate: self`; phase `review` checks `product-impact`, `glossary-terms`, `behavior-change` and `review-clean` and has `gate: self`; phase `ship` lists output `issue#Durable docs`, checks `durable-docs` and has `gate: human`; `decisions.difficulty.mode`, `decisions.progress.mode`, `decisions.finding-scope.mode`, `decisions.durable-docs.mode`, `decisions.lane.mode`, `decisions.split.mode`, `decisions.behavior-change.mode`, `decisions.drift-severity.mode` and `decisions.gate-escalation.mode` are `rule`, `decisions.gate-escalation.phases` is `[plan]`, with `decisions.lane.max_files` 3 and `decisions.lane.max_lines` 100; and `limits` is `{ max_units: 8, max_capabilities: 3 }` and `loops.discovered_deps` is 2
 
 ### Requirement: Pack schema validation
 The loader SHALL validate a pack against a hand-written schema of the top-level keys `name`, `version`, `content`, `limits`, `loops`, `decisions`, `init`, `phases` and `extends`, and the phase keys `id`, `requires`, `per`, `skills.required`, `skills.optional`, `outputs`, `redirects`, `checks`, `gate` and `subagents`. Every error MUST carry the file, line and column of the offending node, and a YAML syntax error MUST be reported with its line and column.
@@ -81,8 +81,8 @@ A project MAY provide `.pi/livespec/flow.yaml`. When it contains `extends: agent
 Errors in merged values MUST point at the file that supplied the value.
 
 #### Scenario: Replace one key
-- **WHEN** the override sets phase `plan` to `gate: self` only
-- **THEN** the effective `plan` phase has `gate: self` and every other key equal to the default
+- **WHEN** the override sets phase `plan` to `gate: human` only
+- **THEN** the effective `plan` phase has `gate: human` and every other key equal to the default
 
 #### Scenario: Replace a skills list
 - **WHEN** the override sets phase `review` `skills.optional: [security-and-hardening]`

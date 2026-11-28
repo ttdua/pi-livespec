@@ -83,6 +83,8 @@ describe("default pack", () => {
 		expect(define.gate).toBe("human");
 		expect(phase(r, "build").per).toBe("unit");
 		expect(phase(r, "plan").checks).toEqual(["units-format", "done-maps-scenarios", "unit-classification", "verify-red-on-base", "size-limits"]);
+		expect(phase(r, "plan").gate).toBe("self");
+		expect(okPack(r).decisions["gate-escalation"]).toEqual({ mode: "rule", phases: ["plan"], tags: ["security", "migration"] });
 		expect((okPack(r).decisions.difficulty as { mode: string }).mode).toBe("rule");
 		expect((okPack(r).decisions.progress as { mode: string }).mode).toBe("rule");
 		expect(phase(r, "review").checks).toEqual(["product-impact", "glossary-terms", "behavior-change", "review-clean"]);
@@ -114,9 +116,9 @@ describe("default pack", () => {
 
 describe("override merge", () => {
 	test("Replace one key", async () => {
-		const r = await load("extends: agent-skills\nphases:\n  - id: plan\n    gate: self\n");
+		const r = await load("extends: agent-skills\nphases:\n  - id: plan\n    gate: human\n");
 		const base = (fixture as { phases: { id: string }[] }).phases.find((p) => p.id === "plan");
-		expect(phase(r, "plan")).toEqual({ ...base, gate: "self" });
+		expect(phase(r, "plan")).toEqual({ ...base, gate: "human" });
 	});
 
 	test("Replace a skills list", async () => {
@@ -132,6 +134,11 @@ describe("override merge", () => {
 		expect(pack.phases).toHaveLength(8);
 		expect(pack.phases.at(-1)?.id).toBe("docs");
 		expect(phase(r, "docs").gate).toBe("none");
+	});
+
+	test("Project adds an escalation tag", async () => {
+		const r = await load("extends: agent-skills\ndecisions:\n  gate-escalation:\n    mode: rule\n    tags: [security, migration, api]\n");
+		expect(okPack(r).decisions["gate-escalation"]).toEqual({ mode: "rule", phases: ["plan"], tags: ["security", "migration", "api"] });
 	});
 
 	test("Decisions merge through the rule", async () => {

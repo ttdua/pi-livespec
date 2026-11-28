@@ -8,7 +8,7 @@ import type { Answered, QuestionClass } from "./approver.ts";
 import { snapshotOf } from "./requests.ts";
 import { type ApplyFn, editBody, readIssue } from "./complete-effects.ts";
 
-
+/** The class the `## Questions` line holds; an answer stored before the class choice was removed may name it. */
 function classOf(change: Change, id: string, answer: Answered): QuestionClass {
 	return answer.questionClass ?? change.questions.find((q) => q.id === id)?.kind ?? "blocking";
 }

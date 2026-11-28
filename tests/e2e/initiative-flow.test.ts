@@ -1,7 +1,7 @@
 // End-to-end initiative and discovered-dependency flows (issue #34 "Done when"): every human decision goes through
 // the real tools and an in-session approver over a memory forge with a real bare origin.
 
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -98,6 +98,8 @@ async function plannedChange(pick: { current: string }, count: number): Promise<
 
 // --- the flows -----------------------------------------------------------------------------------
 
+const PROPOSER_BRIEFING = { summary: "Proposes the change.", recommended: "approve", rationale: "The proposal is minimal." };
+
 describe("initiatives and discovered dependencies", () => {
 	test("plan over the limits needs a split or a waiver", async () => {
 		// An approval cannot be given while a waivable check fails; the completion-superseded path is covered by
@@ -105,7 +107,7 @@ describe("initiatives and discovered dependencies", () => {
 		// Nine units exceed max_units 8: the human is not offered approve, and the gate does not pass.
 		const pick = { current: "approve" };
 		const h = await plannedChange(pick, 9);
-		ok(await h.call("spec_gate", { target: "plan", briefing: BRIEFING }), "plan gate over the limits");
+		ok(await h.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING }), "plan gate over the limits");
 		const offered = (h.ctx.ui.select.mock.calls[0]?.[1] ?? []) as string[];
 		expect(offered).not.toContain("approve");
 		expect(offered.some((o) => o.startsWith("Waive size-limits"))).toBe(true);
@@ -123,7 +125,7 @@ describe("initiatives and discovered dependencies", () => {
 
 		// Separately, a human waives size-limits for another nine-unit plan.
 		const waived = await plannedChange({ current: "waive" }, 9);
-		ok(await waived.call("spec_gate", { target: "plan", briefing: BRIEFING }), "plan gate waived");
+		ok(await waived.call("spec_gate", { target: "plan", briefing: WAIVE_BRIEFING }), "plan gate waived");
 		expect(await latestGate(waived)).toMatchObject({ phase: "plan", outcome: "approved", choice: "waive", waivers: ["size-limits"] });
 		expect(await phaseOf(waived)).toEqual(["livespec:phase/build"]);
 		expect(parseChange(await waived.world.bodyOf(waived.n)).units).toHaveLength(9);
@@ -133,6 +135,7 @@ describe("initiatives and discovered dependencies", () => {
 		// A is the current change per-ip-cap in shape; it proposes an initiative where B (audit-log) depends on it.
 		const h = await toolHarness({ change: { body: SHAPE_BODY, phase: "shape" }, ui: human({ current: "approve" }) });
 		const proposed = await h.call("initiative_propose", {
+			briefing: PROPOSER_BRIEFING,
 			name: "limits",
 			goal: "Limit requests",
 			capabilities: ["rate-limit"],
@@ -187,6 +190,7 @@ describe("initiatives and discovered dependencies", () => {
 		// The human chooses A: the prerequisite token-store is created and added to Depends.
 		ok(
 			await h.call("new_dependency", {
+				briefing: { ...PROPOSER_BRIEFING, recommended: "A" },
 				unit: "U3",
 				evidence: "U3 needs a token store",
 				a: { name: "token-store", proposal: "Store tokens.", depends: [] },
@@ -228,6 +232,7 @@ describe("initiatives and discovered dependencies", () => {
 		const h = await toolHarness({ change: { body: SHAPE_BODY, phase: "shape" }, ui: human({ current: "approve" }) });
 		const before = (await allIssues(h)).length;
 		const out = await h.call("initiative_propose", {
+			briefing: PROPOSER_BRIEFING,
 			name: "limits",
 			goal: "Limit requests",
 			capabilities: ["rate-limit"],

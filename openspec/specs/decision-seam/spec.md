@@ -7,7 +7,7 @@ Defines the decision seam: `decide(point, facts)`, the rule registry and its pac
 ## Requirements
 
 ### Requirement: Decision seam
-`decide(point, facts)` SHALL run the rule registered for `point` and return `{ outcome, source, reason, facts }`. Facts MUST come from code (paths, parsed issue fields, config), never from the agent's own account. A rule MAY return `ask` with options. Each option MAY carry a description, and the ask MAY name a recommended option with a rationale; these SHALL come from the rule, never from the agent. A rule that recommends an option it does not offer MUST make `decide` throw. `decide` SHALL then send the options through the approver, with a briefing built from the rule only when the rule names a recommendation, and an answer SHALL give `source: human`. A pending answer SHALL return `pending` with the request id. An unregistered point MUST throw.
+`decide(point, facts)` SHALL run the rule registered for `point` and return `{ outcome, source, reason, facts }`. Facts MUST come from code (paths, parsed issue fields, config), never from the agent's own account. A rule MAY return `ask` with options. Each option MUST carry a description, and the ask MUST name a recommended option with a rationale (approver-adapters "Interaction contract"); these SHALL come from the rule, never from the agent. A rule ask without a recommendation, without a rationale, with an option without a description, or recommending an option it does not offer MUST make `decide` throw. Scenarios in any spec where a test rule asks, or where a built-in rule that never asks (such as `difficulty`) is said to ask, SHALL be read as a test rule registered under that name that describes its options and names `recommended` and `rationale`, unless they say otherwise. `decide` SHALL then send the options through the approver, with a briefing built from the rule, and an answer SHALL give `source: human`. A pending answer SHALL return `pending` with the request id. An unregistered point MUST throw.
 
 When the subject is a unit, the ask SHALL carry the unit's current digest, and the `decision` record of the human answer SHALL hold that digest. An ask MAY be a proposal (an amendment not yet approved); the human record of a proposal's answer SHALL hold `proposal: true`. Before asking, the approver SHALL take the latest record for `<point>.<subject>` with that digest, whatever its source and including proposal records, and SHALL reuse it instead of asking again only when it has source `human`, the same facts (or `facts_hash`) and an outcome that is not `null`; an older record is never consulted when the latest one does not qualify, so a reused answer is never older than the latest decision for that contract; `decide` then returns that outcome with source `human`. A dismissed answer (outcome `null`) MUST NOT be reused, and a record for another digest or other facts MUST NOT be reused. A rule that decides without asking MUST NOT be replaced by a recorded human answer.
 
@@ -61,11 +61,15 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 
 #### Scenario: Rule ask carries descriptions
 - **WHEN** the `behavior-change` rule asks for capability `rate-limit`
-- **THEN** the request's options `unchanged` and `changed` each carry a description and the request has no briefing
+- **THEN** the request's options `unchanged` and `changed` each carry a description, and its briefing, headed as a livespec rule, recommends `unchanged`
 
 #### Scenario: Rule recommends an option it does not offer
 - **WHEN** a test rule asks with options `x` and `y` and recommends `z`
 - **THEN** `decide` throws naming `z`
+
+#### Scenario: Rule ask without a recommendation
+- **WHEN** a test rule asks with options `x` and `y`, both described, and names no recommendation
+- **THEN** `decide` throws naming `recommended`
 
 ### Requirement: Rule registry and pack config
 `registerRule(point, schema, fn)` SHALL register a rule and the validator for its pack config at `decisions.<point>`. The pack's `decisions` value SHALL be validated with line and column errors:
@@ -212,3 +216,44 @@ The rule MUST return outcome `stop` when either the previous signature equals th
 #### Scenario: Large output keeps the signature
 - **WHEN** a failed run's facts exceed 2,000 characters of yaml
 - **THEN** the record holds `facts_hash`, and the next attempt's rule still reads the previous signature
+
+### Requirement: Gate escalation facts
+The `gate-escalation` point SHALL be registered with `registerRule` as `decisions.gate-escalation: { mode: rule, phases, tags }` (lists of names; an override replaces each list it sets). Its facts SHALL be built by code, never from the agent:
+- `phase` and `head_sha`;
+- `failing_waivable`: the phase's failing waivable checks;
+- `advisory_review`: `none`, `missing`, `critical` or `clean` (see "Advisory review state");
+- `units`: each unit's id and `Tags`.
+
+#### Scenario: Facts from the ledger
+- **WHEN** the plan reviewer's completed advisory review covers HEAD with one `WARNING` finding, `size-limits` passes, and U1 is tagged `ui`
+- **THEN** the facts are `failing_waivable: []`, `advisory_review: clean` and U1 with tags `[ui]`
+
+#### Scenario: Project adds a tag
+- **WHEN** `.pi/livespec/flow.yaml` sets `decisions.gate-escalation.tags: [security, migration, api]` and U1 is tagged `api`
+- **THEN** the outcome is `human`
+
+### Requirement: Advisory review state
+`advisory_review` SHALL be `none` when the phase has no `always` advisory reviewer entry; otherwise, over every such entry, `missing` when one has no completed review covering HEAD, else `critical` when one's review holds a `CRITICAL` finding, else `clean`. A review run inline and recorded with `subagent_record` SHALL count as completed.
+
+#### Scenario: Second advisory reviewer counted
+- **WHEN** a project pack gives `plan` two `always` advisory reviewers, subjects `plan` and `persona:security-auditor`, the `plan` review at HEAD is clean and the persona review at HEAD holds a `CRITICAL` finding
+- **THEN** `advisory_review` is `critical`
+
+#### Scenario: One advisory review missing
+- **WHEN** the same pack has a clean `plan` review at HEAD and no persona review at HEAD
+- **THEN** `advisory_review` is `missing`
+
+### Requirement: Gate escalation rule
+The `gate-escalation` rule MUST return `human` when `failing_waivable` is not empty, `advisory_review` is `missing` or `critical`, or a unit has a tag listed in `tags`, with a reason naming every trigger that holds; otherwise it SHALL return `self` with the reason `no trigger`. It MUST NOT ask a human.
+
+#### Scenario: No trigger
+- **WHEN** the facts have no failing waivable check, `advisory_review: clean` and units tagged `[ui]` and `[]`
+- **THEN** the outcome is `self` with reason `no trigger`
+
+#### Scenario: Every trigger named
+- **WHEN** `size-limits` fails, `advisory_review` is `critical` and U3 is tagged `migration`
+- **THEN** the outcome is `human` and the reason names `size-limits`, the critical advisory finding and U3's `migration` tag
+
+#### Scenario: Missing advisory review
+- **WHEN** the plan phase has its advisory `plan` reviewer and no completed review covers HEAD, and nothing else triggers
+- **THEN** the outcome is `human` and the reason names the missing review

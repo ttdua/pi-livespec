@@ -1,3 +1,4 @@
+import { validBriefing } from "../helpers/briefing.ts";
 import { describe, expect, test } from "vitest";
 import type { ApprovalRequest } from "../../src/interaction/approver.ts";
 import { decisionRequest } from "../../src/tools/decide-ask.ts";
@@ -19,7 +20,7 @@ function expectMatches(request: ApprovalRequest): void {
 
 describe("the request summary is the stored record summary", () => {
 	test("decide", () => {
-		expectMatches(decisionRequest(state, { point: "pick", subject: "U1", facts: {}, summary: RAW, options: OPTIONS }, NOW));
+		expectMatches(decisionRequest(state, { point: "pick", subject: "U1", facts: {}, summary: RAW, options: OPTIONS, recommended: "x", rationale: "Because." }, NOW));
 	});
 
 	test("stuck", () => {
@@ -28,11 +29,11 @@ describe("the request summary is the stored record summary", () => {
 	});
 
 	test("question", () => {
-		expectMatches(questionRequest(state, { id: "Q1", text: RAW, class: "blocking" }, { body: "", now: NOW }));
+		expectMatches(questionRequest(state, { id: "Q1", text: RAW, class: "blocking", candidates: { options: OPTIONS, briefing: { summary: "s", recommended: "x", rationale: "r", author: "agent" } } }, { body: "", now: NOW }));
 	});
 
 	test("amend", () => {
 		const snapshot = { action: "add", unit: "U1", lines: [], records: [] } as never;
-		expectMatches(amendRequest(state, { snapshot, summary: RAW }, "body", NOW));
+		expectMatches(amendRequest(state, { snapshot, summary: RAW }, "body", NOW, { ...validBriefing("approve"), author: "agent" }));
 	});
 });

@@ -16,6 +16,7 @@ const APPROVE_BY_TARGET: Record<string, string> = {
 	define: "Accept the spec; the change moves to plan.",
 	plan: "Lock the unit digests; the change moves to build.",
 	ship: "Accept the ship packet; change_ship can then run.",
+	"new-dependency": "Same as option A: create the prerequisite change and park this one until it merges.",
 };
 const APPROVE_NAMED = "Accept; the gate's effects are applied.";
 

@@ -31,14 +31,13 @@ export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Da
 	if (files !== undefined) snapshot.files = files;
 	const { summary, options } = intent;
 	const briefing = ruleBriefing(intent);
-	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, ...(briefing ? { briefing } : {}), head: state.git.head, body: "", snapshot, summary, now });
+	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, briefing, head: state.git.head, body: "", snapshot, summary, now });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
-	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options, ...(briefing ? { briefing } : {}) };
+	return { id: record.id, kind: "stuck", subject, record, change: state.issue.number, phase, summary: record.summary, links: [], files: [], mode: "blocking", options, briefing };
 }
 
-/** The rule-authored briefing, only when the rule recommends an option; an invalid one is a programming error. */
-function ruleBriefing(intent: DecisionAsk): Briefing | undefined {
-	if (intent.recommended === undefined) return undefined;
+/** The rule-authored briefing every rule ask carries; an invalid one is a programming error. */
+function ruleBriefing(intent: DecisionAsk): Briefing {
 	const raw = { summary: intent.summary, recommended: intent.recommended, rationale: intent.rationale };
 	const briefing = validateBriefing(raw, intent.options.map((o) => o.id), { author: "rule" });
 	if ("refused" in briefing) throw new Error(`decision \`${intent.point}\` ${briefing.refused}`);

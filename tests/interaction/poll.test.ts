@@ -1,8 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test } from "vitest";
-import { createGit } from "../../src/engine/git.ts";
-import { Session } from "../../src/hooks/session.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
@@ -10,6 +8,7 @@ import type { Forge } from "../../src/forge/types.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import type { RequestRecord, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
+import { contractFields } from "../helpers/briefing.ts";
 import { answerComment, prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH, cardText, cleanupHomes, harness, resumeBody } from "../hooks/helpers.ts";
@@ -36,7 +35,7 @@ async function postRequest(world: MemoryWorld, n: number, r: RequestRecord): Pro
 }
 
 function request(kind: RequestRecord["kind"], subject: Subject, snapshot: RequestSnapshot, body: string, head: string, at: number, options?: RequestRecord["options"]): RequestRecord {
-	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head, body, snapshot, summary: `Review ${subject}`, now: new Date(Date.UTC(2026, 0, 1, 0, 0, at)) });
+	return prepareRequest({ kind, subject, mode: "blocking", ...contractFields(kind, subject, snapshot, options), head, body, snapshot, summary: `Review ${subject}`, now: new Date(Date.UTC(2026, 0, 1, 0, 0, at)) });
 }
 
 async function ownMarked(world: MemoryWorld, n: number): Promise<MarkedComment[]> {
@@ -219,148 +218,73 @@ describe("/livespec class commands", () => {
 	const q2Line = async (h: { world: MemoryWorld }, n: number) => (await h.world.bodyOf(n)).split("\n").find((l) => l.includes(" Q2 (")) ?? "";
 	const classMarks = async (h: { world: MemoryWorld }, n: number) => (await ownMarked(h.world, n)).filter((m) => m.kind === "class");
 
-	/** A define change with a pending blocking question:Q2; alice has write and has not commented yet. */
-	async function q2Pending(o: { forge?: (world: MemoryWorld) => Forge; closed?: boolean; nonBlocking?: boolean } = {}) {
+	/** A define change with a pending blocking question:Q2; alice (write) comments `command`. */
+	async function q2Pending(o: { forge?: (world: MemoryWorld) => Forge; nonBlocking?: boolean; command?: string; seed?: (world: MemoryWorld, n: number) => Promise<void> } = {}) {
 		const h = await toolHarness({ branch: CHANGE_BRANCH, ...(o.forge ? { forge: o.forge } : {}) });
-		const q2 = o.closed ? Q2_DONE : o.nonBlocking ? OPEN_Q2.replace("(blocking)", "(non-blocking)") : OPEN_Q2;
+		const q2 = o.nonBlocking ? OPEN_Q2.replace("(blocking)", "(non-blocking)") : OPEN_Q2;
 		const body = resumeBody(h.head).replace(Q2_DONE, q2);
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: DEFINE_LABELS });
 		await postRequest(h.world, n, request("question", "question:Q2", { id: "Q2", text: "window?" }, body, h.head, 1));
 		await h.world.setPermission("alice", "write");
-		const commandId = await h.world.postComment(n, "alice", "/livespec class Q2 non-blocking");
+		const commandId = await h.world.postComment(n, "alice", o.command ?? "/livespec class Q2 non-blocking");
+		await o.seed?.(h.world, n);
 		await h.session.refresh();
 		return { ...h, n, commandId };
 	}
-	const backToBlocking = async (h: { world: MemoryWorld; n: number }) =>
-		h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Q2 (non-blocking)", "Q2 (blocking)"));
 
+	// Scenario name kept for archive: the class command is no longer applied.
 	test("Class command applied once", async () => {
 		const h = await q2Pending();
 		await pollApprovals(h.session);
-		expect(await q2Line(h, h.n)).toContain("Q2 (non-blocking)");
-		const marks = await classMarks(h, h.n);
-		expect(marks).toHaveLength(1);
-		expect(marks[0]).toMatchObject({ id: h.commandId, data: { question: "Q2", class: "non-blocking" } });
-
-		await backToBlocking(h);
-		await h.session.refresh();
-		await pollApprovals(h.session);
-		expect(await q2Line(h, h.n)).toContain("Q2 (blocking)");
-		expect(await classMarks(h, h.n)).toHaveLength(1);
+		expect(await q2Line(h, h.n)).toBe(OPEN_Q2);
+		expect(await classMarks(h, h.n)).toEqual([]);
+		expect(getSession()?.commandWarnings.join("\n")).toContain("cannot be parsed");
+		expect(await cardText(h.pi, h.ctx)).toContain("cannot be parsed");
 	});
 
-	test("a recorded class command needs no permission lookup", async () => {
-		const asked: string[] = [];
-		const h = await q2Pending({
-			forge: (world) =>
-				new Proxy(world.forge, {
-					get(target, prop, receiver) {
-						if (prop !== "getPermission") return Reflect.get(target, prop, receiver);
-						return async (login: string) => (asked.push(login), target.getPermission(login));
-					},
-				}),
-		});
+	test("Answer with a class", async () => {
+		const h = await q2Pending({ command: "/livespec answer Q2 use per-user limits --class non-blocking" });
 		await pollApprovals(h.session);
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-		expect(asked).toContain("alice");
-		asked.length = 0;
-		await h.session.refresh();
+		expect(await q2Line(h, h.n)).toBe(OPEN_Q2);
+		expect(parseChange(await h.world.bodyOf(h.n)).questions.find((q) => q.id === "Q2")?.checked).toBe(false);
+		expect((await ownMarked(h.world, h.n)).filter((m) => m.kind === "answer")).toEqual([]);
+		expect(getSession()?.commandWarnings.join("\n")).toContain("cannot be parsed");
+	});
+
+	// Scenario name kept for archive: an own `class` marker written before this rule is ignored.
+	test("Class command recorded across sessions", async () => {
+		const h = await q2Pending({ seed: async (world, n) => void (await world.postComment(n, BOT_LOGIN, writeMarked("class", "c-old", { question: "Q2", class: "non-blocking" }))) });
 		await pollApprovals(h.session);
-		expect(asked).not.toContain("alice");
+		expect(await q2Line(h, h.n)).toBe(OPEN_Q2);
+		expect(h.session.card.kind).toBe("change");
+		expect(h.session.errors).toEqual([]);
+		expect(getSession()?.commandWarnings.join("\n")).toContain("cannot be parsed");
 	});
 
 	test("Class command already matching", async () => {
-		const h = await q2Pending({ nonBlocking: true });
+		const h = await q2Pending({ nonBlocking: true, command: "/livespec class Q2 blocking" });
 		await pollApprovals(h.session);
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-
-		await backToBlocking(h);
-		await h.session.refresh();
-		await pollApprovals(h.session);
-		expect(await q2Line(h, h.n)).toContain("Q2 (blocking)");
-		expect(await classMarks(h, h.n)).toHaveLength(1);
+		expect(await q2Line(h, h.n)).toContain("Q2 (non-blocking)");
+		expect(await classMarks(h, h.n)).toEqual([]);
 	});
 
+	// Scenario name kept for archive: a class command never writes the issue body.
 	test("Class rewrite conflict retried", async () => {
-		let conflicts = 0;
+		let writes = 0;
 		const h = await q2Pending({
 			forge: (world) =>
 				new Proxy(world.forge, {
 					get(target, prop, receiver) {
 						if (prop !== "updateIssueBody") return Reflect.get(target, prop, receiver);
-						return async (n: number, body: string, expect: never) => {
-							if (conflicts === 0) {
-								conflicts++;
-								await world.editBodyBehindBack(n, (await world.bodyOf(n)).replace("Limit each client IP.", "Limit each client IP address."));
-							}
-							return target.updateIssueBody(n, body, expect);
-						};
+						return async (n: number, body: string, expect: never) => (writes++, target.updateIssueBody(n, body, expect));
 					},
 				}),
 		});
-		await pollApprovals(h.session);
-		expect(conflicts).toBe(1);
-		expect(await classMarks(h, h.n)).toHaveLength(0);
-		expect(h.session.errors.join("\n")).toContain("the next poll retries");
-
-		await h.session.refresh();
-		await pollApprovals(h.session);
-		expect(await q2Line(h, h.n)).toContain("Q2 (non-blocking)");
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-	});
-
-	test("Class command recorded across sessions", async () => {
-		const h = await q2Pending();
-		await pollApprovals(h.session);
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-		await backToBlocking(h);
-
-		const fresh = new Session(h.root, createGit(h.root));
-		fresh.config = h.session.config;
-		fresh.pack = h.session.pack;
-		fresh.forge = h.forge;
-		setSession(fresh);
-		await fresh.refresh();
-		await pollApprovals(fresh);
-
-		expect(await q2Line(h, h.n)).toContain("Q2 (blocking)");
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-	});
-
-	test("class marker write failure applies the command once more", async () => {
-		let failures = 0;
-		const h = await q2Pending({
-			forge: (world) =>
-				new Proxy(world.forge, {
-					get(target, prop, receiver) {
-						if (prop !== "createComment") return Reflect.get(target, prop, receiver);
-						return async (n: number, body: string) => {
-							if (failures === 0 && body.includes("livespec:class:")) {
-								failures++;
-								throw new Error("comment write failed");
-							}
-							return target.createComment(n, body);
-						};
-					},
-				}),
-		});
-		await pollApprovals(h.session);
-		expect(failures).toBe(1);
-		expect(await q2Line(h, h.n)).toContain("Q2 (non-blocking)");
-		expect(await classMarks(h, h.n)).toHaveLength(0);
-		expect(h.session.errors.join("\n")).toContain("comment write failed");
-
-		await h.session.refresh();
-		await pollApprovals(h.session);
-		expect(await classMarks(h, h.n)).toHaveLength(1);
-		expect(await q2Line(h, h.n)).toContain("Q2 (non-blocking)");
-	});
-
-	test("class command for a closed question is skipped", async () => {
-		const h = await q2Pending({ closed: true });
 		const before = await h.world.bodyOf(h.n);
 		await pollApprovals(h.session);
+		await h.session.refresh();
+		await pollApprovals(h.session);
+		expect(writes).toBe(0);
 		expect(await h.world.bodyOf(h.n)).toBe(before);
-		expect(await classMarks(h, h.n)).toHaveLength(0);
 	});
 });

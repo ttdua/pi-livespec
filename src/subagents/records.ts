@@ -284,7 +284,12 @@ export function reviewStepDoneAt(marked: MarkedComment[], unit: string, commits:
 
 /** True when a completed review of the whole-change `subject` (`spec`, `plan`, `change`, a persona) records `head`. */
 export function changeReviewDoneAt(marked: MarkedComment[], subject: ReviewSubject, head: string): boolean {
-	return summariesOf(marked).some((s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === subject && s.data.unit === undefined && s.data.completed && s.data.head === head);
+	return latestChangeReviewAt(marked, subject, head) !== undefined;
+}
+
+/** The latest completed review of the whole-change `subject` that records `head`, inline or dispatched. */
+export function latestChangeReviewAt(marked: MarkedComment[], subject: ReviewSubject, head: string): FindingSummaryData | undefined {
+	return summariesOf(marked).filter((s) => !isDerived(s.data) && s.data.role === "reviewer" && s.data.subject === subject && s.data.unit === undefined && s.data.completed && s.data.head === head).at(-1)?.data;
 }
 
 /** True when `marked` holds a settled `dispatch` record of `role` (questions, answers and launch mismatches excluded). */

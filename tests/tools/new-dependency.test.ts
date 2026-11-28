@@ -56,6 +56,7 @@ const harness = (o: Opts = {}): Promise<ToolHarness> =>
 	toolHarness({ change: { body: body(o), phase: o.phase ?? "build" }, locked: true, config: o.ui ? "integrationBranch: main\n" : FORGE_CHAIN, ...(o.ui ? { ui: o.ui } : {}), ...(o.forge ? { forge: o.forge } : {}) });
 
 const params = (over: Record<string, unknown> = {}) => ({
+	briefing: { summary: "Needs a token store.", recommended: "A", rationale: "A prerequisite change is cleanest." },
 	unit: "U3",
 	evidence: "U3 needs a token store, which <nothing> provides",
 	a: { name: "token-store", proposal: "Store tokens.", depends: [] },
@@ -88,11 +89,12 @@ describe("new_dependency: the request", () => {
 		expect(out.isError, textOf(out)).toBe(false);
 		const requests = await ofKind(h, "request");
 		expect(requests).toHaveLength(1);
-		const data = requests[0]?.data as { subject: string; mode: string; summary: string; options: { id: string; label: string }[]; snapshot: { drafts: { a: { name: string } } } };
+		const data = requests[0]?.data as { subject: string; mode: string; summary: string; options: { id: string; label: string; description?: string }[]; snapshot: { drafts: { a: { name: string } } } };
 		expect(data.subject).toBe("gate:new-dependency");
 		expect(data.mode).toBe("blocking");
 		expect(data.options.map((o) => o.id)).toEqual(["A", "B", "C", "D"]);
-		expect(data.options[0]?.label).toMatch(/\(default\)$/);
+		expect(data.options.every((o) => o.description !== undefined && o.description !== "")).toBe(true);
+		expect(data.options.some((o) => o.label.includes("(default)"))).toBe(false);
 		expect(data.snapshot.drafts.a.name).toBe("token-store");
 		expect(data.summary).toContain("<untrusted>U3 needs a token store, which &lt;nothing> provides</untrusted>");
 		expect(data.summary).toContain("per-ip-cap-deps");
@@ -105,6 +107,26 @@ describe("new_dependency: the request", () => {
 		expect(out.isError, textOf(out)).toBe(false);
 		const data = (await ofKind(h, "request"))[0]?.data as { briefing: { recommended: string; author: string } };
 		expect(data.briefing).toMatchObject({ recommended: "A", author: "agent" });
+	});
+
+	test("new_dependency without a briefing", async () => {
+		const h = await harness();
+		const before = (await all(h)).length;
+		const out = await h.call("new_dependency", params({ briefing: undefined }));
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("briefing");
+		expect(await ofKind(h, "request")).toEqual([]);
+		expect((await all(h)).length).toBe(before);
+	});
+
+	test("new_dependency recommended A first", async () => {
+		const h = await harness();
+		const out = await h.call("new_dependency", params());
+		expect(out.isError, textOf(out)).toBe(false);
+		const data = (await ofKind(h, "request"))[0]?.data as { options: { id: string; label: string; description?: string }[]; briefing: { recommended: string } };
+		expect(data.options[0]?.id).toBe("A");
+		expect(data.briefing.recommended).toBe("A");
+		expect(data.options.every((o) => (o.description ?? "") !== "" && !o.label.includes("(default)"))).toBe(true);
 	});
 
 	test("Briefing recommending an option the request does not offer", async () => {

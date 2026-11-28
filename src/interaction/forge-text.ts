@@ -137,14 +137,17 @@ function questionId(r: ApprovalRequest): string {
 	return r.question?.id ?? r.subject.slice("question:".length);
 }
 
+/** Rows in offered order, the recommended one first (stable sort); a question's free-text row stays last. */
 function answerRowsOf(r: ApprovalRequest): Row[] {
 	const recommended = (r.briefing ?? r.record.briefing)?.recommended;
 	if (r.kind !== "question") {
-		return gateChoices(r).map((c) => ({ choice: c.label, description: c.description, command: c.command, recommended: c.id === recommended }));
+		const rows = gateChoices(r).map((c) => ({ choice: c.label, description: c.description, command: c.command, recommended: c.id === recommended }));
+		return rows.sort((a, b) => Number(b.recommended) - Number(a.recommended));
 	}
 	const id = questionId(r);
 	const candidates = (r.options ?? []).map((o) => ({ choice: o.label, description: o.description ?? "", command: `/livespec answer ${id} ${neutralise(o.label)}`, recommended: o.id === recommended }));
-	return [...candidates, { choice: "your own answer", description: "Answer in your own words.", command: `/livespec answer ${id} <text>`, recommended: false }];
+	const sorted = candidates.sort((a, b) => Number(b.recommended) - Number(a.recommended));
+	return [...sorted, { choice: "your own answer", description: "Answer in your own words.", command: `/livespec answer ${id} <text>`, recommended: false }];
 }
 
 function answers(r: ApprovalRequest): string[] {
@@ -158,7 +161,7 @@ function answers(r: ApprovalRequest): string[] {
 function acceptedCommands(r: ApprovalRequest): string[] {
 	if (r.kind === "question") {
 		const id = questionId(r);
-		return [`/livespec answer ${id} <text> [--class blocking|non-blocking]`, `/livespec class ${id} blocking|non-blocking`, "/livespec dismiss [notes]"];
+		return [`/livespec answer ${id} <text>`, "/livespec dismiss [notes]"];
 	}
 	if (r.kind === "stuck" || r.subject.startsWith("decide:")) return ["/livespec choose <option-id> [notes]", "/livespec dismiss [notes]"];
 	const approve = failingWaivableOf(r.record.snapshot).length > 0 ? [] : ["/livespec approve [notes]"];

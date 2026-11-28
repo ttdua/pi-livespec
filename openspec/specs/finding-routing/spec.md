@@ -83,7 +83,7 @@ The route stage SHALL apply, idempotently, for every aggregate finding that is n
 - `unit`: post one own `rebuild` comment with id `rebuild.<unit>.<round>` naming the finding, then untick the unit when it is done, and list the finding in that unit's next implementer packet;
 - `in-change`: nothing, the next step names `unit_amend --add`;
 - `out-of-scope`: nothing, the finding is listed as a follow-up in the aggregate and at the next human gate until a gate has shown it;
-- `question`: `spec_question` with text naming `finding:<aggregateCommentId>:<index>`, unless a question already names that key;
+- `question`: a non-blocking question, raised by livespec code through `spec_question`, with text naming `finding:<aggregateCommentId>:<index>`, the candidates `apply the proposed fix` ("The agent applies the reviewer's proposed fix in this change.") and `leave it out of this change` ("The finding is not fixed in this change."), the first recommended with the rationale `The reviewer proposed a fix; applying it keeps the change consistent.`, unless a question already names that key;
 - `record`: nothing.
 
 #### Scenario: Unit unticked
@@ -97,6 +97,10 @@ The route stage SHALL apply, idempotently, for every aggregate finding that is n
 #### Scenario: Out of scope does not block
 - **WHEN** the only blocking finding of the latest aggregate at HEAD is routed `out-of-scope`
 - **THEN** `spec_gate review` passes and the ship gate payload lists the finding as a follow-up
+
+#### Scenario: Routing question carries candidates
+- **WHEN** a `needs-decision` finding is routed `question`
+- **THEN** the question is `(non-blocking)`, and its request offers `apply the proposed fix` first, recommended, and `leave it out of this change`; either answer resolves the finding as before
 
 ### Requirement: Finding status
 An aggregate finding SHALL block the review gate when it is `CRITICAL` or `WARNING` or of kind `missed-context`, is not `DISPUTED`, is not rebutted (a `missed-context` finding cannot be rebutted), and is routed:

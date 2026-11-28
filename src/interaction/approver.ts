@@ -133,6 +133,7 @@ export interface Answered {
 	by: string;
 	at: string;
 	adapter: AdapterName;
+	/** Read only: answers stored before the class choice was removed may carry it; new answers never do. */
 	questionClass?: QuestionClass;
 	overrides?: Override[];
 	answerComment?: { id: string; author: string; updatedAt: string };
@@ -168,7 +169,7 @@ export interface ApproverUI {
 export const REQUEST_KIND = "request";
 /** Marker kind of a validated answer: id = request id. */
 export const ANSWER_KIND = "answer";
-/** Marker kind of an applied `/livespec class` command: id = the command comment id. */
+/** Marker kind of a `/livespec class` command applied before that command was removed; stored ones are ignored. */
 export const CLASS_KIND = "class";
 registerKind(REQUEST_KIND);
 registerKind(ANSWER_KIND);

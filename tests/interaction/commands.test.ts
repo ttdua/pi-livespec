@@ -47,16 +47,10 @@ describe("parseCommand", () => {
 		expect(parseCommand("/livespec answer Q1 yes")).toEqual({ verb: "answer", question: "Q1", text: "yes" });
 	});
 
-	test("answer with --class", () => {
-		expect(parseCommand("/livespec answer Q2 use per-user limits --class non-blocking")).toEqual({
-			verb: "answer",
-			question: "Q2",
-			text: "use per-user limits",
-			class: "non-blocking",
-		});
-	});
-
-	test("answer with an invalid class is an error", () => {
+	test("answer with --class is an error", () => {
+		const out = parseCommand("/livespec answer Q2 per-user --class blocking");
+		expect(out).toHaveProperty("error");
+		expect((out as { error: string }).error).toContain("--class");
 		expect(parseCommand("/livespec answer Q3 keep it --class maybe")).toHaveProperty("error");
 	});
 
@@ -69,13 +63,8 @@ describe("parseCommand", () => {
 		expect(parseCommand("/livespec answer U3 yes")).toHaveProperty("error");
 	});
 
-	test("class", () => {
-		expect(parseCommand("/livespec class Q4 non-blocking")).toEqual({
-			verb: "class",
-			question: "Q4",
-			class: "non-blocking",
-		});
-		expect(parseCommand("/livespec class Q4 sometimes")).toHaveProperty("error");
+	test("class is an unknown command", () => {
+		expect(parseCommand("/livespec class Q2 non-blocking")).toEqual({ error: 'unknown command "class"' });
 	});
 
 	test("set difficulty", () => {

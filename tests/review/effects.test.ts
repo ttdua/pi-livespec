@@ -6,6 +6,7 @@ import type { ChangeState } from "../../src/engine/state-types.ts";
 import { receiptComment, startComment } from "../../src/evidence/records.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
 import { applyRoutes, type EffectDeps, prMarker, QuestionNotSent } from "../../src/review/effects.ts";
+import type { SpecQuestionParams } from "../../src/tools/spec-question.ts";
 import type { AggregateFinding, FindingSummaryData } from "../../src/subagents/records.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -14,6 +15,15 @@ import { changeBody } from "../tools/unit-helpers.ts";
 import { agg, aggregate, verifier } from "./review-fixtures.ts";
 
 const BRANCH = "livespec/per-ip-cap";
+/** The fixed candidates of a routing question (finding-routing "Route effects"). */
+const ROUTING_CHOICE = {
+	candidates: [
+		{ label: "apply the proposed fix", description: "The agent applies the reviewer's proposed fix in this change." },
+		{ label: "leave it out of this change", description: "The finding is not fixed in this change." },
+	],
+	recommended: "A",
+	rationale: "The reviewer proposed a fix; applying it keeps the change consistent.",
+};
 const BODY = `Base: abc\nBranch: ${BRANCH}\n${changeBody([{ id: "U1", verify: "true" }, { id: "U2", verify: "true" }])}`.replaceAll("- [ ] pending", "- [x] done");
 
 async function world(findings: AggregateFinding[], extra: (key: (i: number) => string) => MarkedComment[] = () => []) {
@@ -23,6 +33,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 	const marked = [a, ...extra((i) => `${a.commentId}:${i}`)];
 	const order: string[] = [];
 	const asked: string[] = [];
+	const params: SpecQuestionParams[] = [];
 	const forge = new Proxy(w.forge, {
 		get(target, prop) {
 			const v = Reflect.get(target, prop, target);
@@ -35,8 +46,14 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 	});
 	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments] }, await w.bodyOf(n));
 	const deps = (over: Partial<EffectDeps> = {}): EffectDeps => ({
-		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined, reask: async () => undefined,
-		ask: async (text) => {
+		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined,
+		reask: async (p) => {
+			params.push(p);
+			return undefined;
+		},
+		ask: async (p) => {
+			params.push(p);
+			const text = p.text ?? "";
 			asked.push(text);
 			const issue = await w.forge.getIssue(n);
 			await w.forge.updateIssueBody(n, issue.body.replace("## Questions\n", `## Questions\n- [ ] Q1 (non-blocking): ${text}\n`), issue.version);
@@ -45,7 +62,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 		...over,
 	});
 	const agg1 = { commentId: a.commentId, data: a.data as FindingSummaryData };
-	return { w, n, a, order, asked, state, deps, agg: agg1 };
+	return { w, n, a, order, asked, params, state, deps, agg: agg1 };
 }
 
 describe("applyRoutes", () => {
@@ -71,6 +88,21 @@ describe("applyRoutes", () => {
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		expect(t.asked).toHaveLength(1);
 		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:0`);
+	});
+
+	test("routing question carries candidates", async () => {
+		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
+		await applyRoutes(t.deps(), await t.state(), t.agg);
+		expect(t.params).toEqual([{ text: expect.stringContaining(`finding:${t.a.commentId}:0`), ...ROUTING_CHOICE }]);
+		expect(parseChange(await t.w.bodyOf(t.n)).questions[0]?.kind).toBe("non-blocking");
+	});
+
+	test("reask of a routing question carries candidates", async () => {
+		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
+		await applyRoutes(t.deps({ ask: async (p) => { await t.deps().ask(p); return "no adapter"; } }), await t.state(), t.agg).catch(() => undefined);
+		t.params.length = 0;
+		await applyRoutes(t.deps(), await t.state(), t.agg);
+		expect(t.params).toEqual([{ reask: "Q1", ...ROUTING_CHOICE }]);
 	});
 
 	test("a check location wraps the CI check name as untrusted", async () => {
@@ -159,10 +191,10 @@ describe("applyRoutes retry after a question was not sent", () => {
 
 	test("an unsent question is sent again, not skipped", async () => {
 		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
-		const failing = t.deps({ ask: async (text) => { await t.deps().ask(text); return "no adapter"; } });
+		const failing = t.deps({ ask: async (p) => { await t.deps().ask(p); return "no adapter"; } });
 		await applyRoutes(failing, await t.state(), t.agg).catch(() => undefined);
-		const reasked: string[] = [];
-		const out = await applyRoutes(t.deps({ reask: async (id) => { reasked.push(id); return undefined; } }), await t.state(), t.agg);
+		const reasked: (string | undefined)[] = [];
+		const out = await applyRoutes(t.deps({ reask: async (p) => { reasked.push(p.reask); return undefined; } }), await t.state(), t.agg);
 		expect(reasked).toEqual(["Q1"]);
 		expect(out.posted).toEqual([`question ${t.a.commentId}:0`]);
 	});
@@ -171,8 +203,8 @@ describe("applyRoutes retry after a question was not sent", () => {
 		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		const state = { ...(await t.state()), requests: { pending: [{ id: "r1", subject: "question:Q1" }], applying: [] } } as unknown as ChangeState;
-		const reasked: string[] = [];
-		await applyRoutes(t.deps({ reask: async (id) => { reasked.push(id); return undefined; } }), state, t.agg);
+		const reasked: (string | undefined)[] = [];
+		await applyRoutes(t.deps({ reask: async (p) => { reasked.push(p.reask); return undefined; } }), state, t.agg);
 		expect(reasked).toEqual([]);
 	});
 });
