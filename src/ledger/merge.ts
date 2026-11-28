@@ -7,10 +7,10 @@ import type { LedgerEntry } from "./entry.ts";
 /** The slot of entries placed before every comment. */
 const BEFORE_ALL = -1;
 
-/** The own comments and entries as one list; every "latest"/"newer" comparison uses positions in it. */
+/** The own comments and entries (in ledger read order) as one list; every "latest"/"newer" comparison uses positions in it. */
 export function mergeRecords(comments: MarkedComment[], entries: LedgerEntry[]): MarkedComment[] {
 	const slots = new Map<number, MarkedComment[]>();
-	for (const entry of bySeq(entries)) {
+	for (const entry of entries) {
 		const slot = slotOf(comments, entry);
 		const placed = slots.get(slot);
 		if (placed) placed.push(ledgerAsRecord(entry));
@@ -28,11 +28,6 @@ export function matchesRef(m: MarkedComment, ref: string): boolean {
 export function lastForgeRef(marked: MarkedComment[]): string | undefined {
 	for (let i = marked.length - 1; i >= 0; i--) if (marked[i]?.source === "forge") return marked[i]?.ref;
 	return undefined;
-}
-
-/** Ledger file order: by `seq`, stable for equal values. */
-function bySeq(entries: LedgerEntry[]): LedgerEntry[] {
-	return entries.map((entry, index) => ({ entry, index })).sort((a, b) => a.entry.seq - b.entry.seq || a.index - b.index).map(({ entry }) => entry);
 }
 
 /** The comment index the entry follows: its anchor, else the last comment created at or before it. */

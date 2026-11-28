@@ -16,6 +16,7 @@ import {
 	type LedgerRead,
 	appendText,
 	assertEntry,
+	entryVersion,
 	fileFor,
 	isEntryFile,
 	newRef,
@@ -83,6 +84,8 @@ export async function appendEntry(exec: GitExec, root: string, n: number, input:
 	for (let attempt = 0; attempt <= CAS_RETRIES; attempt++) {
 		const tip = await readTip(exec, root, n);
 		const current = tip ? await readTree(exec, root, tip, n) : { entries: [], warnings: [] };
+		// M3: a ref already in the ledger is never reused; draw a fresh one.
+		if (current.entries.some((e) => e.ref === identity.ref)) identity.ref = newRef(input.id);
 		const entry = buildEntry(input, identity, nextSeq(current.entries));
 		const commit = await commitEntries(exec, root, n, tip, [entry]);
 		const swap = await exec(["update-ref", "-m", commitMessage([entry]), ref, commit, tip ?? ABSENT], { cwd: root });
@@ -104,13 +107,13 @@ async function readTreeUncached(exec: GitExec, root: string, commit: string, n: 
 	const metaProblem = await ledgerMetaProblem(exec, root, files, n);
 	if (metaProblem) return { tip: commit, entries: [], warnings: [`ledger of #${n} read as empty: ${metaProblem}`] };
 	const warnings: string[] = [];
-	const parsed: LedgerEntry[] = [];
+	const perFile: LedgerEntry[][] = [];
 	for (const file of files.filter((f) => isEntryFile(f.path))) {
 		const result = parseFile(file.path, await catBlob(exec, root, file.blob));
-		parsed.push(...result.entries);
+		perFile.push(result.entries);
 		warnings.push(...result.warnings);
 	}
-	return { tip: commit, entries: dropRepeatedRefs(orderBySeq(parsed), warnings), warnings };
+	return { tip: commit, entries: orderAcrossFiles(dropRepeatedRefs(perFile.flat(), warnings), perFile), warnings };
 }
 
 async function ledgerMetaProblem(exec: GitExec, root: string, files: readonly TreeFile[], n: number): Promise<string | undefined> {
@@ -129,19 +132,34 @@ async function ledgerMetaProblem(exec: GitExec, root: string, files: readonly Tr
 	return undefined;
 }
 
-/** Entries by `seq`, keeping file order among equal `seq` values (a gap or repeat is not an error). */
-function orderBySeq(entries: LedgerEntry[]): LedgerEntry[] {
-	return entries.map((entry, index) => ({ entry, index })).sort((a, b) => a.entry.seq - b.entry.seq || a.index - b.index).map(({ entry }) => entry);
+/**
+ * Entries in one order: file order inside every file (a gap, repeat or reversal of `seq` never reorders a file),
+ * files interleaved by the highest `seq` seen so far in the file, stable for ties.
+ */
+function orderAcrossFiles(kept: LedgerEntry[], perFile: LedgerEntry[][]): LedgerEntry[] {
+	const keptSet = new Set(kept);
+	const keyed: { entry: LedgerEntry; key: number; index: number }[] = [];
+	for (const entries of perFile) {
+		let high = 0;
+		for (const entry of entries) {
+			high = Math.max(high, entry.seq);
+			if (keptSet.has(entry)) keyed.push({ entry, key: high, index: keyed.length });
+		}
+	}
+	return keyed.sort((a, b) => a.key - b.key || a.index - b.index).map(({ entry }) => entry);
 }
 
+/** Keeps the first occurrence of every `ref` in file order; a later one is skipped with a warning (a different payload is a conflict). */
 function dropRepeatedRefs(entries: LedgerEntry[], warnings: string[]): LedgerEntry[] {
-	const seen = new Set<string>();
+	const first = new Map<string, LedgerEntry>();
 	return entries.filter((e) => {
-		if (!seen.has(e.ref)) {
-			seen.add(e.ref);
+		const earlier = first.get(e.ref);
+		if (earlier === undefined) {
+			first.set(e.ref, e);
 			return true;
 		}
-		warnings.push(`${fileFor(e.kind, e.data)}: skipped entry: repeated ref \`${e.ref}\``);
+		const same = entryVersion(earlier) === entryVersion(e);
+		warnings.push(`${fileFor(e.kind, e.data)}: skipped entry: ${same ? "repeated ref" : "conflicting entry reusing ref"} \`${e.ref}\``);
 		return false;
 	});
 }

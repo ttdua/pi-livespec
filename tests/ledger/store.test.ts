@@ -280,6 +280,25 @@ describe("invalid ledger content", () => {
 		expect(read.warnings[0]).toContain("data");
 	});
 
+	it("M2: file order decides across a reversed or repeated seq", async () => {
+		const root = await repoWithCommit();
+		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 7), summary("findings.U1~00000002", 3), summary("findings.U1~00000003", 3)]);
+		const read = await readTree(exec, root, base, 59);
+		expect(read.entries.map((e) => e.ref)).toEqual(["findings.U1~00000001", "findings.U1~00000002", "findings.U1~00000003"]);
+		expect(read.warnings).toEqual([]);
+	});
+
+	it("M3: a conflicting entry reusing a ref is skipped with its own warning, the first one wins", async () => {
+		const root = await repoWithCommit();
+		const first = summary("findings.U1~00000001", 1);
+		const other = { ...summary("findings.U1~00000001", 2), data: { different: true } };
+		const base = await commitEntries(exec, root, 59, undefined, [first, other]);
+		const read = await readTree(exec, root, base, 59);
+		expect(read.entries).toHaveLength(1);
+		expect(read.entries[0]?.data).toEqual({});
+		expect(read.warnings[0]).toContain("conflicting");
+	});
+
 	it("appends after hostile content without throwing", async () => {
 		const root = await repoWithCommit();
 		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);
