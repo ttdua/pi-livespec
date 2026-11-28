@@ -23,8 +23,8 @@ Blocked by: 1
 
 Blocked by: 1, 2
 
-- [ ] 3.1 Compute the behavior items once in `buildRequest` and pass them as `ReviewFacts.behaviorItems` (`src/engine/gate-payload.ts`, `src/tools/spec-gate.ts`); in `src/docs/register.ts`, add the define payload section "Behavior conclusions (please check)" from `effectiveConclusion`, with neutralised rationale; no section without items (phase-gates "Gate review payload" scenarios "Behavior conclusions listed", "No behavior section without items")
-- [ ] 3.2 Tests in `tests/docs/` for the payload section
+- [x] 3.1 Compute the behavior items once in `buildRequest` and pass them as `ReviewFacts.behaviorItems` (`src/engine/gate-payload.ts`, `src/tools/spec-gate.ts`); in `src/docs/register.ts`, add the define payload section "Behavior conclusions (please check)" from `effectiveConclusion`, with neutralised rationale; no section without items (phase-gates "Gate review payload" scenarios "Behavior conclusions listed", "No behavior section without items")
+- [x] 3.2 Tests in `tests/docs/` for the payload section
 
 ## 4. Ship durable docs
 
