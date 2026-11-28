@@ -16,7 +16,7 @@
 - **Branch**: `spec/ledger-store`
 - **Base branch**: `main`
 - **Final state**: `pr-updated`
-- **PR URL**: `N/A` (no PR existed at push; see PR comment)
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/79` (opened after the push, at the finalize prompt)
 
 ---
 
@@ -31,7 +31,7 @@ Deviation: the worktree lived outside `.worktrees/`, so the provenance guard wou
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/79#issuecomment-7237504126)
 
 ---
 
