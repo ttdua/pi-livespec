@@ -3,7 +3,7 @@
 import { matchGlob } from "../core/glob.ts";
 import { declaredCapabilities, placed, readText, safeRelative, sha256, type Cx, type Provider } from "./source-kit.ts";
 import { unitText } from "./sources-change.ts";
-import { receiptText } from "./sources-records.ts";
+import { receiptsVersion, receiptText, recordId, recordVersion } from "./sources-records.ts";
 import type { Placed } from "./source-types.ts";
 
 const PRODUCT_EXCERPT_CHARS = 4000;
@@ -67,11 +67,15 @@ export const codeDiff: Provider = {
 /** The finding under verification and the code at its location. */
 export const findingAndCode: Provider = {
 	name: "finding",
-	async run({ ctx }) {
+	async run(cx) {
+		const { ctx } = cx;
 		const f = ctx.finding;
 		if (!f) throw new Error("a verifier packet needs the finding to verify, and none was given");
 		const text = `${f.severity} ${f.kind} at ${f.location}\nEvidence: ${f.evidence}\nFix: ${f.fix}`;
-		const out = [placed({ id: `comment:finding-${sha256(text).slice(0, 12)}`, version: sha256(text), title: "Finding to verify", text, untrusted: true }, "pinned")];
+		// The finding lives in an aggregate record: cite that record (ledger-store entry or comment), not an invented comment id.
+		const aggregate = ctx.state.marked.find((m) => m.kind === "finding-summary" && (m.data as { aggregate?: unknown; findings?: unknown[] } | null)?.aggregate === true && ((m.data as { findings?: unknown[] }).findings ?? []).some((g) => g === f || JSON.stringify(g) === JSON.stringify(f)));
+		const [id, version] = aggregate === undefined ? [`comment:finding-${sha256(text).slice(0, 12)}`, sha256(text)] : [recordId(cx, aggregate), await recordVersion(cx, aggregate)];
+		const out = [placed({ id, version, title: "Finding to verify", text, untrusted: true }, "pinned")];
 		const path = f.location.split(":")[0] ?? "";
 		const code = safeRelative(path) ? await readText(ctx.root, path) : undefined;
 		if (code !== undefined) out.push(fileSource(path, code, `Code at ${path}`));
@@ -88,6 +92,6 @@ export const owningUnit: Provider = {
 		if (!owner) return [];
 		const receipts = cx.ctx.state.evidence.receipts[owner.id] ?? [];
 		const text = [unitText(cx, owner), ...receipts.map((r) => receiptText(owner.id, r))].join("\n\n");
-		return [placed({ id: `receipt:${owner.id}`, version: sha256(text), title: `Owning unit ${owner.id}`, text, untrusted: true })];
+		return [placed({ id: `receipt:${owner.id}`, version: await receiptsVersion(cx, receipts, sha256(unitText(cx, owner))), title: `Owning unit ${owner.id}`, text, untrusted: true })];
 	},
 };

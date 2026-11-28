@@ -303,6 +303,31 @@ describe("verifier of an in-change finding", () => {
 	});
 });
 
+describe("I6: ledger records cited by their public reference", () => {
+	test("the verifier cites the aggregate entry as ledger:<issue>/<ref>, not a comment", async () => {
+		const world = await makeWorld();
+		const f = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/free/clock.ts:4", evidence: "e", fix: "f", scope: "in-change" as const, from: ["r1:0"], needsDecision: false, route: "in-change" as const, verify: "required" as const };
+		const posted = world.record(aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [f] }));
+		const target = resolveTarget(world.ctx.state, "verifier");
+		if (!target.ok) throw new Error(target.message);
+		const placed = await collectSources({ ...world.refreshed(), finding: f }, target.target);
+		expect(placed.some((p) => p.source.id.startsWith("comment:finding-"))).toBe(false);
+		expect(placed.find((p) => p.source.id === `ledger:7/${posted.ref}`)?.source.title).toBe("Finding to verify");
+	});
+
+	test("receipt:<unit> is versioned by the entry versions of its receipts, not the text", async () => {
+		const world = await makeWorld();
+		const data = { unit: "U1", digest: "d", verify: "v", pre: { sha: "aaa", exit: 1 }, post: { sha: "bbb", exit: 0 }, output: "same", start: "U1.s" };
+		world.entries.push(ledgerRecord(receiptComment("U1.r1", data), { at: "2026-11-01T00:00:00.000Z" }));
+		const first = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === "receipt:U1")?.source;
+		world.entries.length = 0;
+		world.entries.push(ledgerRecord(receiptComment("U1.r1", data), { at: "2026-11-02T00:00:00.000Z" }));
+		const second = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === "receipt:U1")?.source;
+		expect(first?.text).toBe(second?.text);
+		expect(first?.version).not.toBe(second?.version);
+	});
+});
+
 describe("Persona file", () => {
 	const withPersona = async (name: string) => {
 		const world = await makeWorld();
