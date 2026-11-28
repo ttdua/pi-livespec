@@ -58,6 +58,6 @@ Blocked by: 1
 
 Blocked by: 2, 3, 4, 5, 6
 
-- [ ] 7.1 Update the README "Behavior-change question" paragraph (define gate section) and `README.vi.md`, plus `docs/architecture.md` mentions, to describe agent conclusions and the override
-- [ ] 7.2 Add a CHANGELOG entry
-- [ ] 7.3 Run `bun run typecheck` and `bun run test`; all green
+- [x] 7.1 Update the README "Behavior-change question" paragraph (define gate section) and `README.vi.md`, plus `docs/architecture.md` mentions, to describe agent conclusions and the override
+- [x] 7.2 Add a CHANGELOG entry
+- [x] 7.3 Run `bun run typecheck` and `bun run test`; all green
