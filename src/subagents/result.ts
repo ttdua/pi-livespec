@@ -117,12 +117,18 @@ function statusDecision(result: SubagentResult, history: DispatchHistory): Resul
 	return { kind: "accept", result };
 }
 
-/** Decides what the parent does with a settled run; reads nothing but its arguments. */
-export function interpret(record: RecordLike, packet: Packet, role: Role, history: DispatchHistory): ResultDecision {
+/** Makes a schema-valid result safe to store; runs once per result, before any rule reads it. */
+export type PrepareResult = (result: SubagentResult) => SubagentResult;
+
+/**
+ * Decides what the parent does with a settled run; reads nothing but its arguments. `prepare` normalises the result
+ * right after the schema check, so the dispute check and every decision carrying a result see the normalised one.
+ */
+export function interpret(record: RecordLike, packet: Packet, role: Role, history: DispatchHistory, prepare: PrepareResult = (r) => r): ResultDecision {
 	if (record.pendingQuestion !== undefined) return { kind: "question", text: record.pendingQuestion };
 	const missing = missingReason(record, role);
 	if (missing !== undefined) return retryOrBlock(missing, history);
-	const result = record.structuredResult as SubagentResult;
+	const result = prepare(record.structuredResult as SubagentResult);
 	const omitted = result.status === "NEEDS_CONTEXT" ? [] : missingSources(result, packet);
 	if (omitted.length > 0) {
 		if (history.returns < MISSING_SOURCE_RETURNS) return { kind: "return", missing: omitted };

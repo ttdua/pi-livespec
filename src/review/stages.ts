@@ -10,8 +10,9 @@ import { verifyEnv } from "../evidence/verify-env.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { type DispatchOutcome, type DispatchRequest, runDispatch } from "../subagents/dispatch.ts";
 import { findExecutor } from "../subagents/executor.ts";
+import { replayReviewerConclusions } from "../docs/behavior-review.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
-import { writePacket } from "../subagents/packet-store.ts";
+import { readPacket, writePacket } from "../subagents/packet-store.ts";
 import { entriesFor } from "../subagents/policy.ts";
 import type { ReviewSubject } from "../subagents/roles.ts";
 import type { ApproverCtx } from "../tools/approver-for.ts";
@@ -138,9 +139,23 @@ function verifyStage(c: StageCtx, missing: string[]): Promise<StageReport> {
 
 const verifierOff = (c: StageCtx): boolean => entriesFor(c.w.pack, REVIEW).some((e) => e.role === "verifier" && e.mode === "off");
 
+/**
+ * Re-posts the `reviewer` behavior records of the completed `change` summary that a failed write lost, before the
+ * round is aggregated: the summary stores its cleaned entries and the packet its effective conclusions.
+ */
+async function replayLostConclusions(c: StageCtx, head: string): Promise<void> {
+	const summary = completedReview(c.state.marked, "change", head);
+	if (summary === undefined) return;
+	const pctx = packetContext(c.w, c.state, undefined);
+	const packet = await readPacket(pctx.root, changeName(pctx), summary.data.packet);
+	const posted = await replayReviewerConclusions((body) => c.w.forge.createComment(c.state.issue.number, body).then(() => undefined), c.state.marked, summary, packet);
+	if (posted > 0) await afterForgeWrite(c.w.session, c.state.issue.number);
+}
+
 async function aggregateStage(c: StageCtx): Promise<StageReport> {
 	const run = latestRun(c.state.marked);
 	if (run === undefined) throw new Error("no review-run record to aggregate");
+	if (run.selected.includes("change")) await replayLostConclusions(c, run.head);
 	const reviews = run.selected.flatMap((s) => {
 		const r = completedReview(c.state.marked, s, run.head);
 		return r === undefined ? [] : [{ commentId: r.commentId, findings: r.data.findings }];

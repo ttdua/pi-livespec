@@ -3,7 +3,7 @@
 import type { Question } from "../core/change.ts";
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
-import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
+import type { Finding, ReviewerBehavior, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
 registerKind("dispatch");
 
@@ -83,6 +83,8 @@ export type FindingSummaryData = {
 	reason?: string;
 	notes?: string;
 	evidence?: string;
+	/** The cleaned `behavior` entries of a completed, non-advisory `change` reviewer run, so lost reviewer records can be replayed. */
+	behavior?: ReviewerBehavior[];
 	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
 	aggregate?: true;
 	reviews?: string[];

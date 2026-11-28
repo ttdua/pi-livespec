@@ -34,9 +34,9 @@ export type DispatchDeps = RecordDeps & {
 	signal?: AbortSignal;
 	/** How long to wait for an aborted child to settle before the forge write; defaults to `ABORT_SETTLE_MS`. */
 	abortSettleMs?: number;
-	/** Called right after a run's result is recorded; the tools wire it to the reviewer behavior conclusions, which `subagents/` cannot import. */
-	/** Called before the result is recorded; returns the result to record (the tools wire it to the reviewer behavior clean-up). */
+	/** Normalises a schema-valid result once, before any rule reads it; the tools wire it to the reviewer behavior clean-up, which `subagents/` cannot import. */
 	prepareResult?(run: RunFacts, result: SubagentResult): SubagentResult;
+	/** Called right after an accepted result is recorded; the tools wire it to the reviewer behavior conclusions. */
 	afterRecord?(run: RunFacts, result: SubagentResult): Promise<void>;
 	/** Called with the id of every child the dispatch spawns, right after the spawn. */
 	onLaunch?(agentId: string): void;
@@ -209,7 +209,7 @@ export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, fac
 		case "more-context":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };
 		case "accept": {
-			const result = await recordResult(deps, run, cwd, deps.prepareResult?.(run, decision.result) ?? decision.result);
+			const result = await recordResult(deps, run, cwd, decision.result);
 			await deps.afterRecord?.(run, result);
 			return { kind: "result", result, facts };
 		}
@@ -227,7 +227,8 @@ async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: {
 	let seen = history;
 	for (;;) {
 		if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
-		const decision = interpret(record, request.packet, request.role, seen);
+		const facts = runFacts(request, run);
+		const decision = interpret(record, request.packet, request.role, seen, (r) => deps.prepareResult?.(facts, r) ?? r);
 		if (decision.kind === "retry") {
 			const step = await retryRun(deps, request, run, decision.reason, decision.shown, seen);
 			if (step.kind === "stop") return step.outcome;

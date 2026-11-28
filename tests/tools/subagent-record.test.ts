@@ -8,7 +8,7 @@ import { resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { registerFindingRebut } from "../../src/tools/finding-rebut.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { done, unpublish } from "../subagents/fake-executor.ts";
+import { done, publish, unpublish } from "../subagents/fake-executor.ts";
 import { readPacket } from "../../src/subagents/packet-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { cardState } from "./unit-helpers.ts";
@@ -277,6 +277,31 @@ describe("reviewer behavior conclusions", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		const [record] = await reviewerRecords(h);
 		expect((record?.data as { reason: string }).reason).not.toContain("<!--");
+	});
+
+	test("an inline 300-code-point rationale with a comment opener is kept and stored neutralised", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [{ ...dispute, rationale: `<!--${"x".repeat(296)}` }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const records = await reviewerRecords(h);
+		expect(records.map((m) => (m.data as { reason: string }).reason)).toEqual([`<!-\u200b-${"x".repeat(296)}`]);
+	});
+
+	test("a dispatched reviewer dispute resumed by subagent_answer posts one record after the summary", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		h.fake.records.push({ pendingQuestion: "Which cap?" });
+		publish(h.fake.service);
+		const asked = await h.call("subagent_dispatch", { role: "reviewer", subject: "change" });
+		expect(textOf(asked)).toContain("Which cap?");
+		const cited = footerIds(h.fake.spawned.at(-1)?.prompt ?? "");
+		h.fake.records.push({ structuredResult: reviewResult({ sources_used: [...cited, "answer:agent-1:1"], findings: [atCap], behavior: [dispute] }) });
+		const answered = await h.call("subagent_answer", { id: "agent-1", answer: "the per-IP one" });
+		expect(answered.isError, textOf(answered)).toBeFalsy();
+		const marked = await h.marked();
+		const summaryAt = marked.findIndex((m) => m.kind === "finding-summary");
+		const after = marked.slice(summaryAt + 1).filter((m) => m.kind === "decision" && (m.data as { source?: string }).source === "reviewer");
+		expect(summaryAt).toBeGreaterThanOrEqual(0);
+		expect(after.map((m) => m.data)).toMatchObject([{ subject: "rate-limit", outcome: "changed", reason: "cap now rejects at 99" }]);
 	});
 
 	test("an invalid reviewer entry is dropped and noted", async () => {

@@ -51,16 +51,17 @@ async function runSubagentRecordBody(p: RecordParams, ctx: ToolCtx, deps: Subage
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
-	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
-	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0, disputeReturns: 0, respawned: false });
-	if (decision.kind === "return-behavior") return refusal(TOOL, `${disputeMessage(decision.capabilities)}; add the finding or change the entry, then record again.`);
-	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
 		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true, needsContext: request.needsContext,
 	};
+	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
+	const cleaned = cleanReviewerBehavior(run, result);
+	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0, disputeReturns: 0, respawned: false }, () => cleaned);
+	if (decision.kind === "return-behavior") return refusal(TOOL, `${disputeMessage(decision.capabilities)}; add the finding or change the entry, then record again.`);
+	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const record = recordDeps(w, state.issue.number);
-	const kept = await recordResult(record, run, pctx.cwd, cleanReviewerBehavior(run, result));
+	const kept = await recordResult(record, run, pctx.cwd, cleaned);
 	await recordReviewerConclusions(record.post, run, kept, built.packet);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;
 	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT", outcomeOptions(state, w.pack));
