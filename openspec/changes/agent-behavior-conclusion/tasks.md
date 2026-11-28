@@ -30,8 +30,8 @@ Blocked by: 1, 2
 
 Blocked by: 1
 
-- [ ] 4.1 Switch `src/ship/context.ts` `behaviorFacts` to `latestConclusions`; update the `DurableFacts["behavior"]` doc comment in `src/ship/durable-docs.ts` (ship-phase "Durable docs rule and check", scenarios "Agent conclusion covers the files", "Newer changed record wins", "Protected change of other files")
-- [ ] 4.2 Update `tests/ship/context.test.ts` and the durable-docs tests
+- [x] 4.1 Switch `src/ship/context.ts` `behaviorFacts` to `latestConclusions`; update the `DurableFacts["behavior"]` doc comment in `src/ship/durable-docs.ts` (ship-phase "Durable docs rule and check", scenarios "Agent conclusion covers the files", "Newer changed record wins", "Protected change of other files")
+- [x] 4.2 Update `tests/ship/context.test.ts` and the durable-docs tests
 
 ## 5. Human behavior override
 
