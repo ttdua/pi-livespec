@@ -9,7 +9,7 @@
 **Finalized at**: `2026-11-28 18:40`
 **Outcome**: `pr-updated`
 
-The project AGENTS.md overrides the canonical flow ("do not push, merge or open a PR without explicit permission in chat"). Steps 10–12 (push, PR prompt, PR comment) were not run. The feature branch is merged locally only. It will be pushed once the user approves.
+The project AGENTS.md requires explicit permission in chat before a push or PR. The user gave it, and then steps 10–12 ran: push, PR creation, PR comment.
 
 ---
 
@@ -17,8 +17,8 @@ The project AGENTS.md overrides the canonical flow ("do not push, merge or open 
 
 - **Branch**: `behavior-change`
 - **Base branch**: `main`
-- **Final state**: `pr-updated`. The worktree branch is merged locally with fast-forward only. The branch has no upstream and has not been pushed.
-- **PR URL**: `N/A (no PR yet; push and PR need user approval)`
+- **Final state**: `pr-updated`. The worktree branch was merged with fast-forward only, then `behavior-change` was pushed to `origin` (new remote branch) and PR #80 was opened against `main`.
+- **PR URL**: `https://github.com/ttdua/pi-livespec/pull/80`
 
 ---
 
@@ -31,7 +31,7 @@ The project AGENTS.md overrides the canonical flow ("do not push, merge or open 
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/80#issuecomment-7238058449)
 
 ---
 
@@ -51,7 +51,6 @@ The project AGENTS.md overrides the canonical flow ("do not push, merge or open 
 
 ## Next step
 
-1. With the user's approval, push `behavior-change` and open a PR against `main`. Remote `ttdua/pi-livespec`; confirm the active `gh` account is `ttdua`.
-2. Wait for PR code review.
-3. After approval, run `/opsx-archive` on `behavior-change` and push the archive commits.
-4. Merge the PR.
+1. Wait for code review on PR #80.
+2. After approval, run `/opsx-archive` on `behavior-change` and push the archive commits.
+3. Merge the PR (with user approval).
