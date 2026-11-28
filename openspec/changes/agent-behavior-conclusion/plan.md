@@ -331,7 +331,7 @@
 - Modify: `README.md` (Define gate section, "Behavior-change question" paragraph), `README.vi.md` (same section), `docs/architecture.md` (behavior-change mentions), `CHANGELOG.md`
 
 - [ ] **Step 1: README.** Replace the paragraph with: the agent concludes each capability with evidence; the gate lists "Behavior conclusions (please check)"; to disagree, request changes and mark the capability with `b` in the dialog or `/livespec set behavior <capability> changed` on the forge. Mirror it in `README.vi.md`.
-- [ ] **Step 2: Architecture and CHANGELOG.** Update `docs/architecture.md` references to `behavior-ask.ts`, and add a CHANGELOG entry under Unreleased, marked breaking for the `spec_gate` `behavior` parameter. Add a note that the agent-skills define/review skill text must mention `behavior` (outside this repo, design D9), as a follow-up for the user to file.
+- [ ] **Step 2: Architecture and CHANGELOG.** Update `docs/architecture.md` references to `behavior-ask.ts`, and add a CHANGELOG entry under Unreleased, marked breaking for the `spec_gate` `behavior` parameter.
 - [ ] **Step 3: Verify.** `bun run typecheck` → exit 0; `bun run test` → 0 failed.
 - [ ] **Step 4: Commit.** `docs: behavior conclusions replace the human question`
 

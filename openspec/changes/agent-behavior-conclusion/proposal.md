@@ -43,6 +43,6 @@ The `behavior-change` rule asks the human, once per capability and in a blocking
 
 ## Impact
 
-- Code: `src/docs/behavior-change.ts`, `src/docs/behavior-ask.ts` (removed), `src/docs/behavior-check.ts`, `src/docs/register.ts`, `src/tools/spec-gate.ts`, `src/tools/decide-ask.ts`, `src/decide/records.ts`, `src/ship/context.ts` and the durable-docs rule, `src/subagents/roles.ts` and `run-record.ts`, `src/interaction/commands.ts`, `forge-match.ts`, `forge-text.ts`, `approver.ts`, `complete-gate.ts`, `dialog/*`, plus the define/review skill text in agent-skills content that tells the agent to pass `behavior`.
+- Code: `src/docs/behavior-change.ts`, `src/docs/behavior-ask.ts` (removed), `src/docs/behavior-check.ts`, `src/docs/register.ts`, `src/tools/spec-gate.ts`, `src/tools/decide-ask.ts`, `src/decide/records.ts`, `src/ship/context.ts` and the durable-docs rule, `src/subagents/roles.ts` and `run-record.ts`, `src/interaction/commands.ts`, `forge-match.ts`, `forge-text.ts`, `approver.ts`, `complete-gate.ts`, `dialog/*`.
 - Public API: the `spec_gate` tool parameters, the forge command grammar (additive), and the reviewer result schema (additive, optional field).
 - No new dependency and no data migration: old human records stay valid.

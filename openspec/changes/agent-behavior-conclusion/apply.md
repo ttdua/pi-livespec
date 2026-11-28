@@ -73,7 +73,6 @@ All of these are internal; no public contract changed. Each one is also recorded
 
 - A lost reviewer record is not replayed when HEAD moves before the next `spec_review`. In that case the new round dispatches the `change` reviewer again.
 - When the stored packet is missing, the replay is skipped silently.
-- The agent-skills define/review skill text, which lives outside this repo, must tell agents to pass `behavior`. This is a follow-up issue.
 
 ---
 

@@ -50,7 +50,7 @@ Rejected alternative: allow the override with approve. Approve then contradicts 
 
 **D8. Gate payload section.** `registerGatePayload("define", …)` in `src/docs/register.ts` adds a section `Behavior conclusions (please check):`. Each item gets one line, `- <capability>: <outcome> (<source>) — <rationale>; files: <n>`. The rationale is neutralised. Livespec builds this section, so it sits in the facts, before the agent briefing. The ship durable-docs section loses the per-capability confirmation item whenever an `unchanged` conclusion covers the files.
 
-**D9. Skill text.** The agent-skills content that tells the agent how to run `spec_gate define|review` must mention `behavior`. That content lives in the managed agent-skills clone, not in this repo. The tool's parameter description and its refusal text are what guide the agent here: the refusal names every missing capability and the expected shape.
+**D9. Agent guidance.** pi-livespec is the runtime for the agent-skills workflow and does not change agent-skills content. The `spec_gate` parameter description and its refusal text guide the agent: the refusal names every missing capability and the expected shape.
 
 ## Risks / Trade-offs
 
