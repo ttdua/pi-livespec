@@ -176,7 +176,7 @@ async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run
 	const confirmed = await settledWithin(waited, limit);
 	if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 	const found = mismatchEvidence(check.mismatches);
-	// The tool never writes to the forge before the child's run has settled.
+	// The tool never writes to the forge or the ledger before the child's run has settled.
 	const note = confirmed ? "" : `; the mismatch was not recorded: child ${run.agentId} did not settle within ${limit / 1000} s of the abort`;
 	if (confirmed) await deps.record(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, found));
 	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${found})${note}; re-run ${request.unit} sequentially` };

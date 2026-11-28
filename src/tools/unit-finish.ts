@@ -29,7 +29,7 @@ import { finishGateRefusal } from "../subagents/finish-gate.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { lastForgeRef } from "../ledger/merge.ts";
-import { afterForgeWrite, afterLedgerWrite, type ToolResult, type WriteContext } from "./guard.ts";
+import { afterForgeWrite, afterLedgerWrite, requireChange, type ToolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { runSpecStuck } from "./spec-stuck.ts";
 import { invalidText, lockedEvidenceCall, type Precheck, type PrecheckFn, refusedRun, startable, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
@@ -169,7 +169,9 @@ export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, po
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
 	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.commentId, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
-	const entry = await w.ledger.append(state.issue.number, { ...decisionComment(record), after: lastForgeRef(state.marked) });
+	// The anchor comes from the current state: a caller (lane_merge) may have posted a comment since `state` was read.
+	const now = requireChange(w.session);
+	const entry = await w.ledger.append(state.issue.number, { ...decisionComment(record), after: lastForgeRef(now.ok ? now.state.marked : state.marked) });
 	await afterLedgerWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
 	const what = typeof cls === "object" ? invalidText(cls, run) : `Verify failed (exit ${run.exit}).`;

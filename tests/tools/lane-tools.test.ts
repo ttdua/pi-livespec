@@ -383,6 +383,11 @@ describe("parallel-lanes tools", () => {
 		expect(h.git("rev-parse", "HEAD")).toBe(head);
 		const progress = (await h.ofKind("decision")).filter((m) => m.id === "progress.U3");
 		expect(progress).toHaveLength(1);
+		// The attempt sorts after the lane-close comment written just before it.
+		const all = await h.marked();
+		const close = all.findIndex((m) => m.kind === "lane" && (m.data as { closed?: boolean; unit?: string }).closed === true && (m.data as { unit?: string }).unit === "U3");
+		expect(close).toBeGreaterThanOrEqual(0);
+		expect(all.findIndex((m) => m.ref === progress[0]?.ref)).toBeGreaterThan(close);
 		expect(cardState(h).state.counters["unit_attempts.U3"]).toBe(1);
 		expect(existsSync(h.lanePath("U3"))).toBe(false);
 		expect(cardState(h).step.dispatch?.role).toBe("implementer");

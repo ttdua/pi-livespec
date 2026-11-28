@@ -1,4 +1,4 @@
-// Lane side effects through the engine's git: create or reuse the worktree, check `Files`, merge, verify, undo, and post the records.
+// Lane side effects through the engine's git: create or reuse the worktree, check `Files`, merge, verify, undo, and write the records.
 
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";

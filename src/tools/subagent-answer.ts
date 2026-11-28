@@ -89,7 +89,7 @@ async function answerRun(e: AnswerEnv, p: AnswerParams, q: Question, packet: Pac
 	await d.record(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
 	const record = await resumeChild(d, p.id, p.answer);
 	if (isCancelled(signal)) return toolResult(withStep(w.session, outcomeText(t, cancelledOutcome(p.id))), undefined, true);
-	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded on the forge, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
+	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
 	const run = resumedRun(p.id, packet.cwd, q.launch, request.difficulty);
 	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: isFallbackChild(state.marked, p.id) });
 	return toolResult(withStep(w.session, outcomeText(t, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
