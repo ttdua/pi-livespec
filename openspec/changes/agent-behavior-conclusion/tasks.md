@@ -37,12 +37,12 @@ Blocked by: 1
 
 Blocked by: 1, 2, 3
 
-- [ ] 5.1 Add `BehaviorOverride`, `Answered.behaviorOverrides`, the stored `GateSnapshot.behavior` and the derived `ApprovalRequest.overridableBehavior` in `src/interaction/approver.ts`; set the snapshot on `gate:define` requests in `buildRequest` (`src/tools/spec-gate.ts`) when items exist
-- [ ] 5.2 Forge: parse `set behavior <capability> changed` in `src/interaction/commands.ts`; collect in a new `src/interaction/forge-behavior.ts` called from `forge-match.ts`, attach only to `changes`, warn on approve or other outcomes, an unknown capability, a value other than `changed`, or a non-define request; list the command in `src/interaction/forge-text.ts` `<details>` (approver-adapters "Forge command comments", "Behavior overrides"; request-briefing "Forge request text")
-- [ ] 5.3 Dialog: `b` key hint and Behavior tab in `src/interaction/dialog/{model,state,keys,view,result}.ts`; the Review tab shows overrides or marks them discarded (approver-adapters "In-session dialog", "Behavior overrides")
-- [ ] 5.4 `select` fallback: an optional "Mark behavior changed" step after request changes in `src/interaction/in-session.ts`
-- [ ] 5.5 Completion: `applyBehaviorOverrides(run, answer, snapshot)` in a new `src/interaction/complete-behavior.ts`, idempotent by `overridden_by`, called from `src/interaction/complete-gate.ts` when not superseded and `changes_requested`, before the stale and gate comments (durable-doc-checks "Human behavior override")
-- [ ] 5.6 Tests under `tests/interaction/` for commands, forge-match, dialog, in-session and completion
+- [x] 5.1 Add `BehaviorOverride`, `Answered.behaviorOverrides`, the stored `GateSnapshot.behavior` and the derived `ApprovalRequest.overridableBehavior` in `src/interaction/approver.ts`; set the snapshot on `gate:define` requests in `buildRequest` (`src/tools/spec-gate.ts`) when items exist
+- [x] 5.2 Forge: parse `set behavior <capability> changed` in `src/interaction/commands.ts`; collect in a new `src/interaction/forge-behavior.ts` called from `forge-match.ts`, attach only to `changes`, warn on approve or other outcomes, an unknown capability, a value other than `changed`, or a non-define request; list the command in `src/interaction/forge-text.ts` `<details>` (approver-adapters "Forge command comments", "Behavior overrides"; request-briefing "Forge request text")
+- [x] 5.3 Dialog: `b` key hint and Behavior tab in `src/interaction/dialog/{model,state,keys,view,result}.ts`; the Review tab shows overrides or marks them discarded (approver-adapters "In-session dialog", "Behavior overrides")
+- [x] 5.4 `select` fallback: an optional "Mark behavior changed" step after request changes in `src/interaction/in-session.ts`
+- [x] 5.5 Completion: `applyBehaviorOverrides(run, answer, snapshot)` in a new `src/interaction/complete-behavior.ts`, idempotent by `overridden_by`, called from `src/interaction/complete-gate.ts` when not superseded and `changes_requested`, before the stale and gate comments (durable-doc-checks "Human behavior override")
+- [x] 5.6 Tests under `tests/interaction/` for commands, forge-match, dialog, in-session and completion
 
 ## 6. Reviewer conclusions
 
