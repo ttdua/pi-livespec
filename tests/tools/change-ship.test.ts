@@ -49,6 +49,28 @@ describe("change_ship", () => {
 		expect(textOf(out)).toContain(`#${pr.number}`);
 	});
 
+	test("I7: a ledger change landing between the snapshot and the publish refuses and pushes nothing", async () => {
+		const h = await shipReady();
+		const ledger = h.session.ledger;
+		let syncs = 0;
+		// The first sync settles the ledger; the second one (right before the branch push) sees a tip moved by another writer.
+		const racing = { ...ledger, sync: async (n: number) => {
+			if (++syncs === 2) await ledger.append(n, { kind: "decision", id: "race.U1", data: { point: "race", subject: "U1", source: "rule", outcome: "x", reason: "r" } });
+			return ledger.sync(n);
+		} };
+		Object.defineProperty(h.session, "ledger", { value: racing });
+		const before = originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"));
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger changed while the change was being checked");
+		expect(originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"))).toEqual(before);
+		expect(await openPulls(h)).toHaveLength(0);
+		// A rerun sees the settled ledger and ships.
+		Object.defineProperty(h.session, "ledger", { value: ledger });
+		const again = await h.call("change_ship");
+		expect(again.isError, textOf(again)).toBeFalsy();
+	});
+
 	test("Refspec from the issue", async () => {
 		const h = await shipReady({ branch: "livespec/rate-limit" });
 		const out = await h.call("change_ship");

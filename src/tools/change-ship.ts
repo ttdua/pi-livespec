@@ -22,7 +22,7 @@ import { pullRequestBody } from "../ship/pr-body.ts";
 import { isReviewed } from "../ship/reviewed.ts";
 import { closingCommitsRefusal, filesRefusal, pullRequestChoice, shipLocalRefusal, staleShipId } from "../ship/ship-refusals.ts";
 import { postShipRecord, writePrLine } from "../ship/ship-writes.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { afterForgeWrite, afterLedgerWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
@@ -31,7 +31,7 @@ const TOOL = "change_ship";
 const REMOTE = "origin";
 const NO_FACTS = { specsStat: "", specsFiles: [], specsDiff: "" };
 
-type Ship = { w: WriteContext; state: ChangeState; context: ShipContext; branch: string };
+type Ship = { w: WriteContext; state: ChangeState; context: ShipContext; branch: string; ledgerTip: string | undefined };
 
 const refuse = (message: string): ToolResult<undefined> => toolResult(`${TOOL} refused: ${message} Nothing was pushed or opened.`, undefined, true);
 const failed = (message: string): ToolResult<undefined> => toolResult(`${TOOL} failed: ${message}`, undefined, true);
@@ -90,13 +90,24 @@ async function openPullRequest(s: Ship): Promise<PullRequest | { failed: string 
 	}
 }
 
-/** Push → open or adopt → `PR:` line → `ship` record. The ledger is pushed first, so origin never holds a branch whose ledger is missing. */
+/**
+ * Syncs the ledger before any check reads the state: when the sync moved the local tip (another clone's entries
+ * arrived), the state is rebuilt, so the refusals, freshness check and PR body all see the records that get published.
+ * Returns the refusal, or undefined once the ledger is pushed and the state is current.
+ */
+async function settleLedger(w: WriteContext, n: number): Promise<string | undefined> {
+	const before = (await w.ledger.read(n)).tip;
+	const ledger = await w.ledger.sync(n);
+	if (ledger.status !== "synced") return `the ledger could not be pushed: ${ledger.status === "pending" ? ledger.reason : ledger.message}.`;
+	if ((await w.ledger.read(n)).tip !== before) await afterLedgerWrite(w.session, n);
+	return undefined;
+}
+
+/** Push → open or adopt → `PR:` line → `ship` record. The ledger was pushed first (`settleLedger`), so origin never holds a branch whose ledger is missing. */
 async function publish(s: Ship, adopt: PullRequest | undefined): Promise<ToolResult<undefined>> {
 	const n = s.state.issue.number;
-	const ledger = await s.w.ledger.sync(n);
-	if (ledger.status !== "synced") {
-		return refuse(`the ledger could not be pushed: ${ledger.status === "pending" ? ledger.reason : ledger.message}.`);
-	}
+	const moved = await ledgerMovedSince(s);
+	if (moved) return refuse("the ledger changed while the change was being checked; run change_ship again.");
 	try {
 		await guardedPush(s.w.session.exec, s.w.session.cwd, REMOTE, `HEAD:refs/heads/${s.branch}`);
 	} catch (error) {
@@ -116,10 +127,21 @@ async function publish(s: Ship, adopt: PullRequest | undefined): Promise<ToolRes
 	return toolResult(withStep(s.w.session, `Pushed ${s.branch} at ${s.state.git.head.slice(0, 7)}. ${verb} pull request #${pr.number} and recorded PR: #${pr.number} on #${n}.`), undefined);
 }
 
+/** True when the ledger cannot be synced now, or its local tip differs from the one the checks read. */
+async function ledgerMovedSince(s: Ship): Promise<boolean> {
+	const n = s.state.issue.number;
+	const ledger = await s.w.ledger.sync(n);
+	return ledger.status !== "synced" || (await s.w.ledger.read(n)).tip !== s.ledgerTip;
+}
+
 /** Every refusal in order, then the freshness check, the pull request choice and the publish. */
 async function ship(): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return refuse(w.message);
+	const first = requireChange(w.session);
+	if (!first.ok) return refuse(first.message);
+	const settled = await settleLedger(w, first.state.issue.number);
+	if (settled !== undefined) return refuse(settled);
 	const change = requireChange(w.session);
 	if (!change.ok) return refuse(change.message);
 	const { state } = change;
@@ -127,7 +149,7 @@ async function ship(): Promise<ToolResult<undefined>> {
 	if (local !== undefined) return refuse(local);
 	const context = await shipContext(w.session, state);
 	if ("refused" in context) return refuse(context.refused);
-	const s: Ship = { w, state, context, branch: state.git.branch };
+	const s: Ship = { w, state, context, branch: state.git.branch, ledgerTip: (await w.ledger.read(state.issue.number)).tip };
 	const git = await gitRefusal(s);
 	if (git !== undefined) return refuse(git);
 	const { login } = await w.forge.whoami();
