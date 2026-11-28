@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Result } from "../core/result.ts";
-import { type DecisionRecord, decisionComment, reusableAnswer, sameFacts, validDecisionEntries } from "../decide/records.ts";
+import { type DecisionRecord, decisionComment, sameFacts, validDecisionEntries } from "../decide/records.ts";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
 import type { MarkedComment } from "../forge/markers.ts";
@@ -127,11 +127,6 @@ export const behaviorChangeSchema: RuleSchema = {
 		if (isMap(node)) checkAllowedKeys(node, ["mode"], "decisions.behavior-change", report);
 	},
 };
-
-/** The record that answers `item` (same digest and facts), if any. */
-export function behaviorAnswer(marked: MarkedComment[], item: BehaviorItem): DecisionRecord | undefined {
-	return reusableAnswer(marked, BEHAVIOR_POINT, item.capability, behaviorDigest(item.files), item);
-}
 
 export const behaviorSubject = (capability: string): `decide:${string}` => `decide:${BEHAVIOR_POINT}.${capability}`;
 

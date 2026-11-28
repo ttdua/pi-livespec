@@ -26,14 +26,16 @@ import { type GateCommentInput, gateComment } from "../interaction/complete-gate
 import { prepareRequest } from "../interaction/requests.ts";
 import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
-import { askBehaviorChanges } from "../docs/behavior-ask.ts";
+import { validateBehaviorParam } from "../docs/behavior-param.ts";
+import { recordBehaviorConclusions } from "../docs/behavior-record.ts";
+import type { BehaviorConclusionInput } from "../docs/behavior-change.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest, withStep } from "./request-flow.ts";
 
-export type SpecGateParams = { target: string; briefing?: unknown };
+export type SpecGateParams = { target: string; briefing?: unknown; behavior?: unknown };
 
 const PLAN = "plan";
 const BEHAVIOR_CHECK = "behavior-change";
@@ -215,20 +217,20 @@ function asksBehavior(pack: Pack, target: string): boolean {
 
 /**
  * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals are evaluated with the
- * `behavior-change` results left out, and only when none applies the unanswered items are asked. After an
- * answer the state is re-read and `checked` is false, so the caller's full check run sees the new records.
+ * `behavior-change` results left out, and only when none applies the agent's conclusions are recorded. After a
+ * post the state is re-read and `checked` is false, so the caller's full check run sees the new records.
  */
 type BehaviorStep = { ok: true; state: ChangeState; checked: boolean } | { ok: false; message: string };
 
-async function behaviorStep(w: WriteContext, state: ChangeState, target: string, ctx: ApproverCtx): Promise<BehaviorStep> {
+async function behaviorStep(w: WriteContext, state: ChangeState, target: string, entries: BehaviorConclusionInput[]): Promise<BehaviorStep> {
 	const checked = await withGateChecks(w, state, target);
 	const others = { ...checked, checks: checked.checks.filter((c) => c.check !== BEHAVIOR_CHECK) };
 	const refusal = gateRefusal(others, w.pack, target);
 	if (refusal) return { ok: false, message: refusalText(others, refusal) };
-	const asked = await askBehaviorChanges(w, state, ctx);
-	if (!asked.ok) return asked;
-	// Nothing asked: the checks already ran on this state, `behavior-change` included.
-	if (!asked.asked) return { ok: true, state: checked, checked: true };
+	const recorded = await recordBehaviorConclusions(w, state, entries);
+	if (!recorded.ok) return recorded;
+	// Nothing posted: the checks already ran on this state, `behavior-change` included.
+	if (!recorded.posted) return { ok: true, state: checked, checked: true };
 	await afterForgeWrite(w.session, state.issue.number);
 	const fresh = requireChange(w.session);
 	return fresh.ok ? { ok: true, state: fresh.state, checked: false } : { ok: false, message: fresh.message };
@@ -298,7 +300,9 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	if (byProposer) return toolResult(byProposer, undefined, true);
 	const briefed = briefingStep(target, w.pack, p.briefing);
 	if (!briefed.ok) return toolResult(briefed.message, undefined, true);
-	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, ctx) : { ok: true as const, state: change.state, checked: false };
+	const behavior = validateBehaviorParam(p.behavior);
+	if (!behavior.ok) return toolResult(behavior.message, undefined, true);
+	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, behavior.entries) : { ok: true as const, state: change.state, checked: false };
 	if (!asked.ok) return toolResult(asked.message, undefined, true);
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
@@ -333,6 +337,20 @@ async function recordEscalation(w: WriteContext, state: ChangeState, e: Escalati
 	await w.session.comments?.invalidate(state.issue.number);
 }
 
+export const BEHAVIOR_SCHEMA = {
+	type: "array",
+	description: "Your conclusion per capability whose code changed without its spec: unchanged or changed, with a one-line evidence rationale. Required at define and review when the change has such capabilities.",
+	items: {
+		type: "object",
+		properties: {
+			capability: { type: "string", description: "the capability id" },
+			outcome: { type: "string", enum: ["unchanged", "changed"] },
+			rationale: { type: "string", description: "one line of evidence, at most 300 characters" },
+		},
+		required: ["capability", "outcome", "rationale"],
+	},
+};
+
 export const BRIEFING_SCHEMA = {
 	type: "object",
 	description: "Advisory briefing shown to the human after livespec's facts: summary, points to watch, the recommended choice and why. It is never an answer. Required on human and escalated gates, unit amendments and proposer tools (initiative_propose, new_dependency); there `recommended` and `rationale` are required too.",
@@ -354,9 +372,9 @@ export function registerSpecGate(pi: ExtensionAPI): void {
 		// Plain JSON-schema literal; cast avoids a typebox dependency. Only `target`: no outcome or choice parameter.
 		parameters: {
 			type: "object",
-			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" }, briefing: BRIEFING_SCHEMA },
+			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" }, briefing: BRIEFING_SCHEMA, behavior: BEHAVIOR_SCHEMA },
 			required: ["target"],
 		} as never,
-		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target, briefing: (params as SpecGateParams).briefing }, ctx as ApproverCtx),
+		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target, briefing: (params as SpecGateParams).briefing, behavior: (params as SpecGateParams).behavior }, ctx as ApproverCtx),
 	});
 }

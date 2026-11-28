@@ -25,6 +25,9 @@ function propertyNames(schema: unknown): string[] {
 	return names;
 }
 
+/** `spec_gate`'s `behavior[].outcome` is the agent's conclusion about code, not an answer to the gate. */
+const ALLOWED: Record<string, string[]> = { spec_gate: ["outcome"] };
+
 describe("approver-adapters", () => {
 	test("Tool has no answer parameter", async () => {
 		const h = await toolHarness();
@@ -33,7 +36,7 @@ describe("approver-adapters", () => {
 			expect(tool, name).toBeDefined();
 			const names = propertyNames(tool?.parameters);
 			expect(names.length, `${name} declares parameters`).toBeGreaterThan(0);
-			expect(names.filter((n) => FORBIDDEN.includes(n.toLowerCase())), name).toEqual([]);
+			expect(names.filter((n) => FORBIDDEN.includes(n.toLowerCase()) && !(ALLOWED[name] ?? []).includes(n)), name).toEqual([]);
 		}
 	});
 
