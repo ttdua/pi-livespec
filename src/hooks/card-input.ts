@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pendingReasons } from "../audit/suggest.ts";
 import { TEMPLATE_MARKER } from "../core/templates.ts";
-import { runChecks } from "../engine/checks.ts";
+import { evaluateChecks } from "../engine/checks.ts";
 import { createGit, type Git } from "../engine/git.ts";
 import { nextStep } from "../engine/next-step.ts";
 import type { Pack } from "../engine/pack-types.ts";
@@ -148,13 +148,13 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds, discoveredDeps: pack.loops.discovered_deps };
 	const snapshot = await readChangeSnapshot({ forge, ledger: session.ledger, fetch, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const ship = await shipFor(session, snapshot);
-	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
+	const { checks, unrun } = await evaluateChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
 	const phase = snapshot.phase.kind === "ok" ? snapshot.phase.id : "";
 	const unfamiliar = await readUnfamiliar(session.cwd, phase, snapshot.change);
 	const subagents = { ...snapshot.subagents, ...session.mainTurns, unfamiliar, laneHeads: await readLaneHeads(snapshot.subagents.lanes), mergedLaneHeads: await readMergedLaneHeads(session.git, snapshot.marked), laneLimit: session.config.user.lanes };
 	const shipState = await shipStateFor(session, snapshot, ship);
-	const state = { ...snapshot, ...(shipState === undefined ? {} : { ship: shipState }), subagents, checks, warnings, commandWarnings: [...session.commandWarnings] };
+	const state = { ...snapshot, ...(shipState === undefined ? {} : { ship: shipState }), subagents, checks, gateChecksUnrun: unrun, warnings, commandWarnings: [...session.commandWarnings] };
 	return withRefreshFacts(session, state);
 }
 

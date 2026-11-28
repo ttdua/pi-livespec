@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { registerBuiltinRules } from "../../src/decide/registry.ts";
-import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
+import { evaluateChecks, registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import { createGit, type Git } from "../../src/engine/git.ts";
 import type { CheckResult } from "../../src/engine/state-types.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
@@ -269,6 +269,26 @@ describe("gate-only checks", () => {
 		registerCheck("slow", async () => (calls++, [slowResult]), { at: "gate", key: () => key });
 	});
 	const run = (opts?: { gate?: boolean; target?: string }) => runChecks(withSlow(), stateFor("plan"), { root: "/nowhere", git: NO_GIT }, opts);
+	const evaluate = (opts?: { gate?: boolean; target?: string }) => evaluateChecks(withSlow(), stateFor("plan"), { root: "/nowhere", git: NO_GIT }, opts);
+
+	test("Gate-only check without a valid result is named", async () => {
+		registerCheck("slow", async () => [], { at: "gate", key: () => key });
+		expect(await evaluate()).toEqual({ checks: [], unrun: ["slow"] });
+		expect((await evaluate({ gate: true, target: "plan" })).unrun).toEqual([]);
+		expect(await evaluate()).toEqual({ checks: [], unrun: [] });
+	});
+
+	test("Changed key names the check again", async () => {
+		await run({ gate: true, target: "plan" });
+		key = "other";
+		expect((await evaluate()).unrun).toEqual(["slow"]);
+	});
+
+	test("unkeyed check always named", async () => {
+		registerCheck("slow", async () => [], { at: "gate" });
+		await run({ gate: true, target: "plan" });
+		expect((await evaluate()).unrun).toEqual(["slow"]);
+	});
 
 	test("Gate-only check skipped on refresh", async () => {
 		expect(await run()).toEqual([]);
@@ -281,6 +301,7 @@ describe("gate-only checks", () => {
 		const gated = await run({ gate: true, target: "plan" });
 		expect(gated).toEqual([{ ...slowResult, check: "slow" }]);
 		expect(await run()).toEqual(gated);
+		expect((await evaluate()).unrun).toEqual([]);
 		expect(calls).toBe(1);
 	});
 
@@ -305,6 +326,7 @@ describe("gate-only checks", () => {
 		release();
 		await pending;
 		expect(await run()).toEqual([]);
+		expect((await evaluate()).unrun).toEqual(["slow"]);
 	});
 
 	test("clearGateMemo drops stored results, bumps the generation and calls listeners", async () => {
