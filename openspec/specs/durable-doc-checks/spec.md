@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the define-time checks of durable docs: the `product-impact` check, the warning-only `glossary-terms` check with its define gate section, and the `behavior-change` facts, rule, gate question and check that record once per capability whether code under its `paths` changed its behavior.
+Defines the define-time checks of durable docs: the `product-impact` check, the warning-only `glossary-terms` check with its define gate section, and the `behavior-change` facts, the agent's per-capability conclusion at `spec_gate` (whether code under the capability's `paths` changed its behavior), its precedence, the check, the reviewer packet source, and how a conclusion is disputed at the gate.
 
 ## Requirements
 
