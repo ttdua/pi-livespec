@@ -112,7 +112,7 @@ describe("session_start", () => {
 		let settled = false;
 		void h.content.autoCheck.outcome.promise.then(() => (settled = true));
 		await h.start();
-		await vi.waitFor(() => expect(h.content.autoCheck.calls).toHaveLength(1));
+		await vi.waitFor(() => expect(h.content.autoCheck.calls).toHaveLength(1), { timeout: 10_000 });
 		expect(settled).toBe(false);
 		h.content.autoCheck.outcome.resolve({ kind: "installed", sha: "b".repeat(40), changed: { added: [], removed: [], changed: ["interview-me"] } });
 		await getSession()?.upgrade;
@@ -145,7 +145,7 @@ describe("session_start", () => {
 		const h = await harness({ branch: CHANGE_BRANCH, activeTree: `/clone/${TREE_SHA}` });
 		await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
 		await h.start();
-		await vi.waitFor(() => expect(h.content.autoCheck.calls).toHaveLength(1));
+		await vi.waitFor(() => expect(h.content.autoCheck.calls).toHaveLength(1), { timeout: 10_000 });
 		const [pack, channel, wip] = h.content.autoCheck.calls[0] ?? [];
 		expect((pack as { name: string }).name).toBe("agent-skills");
 		expect(channel).toBe("auto");

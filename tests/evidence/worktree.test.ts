@@ -9,6 +9,7 @@ import type { RunOptions } from "../../src/evidence/runner.ts";
 import { runVerify } from "../../src/evidence/runner.ts";
 import { withTempWorktree } from "../../src/evidence/worktree.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
+import { isolateTmpdir } from "../helpers/tmp.ts";
 
 const RUN: Omit<RunOptions, "cwd"> = { timeoutS: 30, guard: () => undefined, tokens: [], tailBytes: 8192 };
 
@@ -35,6 +36,8 @@ function expectCleaned(root: string, before: Set<string>): void {
 }
 
 describe("withTempWorktree", () => {
+	isolateTmpdir();
+
 	test("Dependencies linked", async () => {
 		const { root, git, sha } = await repoWithDeps();
 		let seen = "";

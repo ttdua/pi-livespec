@@ -1,5 +1,6 @@
 import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { HUMAN_PLAN_FLOW } from "../helpers/flow.ts";
+import { isolateTmpdir } from "../helpers/tmp.ts";
 import { appendSeed } from "../helpers/ledger.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,6 +61,7 @@ async function requestOf(h: Gate): Promise<{ data: Record<string, any>; text: st
 
 const COUNT = "echo run >> $LOG; exit 1";
 
+isolateTmpdir();
 beforeEach(() => clearGateMemo());
 afterEach(async () => {
 	setRedOnBaseEnv(async () => undefined);

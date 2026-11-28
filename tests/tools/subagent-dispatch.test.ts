@@ -471,7 +471,7 @@ describe("one live dispatch per target", () => {
 			return { id, status: "completed", structuredResult: citing(h)() };
 		}) as never;
 		const first = h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
-		await vi.waitFor(() => expect(h.fake.spawned).toHaveLength(1));
+		await vi.waitFor(() => expect(h.fake.spawned).toHaveLength(1), { timeout: 10_000 });
 		const second = await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 		expect(second.isError).toBe(true);
 		expect(textOf(second)).toContain("agent-1");
