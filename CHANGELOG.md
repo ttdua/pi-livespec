@@ -6,6 +6,7 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 ### Breaking
 
+- `spec_gate define|review` takes a `behavior` parameter: `[{ capability, outcome: unchanged|changed, rationale }]`, one entry per capability whose code changed under its `paths` without a spec edit. Calls without it are refused when the flow lists `behavior-change`. The per-capability `behavior-change` dialog is removed. Follow-up: the agent-skills define and review skill text, outside this repository, must tell agents to pass `behavior`.
 - `/livespec answer --changes` is removed: the forge refuses it with a message that names the replacement. Edit the spec instead; livespec cascades requirement edits from the spec diff.
 - `unit_finish` refuses outside the per-unit phase (`build`).
 - `/livespec class` and `/livespec answer --class` are removed: the question class is no longer a human choice. Use **answer later** in session to make a question non-blocking.
