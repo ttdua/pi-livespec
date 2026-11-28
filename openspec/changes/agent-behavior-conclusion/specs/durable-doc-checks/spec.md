@@ -109,6 +109,21 @@ The human SHALL dispute a behavior conclusion by requesting changes at the defin
 - **WHEN** the define gate shows `rate-limit` concluded agent `unchanged`, the human requests changes with notes `rate-limit behavior changed: cap now rejects at 99`, and the agent then runs `spec_gate define` with `behavior` concluding `rate-limit` `changed`
 - **THEN** the change stays in `define`, an agent `changed` entry is appended, and `spec_gate` refuses naming `specs/rate-limit/spec.md` until that spec is edited
 
+### Requirement: Disputed conclusion not restated
+When the valid result of the define gate is `changes_requested`, not superseded, and its notes name a behavior item's capability (case-insensitive, on word boundaries where `-` is a word character), `spec_gate define` SHALL refuse, writing nothing, if `behavior` concludes that capability `unchanged` with a rationale equal to the reason of an agent conclusion for it recorded before that gate result. The refusal SHALL name the capability and say to conclude `changed`, or to give a new rationale that answers the notes. A new rationale, or a `changed` conclusion, SHALL be accepted.
+
+#### Scenario: Same unchanged after a dispute refused
+- **WHEN** the define gate result is `changes_requested` with notes `rate-limit behavior changed`, and `spec_gate define` runs with `behavior` concluding `rate-limit` `unchanged` with the same rationale as before
+- **THEN** the tool refuses naming `rate-limit`, and no `decision` entry or request is written
+
+#### Scenario: New rationale accepted
+- **WHEN** the same gate result, and `behavior` concludes `rate-limit` `unchanged` with a new rationale
+- **THEN** the conclusion is appended and the gate is requested again, showing the new rationale
+
+#### Scenario: Notes that do not name the capability
+- **WHEN** the define gate result is `changes_requested` with notes `tighten wording`, and `behavior` restates `rate-limit` `unchanged` with the same rationale
+- **THEN** the tool does not refuse for `rate-limit`
+
 ## REMOVED Requirements
 
 ### Requirement: Behavior change rule

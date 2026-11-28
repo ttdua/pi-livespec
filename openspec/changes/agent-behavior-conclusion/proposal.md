@@ -17,7 +17,7 @@ The `behavior-change` rule asks the human, once per capability and in a blocking
 
 **What the human sees and does**
 - From: one dialog per capability, then the gate.
-- To: the define gate shows a livespec prose section, "Behavior conclusions (please check)", with one line per item: capability, outcome, source and rationale. To disagree, the human requests changes at the gate with notes naming the capability. The agent then concludes again, and a `changed` conclusion requires the spec edit. No new answer channel, command, dialog tab or stored override is added, so LS-12c (#61) can change how gates are answered without carrying anything from this fix.
+- To: the define gate shows a livespec prose section, "Behavior conclusions (please check)", with one line per item: capability, outcome, source and rationale. To disagree, the human requests changes at the gate with notes naming the capability. The agent then concludes again, and a `changed` conclusion requires the spec edit. `spec_gate` refuses to restate the same `unchanged` rationale for a capability the notes name, so the dispute cannot be ignored. No new answer channel, command, dialog tab or stored override is added, so LS-12c (#61) can change how gates are answered without carrying anything from this fix.
 - Impact: approving stays one pick; disputing is the existing request-changes answer.
 
 **Reviewer**

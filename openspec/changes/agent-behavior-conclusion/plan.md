@@ -369,7 +369,7 @@ The branch is squashed onto `origin/main` (57ab980, ledger-store #79) with text 
 
 ## Task 9: Narrow the fix to the current gate model — implements 9
 
-**Covers:** 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7
+**Covers:** 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8
 **Difficulty:** Hard
 **Blocked by:** Task 8
 
@@ -378,7 +378,7 @@ User decision (2026-11-28): #64 is a v0.1.0 fix and must not reshape the forge a
 **Files:** as listed in tasks.md 9.1–9.6, plus `src/subagents/rubrics.ts`, `src/docs/behavior-source.ts`, `src/docs/readers.ts`, `src/subagents/sources.ts` (back to main's), `src/subagents/packet.ts` (back to main's).
 
 - [ ] **Step 1:** `git checkout origin/main -- <files of 9.1>`; delete the three files; `bun run typecheck` and list the breakages in the remaining behavior modules.
-- [ ] **Step 2: Failing tests** for the four new scenarios (9.5).
+- [ ] **Step 2: Failing tests** for the four new scenarios (9.5) and the three of "Disputed conclusion not restated" (9.8).
 - [ ] **Step 3:** Precedence and source rules (9.2); packet source and rubric (9.3); spec_gate snapshot (9.4).
 - [ ] **Step 4:** Remove or port tests of removed scenarios; keep the other scenario names.
 - [ ] **Step 5:** Docs (9.6).
@@ -455,3 +455,6 @@ New or changed scenarios:
 - Reviewer dispute blocks review → `tests/tools/spec-review.test.ts` or `tests/subagents/records.test.ts` (Task 9)
 - Human requests changes naming a capability → `tests/tools/spec-gate-behavior.test.ts` (Task 9)
 - Scenarios removed in Task 9 (reviewer verdict, human override, approver-adapters, subagent-dispatch) → none
+- Same unchanged after a dispute refused → `tests/tools/spec-gate-behavior.test.ts` (Task 9)
+- New rationale accepted → `tests/tools/spec-gate-behavior.test.ts` (Task 9)
+- Notes that do not name the capability → `tests/tools/spec-gate-behavior.test.ts` (Task 9)

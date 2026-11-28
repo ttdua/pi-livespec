@@ -32,6 +32,7 @@ Before this change, a behavior item was resolved only by a human answer to a `de
 
 **D2. Disputes go through the existing answers.**
 - **Human.** The human requests changes at the define gate with notes naming the capability. On the next call the agent concludes again, and the latest agent record wins over its earlier one. So `changed` then requires the spec edit.
+- **Enforcement of the human dispute.** `spec_gate define` refuses to restate `unchanged` with a rationale the agent already gave before the gate. It applies only when the valid define gate result (`state.lock.gates.define`) is `changes_requested`, is not superseded, and its notes name the capability. The match is case-insensitive on word boundaries, like the glossary reader. A new rationale or `changed` is accepted. This reads only the existing gate result, never a new field, so #61 carries nothing extra; when #61 turns notes into a reply comment, the same text feeds the match. Rejected alternative: refuse any `unchanged` after such notes. Notes that merely mention a capability would then force a false `changed`.
 - **Reviewer.** The reviewer reports a `WARNING` finding at one of the item's files. review-findings "Blocking findings" then blocks review until the finding is fixed or rebutted, and a rebuttal is listed at the next human gate.
 - Why: every human answer stays a gate answer, which #61 will reshape, and every reviewer output stays a finding. This change adds no new authority path for #61 to migrate.
 - Rejected alternative: structured overrides, meaning `Answered.behaviorOverrides`, a dialog tab, a forge command and an extended `isBacked`. That would store machine state in forge YAML that #61 is removing.
@@ -45,13 +46,13 @@ Rejected alternative: a separate tool. It adds a step the agent can forget.
 
 **D4. Write ordering keeps "refuse, writing nothing".** `behaviorStep` works in this order:
 1. Evaluate refusals without the `behavior-change` results, and the plan and recommendation refusals.
-2. Refuse while a legacy `decide:behavior-change` request is open for a current item. Otherwise #80 would mask it behind a new gate.
+2. Refuse while a legacy `decide:behavior-change` request is open for a current item. Otherwise #80 would mask it behind a new gate. Refuse a disputed conclusion restated unchanged (D2).
 3. Append agent entries.
 4. Refresh, then re-run the checks.
 
 `behavior-ask.ts` is deleted. The rule stays registered and returns `{ outcome: null }`, so existing packs validate.
 
-**D5. Record shape.** A record is `{ point: behavior-change, subject, source: agent, outcome, reason, facts, digest, files }`, written as a ledger entry through `appendRecord`. `validDecisions` accepts `agent` only for point `behavior-change`, so an agent cannot forge any other decision. `BEHAVIOR_POINT` lives in the leaf module `src/decide/points.ts`.
+**D5. Record shape.** A record is `{ point: behavior-change, subject, source: agent, outcome, reason, facts, digest, files }`, written as a ledger entry through main's `appendRecord(w, issue, input)` (`src/tools/subagent-request.ts`). That helper sets `after` and refreshes the card, so this change touches no `src/ledger/*` file (ledger-store #59). `validDecisions` accepts `agent` only for point `behavior-change`, so an agent cannot forge any other decision. `BEHAVIOR_POINT` lives in the leaf module `src/decide/points.ts`.
 
 **D6. Reviewer packet.** The `change` reviewer packet gets the required source `records:behavior-conclusions`, one line per item. The provider lives in `src/docs/behavior-source.ts` and is registered from `docs/readers.ts`, so `subagents/` does not import `docs/`. The `change` rubric (`src/subagents/rubrics.ts`) adds one sentence telling the reviewer to report a disputed conclusion as a `WARNING` finding at one of the item's files. Nothing goes on `Packet`, and the result schema does not change.
 
