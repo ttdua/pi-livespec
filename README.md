@@ -369,7 +369,7 @@ Rules that decide whether your comment counts:
 
 **Answer:** approve when the spec says exactly what should be built. Otherwise request changes with concrete notes, for example `/livespec changes split "Per-IP cap" into burst and sustained limits; add a scenario for IPv6`.
 
-**Behavior conclusions.** For each capability whose code changed under its `paths` without a spec edit, the agent concludes at `spec_gate define` or `spec_gate review` whether behavior changed, with a one-line rationale. The gate lists them under "Behavior conclusions (please check)". If `changed`, the gate refuses until the spec is updated. To disagree, request changes and mark the capability as changed: press `b` (Behavior tab) in the pi dialog, or use "Mark behavior changed" in the select fallback. Overrides are in session only; the forge has no override command. Conclusions are ledger entries; a human override counts only beside the forge `answer` comment of its gate request.
+**Behavior conclusions.** For each capability whose code changed under its `paths` without a spec edit, the agent concludes at `spec_gate define` or `spec_gate review` whether behavior changed, with a one-line rationale. The gate lists them under "Behavior conclusions (please check)". If `changed`, the gate refuses until the spec is updated. To disagree, request changes with notes that name the capability: the agent must conclude again, and `spec_gate define` refuses to restate the same `unchanged` rationale. The `change` reviewer disputes a conclusion with a `WARNING` finding at one of the item's files, which blocks review until it is fixed or rebutted. There is no override and no extra command. Conclusions are ledger entries.
 
 ### Plan gate: is this the right way to build it?
 

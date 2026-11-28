@@ -371,7 +371,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 **Trả lời:** approve khi spec nói đúng chính xác điều cần build. Nếu không, request changes với notes cụ thể, ví dụ `/livespec changes split "Per-IP cap" into burst and sustained limits; add a scenario for IPv6`.
 
-**Kết luận behavior.** Với mỗi capability có code thay đổi dưới `paths` mà không sửa spec, agent đưa ra kết luận tại `spec_gate define` hoặc `spec_gate review` về việc hành vi có đổi không, kèm lý do một dòng. Gate liệt kê chúng dưới "Behavior conclusions (please check)". Nếu `changed`, gate sẽ từ chối cho đến khi spec được cập nhật. Để không đồng ý, request changes và đánh dấu capability là changed: nhấn `b` (tab Behavior) trong dialog pi, hoặc dùng "Mark behavior changed" ở select fallback. Override chỉ có trong session; forge không có lệnh override. Các kết luận là ledger entry; override của human chỉ có hiệu lực khi đi kèm comment `answer` trên forge của gate request tương ứng.
+**Kết luận behavior.** Với mỗi capability có code thay đổi dưới `paths` mà không sửa spec, agent đưa ra kết luận tại `spec_gate define` hoặc `spec_gate review` về việc hành vi có đổi không, kèm lý do một dòng. Gate liệt kê chúng dưới "Behavior conclusions (please check)". Nếu `changed`, gate sẽ từ chối cho đến khi spec được cập nhật. Để không đồng ý, request changes với notes nêu tên capability: agent phải kết luận lại, và `spec_gate define` từ chối nếu lặp lại đúng lý do `unchanged` cũ. Reviewer `change` phản bác một kết luận bằng finding `WARNING` tại một file của item, finding này chặn review cho đến khi được sửa hoặc rebut. Không có override và không có lệnh mới. Các kết luận là ledger entry.
 
 ### Plan gate: cách build này có đúng không?
 
