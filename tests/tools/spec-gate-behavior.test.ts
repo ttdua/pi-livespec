@@ -8,8 +8,11 @@ import { registerSpecGate } from "../../src/tools/spec-gate.ts";
 import { FakePi } from "../hooks/fake-pi.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { parseChange } from "../../src/core/change.ts";
+import { unitDigest } from "../../src/core/digest.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
+import { registerDocChecks } from "../../src/docs/register.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -38,6 +41,8 @@ const FLOW_WITHOUT_CHECK = "extends: agent-skills\nphases:\n  - id: define\n    
 beforeEach(() => {
 	// The real check needs a worktree run per unit; the define gate here does not depend on it.
 	registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
+	// `afterEach` clears the gate payloads; the define summary's behavior section is registered by the doc checks.
+	registerDocChecks();
 });
 
 afterEach(async () => {
@@ -197,6 +202,31 @@ describe("spec_gate behavior conclusions", () => {
 		const out = await gate(h, [unchanged("rate-limit")]);
 		expect(out.isError).toBe(false);
 		expect((await behaviorDecisions(h))[0]?.data).toMatchObject({ outcome: "unchanged", files: [CAP] });
+	});
+
+	test("Behavior conclusions listed", async () => {
+		const h = await change("define", { code: [CAP, FORGE_FILE], edit: allDone });
+		await gate(h, [unchanged("rate-limit"), unchanged("forge-read", "read path only")]);
+		const titles = h.ctx.ui.select.mock.calls.map((c) => String(c[0]));
+		const summary = titles.find((t) => t.includes("Gate define for")) ?? "";
+		expect(summary).toContain("Behavior conclusions (please check):");
+		expect(summary).toContain(`- rate-limit: unchanged (agent) — ${RATIONALE}; files: 1`);
+		expect(summary).toContain("- forge-read: unchanged (agent) — read path only; files: 1");
+	});
+
+	test("Behavior conclusions listed: a plan request omits it", async () => {
+		const h = await change("plan", { code: [CAP], edit: allDone });
+		for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
+			const digest = unitDigest(u);
+			await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+			await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		}
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
+		const summaries = h.ctx.ui.select.mock.calls.map((c) => String(c[0]));
+		expect(summaries.some((s) => s.includes("Gate plan for"))).toBe(true);
+		expect(summaries.some((s) => s.includes("Behavior conclusions (please check):"))).toBe(false);
 	});
 
 	test("Flow without the check", async () => {

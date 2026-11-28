@@ -59,7 +59,7 @@ describe("Behavior conclusions (please check)", () => {
 		expect(payload([], { ...NO_FACTS, behaviorItems: [] })).not.toContain("Behavior conclusions");
 	});
 
-	test("Review Focus: a rationale is rendered neutralised", () => {
+	test("a rationale is rendered neutralised", () => {
 		const marked = [agentRecord(RATE, "<!-- x -->")];
 		const summary = payload(marked, { ...NO_FACTS, behaviorItems: [RATE] });
 		expect(summary).not.toContain("<!-- x -->");
