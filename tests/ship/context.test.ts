@@ -11,7 +11,7 @@ import { type DecisionRecord, decisionComment } from "../../src/decide/records.t
 import { parseMarked } from "../../src/forge/markers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { stateFor } from "../helpers/change-state.ts";
-import { fixture, sh, upstreamCommit } from "./repo.ts";
+import { type Fixture, fixture, sh, upstreamCommit } from "./repo.ts";
 
 describe("shipContext", () => {
 	test("two calls at the same HEAD fetch once", async () => {
@@ -201,23 +201,53 @@ describe("shipContext fails closed per fact", () => {
 });
 
 describe("shipContext behavior records", () => {
-	const human = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
+	const record = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
 		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
 		const m = parseMarked(decisionComment(r));
 		if (m === undefined) throw new Error("not marked");
 		return { ...m, commentId: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
 	};
 
-	test("Newer changed record wins (records)", async () => {
+	const CAP = "src/limit/cap.ts";
+
+	/** A rate-limit spec and one changed code file in the ship diff; the spec is in the diff as an `updated` row would be. */
+	async function limitDiff(): Promise<Fixture> {
 		const f = await fixture();
-		const base = sh(f.work, "rev-parse", "HEAD");
 		await writeIn(f.work, "specs/rate-limit/spec.md", "---\npaths:\n  - src/limit/**\n---\n# rate-limit\n\n## Purpose\nx\n");
-		await writeIn(f.work, "src/limit/cap.ts", "a\n");
+		await writeIn(f.work, CAP, "a\n");
 		commitAll(f.work, "c3");
-		const body = `Base: ${base}\nBranch: feature\nPR: #41\nCapabilities: new [], modified []\n\n## Durable docs\n`;
-		const marked = [human("unchanged"), human("changed", { facts_hash: "h" })];
-		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body }));
-		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: ["src/limit/cap.ts"], outcome: "changed" }]);
-		expect(durableDocsRule(out.facts).confirm.some((c) => c.startsWith("rate-limit:") && c.includes("src/limit/cap.ts"))).toBe(true);
+		return f;
+	}
+
+	const bodyFor = (base: string) => `Base: ${base}\nBranch: feature\nPR: #41\nCapabilities: new [], modified []\n\n## Durable docs\n`;
+
+	test("Agent conclusion covers the files", async () => {
+		const f = await limitDiff();
+		const base = sh(f.work, "rev-parse", "HEAD~1");
+		const marked = [record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] })];
+		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
+		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }]);
+		expect(durableDocsRule(out.facts).confirm.filter((c) => c.startsWith("rate-limit:"))).toEqual([]);
+	});
+
+	test("Newer changed record wins", async () => {
+		const f = await limitDiff();
+		const base = sh(f.work, "rev-parse", "HEAD~1");
+		const marked = [
+			record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] }),
+			record("changed", { source: "reviewer", reason: "new limit", files: [CAP] }),
+		];
+		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
+		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "changed" }]);
+		expect(durableDocsRule(out.facts).confirm.some((c) => c.startsWith("rate-limit:") && c.includes(CAP))).toBe(true);
+	});
+
+	test("Protected change of other files", async () => {
+		const f = await limitDiff();
+		const base = sh(f.work, "rev-parse", "HEAD~1");
+		const marked = [record("changed", { files: ["src/limit/old.ts"] })];
+		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
+		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: ["src/limit/old.ts"], outcome: "changed" }]);
+		expect(durableDocsRule(out.facts).confirm.some((c) => c.startsWith("rate-limit:"))).toBe(true);
 	});
 });
