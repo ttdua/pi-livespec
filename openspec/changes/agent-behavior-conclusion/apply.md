@@ -5,16 +5,16 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `agent-behavior-conclusion`
-**Iteration**: `1`
-**Applied at**: `2026-11-28 17:19`
+**Iteration**: `2`
+**Applied at**: `2026-11-28 19:20`
 **Executor**: `subagent-driven-development` (implementer: `superspec.implementer`; task and final reviewer: `superspec.task-reviewer`)
 
 ---
 
 ## Workspace
 
-- **Worktree path**: `/Users/naicoi/Projects/oss/pi-livespec.agent-behavior-conclusion`
-- **Worktree branch**: `agent-behavior-conclusion`
+- **Worktree path**: `/Users/naicoi/Projects/oss/pi-livespec.behavior-change-rebase`
+- **Worktree branch**: `behavior-change-rebase`
 - **Feature branch**: `behavior-change`
 - **Base branch**: `main`
 
@@ -22,14 +22,14 @@
 
 ## Commits
 
-- **Range**: `60e5431..b5de460`, plus this receipt commit. `60e5431` is the scaffold commit on `behavior-change`.
-- **Count**: `25` before this receipt.
+- **Range**: `57ab980..742b12d` on `behavior-change-rebase`, cut from `origin/main` (57ab980, ledger-store #79). Iteration 1 (`60e5431..3cbfb10` on `behavior-change`, PR #80) is squashed into `246efcf`. Pre-rebase history is kept in tag `behavior-change-pre-rebase`.
+- **Count**: `5`
 
 ---
 
 ## Tasks
 
-- **Completed**: `29 of 29` checkboxes in tasks.md are flipped to `- [x]`.
+- **Completed**: `35 of 35`
 - **Remaining**: none.
 
 ---
@@ -48,6 +48,9 @@ All of these are internal; no public contract changed. Each one is also recorded
 
 ---
 
+- Iteration 2 (port onto LS-12a): records are ledger entries; `BehaviorConclusion.commentId` → `ref`; `validDecisionEntries` returns `{ record, ref }`; `behaviorConclusionComment` returns `AppendInput` and takes an optional `request`; `applyBehaviorOverrides(run, request, answer, snapshot)`; `isBacked` accepts a human override only beside its gate's forge `answer` (`changes_requested`, capability listed, same `by`/`at`); `resultCounts` never treats a `decision` with `overridden_by` as a request result; shared `src/decide/points.ts`.
+- Iteration 2, public contract (user decision): the forge command `/livespec set behavior` is removed; the forge grammar equals main's. In-session overrides stay.
+
 ## Lanes
 
 | Task | Lane branch | Lane range | Review | Merge commit |
@@ -59,14 +62,15 @@ All of these are internal; no public contract changed. Each one is also recorded
 | 5 | sequential | `9d52503..7b1d6f9` | approved after fix round 1 | n/a |
 | 6 | sequential | `d31ca1d..5cce646` | approved after fix round 1 | n/a |
 | 7 | sequential | `7add7fc..728464f` | controller-checked (docs only) | n/a |
+| 8 (port, iteration 2) | sequential | `793459a..742b12d` | whole-branch review: ready after fixes; fixes applied in `6f92317` (controller-checked) | n/a |
 | final review | sequential | `29ae0f6..b5de460` | ready to merge after fix wave | n/a |
 
 ---
 
-## Validation at HEAD `b5de460`
+## Validation at HEAD `742b12d`
 
 - `bun run typecheck`: exit 0.
-- `bunx vitest run`: 262 files, 4232 tests, 0 failed.
+- `bunx vitest run`: 269 files, 4386 passed; one run had one 30 s timeout (`spec-review` "three routed rounds" or e2e `subagent-build` "five units"); both pass alone (6.5 s, 10.1 s) and are load-dependent, as on main (6.2 s, 9.3 s).
 - `openspec validate agent-behavior-conclusion`: exit 0.
 
 ## Known residuals (parked)
