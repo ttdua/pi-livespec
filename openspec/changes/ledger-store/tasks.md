@@ -48,10 +48,10 @@ Blocked by: 1, 4
 
 Blocked by: 5
 
-- [ ] 6.1 Builders `startComment`, `receiptComment` (`src/evidence/records.ts`) and `decisionComment` (`src/decide/records.ts`) return `AppendInput`; every caller of `decisionComment` outside this group (`review/stages.ts`, `interaction/complete-*.ts`) keeps compiling through a temporary `decisionBody(input)` that wraps it as a marked comment until groups 7 and 8 move them; `setCounter` appends
-- [ ] 6.2 `unit_start` appends `unit-start`; `unit_finish` appends the receipt before the tick and `progress` decisions, names receipts and attempts as `ledger:<issue>/<ref>`, receipt `start` is the start entry ref
-- [ ] 6.3 `plan-units-steps.ts` appends decisions before the body write
-- [ ] 6.4 Tests: unit-evidence, decision-seam, second machine `unit_start`, `unit_start` refusal with an unknown ledger offline (`tests/tools/unit-*.test.ts`, `tests/tools/plan-units.test.ts`, `tests/tools/spec-gate.test.ts`, `tests/tools/change-split.test.ts`, `tests/engine/gates.test.ts`, `tests/ship/context.test.ts`, `tests/e2e/spec-cascade.test.ts`, `tests/evidence/red-on-base.test.ts`, `tests/evidence/wip.test.ts`, `tests/evidence/progress-rule.test.ts`, `tests/engine/checks.test.ts`, `tests/engine/snapshot.test.ts`, `tests/review/effects.test.ts`, `tests/subagents/sources.test.ts`, `tests/subagents/freshness.test.ts`, `tests/e2e/build-flow.test.ts`)
+- [x] 6.1 Builders `startComment`, `receiptComment` (`src/evidence/records.ts`) and `decisionComment` (`src/decide/records.ts`) return `AppendInput`; every caller of `decisionComment` outside this group (`review/stages.ts`, `interaction/complete-*.ts`) keeps compiling through a temporary `decisionBody(input)` that wraps it as a marked comment until groups 7 and 8 move them; `setCounter` appends
+- [x] 6.2 `unit_start` appends `unit-start`; `unit_finish` appends the receipt before the tick and `progress` decisions, names receipts and attempts as `ledger:<issue>/<ref>`, receipt `start` is the start entry ref
+- [x] 6.3 `plan-units-steps.ts` appends decisions before the body write
+- [x] 6.4 Tests: unit-evidence, decision-seam, second machine `unit_start`, `unit_start` refusal with an unknown ledger offline (`tests/tools/unit-*.test.ts`, `tests/tools/plan-units.test.ts`, `tests/tools/spec-gate.test.ts`, `tests/tools/change-split.test.ts`, `tests/engine/gates.test.ts`, `tests/ship/context.test.ts`, `tests/e2e/spec-cascade.test.ts`, `tests/evidence/red-on-base.test.ts`, `tests/evidence/wip.test.ts`, `tests/evidence/progress-rule.test.ts`, `tests/engine/checks.test.ts`, `tests/engine/snapshot.test.ts`, `tests/review/effects.test.ts`, `tests/subagents/sources.test.ts`, `tests/subagents/freshness.test.ts`, `tests/e2e/build-flow.test.ts`)
 
 ## 7. Subagent and review writers
 
