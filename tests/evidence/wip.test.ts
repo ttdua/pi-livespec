@@ -1,4 +1,3 @@
-import { decisionBody } from "../../src/decide/records.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
@@ -10,7 +9,8 @@ import { contentPaths } from "../../src/content/paths.ts";
 import { type WorkInProgress, resetWorkInProgressForTests, workInProgress } from "../../src/content/wip.ts";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
-import { newEvidenceId, startComment } from "../../src/evidence/records.ts";
+import { newEvidenceId } from "../../src/evidence/records.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 import { registerStartedUnitWorkInProgress } from "../../src/evidence/wip.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../../src/forge/labels.ts";
 import { createLedger, type Ledger } from "../../src/ledger/index.ts";
@@ -44,9 +44,9 @@ function startData(unit: string) {
 	return data;
 }
 
-/** Posts an own `unit-start` comment for `unit`, as writers did before the ledger. */
+/** Posts a raw own `unit-start` comment for `unit`, as writers did before the ledger (older changes still carry them). */
 async function startUnitComment(world: MemoryWorld, n: number, unit: string): Promise<void> {
-	await world.postComment(n, BOT_LOGIN, decisionBody(startComment(newEvidenceId(unit, new Date()), startData(unit))));
+	await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", newEvidenceId(unit, new Date()), startData(unit)));
 }
 
 /** Appends a `unit-start` entry for `unit` to the ledger of change `n`. */

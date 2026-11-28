@@ -1,11 +1,12 @@
 import { BRIEFING } from "../helpers/briefing.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { readFileSync } from "node:fs";
 import { pickById } from "../helpers/menu.ts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { replaceSection } from "../../src/core/sections.ts";
-import { decisionBody, decisionComment } from "../../src/decide/records.ts";
+import { decisionComment } from "../../src/decide/records.ts";
 import { registerGate, resetGatesForTests } from "../../src/engine/gates.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
 import { readRequests } from "../../src/interaction/requests.ts";
@@ -86,8 +87,8 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 async function seedClassification(h: Gate): Promise<void> {
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" })));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" })));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();

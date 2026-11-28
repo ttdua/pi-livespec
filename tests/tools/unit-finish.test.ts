@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerSessionHooks } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { cleanupDirs, textOf } from "./helpers.ts";
+import { branchPushes, cleanupDirs, textOf } from "./helpers.ts";
 import { cardState, seedRebuild, type UnitHarness, type UnitHarnessOptions, type UnitSpec, unitHarness, waitFor, worktreeCount } from "./unit-helpers.ts";
 
 afterEach(async () => {
@@ -276,6 +276,8 @@ describe("unit-evidence", () => {
 		expect(refs).toHaveLength(3);
 		expect(await h.commentsOf("decision")).toEqual([]);
 		expect(await h.inLedger("decision")).toHaveLength(3);
+		const [start] = await h.inLedger("unit-start");
+		for (const d of await h.inLedger("decision")) expect(dataOf<{ facts?: { start?: string } }>(d).facts?.start).toBe(start?.ref);
 		for (const ref of refs) expect(last).toContain(ref);
 		expect(cardState(h).state.evidence.blocked).toEqual({ U1: "attempts" });
 		await expectFinishRefusal(h, "U1", ["spec_stuck"]);
@@ -333,7 +335,7 @@ describe("unit-evidence", () => {
 		await h.commit({ "src/u1.ts": "x\n" });
 		await h.finish("U1");
 		await h.settle();
-		expect(h.gitCalls.some((args) => args.includes("push") && !args.some((a) => a.includes("refs/livespec/")))).toBe(false);
+		expect(branchPushes(h.gitCalls)).toEqual([]);
 	});
 });
 

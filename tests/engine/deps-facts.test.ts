@@ -8,7 +8,12 @@ import { deriveCommentFacts } from "../../src/engine/snapshot.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 
+import { ledgerRecord } from "../helpers/ledger.ts";
+
 let seq = 0;
+/** A `counter` entry of the ledger. */
+const counter = (id: string, data: unknown): MarkedComment => ledgerRecord({ kind: "counter", id, data });
+
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
 	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
@@ -62,12 +67,12 @@ describe("discoveredDeps", () => {
 	});
 
 	test("Derived discovered dependencies", () => {
-		const marks = [...depGate("A"), marked("counter", "discovered_deps", { value: 9 })];
+		const marks = [...depGate("A"), counter("discovered_deps", { value: 9 })];
 		expect(deriveCommentFacts(marks, parseChange(FIXTURE_BODY), caps).counters.discovered_deps).toBe(1);
 	});
 
 	test("Counter shown with cap", () => {
-		const facts = deriveCommentFacts([marked("counter", "custom_loop", { value: 1 })], parseChange(FIXTURE_BODY), caps);
+		const facts = deriveCommentFacts([counter("custom_loop", { value: 1 })], parseChange(FIXTURE_BODY), caps);
 		const step = nextStep({ ...pack, loops: { ...pack.loops, custom_loop: 2 } }, stateFor("build", { counters: facts.counters }));
 		expect(step.counters).toContainEqual({ name: "custom_loop", value: 1, cap: 2 });
 	});

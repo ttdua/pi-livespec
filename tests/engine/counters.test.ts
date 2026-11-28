@@ -10,7 +10,7 @@ import { type MarkedComment, readMarkedComments } from "../../src/forge/markers.
 import { type LedgerEntry, newRef } from "../../src/ledger/entry.ts";
 import type { Ledger } from "../../src/ledger/index.ts";
 import { mergeRecords } from "../../src/ledger/merge.ts";
-import { emptyLedger } from "../helpers/ledger.ts";
+import { emptyLedger, ledgerRecord } from "../helpers/ledger.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 
@@ -21,6 +21,9 @@ beforeEach(async () => {
 	world = new MemoryWorld();
 	n = await world.seedIssue({ title: "per-ip-cap", labels: ["livespec"] });
 });
+
+/** A `counter` entry of the ledger. */
+const counter = (id: string, data: unknown): MarkedComment => ledgerRecord({ kind: "counter", id, data });
 
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	return { source: "forge", ref: "c", kind, id, author: BOT_LOGIN, data };
@@ -48,16 +51,16 @@ function recordingLedger(): { ledger: Ledger; entries: LedgerEntry[] } {
 describe("readCounters", () => {
 	test("reads counter values and ignores other kinds and malformed data", () => {
 		const counters = readCounters([
-			marked("counter", "custom_loop", { value: 2 }),
-			marked("counter", "custom_loop.U3", { value: 1 }),
-			marked("counter", "broken", { value: "two" }),
+			counter("custom_loop", { value: 2 }),
+			counter("custom_loop.U3", { value: 1 }),
+			counter("broken", { value: "two" }),
 			marked("skill-note", "build.x", { value: 9 }),
 		]);
 		expect(counters).toEqual({ custom_loop: 2, "custom_loop.U3": 1 });
 	});
 
 	test("change_iterations counter comment is ignored", () => {
-		const counters = readCounters([marked("counter", "change_iterations", { value: 3 }), marked("counter", "custom_loop", { value: 1 })]);
+		const counters = readCounters([counter("change_iterations", { value: 3 }), counter("custom_loop", { value: 1 })]);
 		expect(counters).toEqual({ custom_loop: 1 });
 	});
 });
@@ -84,7 +87,7 @@ describe("setCounter", () => {
 
 describe("Derived unit attempts", () => {
 	test("counter comments for unit_attempts.* are ignored", () => {
-		const counters = readCounters([marked("counter", "unit_attempts.U2", { value: 9 }), marked("counter", "custom_loop", { value: 1 })]);
+		const counters = readCounters([counter("unit_attempts.U2", { value: 9 }), counter("custom_loop", { value: 1 })]);
 		expect(counters).toEqual({ custom_loop: 1 });
 	});
 });
@@ -93,10 +96,10 @@ describe("Derived review rounds", () => {
 	test("a counter comment of 9 is ignored and every aggregate counts", async () => {
 		const loaded = await loadPack("/nowhere", { readFile: async () => undefined });
 		if (!loaded.ok) throw new Error("default pack must load");
-		const counter = marked("counter", "review_rounds", { value: 9 });
-		expect(readCounters([counter])).toEqual({});
+		const nine = counter("review_rounds", { value: 9 });
+		expect(readCounters([nine])).toEqual({});
 		const change = parseChange(FIXTURE_BODY);
-		const facts = deriveCommentFacts([counter, aggregate([agg()], 1), aggregate([], 2)], change, { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
+		const facts = deriveCommentFacts([nine, aggregate([agg()], 1), aggregate([], 2)], change, { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
 		expect(facts.counters.review_rounds).toBe(2);
 		const step = nextStep(loaded.pack, stateFor("review", { change, counters: facts.counters, evidence: facts.evidence }));
 		expect(step.counters).toContainEqual({ name: "review_rounds", value: 2, cap: 3 });

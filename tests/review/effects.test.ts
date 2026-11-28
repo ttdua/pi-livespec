@@ -1,5 +1,4 @@
 // Tests of the route effects: rebuild before untick, one question, pull request comments once.
-import { decisionBody } from "../../src/decide/records.ts";
 import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { tickUnit } from "../../src/core/tick.ts";
@@ -11,6 +10,7 @@ import type { AggregateFinding, FindingSummaryData } from "../../src/subagents/r
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { stateFor } from "../helpers/change-state.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { changeBody } from "../tools/unit-helpers.ts";
 import { agg, aggregate, verifier } from "./review-fixtures.ts";
 
@@ -22,6 +22,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 	const n = await w.seedIssue({ body: BODY });
 	const a = aggregate(findings, 1, "h1");
 	const marked = [a, ...extra((i) => `${a.ref}:${i}`)];
+	const entries: MarkedComment[] = [];
 	const order: string[] = [];
 	const asked: string[] = [];
 	const forge = new Proxy(w.forge, {
@@ -34,7 +35,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 			};
 		},
 	});
-	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments] }, await w.bodyOf(n));
+	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments, ...entries] }, await w.bodyOf(n));
 	const deps = (over: Partial<EffectDeps> = {}): EffectDeps => ({
 		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined, reask: async () => undefined,
 		ask: async (text) => {
@@ -46,7 +47,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 		...over,
 	});
 	const agg1 = { commentId: a.ref, data: a.data as FindingSummaryData };
-	return { w, n, a, order, asked, state, deps, agg: agg1 };
+	return { w, n, a, order, asked, entries, state, deps, agg: agg1 };
 }
 
 describe("applyRoutes", () => {
@@ -141,8 +142,10 @@ describe("applyRoutes feedback round", () => {
 describe("applyRoutes retry after a question was not sent", () => {
 	const rebuilt = async (t: Awaited<ReturnType<typeof world>>) => {
 		const digest = "d";
-		await t.w.forge.createComment(t.n, decisionBody(startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } })));
-		await t.w.forge.createComment(t.n, decisionBody(receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a" })));
+		t.entries.push(
+			ledgerRecord(startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } }), { ref: "U2.a~00000001", at: "9999-01-01T00:00:00.000Z" }),
+			ledgerRecord(receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a~00000001" }), { at: "9999-01-01T00:00:00.001Z" }),
+		);
 		const issue = await t.w.forge.getIssue(t.n);
 		await t.w.forge.updateIssueBody(t.n, tickUnit(issue.body, "U2"), issue.version);
 	};

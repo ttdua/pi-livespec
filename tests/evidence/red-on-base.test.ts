@@ -1,4 +1,5 @@
 import { BRIEFING } from "../helpers/briefing.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { registerBuiltinRules } from "../../src/decide/registry.ts";
-import { decisionBody, decisionComment } from "../../src/decide/records.ts";
+import { decisionComment } from "../../src/decide/records.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
 import { clearGateMemo, resetRegistryForTests } from "../../src/engine/registry.ts";
 import { pollApprovals } from "../../src/interaction/poll.ts";
@@ -34,8 +35,8 @@ async function planChange(units: UnitSpec[], files: Record<string, string> = {},
 	setRedOnBaseEnv(withEnv ? () => verifyEnv(h.session) : async () => undefined);
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" })));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" })));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();

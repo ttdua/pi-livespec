@@ -163,3 +163,12 @@ export function squashOntoMain(h: ToolHarness, branch: string): void {
 	h.git("push", "-q", "origin", "main");
 	h.git("switch", "-q", branch);
 }
+
+/** The pushes among `calls` that are not ledger pushes: a push whose refspecs are not all `<sha>:refs/livespec/<n>`. */
+export function branchPushes(calls: string[][]): string[][] {
+	const ledgerOnly = (args: string[]): boolean => {
+		const specs = args.slice(args.indexOf("origin") + 1);
+		return specs.length > 0 && specs.every((s) => /:refs\/livespec\/\d+$/.test(s));
+	};
+	return calls.filter((args) => args[0] === "push" && !ledgerOnly(args));
+}

@@ -7,10 +7,10 @@ import type { Ledger } from "../ledger/index.ts";
 export const COUNTER_KIND = "counter" as const;
 /**
  * Derived from own `stale` comments (src/engine/iterations.ts), aggregate review records (src/review/status.ts)
- * and `new-dependency` gate results (src/engine/deps-facts.ts); a counter comment for them is ignored.
+ * and `new-dependency` gate results (src/engine/deps-facts.ts); a counter entry for them is ignored.
  */
 const DERIVED_COUNTERS = new Set(["change_iterations", "review_rounds", "discovered_deps"]);
-/** Derived from `progress` decision records (src/evidence/unit-state.ts); a counter comment for it is ignored. */
+/** Derived from `progress` decision records (src/evidence/unit-state.ts); a counter entry for it is ignored. */
 const DERIVED_PREFIX = "unit_attempts.";
 
 function counterValue(data: unknown): number | undefined {
@@ -20,8 +20,8 @@ function counterValue(data: unknown): number | undefined {
 }
 
 /**
- * Counter values by id from own marked comments; malformed data and derived counters are skipped.
- * The last comment for an id wins.
+ * Counter values by id from the merged own records; malformed data and derived counters are skipped.
+ * The last record for an id wins.
  */
 export function readCounters(marked: MarkedComment[]): Record<string, number> {
 	const counters: Record<string, number> = {};

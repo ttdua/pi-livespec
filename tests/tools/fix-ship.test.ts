@@ -165,6 +165,8 @@ describe("fix_ship", () => {
 		const out = await h.call("fix_ship");
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect(await h.world.forge.listComments(n)).toEqual([]);
+		await h.settle();
+		expect((await h.session.ledger.read(n)).entries.filter((e) => e.kind === "decision")).toEqual([]);
 	});
 
 	test("a standalone pack without a lane config refuses, never throws", async () => {

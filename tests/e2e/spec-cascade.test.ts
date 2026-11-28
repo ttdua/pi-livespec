@@ -4,12 +4,13 @@
 // lines, the `stale` comments, `change_iterations`, and the tool's own text. The cascade's git edge cases are
 // pinned in tests/interaction/spec-cascade.test.ts; here they only need the trigger.
 
+import { appendSeed } from "../helpers/ledger.ts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { runNextCommand } from "../../src/commands/next.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
-import { decisionBody, decisionComment } from "../../src/decide/records.ts";
+import { decisionComment } from "../../src/decide/records.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { ENTRY_LABELS } from "../../src/interaction/menu.ts";
 import "../../src/initiatives/facts.ts";
@@ -505,8 +506,8 @@ describe("unit-planning re-approval", () => {
 async function seedClassification(h: CascadeHarness): Promise<void> {
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" })));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" })));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();

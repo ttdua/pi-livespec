@@ -7,7 +7,7 @@ import { GitError } from "../../src/engine/git.ts";
 import type { GitExec } from "../../src/engine/git-exec.ts";
 import { guardedDeleteWip, guardedPush, ledgerDelete, ledgerFetch, ledgerPush } from "../../src/guard/push.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
-import { cleanupDirs, originRefs, textOf, toolHarness } from "../tools/helpers.ts";
+import { branchPushes, cleanupDirs, originRefs, textOf, toolHarness } from "../tools/helpers.ts";
 import { BRANCH, parkHarness } from "../tools/park-fixture.ts";
 import { afterEach } from "vitest";
 
@@ -61,7 +61,7 @@ describe("wip refspec", () => {
 		const out = await h.park();
 		expect(out.isError, textOf(out)).toBeFalsy();
 		// Ledger syncs push `refs/livespec/*` on their own; the branch pushes are the ones asserted.
-		const pushes = h.gitCalls.filter((args) => args[0] === "push" && !args.some((a) => a.includes("refs/livespec/")));
+		const pushes = branchPushes(h.gitCalls);
 		expect(pushes).toEqual([["push", "--", "origin", `HEAD:refs/heads/${BRANCH}--wip-U2`]]);
 		expect(originRefs(h.origin)).toContain(`refs/heads/${BRANCH}--wip-U2`);
 	});

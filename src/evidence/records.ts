@@ -1,4 +1,4 @@
-// Evidence records: the `unit-start`, `receipt` and `rebuild` marked comments, their ids and their parsers.
+// Evidence records: the `unit-start` and `receipt` ledger entries and the `rebuild` marked comment, their ids and their parsers.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";

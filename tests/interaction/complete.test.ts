@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { readOwnRecords } from "../../src/ledger/records.ts";
+import { appendEntry } from "../../src/ledger/store.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import "../../src/deps/markers.ts";
@@ -9,7 +11,7 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
-import { decisionBody, currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
+import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
@@ -69,7 +71,7 @@ async function fixture(phase: string, edit?: (b: string) => string, opts: { crlf
 }
 
 async function markedOf(f: Fixture): Promise<MarkedComment[]> {
-	return filterMarked(await f.world.forge.listComments(f.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(f.world.forge, createLedger(defaultGitExec, f.root), f.n, { login: BOT_LOGIN })).records;
 }
 
 async function ctxOf(f: Fixture, forge: Forge = f.world.forge): Promise<CompletionCtx> {
@@ -123,8 +125,8 @@ function ofKind(marked: MarkedComment[], kind: string, id?: string): MarkedComme
 async function seedClassification(f: Fixture): Promise<void> {
 	for (const u of parseChange(await f.world.bodyOf(f.n)).units) {
 		const digest = unitDigest(u);
-		await f.world.postComment(f.n, BOT_LOGIN, decisionBody(decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" })));
-		await f.world.postComment(f.n, BOT_LOGIN, decisionBody(decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" })));
+		await appendEntry(defaultGitExec, f.root, f.n, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendEntry(defaultGitExec, f.root, f.n, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 }
 

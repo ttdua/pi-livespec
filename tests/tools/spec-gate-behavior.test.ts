@@ -2,11 +2,13 @@
 // the gate", phase-gates "Gate tool"): only when no other refusal applies, one capability at a time, and the
 // re-run check refuses a `changed` answer in the same call.
 
+import { readOwnRecords } from "../../src/ledger/records.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { decisionBody, type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
+import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
@@ -75,7 +77,7 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 }
 
 async function marked(h: Gate): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 const ofKind = async (h: Gate, kind: string) => (await marked(h)).filter((m) => m.kind === kind);
 const subjectOf = (m: MarkedComment): string => (m.data as { subject?: string; request?: { subject?: string } }).subject ?? (m.data as { request?: { subject?: string } }).request?.subject ?? "";
@@ -85,9 +87,7 @@ const behaviorTitles = (h: Gate): string[] => h.ctx.ui.select.mock.calls.map((c)
 async function seedRecord(h: Gate, files: string[], outcome: string): Promise<void> {
 	const item = { capability: "rate-limit", files };
 	const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome, facts: item, files, reason: "chosen by alice" };
-	await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment(r)));
-	await h.session.comments?.invalidate(h.n);
-	await h.session.refresh();
+	await appendSeed(h, decisionComment(r));
 }
 
 describe("spec_gate behavior-change question", () => {

@@ -2,7 +2,12 @@ import { describe, expect, test } from "vitest";
 import { deriveIterations } from "../../src/engine/iterations.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 
+import { ledgerRecord } from "../helpers/ledger.ts";
+
 let seq = 0;
+/** A `counter` entry of the ledger. */
+const counter = (id: string, data: unknown): MarkedComment => ledgerRecord({ kind: "counter", id, data });
+
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
 	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
@@ -19,7 +24,7 @@ const fiveCascades = (): MarkedComment[] => ["Q1", "Q2", "Q3", "Q4", "Q5"].map((
 
 describe("deriveIterations", () => {
 	test("Derived iteration count", () => {
-		const state = deriveIterations([cascade("Q1", true), cascade("Q2", false), cascade("Q3", true), marked("counter", "change_iterations", { value: 9 })], 5);
+		const state = deriveIterations([cascade("Q1", true), cascade("Q2", false), cascade("Q3", true), counter("change_iterations", { value: 9 })], 5);
 		expect(state).toEqual({ count: 2, cap: 5, blocking: false, stuckOpen: undefined });
 	});
 

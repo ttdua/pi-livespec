@@ -138,9 +138,9 @@ async function green(c: UnitCall, start: StartRecord, pre: Pre, run: VerifyRun):
 	await afterLedgerWrite(w.session, state.issue.number);
 	const ticked = await tick(w.forge, state.issue.number, u.id, c.pack, () => c.cancelled() !== undefined);
 	await afterForgeWrite(w.session, state.issue.number);
-	if (typeof ticked === "object") return c.refuse(`${ticked.moved} The receipt for ${u.id} is posted; run unit_finish ${u.id} again in a per: unit phase to tick it.`);
-	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was posted, before the tick; run unit_finish ${u.id} again to tick it.`);
-	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt posted for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
+	if (typeof ticked === "object") return c.refuse(`${ticked.moved} The receipt for ${u.id} is recorded; run unit_finish ${u.id} again in a per: unit phase to tick it.`);
+	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was recorded, before the tick; run unit_finish ${u.id} again to tick it.`);
+	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt recorded for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
 }
 
 /** A ledger entry as `ledger:<issue>/<ref>`; a forge comment (an older record) as its link. */
@@ -168,7 +168,7 @@ export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, po
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
-	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
+	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.commentId, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
 	const entry = await w.ledger.append(state.issue.number, { ...decisionComment(record), after: lastForgeRef(state.marked) });
 	await afterLedgerWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
@@ -253,7 +253,7 @@ export function registerUnitFinish(pi: ExtensionAPI): void {
 		name: TOOL,
 		label: "Finish a livespec unit",
 		description:
-			"Finish a started unit: livespec runs its Verify at HEAD. When it passes, a receipt is posted and the unit is ticked done; when it fails, the failed attempt is recorded. A unit with a receipt but no tick is ticked without running Verify. Takes only the unit id.",
+			"Finish a started unit: livespec runs its Verify at HEAD. When it passes, a receipt is recorded and the unit is ticked done; when it fails, the failed attempt is recorded. A unit with a receipt but no tick is ticked without running Verify. Takes only the unit id.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No outcome, verdict, attempt or exit parameter.
 		parameters: UNIT_PARAMETERS as never,
 		execute: (_id, params, signal, _update, ctx) => runUnitFinish((params as { unit: string }).unit, signal, ctx as ApproverCtx),

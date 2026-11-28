@@ -7,7 +7,7 @@ import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
-import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { readOwnRecords } from "../../src/ledger/records.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -114,6 +114,8 @@ async function marked(h: Plan): Promise<MarkedComment[]> {
 	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
+/** The own `decision` comments on the forge: plan decisions live in the ledger only. */
+const commentDecisions = async (h: Plan) => filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments.filter((m) => m.kind === "decision");
 const decisions = async (h: Plan) => (await marked(h)).filter((m) => m.kind === "decision");
 const issueBody = (h: Plan) => h.world.bodyOf(h.n);
 const baseConfig = (h: Plan) => h.git("config", "--get", BASE_KEY);
@@ -137,6 +139,8 @@ describe("plan_units", () => {
 		const records = await decisions(h);
 		expect(records.map((m) => m.id)).toEqual(["tags.U1", "difficulty.U1", "tags.U2", "difficulty.U2"]);
 		expect(records.map((m) => (m.data as { source: string }).source)).toEqual(["rule", "rule", "rule", "rule"]);
+		expect(records.map((m) => m.source)).toEqual(["ledger", "ledger", "ledger", "ledger"]);
+		expect(await commentDecisions(h)).toEqual([]);
 		const { state } = h.session.card.kind === "change" ? h.session.card : { state: undefined };
 		expect(state?.checks.filter((c) => c.check === "unit-classification")).toEqual([]);
 	});
@@ -264,6 +268,18 @@ describe("plan_units", () => {
 		expect(u1?.tags).toEqual(["security", "perf"]);
 		const tags = (await decisions(h)).find((m) => m.id === "tags.U1");
 		expect((tags?.data as { agent_additions?: string[] }).agent_additions).toEqual(["perf"]);
+	});
+
+	test("Record fields", async () => {
+		const h = await planning();
+		const u3: UnitInput = { ...U1, title: "Header", files: ["src/middleware/ratelimit.ts"], depends: [], scenarios: [{ label: "t", ref: "test/header.test.ts › reads" }], extra_tags: ["api"] };
+		const out = await h.plan([U1, U2, u3]);
+		expect(out.isError, textOf(out)).toBe(false);
+		const tags = (await decisions(h)).find((m) => m.id === "tags.U3");
+		expect(tags?.source).toBe("ledger");
+		expect(tags?.data).toMatchObject({ point: "tags", subject: "U3", source: "rule", outcome: ["security", "api"], agent_additions: ["api"] });
+		expect(typeof (tags?.data as { reason: string }).reason).toBe("string");
+		expect(await commentDecisions(h)).toEqual([]);
 	});
 
 	test("a non-kebab extra tag is refused before anything is written", async () => {
@@ -488,6 +504,9 @@ describe("plan_units asks classification", () => {
 			["difficulty.U1", "human"],
 			["tags.U1", "rule"],
 		]);
+		// The human answer is still a forge comment (Task 7); the rule record is a ledger entry.
+		expect(records.find((m) => m.id === "tags.U1")?.source).toBe("ledger");
+		expect((await commentDecisions(h)).map((m) => m.id)).toEqual(["difficulty.U1"]);
 		const digest = unitDigest(parseChange(await issueBody(h)).units[0]!);
 		expect((await humanDecision(h, "difficulty.U1"))?.data).toMatchObject({ digest });
 		const { state } = h.session.card.kind === "change" ? h.session.card : { state: undefined };

@@ -35,6 +35,8 @@ export type World = {
 	head: string;
 	tree: string;
 	post(author: string, body: string, number?: number): Comment;
+	/** Ledger records of the change, merged after the forge comments, as the snapshot does. */
+	entries: MarkedComment[];
 	setBody(body: string): void;
 	/** The context with the state re-derived from the world's body and comments, as a refresh would. */
 	refreshed(): PacketContext;
@@ -92,7 +94,7 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 	const head = git(root, "rev-parse", "HEAD");
 	const world = {
 		issueBody: (over.body ?? FIXTURE_BODY).replace(FIXTURE_BASE, base), issueUpdatedAt: "t0",
-		comments: new Map<number, Comment[]>(), reviewComments: [], pulls: [], prFiles: new Map<number, string[]>(), issues: new Map<number, Issue>(), root, base, head,
+		entries: [], comments: new Map<number, Comment[]>(), reviewComments: [], pulls: [], prFiles: new Map<number, string[]>(), issues: new Map<number, Issue>(), root, base, head,
 	} as unknown as World;
 	world.forge = scriptedForge(world);
 	world.tree = over.tree ?? makeTree(DEFAULT_SKILLS);
@@ -114,7 +116,7 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 }
 
 function stateOf(world: World): ChangeState {
-	const marked: MarkedComment[] = filterMarked(world.comments.get(7) ?? [], BOT).comments;
+	const marked: MarkedComment[] = [...filterMarked(world.comments.get(7) ?? [], BOT).comments, ...world.entries];
 	const start = (unit: string) => ({ id: `${unit}.s`, commentId: "s", index: 0, unit, digest: "d", verify: "v", pre: { sha: world.base } });
 	const state = stateFor("build", { git: { branch: "livespec/per-ip-cap", head: world.head, dirty: false, specsChanged: true }, marked }, world.issueBody);
 	return { ...state, change: parseChange(world.issueBody), evidence: { ...state.evidence, receipts: deriveUnitEvidence(parseChange(world.issueBody), marked, undefined).receipts, started: { U3: start("U3") } } };

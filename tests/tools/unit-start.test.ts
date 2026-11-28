@@ -1,10 +1,13 @@
 import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { createLedger } from "../../src/ledger/index.ts";
 import { writeIn } from "../helpers/repo.ts";
-import { cleanupDirs, textOf } from "./helpers.ts";
+import { branchPushes, cleanupDirs, textOf } from "./helpers.ts";
 import { openLane } from "./lane-helpers.ts";
 import { cardState, seedRebuild, type UnitSpec, unitHarness, waitFor } from "./unit-helpers.ts";
 
@@ -216,7 +219,7 @@ describe("unit-evidence", () => {
 		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
 		await h.start("U1");
 		await h.settle();
-		expect(h.gitCalls.some((args) => args.includes("push") && !args.some((a) => a.includes("refs/livespec/")))).toBe(false);
+		expect(branchPushes(h.gitCalls)).toEqual([]);
 	});
 });
 
@@ -262,5 +265,61 @@ describe("rebuild marker", () => {
 		const out = await h.start("U1");
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect((await h.ofKind("unit-start"))[0]?.data).toMatchObject({ pre: { exit: 1, verdict: "red" } });
+	});
+});
+
+/** Makes this clone a fresh one: no local ledger, no tracking ref, and a ledger object that has fetched nothing. */
+function forgetLedger(h: Awaited<ReturnType<typeof unitHarness>>): void {
+	for (const ref of [`refs/livespec/${h.n}`, `refs/livespec-origin/${h.n}`]) h.git("update-ref", "-d", ref);
+	(h.session as { ledger: unknown }).ledger = createLedger(h.session.exec, h.root);
+}
+
+describe("unit-evidence on a second machine", () => {
+	const twoUnits = [U1, { ...U2, depends: ["U1"] }];
+
+	/** A receipt for U1 that exists only on origin (the body tick of U1 is already there). */
+	async function receiptOnOriginOnly(h: Awaited<ReturnType<typeof unitHarness>>): Promise<void> {
+		const u1 = (await h.units())[0]!;
+		const sha = "a".repeat(40);
+		await h.seed("unit-start", "U1.s", { unit: "U1", digest: unitDigest(u1), verify: u1.verify, pre: { sha, exit: 1, verdict: "red" } });
+		await h.seed("receipt", "U1.r", { unit: "U1", digest: unitDigest(u1), verify: u1.verify, pre: { sha, exit: 1 }, post: { sha, exit: 0 }, output: "", start: "U1.s" });
+		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("- [ ] pending", "- [x] done"));
+		expect(await h.session.ledger.sync(h.n)).toEqual({ status: "synced" });
+	}
+
+	test("a receipt that exists only on origin lets U2 start on a fresh clone", async () => {
+		const h = await unitHarness({ units: twoUnits, scripts: SCRIPTS });
+		await receiptOnOriginOnly(h);
+		forgetLedger(h);
+		const out = await h.start("U2");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await h.marked()).filter((m) => m.kind === "receipt").map((m) => m.id)).toEqual(["U1.r"]);
+		expect((await h.inLedger("unit-start")).map((m) => (m.data as { unit: string }).unit)).toEqual(["U1", "U2"]);
+		expect(await h.commentsOf("unit-start")).toEqual([]);
+	});
+
+	test("a start that exists only on origin makes U2 refuse on a fresh clone", async () => {
+		const h = await unitHarness({ units: twoUnits.map((u) => ({ ...u, depends: [] })), scripts: SCRIPTS });
+		expect((await h.start("U1")).isError).toBeFalsy();
+		expect(await h.session.ledger.sync(h.n)).toEqual({ status: "synced" });
+		forgetLedger(h);
+		const out = await h.start("U2");
+		expect(out.isError, textOf(out)).toBe(true);
+		for (const part of ["U1 is started", "unit_finish U1", "one unit at a time"]) expect(textOf(out)).toContain(part);
+		expect((await h.inLedger("unit-start")).map((m) => (m.data as { unit: string }).unit)).toEqual(["U1"]);
+	});
+
+	test("Unknown ledger while offline: unit_start refuses, runs no Verify and writes nothing", async () => {
+		const h = await unitHarness({ units: twoUnits, scripts: SCRIPTS });
+		await receiptOnOriginOnly(h);
+		forgetLedger(h);
+		h.git("remote", "set-url", "origin", join(tmpdir(), "ls-missing-origin", String(process.pid)));
+		const comments = (await h.world.forge.listComments(h.n)).length;
+		const out = await h.start("U2");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain(`the ledger of #${h.n} could not be fetched; reconnect and retry`);
+		expect(h.runs()).toBe(0);
+		expect((await h.world.forge.listComments(h.n)).length).toBe(comments);
+		expect((await h.session.ledger.read(h.n)).entries).toEqual([]);
 	});
 });

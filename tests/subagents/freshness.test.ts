@@ -1,5 +1,5 @@
 // Tests of the freshness check before a unit finishes.
-import { decisionBody } from "../../src/decide/records.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -52,7 +52,7 @@ describe("freshness", () => {
 	test("own receipt passes", async () => {
 		const world = await makeWorld();
 		const packet = await dispatched(world);
-		world.post(BOT, decisionBody(receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "a", exit: 1 }, post: { sha: "b", exit: 0 }, output: "ok", start: "U1.s" })));
+		world.entries.push(ledgerRecord(receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "a", exit: 1 }, post: { sha: "b", exit: 0 }, output: "ok", start: "U1.s" })));
 		expect(await stale(world, packet)).toEqual([]);
 	});
 

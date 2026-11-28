@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "vitest";
+import { appendSeed } from "../helpers/ledger.ts";
 import { parseChange } from "../../src/core/change.ts";
 import { parseInitiative } from "../../src/core/initiative.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { unitDigest } from "../../src/core/digest.ts";
-import { decisionBody, decisionComment } from "../../src/decide/records.ts";
+import { decisionComment } from "../../src/decide/records.ts";
 import { filterMarked, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
@@ -101,7 +102,7 @@ describe("change_split", () => {
 		// With classification records and the plan skill noted, the next step on #N asks for the plan gate.
 		for (const u of kept.units) {
 			for (const [point, outcome] of [["tags", []], ["difficulty", "low"]] as const) {
-				await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment({ point, subject: u.id, digest: unitDigest(u), source: "rule", outcome, reason: "r" })));
+				await appendSeed(h, decisionComment({ point, subject: u.id, digest: unitDigest(u), source: "rule", outcome, reason: "r" }));
 			}
 		}
 		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("skill-note", "plan.planning-and-task-breakdown", { phase: "plan", skill: "planning-and-task-breakdown", reason: "r" }));
