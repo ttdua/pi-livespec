@@ -6,9 +6,11 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `agent-behavior-conclusion`
-**Verified at**: `2026-11-28 18:05`
-**Iteration**: `1`
-**Verifier**: parent session, with independent evidence from `superspec.verifier` (agent 2ddfd6f8). The parent re-checked the items the verifier left open.
+**Verified at**: `2026-11-28 20:56`
+**Iteration**: `3`
+**Verifier**: parent session, with independent evidence from `superspec.verifier` (agent fd65b28e). The parent re-checked the items the verifier left open.
+
+Worktree `/Users/naicoi/Projects/oss/pi-livespec.behavior-change-rebase`, branch `behavior-change-rebase`, HEAD `38c5af2`, based on `origin/main` 57ab980 (ledger-store #79).
 
 ---
 
@@ -16,11 +18,11 @@
 
 - [x] The command passes for this change
 
-**Result** (cwd: worktree, exit 0):
+**Result** (exit 0):
 
 ```text
 Change 'agent-behavior-conclusion' is valid
-7 warnings: requirement text is longer than 500 characters (approver-adapters "Behavior overrides"; durable-doc-checks "Behavior conclusion parameter", "Behavior conclusion at the gate", "Behavior conclusion rule", "Behavior conclusion precedence", "Reviewer behavior conclusion", "Human behavior override")
+3 warnings: requirement text longer than 500 characters ("Behavior conclusion rule", "Behavior conclusions in the reviewer packet", "Disputed conclusion not restated")
 ```
 
 ---
@@ -29,7 +31,7 @@ Change 'agent-behavior-conclusion' is valid
 
 - [x] Every box is ticked, or each open box has a recorded reason
 
-`openspec instructions apply` reports progress `{"total":29,"complete":29,"remaining":0}`. `grep -c "^- \[ \]" tasks.md` returns 0.
+`openspec instructions apply` reports progress `{"total":43,"complete":43,"remaining":0}`. Groups 5, 6 and 8 hold items that Task 9 superseded. They are ticked as historical work and recorded under iteration 3 in `apply.md`.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -40,33 +42,28 @@ Change 'agent-behavior-conclusion' is valid
 ## 3. Requirement Evidence
 
 - [x] ADDED / MODIFIED: implementation evidence (file / line)
-- [x] REMOVED: evidence the baseline behavior is gone (main spec, else git history)
-- [x] RENAMED: behavior kept under the new name. Not applicable: the change has no RENAMED requirements.
+- [x] REMOVED: evidence the baseline behavior is gone
+- [x] RENAMED: not applicable (none)
 
-| Requirement | Operation | Status | Evidence (file:line) or reason |
+| Requirement | Operation | Status | Evidence |
 |---|---|---|---|
-| durable-doc-checks: Behavior conclusion parameter | ADDED | Pass | `src/docs/behavior-param.ts:9,22,39`; `src/tools/spec-gate.ts:304` (validated before the cascade), `:366-402` (schema, `execute`) |
-| durable-doc-checks: Behavior conclusion at the gate | ADDED | Pass | `src/docs/behavior-record.ts:14-45` (coverage, legacy refusal, skip-equal, `source: agent`); `src/tools/spec-gate.ts:218-242` |
-| durable-doc-checks: Behavior conclusion rule | ADDED | Pass | `src/docs/behavior-change.ts:108-123` (`behaviorConclusionComment`; the rule returns outcome `null`); `src/decide/registry.ts:100` |
-| durable-doc-checks: Behavior conclusion precedence | ADDED | Pass | `src/docs/behavior-change.ts:49-95` (`rank`, `fold`, `isCandidate`, `latestConclusions`) |
-| durable-doc-checks: Behavior conclusion check | ADDED | Pass | `src/docs/behavior-change.ts:133-160` |
-| durable-doc-checks: Behavior conclusions in the reviewer packet | ADDED | Pass | `src/docs/behavior-source.ts:10,31-44` |
-| durable-doc-checks: Reviewer behavior conclusion | ADDED | Pass | `src/subagents/result.ts:82-115`; `src/docs/behavior-review.ts:18-62`; `src/subagents/dispatch.ts:213`; `src/tools/subagent-record.ts:61` |
-| durable-doc-checks: Human behavior override | ADDED | Pass | `src/interaction/complete-gate.ts:89`; `src/interaction/complete-behavior.ts:31-36`; `src/interaction/complete-validate.ts:58` |
-| durable-doc-checks: Behavior change rule | REMOVED | Pass | `src/docs/behavior-ask.ts` is deleted. No source path sends a `decide:behavior-change` request; the only references are the legacy refusal in `behavior-change.ts:133-141`. `behaviorChangeRule` returns `{ outcome: null }` (`behavior-change.ts:123`). |
-| durable-doc-checks: Behavior change question at the gate | REMOVED | Pass | `spec-gate.ts` `behaviorStep` calls `recordBehaviorConclusions` and no asker; `src/tools/decide-ask.ts` has no behavior reference. |
-| durable-doc-checks: Behavior change check | REMOVED | Pass | `behaviorResults` now reads `effectiveConclusion` from every source, not only human answers (`behavior-change.ts:144-160`). The check id is unchanged. |
-| approver-adapters: Forge command comments | MODIFIED | Pass | `src/interaction/commands.ts:69-71`; `src/interaction/forge-match.ts` (the `set-behavior` target) |
-| approver-adapters: In-session dialog | MODIFIED | Pass | `src/interaction/dialog/keys.ts:45`; `dialog/state.ts`, `dialog/view.ts` (Behavior tab) |
-| approver-adapters: Behavior overrides | ADDED | Pass | `src/interaction/forge-behavior.ts:13-31`; `dialog/result.ts:26-28,61-62`; `in-session.ts:141` |
-| decision-seam: Decision seam | MODIFIED | Pass | The scenario now uses a test rule (`tests/docs/behavior-change.test.ts`); seam code is unchanged. |
-| decision-seam: Decision records | MODIFIED | Pass | `src/decide/records.ts:13,32,62-65` |
-| phase-gates: Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts:218-242,304,334-354` |
-| phase-gates: Gate review payload | MODIFIED | Pass | `src/docs/register.ts:23-35`; `src/engine/gate-payload.ts:17` |
-| request-briefing: Forge request text | MODIFIED | Pass | `src/interaction/forge-text.ts` (the `<details>` line, under `overridableBehavior`) |
-| ship-phase: Durable docs rule and check | MODIFIED | Pass | `src/ship/context.ts:130-131` (`latestConclusions`); `src/ship/durable-docs.ts:75-85` |
-| subagent-dispatch: Return contract | MODIFIED | Pass | `src/subagents/roles.ts` (`BEHAVIOR_SCHEMA`, optional on reviewer) |
-| subagent-packets: Context manifest | MODIFIED | Pass | `src/docs/behavior-source.ts:37-44`; `src/subagents/sources.ts:29` (hook) |
+| durable-doc-checks: Behavior conclusion parameter | ADDED | Pass | `src/docs/behavior-param.ts:9,19-23`; `src/tools/spec-gate.ts:300-301` (validated before the cascade), `:396-399` |
+| durable-doc-checks: Behavior conclusion at the gate | ADDED | Pass | `src/tools/spec-gate.ts:229-243`; `src/docs/behavior-record.ts:17-24,59-79` (append through main's `appendRecord`); legacy refusal `src/docs/behavior-change.ts:144-153` |
+| durable-doc-checks: Behavior conclusion rule | ADDED | Pass | `src/docs/behavior-change.ts:120-134`; `src/decide/points.ts:4` |
+| durable-doc-checks: Behavior conclusion precedence | ADDED | Pass | `src/docs/behavior-change.ts:53-114`; human records pass main's `isBacked`, which is unchanged |
+| durable-doc-checks: Behavior conclusion check | ADDED | Pass | `src/docs/behavior-change.ts:166-173` |
+| durable-doc-checks: Behavior conclusions in the reviewer packet | ADDED | Pass | `src/docs/behavior-source.ts:10-26`; `src/docs/readers.ts:71`; rubric `src/subagents/rubrics.ts:9` |
+| durable-doc-checks: Disputing a conclusion at the gate | ADDED | Pass | Existing request-changes answer plus precedence; no new channel |
+| durable-doc-checks: Disputed conclusion not restated | ADDED | Pass | `src/docs/behavior-record.ts:39-56`; matcher `src/docs/readers.ts:21` |
+| durable-doc-checks: Behavior change rule / question at the gate / check | REMOVED | Pass | `src/docs/behavior-ask.ts` deleted (present on `origin/main`); no `decide:behavior-change` request is sent; the rule returns `{ outcome: null }` |
+| decision-seam: Decision seam, Decision records | MODIFIED | Pass | `src/decide/records.ts:16,63-66,94` (`agent` only for `behavior-change`) |
+| phase-gates: Gate tool, Gate review payload | MODIFIED | Pass | `src/tools/spec-gate.ts:171-172,229-243,300-301`; `src/docs/register.ts:22-25`; `src/engine/gate-payload.ts:17` |
+| ship-phase: Durable docs rule and check | MODIFIED | Pass | `src/ship/context.ts:129-131` |
+| subagent-packets: Context manifest | MODIFIED | Pass | `src/docs/behavior-source.ts`; `subagents/` imports nothing from `docs/` |
+
+Removed machinery is gone:
+- `grep -rn "behaviorOverrides\|overridableBehavior\|snapshot.behavior\|packet.behavior\|return-behavior\|disputeReturns" src` finds no match.
+- `git diff --quiet origin/main --` exits 0 for `src/decide/answered.ts`, `src/interaction/requests.ts`, `src/subagents/result.ts` and `src/interaction/forge-text.ts`.
 
 ---
 
@@ -75,52 +72,47 @@ Change 'agent-behavior-conclusion' is valid
 - [x] Every scenario maps to a test
 - [x] The project test command was run fresh in this step
 
-**Test command**: `bunx vitest run` (cwd: worktree; run fresh by the parent and independently by the verifier)
-**Result**: exit 0. 262 test files passed, 4232 tests passed, 0 failed, duration 323 s. `bun run typecheck`: exit 0.
+**Test command**: `bunx vitest run --maxWorkers=4`, run fresh by the verifier in the worktree.
+**Result**: exit 1, then pass on rerun. 268 files: 267 passed, 1 failed. 4350 tests: 4349 passed, 1 failed.
+- The failure was `tests/accounts/card.test.ts`: `ENOTEMPTY rmdir` of a temp `ls-hooks-home` directory under machine load average 50–170. That file is pre-existing and outside this change.
+- Rerun alone, `bunx vitest run tests/accounts/card.test.ts`: exit 0, 8/8 passed.
+- An earlier parent run at the same HEAD content (`299b8c6`, `--maxWorkers=4`): exit 0, 268 files / 4350 tests.
+- `bun run typecheck`: exit 0.
 
-Scenarios under REMOVED requirements are skipped.
+93 ADDED/MODIFIED scenarios were checked by title against `tests/`, case-insensitively (REMOVED scenarios skipped). 91 match by title. 2 are covered by behavior:
 
-| Scenario group | Test |
+| Scenario | Test |
 |---|---|
-| Rationale too long, Flow without the check, Two capabilities no dialog, Missing conclusion, Unknown capability listed, Legacy request still open, Other refusal writes nothing, Changed conclusion blocks the same call, Same conclusion not re-posted, Agent conclusion recorded, Behavior answer before a refusal, Behavior conclusions listed (through `spec_gate`) | `tests/tools/spec-gate-behavior.test.ts` |
-| Bad behavior shape on another target | `tests/tools/spec-gate.test.ts` |
-| Rule never asks, Rule ask carries descriptions, every precedence scenario, Unconcluded item names the parameter, Behavior changed without a spec edit, Spec updated after a changed conclusion, Reviewer cannot undo a human change (resolver) | `tests/docs/behavior-change.test.ts` |
-| Behavior conclusions listed, No behavior section without items | `tests/docs/behavior-payload.test.ts` |
-| Agent source only for behavior-change, Behavior files kept with hashed facts | `tests/decide/records.test.ts` |
-| Conclusions in the packet, Behavior conclusions required for change review | `tests/subagents/sources.test.ts` |
-| Reviewer disputes unchanged, Reviewer clears an agent change, Reviewer confirms, Entry for another capability, Rebuttal does not clear a dispute, Reviewer cannot undo a human change (record) | `tests/tools/subagent-record.test.ts` |
-| Dispute without a finding, Second miss drops the entry | `tests/subagents/dispatch.test.ts` |
-| Reviewer behavior accepted, Bad behavior outcome | `tests/subagents/roles.test.ts` |
-| Behavior override command parsed, Behavior override with another value | `tests/interaction/commands.test.ts`, `tests/interaction/forge.test.ts` |
-| Forge override then changes, Forge override then approve, Unknown capability, Override on another gate, set behavior needs write permission | `tests/interaction/forge.test.ts` |
-| Behavior key hint, Behavior tab opened with one key, Override sent with request changes, Override discarded with approve, Review shows the override with request changes, No unit tab without overridable units | `tests/interaction/dialog/host.test.ts` |
-| Select fallback offers the override | `tests/interaction/in-session.test.ts` |
-| Human flips a conclusion, Superseded answer records no override, Override completed twice | `tests/interaction/complete.test.ts` |
-| Behavior override command listed | `tests/interaction/forge-text.test.ts` |
-| Agent conclusion covers the files, Newer changed record wins, Protected change of other files, Superset record | `tests/ship/context.test.ts`, `tests/ship/durable-docs.test.ts` |
-| Baseline scenarios kept unchanged inside MODIFIED blocks | Existing tests, as plan.md lists. Five have no test with the same name either at base `60e5431` or now, so they are covered by behavior: "Core sources only" → `tests/tools/subagent-dispatch.test.ts:374-377`; "Approve through Review" → `tests/interaction/dialog/host.test.ts:46`; "Units tab opened with one key" → `host.test.ts:126-135`; "Answer that changes a requirement" → `tests/interaction/commands.test.ts:38`; "Glossary entries for the unit" → `tests/docs/readers.test.ts:25`. |
+| The new #64 scenarios (Two capabilities no dialog, Missing conclusion, Unknown capability listed, Legacy request still open, Other refusal writes nothing, Changed conclusion blocks the same call, Same conclusion not re-posted, Rationale too long, Flow without the check, Agent conclusion recorded, Human requests changes naming a capability, Same unchanged after a dispute refused, New rationale accepted, Notes that do not name the capability, Behavior conclusions listed) | `tests/tools/spec-gate-behavior.test.ts` |
+| Rule never asks, Agent re-concludes after request changes, Agent cannot undo a human change, Old human answer still counts, New file needs a new conclusion, Unconcluded item names the parameter, Behavior changed without a spec edit, Spec updated after a changed conclusion | `tests/docs/behavior-change.test.ts` |
+| Conclusions in the packet, Rubric names the dispute, Behavior conclusions required for change review | `tests/subagents/sources.test.ts`, `tests/subagents/rubrics.test.ts` |
+| Reviewer dispute blocks review | `tests/tools/spec-review.test.ts` |
+| Agent conclusion covers the files, Newer changed record wins, Protected change of other files | `tests/ship/context.test.ts`, `tests/ship/durable-docs.test.ts` |
+| Agent source only for behavior-change | `tests/decide/records.test.ts` |
+| Baseline "Dismissed answer not reused" (decision-seam, unchanged from main) | Covered by behavior: `tests/tools/decide-ask.test.ts:229`. No test uses the exact title, on main either. |
+| Baseline "Glossary entries for the unit" (subagent-packets, unchanged from main) | Covered by behavior: `tests/docs/readers.test.ts:25`. No test uses the exact title, on main either. |
+| Payload section before the briefing | `tests/interaction/forge-text.test.ts:403-405` |
 
 ---
 
 ## 5. Design and Contract Coherence (warning only)
 
 - [x] Decisions in design.md match the code
-- [x] Contracts in plan.md, together with the Contract deviations recorded in apply.md, match the code
+- [x] Contracts in plan.md, with the deviations recorded in apply.md, match the code
 
 | Entry | Status | Evidence |
 |---|---|---|
-| D1 resolver | matched | `behavior-change.ts:86-95`; `ship/context.ts:7,131` |
-| D2 rank | matched | `behavior-change.ts:49-54,70-77` |
-| D3 parameter | matched | `behavior-param.ts`; `behavior-record.ts:14-17` |
-| D4 refusals before writes | matched | `spec-gate.ts:218-242,304`; `behavior-record.ts:34-45` |
-| D5 record shape and source restriction | matched | `records.ts:62-65`; `behavior-change.ts:108-120` |
-| D6 reviewer conclusions | matched; the `afterRecord`/`prepareResult` hooks are a recorded deviation | `behavior-review.ts`; `result.ts:82-131`; `dispatch.ts:213,230` |
-| D7 override | matched | `approver.ts:149`; `complete-gate.ts:89`; `forge-behavior.ts` |
-| D8 payload and ship | matched | `register.ts:25`; `durable-docs.ts:75-85` (`answeredUnchanged` reads `facts.behavior`, which comes from `latestConclusions`, any source) |
-| D9 guidance | matched | `spec-gate.ts:366` parameter description; refusal text in `behavior-record.ts:22` |
-| Contract rows: `DecisionRecord.source`, `BehaviorOutcome`, `BehaviorConclusionInput`, `BehaviorConclusion`, `effectiveConclusion`, `latestConclusions`, `behaviorConclusionComment`, `applyBehaviorOverrides`, `return-behavior`, `behaviorPacketData`/`registerPacketBehavior`, `ReviewFacts.behaviorItems`, `GateSnapshot.behavior`, `Packet.behavior`, `DispatchHistory.disputeReturns`, `validateBehaviorParam`, `spec_gate` `behavior`, `BehaviorOverride`, `Answered.behaviorOverrides`, `ApprovalRequest.overridableBehavior`, forge `set behavior`, reviewer result `behavior` | matched | Verifier table; files cited in section 3 |
-| Packet source `records:behavior-conclusions` text format | matched | `behavior-source.ts:31-35`: `- <cap>: <outcome> (<source>) — <reason>; files: a, b`, or `- <cap>: none; files: …`, as the Contracts row specifies |
-| apply.md deviations: `validDecisionEntries`, `afterRecord`/`prepareResult`, `interpret` `prepare`, `FindingSummaryData.behavior`, `behavior-snapshot.ts`, `validateGate` supersede, legacy-request refusal delta | matched | `records.ts:93`; `dispatch.ts:213,230`; `result.ts:127-131`; `run-record.ts` `behaviorField`; `interaction/behavior-snapshot.ts`; `complete-validate.ts:58`; `behavior-change.ts:133-141` |
+| D1 resolver | matched | `behavior-change.ts:53-114` |
+| D2 disputes via existing answers, plus enforcement | matched | `behavior-record.ts:39-56`; `rubrics.ts:9` |
+| D3 parameter | matched | `behavior-param.ts`; `behavior-record.ts:17-24` |
+| D4 write ordering | matched | `spec-gate.ts:229-243,300-301` |
+| D5 record shape, append via `appendRecord`, no `src/ledger/*` change | matched | `behavior-record.ts:67-79`; ledger diff is empty |
+| D6 packet source and rubric, no `Packet` field | matched | `behavior-source.ts`; `readers.ts:71` |
+| D7 payload section, facts before the briefing | matched | `register.ts:22-25`; `forge-text.test.ts:403-405` |
+| D8 ship | matched | `ship/context.ts:131` |
+| D9 guidance text | matched | `spec-gate.ts:361-363`; `behavior-record.ts:24` |
+| Contract rows still in force (`BehaviorOutcome`, `BehaviorConclusionInput`, `BehaviorConclusion` with `ref`, `effectiveConclusion`, `latestConclusions`, `behaviorConclusionComment` → `AppendInput`, `validateBehaviorParam`, `spec_gate` `behavior`, `ReviewFacts.behaviorItems`, `records:behavior-conclusions`, `validDecisionEntries`, `DecisionRecord.source` rule/human/agent) | matched | verifier table |
+| Rows superseded by Task 9 (override, reviewer verdict, forge `set behavior`, `isBacked` extension, `resultCounts` rule, `interpret` `prepare`, `Packet.behavior`, hooks, `ConclusionInput.request`) | matched-absent | grep finds no match; `answered.ts`, `requests.ts` and `result.ts` are byte-identical to main |
 
 **Drift warnings** (non-blocking): none.
 
@@ -128,9 +120,9 @@ Scenarios under REMOVED requirements are skipped.
 
 ## 6. Clean Tree and Commit Range
 
-- [x] Working tree is clean (`git status --porcelain` printed nothing before this receipt was written)
+- [x] The working tree is clean (`git status --porcelain` is empty before this receipt).
 
-**Commit range**: `60e5431..03c57e4` (27 commits), plus this receipt commit.
+**Commit range**: `57ab980..38c5af2` (10 commits) on `behavior-change-rebase`, plus this receipt commit.
 
 ---
 
@@ -139,21 +131,22 @@ Scenarios under REMOVED requirements are skipped.
 **CRITICAL**: none.
 
 **WARNING**:
-- `openspec validate` reports 7 requirements whose text is longer than 500 characters. Recommendation: before archive, consider splitting "Behavior conclusion at the gate" and "Reviewer behavior conclusion" into one-behavior requirements. This is advisory only; validation passes.
+- `tests/accounts/card.test.ts` fails with a temp-dir cleanup race under heavy machine load. It is pre-existing and outside this change. Recommendation: file it separately; it does not block this change.
+- `openspec validate` reports 3 requirements longer than 500 characters. Recommendation: consider splitting "Disputed conclusion not restated" before archive.
 
 **SUGGESTION**:
-- `src/docs/behavior-review.ts:59`: `recordReviewerConclusions` passes `recorded = []`. Repeated completed `change` runs at the same HEAD could each post a reviewer record, although the effective-conclusion filter usually blocks repeats. Recommendation: pass `recordedAfter(marked, summaryIndex)` here too, as the replay path already does.
-- Two residuals are parked from the final review (see apply.md): replay is skipped when HEAD moves before the next `spec_review`, and when the stored packet is missing. Recommendation: open a follow-up issue only if a dispute is lost in practice.
-- Five baseline scenarios have tests that do not share the scenario name (section 4). Recommendation: rename those tests to the scenario names in a later cleanup, for traceability.
+- A reworded rationale satisfies the dispute refusal, because the match is exact (`behavior-record.ts:51`). This is accepted by design D2. Tighten the match only if it is abused in practice.
+- `tests/decide/records.test.ts:232` is titled after the removed `latestBehaviorRecords`. Rename it to `latestConclusions`.
+- Main's `isBacked` comment still mentions reviewer records (main's text). Clean it up in a later change.
 
 ---
 
 ## Overall Decision
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
-- [x] PASS_WITH_WARNINGS: proceed, noting the validator's requirement-length warnings and the suggestions above. No check is marked not verified.
+- [x] PASS_WITH_WARNINGS: proceed. No check is unverified, fresh tests are green after a rerun of a pre-existing flaky file, and the warnings above remain.
 - [ ] FAIL: fix the cause, then re-apply (iteration N+1)
 
 **Next step**:
 
-Run `/opsx-continue` with the worktree as the working directory to create the finalize artifact, then `/opsx-archive`.
+Finalize: code review gate on `57ab980..HEAD`, then decide how PR #80 is updated (its head `behavior-change` predates the rebase).
