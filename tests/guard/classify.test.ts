@@ -402,9 +402,11 @@ describe("ledger refs", () => {
 			"git fetch origin refs/livespec/59:refs/livespec/59",
 			"git update-ref --stdin",
 			"git fetch origin '+refs/*:refs/*'",
+			"git fetch --refmap='+refs/*:refs/*' origin 'refs/livespec/*'",
+			"git fetch --refmap '+refs/*:refs/*' origin x",
 		];
 		expectBlocked(commands);
-		for (const c of commands.slice(0, 1).concat(commands.slice(2))) expect(blocked(c).reason).toContain("the ledger is written only by livespec tools");
+		for (const c of commands.filter((c) => c !== "git update-ref --stdin")) expect(blocked(c).reason).toContain("the ledger is written only by livespec tools");
 	});
 
 	it("Agent ledger reads allowed", () => {

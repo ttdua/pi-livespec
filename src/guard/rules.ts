@@ -150,10 +150,23 @@ function isLedgerWrite(inv: Invocation): boolean {
 	if (!LEDGER_READS.has(sub) && rest.some((a) => a.includes("refs/livespec") || a.includes("livespec-origin"))) return true;
 	if (sub === "update-ref" && rest.includes("--stdin")) return true;
 	if (sub !== "fetch" && sub !== "push") return false;
-	return rest.some((a) => {
-		const dst = a.startsWith("-") ? undefined : refspecDestination(a);
-		return dst !== undefined && dst.includes("*") && !dst.startsWith("refs/remotes/");
-	});
+	return refspecWords(rest).some(isWildcardOutsideRemotes);
+}
+
+/** Operands and `--refmap` values (`--refmap=<spec>` or `--refmap <spec>`): every word that can carry a refspec. */
+function refspecWords(rest: string[]): string[] {
+	const words: string[] = [];
+	for (const [i, a] of rest.entries()) {
+		if (a.startsWith("--refmap=")) words.push(a.slice("--refmap=".length));
+		else if (a === "--refmap") words.push(rest[i + 1] ?? "");
+		else if (!a.startsWith("-")) words.push(a);
+	}
+	return words;
+}
+
+function isWildcardOutsideRemotes(spec: string): boolean {
+	const dst = refspecDestination(spec);
+	return dst !== undefined && dst.includes("*") && !dst.startsWith("refs/remotes/");
 }
 
 const GH_ALIAS_WRITES = set("set", "import");
@@ -222,8 +235,8 @@ function isEndpoint(text: string, endpoints: string[]): boolean {
 const forgeWrite = (what: string) => () => ({ what, advice: FORGE_ADVICE });
 
 const RULES: readonly Rule[] = [
-	{ id: "push", matches: isGitPush, explain: () => ({ what: "git push is blocked", advice: PUSH_ADVICE }) },
 	{ id: "ledger", matches: isLedgerWrite, explain: () => ({ what: "this git command could write the ledger refs", advice: LEDGER_ADVICE }) },
+	{ id: "push", matches: isGitPush, explain: () => ({ what: "git push is blocked", advice: PUSH_ADVICE }) },
 	{ id: "gh-alias", matches: isGhAliasWrite, explain: () => ({ what: "gh alias set and import are blocked because gh aliases can hide forge writes", advice: "run the gh command itself, or ask a human" }) },
 	{
 		id: "gh-issue",
