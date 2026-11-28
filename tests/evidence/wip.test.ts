@@ -118,6 +118,13 @@ describe("unit-evidence", () => {
 		expect(wip.reason).toContain("U2");
 	});
 
+	test("I1: a ledger that cannot be fetched is not idle", async () => {
+		const { world } = await worldWithChangeSeven(BODY);
+		registerStartedUnitWorkInProgress();
+		const blind: Ledger = { ...ledger, ensureFetched: async () => "unknown-offline" };
+		await expect(workInProgress(world.forge, blind)).rejects.toThrow(/work in progress is unknown/);
+	});
+
 	test("Between units", async () => {
 		const { world } = await worldWithChangeSeven(BODY);
 		registerStartedUnitWorkInProgress();

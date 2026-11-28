@@ -63,6 +63,16 @@ describe("pollFeedback preconditions", () => {
 		expect(await runs(h)).toHaveLength(1);
 	});
 
+	test("I1: an unknown ledger skips the read and reports a failure, so no round number is reused", async () => {
+		const h = await shipped();
+		await h.world.postComment(h.pr, "alice", "please rename");
+		await h.session.refresh();
+		const blind = { ...h.session.ledger, ensureFetched: async () => "unknown-offline" as const };
+		Object.defineProperty(h.session, "ledger", { value: blind });
+		expect(await pollFeedback(h.session)).toMatchObject({ failed: expect.stringContaining("could not be fetched") });
+		expect(await runs(h)).toEqual([]);
+	});
+
 	test("a closed pull request skips", async () => {
 		const h = await shipped();
 		await h.world.postComment(h.pr, "alice", "late");

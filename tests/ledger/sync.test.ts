@@ -341,6 +341,20 @@ describe("ledger fetched before use", () => {
 	});
 });
 
+describe("ensureFetched single flight", () => {
+	it("I1: concurrent callers share one fetch", async () => {
+		const { a } = await twoClones();
+		let fetches = 0;
+		const counting: GitExec = (args, opts) => {
+			if (args[0] === "ls-remote") fetches++;
+			return defaultGitExec(args, opts);
+		};
+		const ledger = createLedger(counting, a);
+		await Promise.all([ledger.ensureFetched(N), ledger.ensureFetched(N), ledger.ensureFetched(N)]);
+		expect(fetches).toBeLessThanOrEqual(1);
+	});
+});
+
 describe("ledger remove", () => {
 	it("deletes the remote, local and tracking refs", async () => {
 		const { remote, a } = await twoClones();

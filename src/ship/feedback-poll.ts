@@ -80,6 +80,8 @@ async function postRound(t: Target, marked: MarkedComment[], items: FeedbackItem
 }
 
 async function pollChange(t: Target): Promise<FeedbackPollResult> {
+	// A review round number comes from the merged records: read them only after the first fetch (ledger-store "Ledger fetched before use").
+	if ((await t.session.ledger.ensureFetched(t.state.issue.number)) === "unknown-offline") return { failed: t.session.record(STEP, `the ledger of #${t.state.issue.number} could not be fetched and no copy of it is known`) };
 	const { login } = await t.forge.whoami();
 	// Read the issue's own records fresh: another session may have posted a feedback round since the last refresh.
 	const { records: marked } = await readOwnRecords(t.forge, t.session.ledger, t.state.issue.number, { login });

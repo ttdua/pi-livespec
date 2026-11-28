@@ -102,7 +102,8 @@ describe("session_start", () => {
 		const issue = await h.world.forge.getIssue(n);
 		expect(issue.labels).toContain("livespec:phase/review");
 		expect(issue.labels).not.toContain("livespec:phase/build");
-		expect(resumeMessages(h.pi.entries)[0]?.content).toContain("· review");
+		// I1: the start card is built from the local ledger and never advances; the advance follows the fetch.
+		expect(resumeMessages(h.pi.entries)[0]?.content).toContain("· build");
 	});
 
 	test("Not blocking", async () => {

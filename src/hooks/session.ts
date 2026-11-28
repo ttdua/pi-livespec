@@ -280,8 +280,9 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	const forge = session.forge;
 	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
-	// An empty read of an unknown ledger is not "no records": advancing on it could skip work (M1).
-	if (card.state.fetchState === "unknown-offline") return false;
+	// An empty read of an unknown ledger is not "no records": advancing on it could skip work (M1). A card built
+	// without a fetch (session start, context hook) saw only local records, so it never mutates the issue.
+	if (card.state.fetchState !== "fetched") return false;
 	try {
 		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack, { merged: card.state.pr?.merged === true });
 		if (r.status === "refused") session.record("advance", r.reason);
@@ -584,12 +585,18 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
  */
 async function runStartPolls(session: Session): Promise<void> {
 	try {
+		await advanceAfterFetch(session);
 		await pollApprovals(session);
 		await runSpecCascade(session);
 		await pollFeedback(session);
 	} catch (error) {
 		session.record("start", error);
 	}
+}
+
+/** The start card was built from the local ledger and so never advanced; once the ledger is fetched, a derived advance may apply. */
+async function advanceAfterFetch(session: Session): Promise<void> {
+	if (session.card.kind === "change" && session.card.step.advance !== undefined) await session.refresh();
 }
 
 /** Reads and advances the audit suggestions, then shows them on the card already built. Never throws. */

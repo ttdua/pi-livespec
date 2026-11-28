@@ -29,13 +29,22 @@ export function createLedger(exec: GitExec, root: string): Ledger {
 	const fetched = new Set<number>();
 	const running = new Set<Promise<unknown>>();
 
-	const ensureFetched = async (n: number): Promise<FetchState> => {
-		if (fetched.has(n)) return "fetched";
+	const fetching = new Map<number, Promise<FetchState>>();
+
+	const fetchOnce = async (n: number): Promise<FetchState> => {
 		if (await fetchLedger(exec, root, n)) {
 			fetched.add(n);
 			return "fetched";
 		}
 		return (await hasKnownLedger(exec, root, n)) ? "stale-known" : "unknown-offline";
+	};
+
+	/** Single-flight per change: concurrent callers share one fetch. */
+	const ensureFetched = (n: number): Promise<FetchState> => {
+		if (fetched.has(n)) return Promise.resolve("fetched");
+		const running = fetching.get(n) ?? fetchOnce(n).finally(() => fetching.delete(n));
+		fetching.set(n, running);
+		return running;
 	};
 
 	const trackedSync = (n: number): Promise<SyncResult> => {

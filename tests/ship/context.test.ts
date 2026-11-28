@@ -204,7 +204,7 @@ describe("shipContext behavior records", () => {
 	const human = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
 		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
 		const m = ledgerRecord(decisionComment(r));
-		return { ...m, ref: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
+		return { ...m, source: "forge", ref: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment; // a forge-era record: a ledger human record needs its forge answer (I3)
 	};
 
 	test("Newer changed record wins (records)", async () => {
