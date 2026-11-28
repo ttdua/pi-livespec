@@ -21,6 +21,12 @@ export interface ProjectConfig {
 	agentSkillsChannelSet: boolean;
 	interaction?: InteractionConfig;
 	verify?: VerifyConfig;
+	ledger: LedgerConfig;
+}
+
+export interface LedgerConfig {
+	/** Keep the change ledger after `change_close`; `false` deletes it locally and on origin. */
+	retain: boolean;
 }
 
 export interface VerifyConfig {
@@ -46,8 +52,10 @@ export interface LoadedConfig {
 	warnings: string[];
 }
 
-const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify", "testCommand"];
+const PROJECT_KEYS = ["forge", "host", "githubHosts", "giteaUrl", "integrationBranch", "agentSkills", "interaction", "verify", "testCommand", "ledger"];
 const VERIFY_KEYS = ["setup", "timeout"];
+const LEDGER_KEYS = ["retain"];
+export const DEFAULT_LEDGER_RETAIN = true;
 export const DEFAULT_VERIFY_TIMEOUT_S = 600;
 export const DEFAULT_LANES = 3;
 export const DEFAULT_PACKET_BUDGET_TOKENS = 24000;
@@ -189,9 +197,27 @@ function readVerify(file: string, doc: Doc, warnings: string[]): VerifyConfig | 
 	return verify;
 }
 
+/** The `ledger` section: `retain` must be a boolean (default true); any other value warns and uses the default. */
+function readLedger(file: string, doc: Doc, warnings: string[]): LedgerConfig {
+	const section = doc.ledger;
+	if (section === undefined) return { retain: DEFAULT_LEDGER_RETAIN };
+	if (section === null || typeof section !== "object" || Array.isArray(section)) {
+		warnings.push(`${file}: "ledger" must be a mapping; ignored`);
+		return { retain: DEFAULT_LEDGER_RETAIN };
+	}
+	const entry = section as Doc;
+	for (const key of Object.keys(entry)) {
+		if (!LEDGER_KEYS.includes(key)) warnings.push(`${file}: unknown key "ledger.${key}"`);
+	}
+	if (entry.retain === undefined) return { retain: DEFAULT_LEDGER_RETAIN };
+	if (typeof entry.retain === "boolean") return { retain: entry.retain };
+	warnings.push(`${file}: invalid ledger.retain "${describeValue(entry.retain)}" (expected true or false); using ${DEFAULT_LEDGER_RETAIN}`);
+	return { retain: DEFAULT_LEDGER_RETAIN };
+}
+
 function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig {
 	warnUnknownKeys(file, doc, PROJECT_KEYS, warnings);
-	const project: ProjectConfig = { githubHosts: stringList(file, doc, "githubHosts", warnings), agentSkillsChannelSet: false };
+	const project: ProjectConfig = { githubHosts: stringList(file, doc, "githubHosts", warnings), agentSkillsChannelSet: false, ledger: { retain: DEFAULT_LEDGER_RETAIN } };
 	if (typeof doc.forge === "string" && FORGES.includes(doc.forge)) project.forge = doc.forge as "github" | "gitea";
 	else if (doc.forge !== undefined) warnings.push(`${file}: invalid forge "${describeValue(doc.forge)}" (expected github or gitea); ignored`);
 	const host = optionalString(file, doc, "host", warnings);
@@ -207,6 +233,7 @@ function buildProject(file: string, doc: Doc, warnings: string[]): ProjectConfig
 	if (interaction !== undefined) project.interaction = interaction;
 	const verify = readVerify(file, doc, warnings);
 	if (verify !== undefined) project.verify = verify;
+	project.ledger = readLedger(file, doc, warnings);
 	return project;
 }
 

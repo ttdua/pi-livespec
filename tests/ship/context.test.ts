@@ -25,7 +25,7 @@ describe("shipContext", () => {
 			return defaultGitExec(args, opts);
 		};
 		const session = new Session(f.work, createGit(f.work, exec), exec);
-		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 		const head = sh(f.work, "rev-parse", "HEAD");
 		const state = stateFor("ship", { git: { branch: "feature", head, dirty: false, specsChanged: true } }, `Base: ${base}\nBranch: feature\nCapabilities: new [], modified []\n\n## Durable docs\n`);
 		const a = await shipContext(session, state);
@@ -44,7 +44,7 @@ describe("shipContext", () => {
 			return defaultGitExec(args, opts);
 		};
 		const session = new Session(f.work, createGit(f.work, exec), exec);
-		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 		const at = (head: string) => stateFor("ship", { git: { branch: "feature", head, dirty: false, specsChanged: true } }, `Base: ${base}\nBranch: feature\n\n## Durable docs\n`);
 		await shipContext(session, at(base));
 		await writeIn(f.work, "a.ts", "a\n");
@@ -67,7 +67,7 @@ const approved = (headSha: string): GateResult => ({ outcome: "approved", supers
 
 async function shipSession(work: string): Promise<Session> {
 	const session = new Session(work, createGit(work));
-	session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+	session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 	return session;
 }
 

@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BRIEFING } from "../helpers/briefing.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { pickByLabel } from "../helpers/menu.ts";
@@ -337,5 +340,46 @@ describe("change_ship", () => {
 		expect(await openPulls(h)).toHaveLength(1);
 		expect(await ofKind(h, "ship")).toHaveLength(1);
 		expect(pushed(h)).toBe(true);
+	});
+});
+
+describe("change_ship ledger sync", () => {
+	/** Appends one ledger entry so the change has a local ledger ref to push. */
+	async function withLedger(h: ToolHarness): Promise<void> {
+		await h.session.ledger.append(h.n, { kind: "decision", id: "D1", data: { answer: "x" } });
+		await h.settle();
+	}
+
+	test("Ledger not pushed", async () => {
+		const h = await shipReady();
+		await withLedger(h);
+		// A pre-receive hook rejects every ref update under refs/livespec/, so the ledger push is refused.
+		writeFileSync(join(h.origin, "hooks", "pre-receive"), "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/livespec/*) echo rejected >&2; exit 1;; esac; done\n", { mode: 0o755 });
+		// An entry appended after the hook is not on origin, so the ship-time sync has to push it and is refused.
+		await h.session.ledger.append(h.n, { kind: "decision", id: "D2", data: { answer: "y" } });
+		await h.settle();
+		const before = originRefs(h.origin, { ignoreLedger: true });
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger could not be pushed");
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
+		expect(await openPulls(h)).toEqual([]);
+		expect(parseChange(await h.world.bodyOf(h.n)).header.pr).toBeUndefined();
+	});
+
+	test("ship pushes the ledger before the branch", async () => {
+		const h = await shipReady();
+		await withLedger(h);
+		// Origin has no ledger yet, so the ship-time sync is the one that pushes it.
+		execFileSync("git", ["update-ref", "-d", `refs/livespec/${h.n}`], { cwd: h.origin });
+		h.git("update-ref", "-d", `refs/livespec-origin/${h.n}`);
+		h.gitCalls.length = 0;
+		const out = await h.call("change_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const pushes = h.gitCalls.filter((args) => args[0] === "push");
+		const ledgerAt = pushes.findIndex((args) => args.some((s) => /:refs\/livespec\/\d+$/.test(s)));
+		const branchAt = pushes.findIndex((args) => args.includes(`HEAD:refs/heads/${h.git("branch", "--show-current")}`));
+		expect(ledgerAt).toBeGreaterThanOrEqual(0);
+		expect(branchAt).toBeGreaterThan(ledgerAt);
 	});
 });

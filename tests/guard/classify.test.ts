@@ -29,7 +29,7 @@ function expectAllowed(commands: string[], ctx: GuardContext = github): void {
 
 describe("forgeEndpoints", () => {
 	it("lists host, authority, GitHub API hosts and config hosts", () => {
-		const config: ProjectConfig = { githubHosts: ["ghe.corp"], giteaUrl: "https://Gitea.Corp:3000/", agentSkillsChannelSet: false };
+		const config: ProjectConfig = { githubHosts: ["ghe.corp"], giteaUrl: "https://Gitea.Corp:3000/", agentSkillsChannelSet: false, ledger: { retain: true } };
 		expect(forgeEndpoints({ kind: "github", host: "github.com", authority: "github.com" }, config)).toEqual([
 			"github.com",
 			"api.github.com",

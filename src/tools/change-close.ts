@@ -7,7 +7,7 @@ import { withEvidenceLock } from "../evidence/lock.ts";
 import { closeInitiative, closeRefusal, type CloseEvents, initiativeNumber, initiativeRefusal, postChangeSummary, summaryData } from "../ship/close.ts";
 import type { Forge } from "../forge/types.ts";
 import type { Session } from "../hooks/session.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 
@@ -45,7 +45,8 @@ async function close(p: ChangeCloseParams, pi: Emitter): Promise<ToolResult<unde
 	}
 	// The issue is closed: from here every failure is reported, never an error result, and the events always go first.
 	const closed = { change: n, ...(state.pr === undefined ? {} : { pr: state.pr.number }), ...(initiative === undefined ? {} : { initiative }), ...(abandon === undefined ? {} : { abandoned: true as const }) };
-	const problems = [emitQuietly(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) }), await refreshQuietly(w.session, n)].filter((m): m is string => m !== undefined);
+	const ledger = await removeLedgerQuietly(w, n, abandon);
+	const problems = [emitQuietly(pi, { closed, ...(initiativeClosed === undefined ? {} : { initiativeClosed }) }), await refreshQuietly(w.session, n), ledger].filter((m): m is string => m !== undefined);
 	const note = problems.length === 0 ? "" : ` Closed, but: ${problems.join("; ")}.`;
 	return toolResult(`Closed change #${n}${abandon === undefined ? "" : ` (abandoned: ${abandon.trim()})`}.${note}`, undefined);
 }
@@ -60,6 +61,22 @@ async function closeChangeIssue(forge: Pick<Forge, "closeIssue" | "getIssue">, n
 	} catch (error) {
 		const state = await forge.getIssue(n).then((issue) => (issue.stale ? undefined : issue.state), () => undefined);
 		if (state !== "closed") throw error;
+	}
+}
+
+/**
+ * Deletes the change ledger when `ledger.retain` is false (ledger-store "Ledger retention"). Skipped on `abandon` (kept by
+ * the accepted limit) and when no local ledger ref exists (a retry). A failed remote delete is returned as a note.
+ */
+async function removeLedgerQuietly(w: WriteContext, n: number, abandon: string | undefined): Promise<string | undefined> {
+	if (abandon !== undefined || w.session.config.project?.ledger.retain !== false) return undefined;
+	try {
+		// `tip` is the local ledger ref: absent on a retry that already deleted it, so there is nothing to remove.
+		if ((await w.ledger.read(n)).tip === undefined) return undefined;
+		const removed = await w.ledger.remove(n);
+		return removed.remote === "failed" ? `the ledger of #${n} was not deleted from origin (${removed.message ?? "unknown error"})` : undefined;
+	} catch (error) {
+		return `the ledger of #${n} was not removed (${messageOf(error)})`;
 	}
 }
 

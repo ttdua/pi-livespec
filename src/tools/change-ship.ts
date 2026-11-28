@@ -90,9 +90,13 @@ async function openPullRequest(s: Ship): Promise<PullRequest | { failed: string 
 	}
 }
 
-/** Push → open or adopt → `PR:` line → `ship` record. */
+/** Push → open or adopt → `PR:` line → `ship` record. The ledger is pushed first, so origin never holds a branch whose ledger is missing. */
 async function publish(s: Ship, adopt: PullRequest | undefined): Promise<ToolResult<undefined>> {
 	const n = s.state.issue.number;
+	const ledger = await s.w.ledger.sync(n);
+	if (ledger.status !== "synced") {
+		return refuse(`the ledger could not be pushed: ${ledger.status === "pending" ? ledger.reason : ledger.message}.`);
+	}
 	try {
 		await guardedPush(s.w.session.exec, s.w.session.cwd, REMOTE, `HEAD:refs/heads/${s.branch}`);
 	} catch (error) {

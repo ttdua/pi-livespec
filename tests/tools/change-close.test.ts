@@ -1,4 +1,8 @@
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { originRefs } from "./helpers.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { parseInitiative } from "../../src/core/initiative.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
@@ -17,10 +21,11 @@ afterEach(async () => {
 const initiativeBody = (n: number, others: string[] = []) =>
 	["Goal: cap", "Capabilities: [rate-limit]", "", "## Changes", `- [ ] #${n} per-ip-cap — Depends: —`, ...others, ""].join("\n");
 
-type Setup = { forge?: (world: MemoryWorld) => Forge; initiative?: boolean; others?: string[]; pr?: "open" | "merged" | "closed"; phase?: string };
+type Setup = { forge?: (world: MemoryWorld) => Forge; initiative?: boolean; others?: string[]; pr?: "open" | "merged" | "closed"; phase?: string; retain?: boolean };
 
 async function closeReady(o: Setup = {}): Promise<ToolHarness & { tracking?: number }> {
-	const h = await shipReady({ config: FORGE_CHAIN, noShipGate: true, ...(o.forge ? { forge: o.forge } : {}) });
+	const ledger = o.retain === undefined ? "" : `ledger: { retain: ${o.retain} }\n`;
+	const h = await shipReady({ config: `${FORGE_CHAIN}${ledger}`, noShipGate: true, ...(o.forge ? { forge: o.forge } : {}) });
 	let tracking: number | undefined;
 	if (o.initiative) {
 		tracking = await h.world.seedIssue({ title: "initiative", body: initiativeBody(h.n, o.others), labels: [] });
@@ -303,5 +308,61 @@ describe("change_close", () => {
 		expect(out.isError).toBe(true);
 		expect(await issueState(h, h.n)).toBe("open");
 		expect(emits(h)).toEqual([]);
+	});
+});
+
+describe("change_close ledger retention", () => {
+	/** Appends one ledger entry, so the change has a local ledger ref and origin has a copy of it. */
+	async function withLedger(h: ToolHarness): Promise<void> {
+		await h.session.ledger.append(h.n, { kind: "decision", id: "D1", data: { answer: "x" } });
+		await h.settle();
+		expect(await h.session.ledger.sync(h.n)).toEqual({ status: "synced" });
+	}
+
+	const localRef = (h: ToolHarness) => h.git("for-each-ref", "--format=%(refname)", `refs/livespec/${h.n}`);
+	const originHasLedger = (h: ToolHarness) => originRefs(h.origin).includes(`refs/livespec/${h.n}`);
+
+	test("Default keeps the ledger", async () => {
+		const h = await closeReady();
+		await withLedger(h);
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(localRef(h)).toBe(`refs/livespec/${h.n}`);
+		expect(originHasLedger(h)).toBe(true);
+	});
+
+	test("Retain false deletes it", async () => {
+		const h = await closeReady({ retain: false });
+		await withLedger(h);
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(localRef(h)).toBe("");
+		expect(originHasLedger(h)).toBe(false);
+		expect(textOf(out)).not.toContain("could not");
+	});
+
+	test("Remote delete fails", async () => {
+		const h = await closeReady({ retain: false });
+		await withLedger(h);
+		// A pre-receive hook rejects the ledger delete, so the remote delete fails.
+		writeFileSync(join(h.origin, "hooks", "pre-receive"), "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/livespec/*) echo rejected >&2; exit 1;; esac; done\n", { mode: 0o755 });
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await issueState(h, h.n)).toBe("closed");
+		expect(localRef(h)).toBe("");
+		expect(originHasLedger(h)).toBe(true);
+		expect(textOf(out)).toContain(`the ledger of #${h.n} was not deleted from origin`);
+		expect(emits(h).map((c) => c[0])).toEqual(["livespec:change-closed"]);
+	});
+
+	test("retry with no local ref skips the step", async () => {
+		const h = await closeReady({ retain: false });
+		// A retry after an earlier close: the local ledger ref is already gone, so the step has nothing to delete.
+		expect(localRef(h)).toBe("");
+		const out = await h.call("change_close", {});
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(textOf(out)).not.toContain("was not deleted");
+		expect(textOf(out)).not.toContain("the ledger");
 	});
 });

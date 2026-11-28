@@ -235,7 +235,7 @@ describe("pendingReasons", () => {
 });
 
 const LIMIT_SPEC = "---\npaths:\n  - src/limit/**\n---\n# rate-limit\n\n## Purpose\n\nLimits.\n\n## Requirements\n\n### Requirement: Cap\nThe system SHALL cap.\n\n#### Scenario: caps\n- **WHEN** too many\n- **THEN** rejected\n";
-const PROJECT = { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" };
+const PROJECT = { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } };
 
 /** A repo on `main` with the rate-limit spec; `origin/main` at HEAD. */
 async function specRepo(): Promise<{ root: string; run: (...args: string[]) => string; publish: () => string }> {
