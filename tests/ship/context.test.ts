@@ -9,7 +9,6 @@ import { type ShipContext, shipContext } from "../../src/ship/context.ts";
 import { durableDocsRule } from "../../src/ship/durable-docs.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
-import { parseMarked } from "../../src/forge/markers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { stateFor } from "../helpers/change-state.ts";
 import { fixture, sh, upstreamCommit } from "./repo.ts";
@@ -205,7 +204,6 @@ describe("shipContext behavior records", () => {
 	const human = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
 		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
 		const m = ledgerRecord(decisionComment(r));
-		if (m === undefined) throw new Error("not marked");
 		return { ...m, ref: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
 	};
 

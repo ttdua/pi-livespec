@@ -31,7 +31,7 @@ function previous(run: Run, f: Field, unit: string, body: string): unknown {
 
 /**
  * Whether this answer's override record exists. Effect records carry no `request`: a `decision` with
- * `request` completes a request (`readRequests`), and only the result comment may do that.
+ * `request` completes a request (`readRequests`), and only the result record may do that.
  */
 function hasOverride(run: Run, id: string, answer: Answered): boolean {
 	return run.marked.some((m) => {

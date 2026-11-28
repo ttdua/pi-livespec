@@ -3,7 +3,7 @@ import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
 import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 import { behaviorDigest, latestBehaviorRecords } from "../../src/docs/behavior-change.ts";
 
 const TAGS_U3: DecisionRecord = {

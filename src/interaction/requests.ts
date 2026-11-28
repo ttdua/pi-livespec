@@ -1,6 +1,6 @@
 // Request lifecycle facts (design D2), derived purely from own marked comments:
 // a `request` comment with no `answer` is pending, an `answer` with no result
-// comment is applying, and a result comment carrying `request: <id>` completes it.
+// comment is applying, and a result record carrying `request: <id>` completes it.
 
 import { gateDigest } from "../engine/locks.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
@@ -177,7 +177,7 @@ export function openRequestFor(requests: RequestsState, subject: Subject): strin
 	return openRequests(requests).find((r) => r.subject === subject)?.id;
 }
 
-/** The first own comment that closes a request: its `answer` comment, else its result comment. */
+/** The first own comment that closes a request: its `answer` comment, else its result record. */
 export type Closer = { commentId: string; answerCommentId?: string };
 
 /** The closer of every answered or completed request, keyed by request id. */

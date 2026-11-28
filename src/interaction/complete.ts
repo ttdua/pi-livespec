@@ -1,6 +1,6 @@
 // The completion engine (design D2): validate an answer once, record it as an
 // own `answer` comment, run the subject's effects (each skipped when already
-// applied), and write the result comment last. A recorded answer is never
+// applied), and write the result record last. A recorded answer is never
 // validated again; `finishApplying` finishes every answer left applying.
 
 import { messageOf } from "../core/messages.ts";
@@ -86,7 +86,7 @@ export async function recordAnswer(run: Run, req: RequestRecord, ans: Answered):
 	return record;
 }
 
-/** Runs the effects of a recorded answer, then writes its result comment last. */
+/** Runs the effects of a recorded answer, then writes its result record last. */
 export async function applyAnswer(run: Run, record: AnswerData): Promise<Completion> {
 	const result = await applyFor(record.request.subject)(run, record);
 	await writeResult(run, result);

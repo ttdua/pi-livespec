@@ -7,7 +7,7 @@ import { registerBuiltinRules, resetRulesForTests, ruleFor } from "../../src/dec
 import { type Decided, decide } from "../../src/decide/seam.ts";
 import { PROGRESS_OUTPUT_BYTES, type ProgressFacts, previousSignature, progressRecord } from "../../src/evidence/progress-rule.ts";
 import { type Signature, failureSignature } from "../../src/evidence/signature.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 
 beforeEach(() => {
 	resetRulesForTests();

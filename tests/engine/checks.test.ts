@@ -12,7 +12,7 @@ import { checkNames, clearGateMemo, gateMemoGeneration, isGateOnly, onGateMemoCl
 import { unitDigest } from "../../src/core/digest.ts";
 import { decisionComment, type DecisionRecord } from "../../src/decide/records.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 

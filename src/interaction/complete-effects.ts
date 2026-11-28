@@ -11,7 +11,7 @@ import { type MarkedComment, parseMarked } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import type { Ledger } from "../ledger/index.ts";
-import { lastForgeRef } from "../ledger/merge.ts";
+import { ledgerAsRecord, lastForgeRef } from "../ledger/merge.ts";
 import type { ShipContext, ShipInput } from "../ship/context.ts";
 import type { AnswerData } from "./requests.ts";
 
@@ -53,7 +53,7 @@ export async function postComment(run: Run, body: string): Promise<void> {
 export async function appendRecord(run: Run, input: AppendInput): Promise<void> {
 	const after = lastForgeRef(run.marked);
 	const entry = await run.ctx.ledger.append(run.ctx.issue, { ...input, ...(after === undefined ? {} : { after }) });
-	run.marked.push({ ref: entry.ref, source: "ledger", kind: entry.kind, id: entry.id, author: "", data: entry.data, createdAt: entry.at, ...(entry.from === undefined ? {} : { from: entry.from }) });
+	run.marked.push(ledgerAsRecord(entry));
 }
 
 /** Writes an apply module's result: the comment is posted, the entry appended. */

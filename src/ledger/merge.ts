@@ -13,8 +13,8 @@ export function mergeRecords(comments: MarkedComment[], entries: LedgerEntry[]):
 	for (const entry of bySeq(entries)) {
 		const slot = slotOf(comments, entry);
 		const placed = slots.get(slot);
-		if (placed) placed.push(asRecord(entry));
-		else slots.set(slot, [asRecord(entry)]);
+		if (placed) placed.push(ledgerAsRecord(entry));
+		else slots.set(slot, [ledgerAsRecord(entry)]);
 	}
 	return [...(slots.get(BEFORE_ALL) ?? []), ...comments.flatMap((c, i) => [c, ...(slots.get(i) ?? [])])];
 }
@@ -47,6 +47,7 @@ function slotOf(comments: MarkedComment[], entry: LedgerEntry): number {
 	return last;
 }
 
-function asRecord(e: LedgerEntry): MarkedComment {
+/** The own record a ledger entry reads as once placed in the merged list (`source: "ledger"`, no forge author). */
+export function ledgerAsRecord(e: LedgerEntry): MarkedComment {
 	return { ref: e.ref, source: "ledger", kind: e.kind, id: e.id, author: "", data: e.data, createdAt: e.at, ...(e.from === undefined ? {} : { from: e.from }) };
 }

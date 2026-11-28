@@ -478,6 +478,20 @@ describe("completion engine", () => {
 		expect(ofKind(await markedOf(f), "decision", "pick.U1")).toHaveLength(1);
 	});
 
+	test("decide resumes after a crash before the decision entry", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "x", label: "X" }, { id: "y", label: "Y" }];
+		const record = await prepare(f, "stuck", "decide:pick.U1", { point: "pick", subject: "U1", facts: {}, digest: "d1" }, options);
+		const crashing = failingOnce(createLedger(defaultGitExec, f.root), (op) => op === "append");
+		await expect(completeAnswer(await ctxOf(f, f.world.forge, crashing), record, answer({ choice: "y" }))).rejects.toThrow("injected");
+		expect(ofKind(await markedOf(f), "decision", "pick.U1")).toEqual([]);
+
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		const marked = await markedOf(f);
+		expect(ofKind(marked, "decision", "pick.U1")).toHaveLength(1);
+		expect(readRequests(marked)).toEqual({ pending: [], applying: [] });
+	});
+
 	test("changes requested resumes after a crash before the gate result", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
