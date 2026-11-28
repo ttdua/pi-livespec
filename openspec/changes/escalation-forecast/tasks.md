@@ -2,10 +2,10 @@
 
 Blocked by: none
 
-- [ ] 1.1 Add `hasGateResults(name, key)` to `src/engine/registry.ts`
-- [ ] 1.2 Add `evaluateChecks` returning `{ checks, unrun }` in `src/engine/checks.ts`; `runChecks` returns its `checks`
-- [ ] 1.3 Tests in `tests/engine/checks.test.ts`: Gate-only check without a valid result is named, Changed key names the check again, unkeyed check always named, gate request returns empty `unrun`
-- [ ] 1.4 Add optional `gateChecksUnrun` to `ChangeState` and set it in `changeState` (`src/hooks/card-input.ts`)
+- [x] 1.1 Add `hasGateResults(name, key)` to `src/engine/registry.ts`
+- [x] 1.2 Add `evaluateChecks` returning `{ checks, unrun }` in `src/engine/checks.ts`; `runChecks` returns its `checks`
+- [x] 1.3 Tests in `tests/engine/checks.test.ts`: Gate-only check without a valid result is named, Changed key names the check again, unkeyed check always named, gate request returns empty `unrun`
+- [x] 1.4 Add optional `gateChecksUnrun` to `ChangeState` and set it in `changeState` (`src/hooks/card-input.ts`)
 
 ## 2. Forecast caveat
 
