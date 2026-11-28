@@ -6,7 +6,7 @@
 > from "keep as-is" to PR later).
 
 **Change**: `agent-behavior-conclusion`
-**Finalized at**: `2026-11-28 18:40`
+**Finalized at**: `2026-11-28 23:10`
 **Outcome**: `pr-updated`
 
 The project AGENTS.md requires explicit permission in chat before a push or PR. The user gave it, and then steps 10–12 ran: push, PR creation, PR comment.
@@ -17,35 +17,35 @@ The project AGENTS.md requires explicit permission in chat before a push or PR. 
 
 - **Branch**: `behavior-change`
 - **Base branch**: `main`
-- **Final state**: `pr-updated`. The worktree branch was merged with fast-forward only, then `behavior-change` was pushed to `origin` (new remote branch) and PR #80 was opened against `main`.
+- **Final state**: `pr-updated`. The branch was rebased onto `origin/main` (0cf66d4: ledger-store #79 + escalation-forecast #81) as `behavior-change-rebase`; `behavior-change` was reset to it and force-pushed with `--force-with-lease` (user approval in chat). The pre-rebase head `5f5023c` is kept in tag `behavior-change-pre-rebase`, pushed to `origin`.
 - **PR URL**: `https://github.com/ttdua/pi-livespec/pull/80`
 
 ---
 
 ## Workspace
 
-- **Worktree**: removed (`~/Projects/oss/pi-livespec.agent-behavior-conclusion`)
-- **Cleanup**: `removed`. The project AGENTS.md mandates Worktrunk, so the worktree was removed with `wt remove agent-behavior-conclusion` rather than `git worktree remove`. Branch `agent-behavior-conclusion` was then deleted with `git branch -d`, since it is merged into `behavior-change`.
+- **Worktree**: removed (`~/Projects/oss/pi-livespec.behavior-change-rebase`)
+- **Cleanup**: `removed` (with `wt remove`; branch `behavior-change-rebase` deleted after `behavior-change` pointed at it).
 
 ---
 
 ## PR comment
 
-- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/80#issuecomment-7238058449)
+- **PR comment status**: `edited-existing` (https://github.com/ttdua/pi-livespec/pull/80#issuecomment-7238058449)
 
 ---
 
 ## Code review
 
-- **Code review**: `approved`
+- **Code review**: `approved` (iteration 3)
 - **Reviewer tier**: human (user, in chat). Before that, the task reviewers and the final whole-branch review (`superspec.task-reviewer`) both gave "ready to merge".
-- **Commit range reviewed**: `60e5431..3cbfb10`
+- **Commit range reviewed**: `57ab980..9dc7091` (rebased onto 0cf66d4 as `..aa0d5bb`; the only overlap with #81 is CHANGELOG, no conflict)
 
 ---
 
 ## Tests
 
-- **Baseline status at finish**: `passing`. Results on the merged `behavior-change`: `bun run typecheck` exit 0, and `bunx vitest run` exit 0 (262 files, 4232 tests, 0 failed).
+- **Baseline status at finish**: `passing` at `aa0d5bb` (after rebase onto #81): `bun run typecheck` exit 0; `bunx vitest run --maxWorkers=3` exit 0, 268 files, 4358 tests. One earlier run had a 30 s timeout in `tests/e2e/subagent-build.test.ts` under machine load ~100; that file passed 6/6 in 5 further solo runs on the branch, as on plain main.
 
 ---
 
