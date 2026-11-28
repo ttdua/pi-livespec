@@ -7,7 +7,7 @@
 
 **Change**: `interaction-contract`
 **Finalized at**: `2026-11-28 04:29` (UTC)
-**Outcome**: `pr-updated`
+**Outcome**: `pr-created`
 
 ---
 
@@ -15,8 +15,8 @@
 
 - **Branch**: `issue-65`
 - **Base branch**: `main`
-- **Final state**: `pr-updated`. `issue-65` was fast-forwarded to `63bab2c` and pushed. No PR existed before this finalize.
-- **PR URL**: see the PR comment section. It is filled in after the PR prompt.
+- **Final state**: `pr-open`. `issue-65` was fast-forwarded to `63bab2c` and pushed, and the PR was opened at the finalize prompt.
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/78
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## PR comment
 
-- **PR comment status**: pending the PR prompt
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/78#issuecomment-7234086014)
 
 ---
 
