@@ -38,10 +38,12 @@
 | `DecisionRecord.source` | modified | `"rule" \| "human" \| "agent" \| "reviewer"` | no |
 | `BehaviorOutcome` | new | `"unchanged" \| "changed"` | no |
 | `BehaviorConclusionInput` | new | `{ capability: string; outcome: BehaviorOutcome; rationale: string }` | no |
-| `BehaviorConclusion` | new | `{ outcome: BehaviorOutcome; source: "agent" \| "reviewer" \| "human"; reason: string; files: string[]; commentId: string }` | no |
+| `BehaviorConclusion` | new | `{ outcome: BehaviorOutcome; source: "agent" \| "reviewer" \| "human"; reason: string; files: string[]; ref: string }` (port: `commentId` → `ledger/forge ref`, Task 8) | no |
 | `effectiveConclusion` | new | `(marked: MarkedComment[], item: BehaviorItem) => BehaviorConclusion \| undefined` | no |
 | `latestConclusions` | new (replaces `latestBehaviorRecords`) | `(marked: MarkedComment[]) => Map<string, BehaviorConclusion>` | no |
 | `behaviorConclusionComment` | new | `(item: BehaviorItem, c: { source: "agent" \| "reviewer" \| "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown } }) => string` | no |
+| `behaviorConclusionComment` (port) | modified (Task 8) | returns `AppendInput` (a ledger entry input), like `decisionComment` on main | no |
+| `isBacked` | modified (Task 8) | `(marked, m, record) => boolean` in `src/decide/answered.ts`; also accepts a ledger `human` `behavior-change` entry with `overridden_by` when its `request`'s own forge `answer` is valid, `changes_requested`, and lists the capability in `answer.behaviorOverrides` | no |
 | `applyBehaviorOverrides` | new | `(run: Run, answer: Answered, snapshot: GateSnapshot) => Promise<void>` | no |
 | `return-behavior` decision | new | `ResultDecision` gains `{ kind: "return-behavior"; capabilities: string[] }` | no |
 | `behaviorPacketData` / `registerPacketBehavior` | new | `behaviorPacketData(ctx: PacketContext) => Promise<Packet["behavior"]>` in `src/docs/behavior-source.ts`; `registerPacketBehavior(fn)` in `src/subagents/sources.ts`, a hook `buildPacket` calls so `subagents/` never imports `docs/` | no |
@@ -53,13 +55,13 @@
 | `DispatchDeps.afterRecord` / `prepareResult` | new (apply deviation) | optional hooks on `DispatchDeps`: `prepareResult(run, result)` normalises reviewer `behavior` once before `interpret`; `afterRecord(run, result)` posts reviewer records after `recordResult`. Reason: `subagents/` must not import `docs/` | no |
 | `interpret` | modified (apply deviation) | gains an optional `prepare?: (r: SubagentResult) => SubagentResult` argument, applied right after the schema check. Reason: final review F1 (normalise once, before the dispute check) | no |
 | `FindingSummaryData.behavior` | new (apply deviation) | optional cleaned `BehaviorConclusionInput[]` on reviewer `change` finding-summaries. Reason: final review F2, so lost reviewer records can be replayed idempotently | no (stored in `finding-summary` comments) |
-| `validDecisionEntries` | new (apply deviation) | `(marked) => { record: DecisionRecord; commentId: string }[]` in `src/decide/records.ts`. Reason: `BehaviorConclusion.commentId` | no |
+| `validDecisionEntries` | new (apply deviation) | `(marked) => { record: DecisionRecord; ref: string }[]` in `src/decide/records.ts` (port, Task 8). Reason: `BehaviorConclusion.commentId` | no |
 | `validateBehaviorParam` | new | `(raw: unknown) => { ok: true; entries: BehaviorConclusionInput[] } \| { ok: false; message: string }` | no |
 | `spec_gate` parameter `behavior` | new | `{ capability: string; outcome: "unchanged"\|"changed"; rationale: string }[]`, optional | public (tool API) |
 | `BehaviorOverride` | new | `{ capability: string; outcome: "changed" }` | no |
 | `Answered.behaviorOverrides` | new | `BehaviorOverride[] \| undefined` | no (stored in `answer` comments) |
 | `ApprovalRequest.overridableBehavior` | new | `{ items: { capability: string; outcome: BehaviorOutcome \| null }[] } \| undefined`, derived from `GateSnapshot.behavior` for the adapters | no |
-| Forge command `set behavior` | new | `/livespec set behavior <capability> changed` → `Command { verb: "set-behavior"; capability: string }` | public (forge grammar) |
+| Forge command `set behavior` | removed (Task 8) | was `/livespec set behavior <capability> changed`; removed when rebasing onto LS-12a, LS-12c (#61) owns forge answers. User decision. | public (forge grammar unchanged vs main) |
 | Reviewer result `behavior` | new | optional array of `BehaviorConclusionInput` in the reviewer result schema | public (child contract) |
 | Packet source `records:behavior-conclusions` | new | required for `reviewer`/`change` when items exist; text one line per item: `- <cap>: <outcome> (<source>) — <reason>; files: a, b` or `- <cap>: none; files: …` | no |
 
@@ -337,6 +339,32 @@
 
 ---
 
+## Task 8: Port onto ledger-store — implements 8
+
+**Covers:** 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
+**Difficulty:** Very Hard
+**Blocked by:** Task 7
+
+The branch is squashed onto `origin/main` (57ab980, ledger-store #79) with text conflicts resolved; this task makes it compile and pass on the ledger.
+
+**Files:**
+- Modify: `src/decide/records.ts` (`validDecisionEntries` → `ref`), `src/decide/answered.ts` (`isBacked`), `src/docs/behavior-change.ts`, `src/docs/behavior-record.ts`, `src/docs/behavior-review.ts`, `src/interaction/complete-behavior.ts`, `src/interaction/complete-validate.ts` (keep the supersede guard), `src/tools/subagent-record.ts`, `src/tools/subagent-request.ts`, `src/subagents/dispatch.ts`, `src/review/stages.ts`, `src/interaction/commands.ts`, `src/interaction/forge-match.ts`, `src/interaction/forge-text.ts`
+- Delete: `src/interaction/forge-behavior.ts`
+- Docs: `README.md`, `README.vi.md`, `docs/architecture.md`, `CHANGELOG.md`
+- Test: every test listed in 8.4, plus a new `isBacked` test in `tests/decide/` and "Override without its forge answer" / "No override on the forge"
+
+- [ ] **Step 1: Contracts.** Apply the Contracts rows marked Task 8; run `bun run typecheck` and list the errors.
+- [ ] **Step 2: Failing tests.** "Override without its forge answer" (`tests/interaction/complete.test.ts` or `tests/docs/behavior-change.test.ts`): an override entry without a backing answer, and one whose answer lacks the capability, do not count. "No override on the forge" (`tests/interaction/forge.test.ts`): `/livespec set behavior rate-limit changed` warns as unparseable and the request stays pending.
+- [ ] **Step 3: Port writers.** Every `post(behaviorConclusionComment(...))` becomes a ledger append (`appendRecord` with `run`/`w`, or `RecordDeps.record`). Replay idempotency reads reviewer entries after the summary by merged-list position, as before.
+- [ ] **Step 4: `isBacked`.** Extend as in Contracts; `applyBehaviorOverrides` writes `request: <gate request id>`.
+- [ ] **Step 5: Remove the forge override** (8.3).
+- [ ] **Step 6: Port tests** (8.4) to `tests/helpers/ledger.ts`; keep every scenario name.
+- [ ] **Step 7: Docs** (8.5).
+- [ ] **Step 8: Verify.** `bun run typecheck` exit 0; `bunx vitest run` 0 failed; `openspec validate agent-behavior-conclusion` exit 0.
+- [ ] **Step 9: Commit.** `refactor(durable-doc-checks): behavior conclusions on the ledger`
+
+---
+
 ## Scenario → test
 
 Scenarios of unchanged baseline text inside MODIFIED blocks keep their existing tests (found by name under `tests/`). Re-run them, with no edits expected unless a fixture used the removed ask:
@@ -354,20 +382,15 @@ New or changed scenarios:
 - No unit tab without overridable units (updated WHEN) → `tests/interaction/dialog/host.test.ts` (Task 5)
 - Override sent with request changes → `tests/interaction/dialog/host.test.ts` (Task 5)
 - Override discarded with approve → `tests/interaction/dialog/host.test.ts` (Task 5)
-- Forge override then changes → `tests/interaction/forge.test.ts` (Task 5)
-- Forge override then approve → `tests/interaction/forge.test.ts` (Task 5)
 - Behavior key hint → `tests/interaction/dialog/host.test.ts` (Task 5)
 - Review shows the override with request changes → `tests/interaction/dialog/host.test.ts` (Task 5)
 - Select fallback offers the override → `tests/interaction/in-session.test.ts` (Task 5)
-- Override on another gate → `tests/interaction/forge.test.ts` (Task 5)
-- Unknown capability → `tests/interaction/forge.test.ts` (Task 5)
 - Rule ask carries descriptions (now a test rule) → `tests/docs/behavior-change.test.ts` (Task 1)
 - Agent source only for behavior-change → `tests/decide/records.test.ts` (Task 1)
 - Rationale too long → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Flow without the check → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Two capabilities, no dialog → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Missing conclusion → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
-- Unknown capability listed → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Other refusal writes nothing → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Legacy request still open → `tests/tools/spec-gate-behavior.test.ts` (final fix wave)
 - Changed conclusion blocks the same call → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
@@ -399,10 +422,11 @@ New or changed scenarios:
 - Behavior answer before a refusal (updated WHEN) → `tests/tools/spec-gate-behavior.test.ts` (Task 2)
 - Behavior conclusions listed → `tests/docs/behavior-payload.test.ts` (Task 3)
 - No behavior section without items → `tests/docs/behavior-payload.test.ts` (Task 3)
-- Behavior override command listed → `tests/interaction/forge-text.test.ts` (Task 5)
 - Agent conclusion covers the files → `tests/ship/context.test.ts` (Task 4)
 - Newer changed record wins (updated WHEN) → `tests/ship/durable-docs.test.ts` (Task 4)
 - Protected change of other files → `tests/ship/durable-docs.test.ts` (Task 4)
 - Reviewer behavior accepted → `tests/subagents/roles.test.ts` (Task 6)
 - Bad behavior outcome → `tests/subagents/roles.test.ts` (Task 6)
 - Behavior conclusions required for change review → `tests/subagents/sources.test.ts` (Task 6)
+- No override on the forge → `tests/interaction/forge.test.ts` (Task 8)
+- Override without its forge answer → `tests/interaction/complete.test.ts` (Task 8)

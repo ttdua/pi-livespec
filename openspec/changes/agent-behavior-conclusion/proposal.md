@@ -17,7 +17,7 @@ The `behavior-change` rule asks the human, once per capability and in a blocking
 
 **What the human sees and can do**
 - From: one dialog per capability, then the gate.
-- To: the define gate payload lists, under a livespec section "Behavior conclusions (please check)", one line per item: the capability, the outcome, the source and the rationale. To disagree, the human requests changes with a behavior override: the dialog's Behavior tab, or the forge command `/livespec set behavior <capability> changed`. The override records `changed` with `source: human`.
+- To: the define gate payload lists, under a livespec section "Behavior conclusions (please check)", one line per item: the capability, the outcome, the source and the rationale. To disagree, the human requests changes in session with a behavior override on the dialog's Behavior tab, or in the `select` fallback step. The override is recorded as a `changed` ledger entry with `source: human`. It counts only beside the own forge `answer` comment of that gate request. On the forge the human requests changes with notes; LS-12c (#61) replaces the forge command grammar with reaction answers, so this change adds no forge command.
 - Impact: approving stays one pick; flipping is optional.
 
 **Precedence**
@@ -36,13 +36,12 @@ The `behavior-change` rule asks the human, once per capability and in a blocking
 - `phase-gates`: "Gate tool" gains the `behavior` parameter and drops the ask-before-refusal exception; "Gate review payload" gains the behavior conclusions section.
 - `ship-phase`: "Durable docs rule and check" counts the effective conclusion of any source.
 - `decision-seam`: "Decision records" allows sources `agent` and `reviewer` for point `behavior-change`.
-- `approver-adapters`: "Forge command comments" gains `set behavior`; "In-session dialog" gains the Behavior tab; a new requirement covers behavior overrides.
+- `approver-adapters`: "In-session dialog" gains the Behavior tab; a new requirement covers behavior overrides in session (none on the forge).
 - `subagent-dispatch`: "Return contract" lets `reviewer` results carry `behavior` conclusions.
 - `subagent-packets`: "Context manifest" adds `records:behavior-conclusions` to the `change` reviewer packet.
-- `request-briefing`: "Forge request text" lists `set behavior` among the accepted commands of a define gate with behavior items.
 
 ## Impact
 
-- Code: `src/docs/behavior-change.ts`, `src/docs/behavior-ask.ts` (removed), `src/docs/behavior-check.ts`, `src/docs/register.ts`, `src/tools/spec-gate.ts`, `src/tools/decide-ask.ts`, `src/decide/records.ts`, `src/ship/context.ts` and the durable-docs rule, `src/subagents/roles.ts` and `run-record.ts`, `src/interaction/commands.ts`, `forge-match.ts`, `forge-text.ts`, `approver.ts`, `complete-gate.ts`, `dialog/*`.
-- Public API: the `spec_gate` tool parameters, the forge command grammar (additive), and the reviewer result schema (additive, optional field).
+- Code: `src/docs/behavior-change.ts`, `src/docs/behavior-ask.ts` (removed), `src/docs/behavior-check.ts`, `src/docs/register.ts`, `src/tools/spec-gate.ts`, `src/tools/decide-ask.ts`, `src/decide/records.ts`, `src/ship/context.ts` and the durable-docs rule, `src/subagents/roles.ts` and `run-record.ts`, `src/decide/answered.ts` (`isBacked` also accepts a behavior override backed by its gate answer), `src/interaction/approver.ts`, `complete-gate.ts`, `dialog/*`, `in-session.ts`. Records are ledger entries (ledger-store, ADR 0008).
+- Public API: the `spec_gate` tool parameters, and the reviewer result schema (additive, optional field).
 - No new dependency and no data migration: old human records stay valid.

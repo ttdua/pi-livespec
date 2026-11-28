@@ -66,7 +66,7 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 - **THEN** `decide` throws naming `recommended`
 
 ### Requirement: Decision records
-Every decision of a change SHALL be recorded as a `decision` comment with id `<point>.<subject>` and these YAML fields:
+Every decision of a change SHALL be recorded as a `decision` ledger entry (see `ledger-store`) with id `<point>.<subject>` and these YAML fields:
 - `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`; `source` SHALL be `rule` or `human`, and for point `behavior-change` also `agent` or `reviewer`; a record of another point with source `agent` or `reviewer` MUST be invalid;
 - `facts`, or `facts_hash` when the facts' YAML exceeds 2,000 characters;
 - for point `behavior-change`, `files`: the item's files, kept when `facts` becomes `facts_hash`;
@@ -77,7 +77,7 @@ The latest record for an id SHALL win, except that a record with `proposal: true
 
 #### Scenario: Record fields
 - **WHEN** `plan_units` writes U3 with tags `[security, api]` where the agent added `api`
-- **THEN** the `decision` comment `tags.U3` has source `rule`, outcome `[security, api]` and `agent_additions: [api]`
+- **THEN** the `decision` entry `tags.U3` has source `rule`, outcome `[security, api]` and `agent_additions: [api]`
 
 #### Scenario: Large facts hashed
 - **WHEN** a decision's facts serialize to more than 2,000 characters of YAML
@@ -85,15 +85,15 @@ The latest record for an id SHALL win, except that a record with `proposal: true
 
 #### Scenario: Lane decision in the pull request only
 - **WHEN** `fix_ship` opens a pull request for `fix/typo`
-- **THEN** the `lane` record is in the pull request body and no `decision` comment is written to any issue
+- **THEN** the `lane` record is in the pull request body and no `decision` entry or comment is written for any issue
 
 #### Scenario: Proposal record is not current
 - **WHEN** `difficulty.U1` has a rule record `low` for U1's digest followed by a human record `high` with `proposal: true` for the same digest
 - **THEN** the current `difficulty` decision of U1 is the rule record `low`
 
 #### Scenario: Agent source only for behavior-change
-- **WHEN** an own `decision` comment `difficulty.U1` has source `agent`
-- **THEN** it is invalid and not read as a decision, while a `behavior-change.rate-limit` record with source `agent` is valid
+- **WHEN** a `decision` entry `difficulty.U1` has source `agent`
+- **THEN** it is invalid and not read as a decision, while a `behavior-change.rate-limit` entry with source `agent` is valid
 
 #### Scenario: Behavior files kept with hashed facts
 - **WHEN** a `behavior-change` record's facts serialize to more than 2,000 characters of YAML

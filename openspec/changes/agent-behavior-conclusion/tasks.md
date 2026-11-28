@@ -38,7 +38,7 @@ Blocked by: 1
 Blocked by: 1, 2, 3
 
 - [x] 5.1 Add `BehaviorOverride`, `Answered.behaviorOverrides`, the stored `GateSnapshot.behavior` and the derived `ApprovalRequest.overridableBehavior` in `src/interaction/approver.ts`; set the snapshot on `gate:define` requests in `buildRequest` (`src/tools/spec-gate.ts`) when items exist
-- [x] 5.2 Forge: parse `set behavior <capability> changed` in `src/interaction/commands.ts`; collect in a new `src/interaction/forge-behavior.ts` called from `forge-match.ts`, attach only to `changes`, warn on approve or other outcomes, an unknown capability, a value other than `changed`, or a non-define request; list the command in `src/interaction/forge-text.ts` `<details>` (approver-adapters "Forge command comments", "Behavior overrides"; request-briefing "Forge request text")
+- [x] 5.2 (Superseded by 8.3: the forge override was removed when rebasing onto LS-12a; LS-12c owns forge answers.) Forge: parse `set behavior <capability> changed` in `src/interaction/commands.ts`; collect in a new `src/interaction/forge-behavior.ts` called from `forge-match.ts`, attach only to `changes`, warn on approve or other outcomes, an unknown capability, a value other than `changed`, or a non-define request; list the command in `src/interaction/forge-text.ts` `<details>` (approver-adapters "Forge command comments", "Behavior overrides"; request-briefing "Forge request text")
 - [x] 5.3 Dialog: `b` key hint and Behavior tab in `src/interaction/dialog/{model,state,keys,view,result}.ts`; the Review tab shows overrides or marks them discarded (approver-adapters "In-session dialog", "Behavior overrides")
 - [x] 5.4 `select` fallback: an optional "Mark behavior changed" step after request changes in `src/interaction/in-session.ts`
 - [x] 5.5 Completion: `applyBehaviorOverrides(run, answer, snapshot)` in a new `src/interaction/complete-behavior.ts`, idempotent by `overridden_by`, called from `src/interaction/complete-gate.ts` when not superseded and `changes_requested`, before the stale and gate comments (durable-doc-checks "Human behavior override")
@@ -61,3 +61,15 @@ Blocked by: 2, 3, 4, 5, 6
 - [x] 7.1 Update the README "Behavior-change question" paragraph (define gate section) and `README.vi.md`, plus `docs/architecture.md` mentions, to describe agent conclusions and the override
 - [x] 7.2 Add a CHANGELOG entry
 - [x] 7.3 Run `bun run typecheck` and `bun run test`; all green
+
+## 8. Port onto ledger-store (LS-12a)
+
+Blocked by: 7
+
+- [ ] 8.1 Port record writes to the ledger: `behaviorConclusionComment` returns an `AppendInput` (like `decisionComment` on main); `recordBehaviorConclusions`, `recordReviewerConclusions`/replay and `applyBehaviorOverrides` append through the ledger (`appendRecord`, `RecordDeps.record`); `BehaviorConclusion.commentId` becomes `ref`, and `validDecisionEntries` returns `{ record, ref }`
+- [ ] 8.2 `isBacked` (`src/decide/answered.ts`): a ledger `human` `behavior-change` entry with `overridden_by` counts only when the own forge `answer` of its `request` is valid, `changes_requested`, and lists the capability in `behaviorOverrides`; `applyBehaviorOverrides` writes `request`; `effectiveConclusion`/`latestConclusions` skip unbacked human entries (durable-doc-checks "Human behavior override", scenario "Override without its forge answer")
+- [ ] 8.3 Remove the forge override: drop `set-behavior` from `src/interaction/commands.ts`, delete `src/interaction/forge-behavior.ts` and its calls in `forge-match.ts`, drop the `<details>` line in `forge-text.ts`, and remove or rewrite their tests (approver-adapters "Behavior overrides", scenario "No override on the forge")
+- [ ] 8.4 Port the tests to the ledger harness of main (`tests/helpers/ledger.ts`, `ledgerRecord`, `appendSeed`): fix the typecheck errors and rewrite the spec-gate-behavior, behavior-payload, records, sources, dispatch and subagent-record tests that seed or read decision comments
+- [ ] 8.5 Update README, README.vi, docs/architecture.md and CHANGELOG: records are ledger entries, overrides are in session only
+- [ ] 8.6 Run `bun run typecheck`, `bunx vitest run` and `openspec validate agent-behavior-conclusion`; all green
+

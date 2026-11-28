@@ -20,7 +20,7 @@ When the target phase lists the `behavior-change` check, `spec_gate define|revie
 
 #### Scenario: Missing conclusion
 - **WHEN** the change has behavior items for `rate-limit` and `forge-read` and `spec_gate define` runs with `behavior` listing only `rate-limit`
-- **THEN** the tool refuses naming `forge-read`, and no `decision` comment or request is written
+- **THEN** the tool refuses naming `forge-read`, and no `decision` entry or request is written
 
 #### Scenario: Unknown capability listed
 - **WHEN** the change has one behavior item for `rate-limit` and `behavior` also lists `cache`
@@ -28,11 +28,11 @@ When the target phase lists the `behavior-change` check, `spec_gate define|revie
 
 #### Scenario: Legacy request still open
 - **WHEN** a `decide:behavior-change.rate-limit` request from before this rule is still open, `rate-limit` is a behavior item, and `spec_gate define` runs with a valid `behavior` list
-- **THEN** the tool refuses naming that request and saying to answer or dismiss it, and no `decision` comment or request is written
+- **THEN** the tool refuses naming that request and saying to answer or dismiss it, and no `decision` entry or request is written
 
 #### Scenario: Other refusal writes nothing
 - **WHEN** `spec_gate define` runs with a valid `behavior` list and `spec-format` reports an error (or the tree is dirty, or a blocking question is open)
-- **THEN** `spec_gate` refuses with that reason, and no `decision` comment is written
+- **THEN** `spec_gate` refuses with that reason, and no `decision` entry is written
 
 #### Scenario: Changed conclusion blocks the same call
 - **WHEN** `spec_gate define` runs with `behavior` concluding `rate-limit` `changed` and its spec unchanged
@@ -40,7 +40,7 @@ When the target phase lists the `behavior-change` check, `spec_gate define|revie
 
 #### Scenario: Same conclusion not re-posted
 - **WHEN** the latest agent record for `rate-limit` at the current digest is `unchanged` with reason R, and `spec_gate review` runs with the same outcome and rationale R
-- **THEN** no new `decision` comment is posted for `rate-limit`
+- **THEN** no new `decision` entry is appended for `rate-limit`
 
 ### Requirement: Behavior conclusion rule
 The `behavior-change` decision point SHALL be registered with `registerRule`, configured as `decisions.behavior-change: { mode: rule }`, and MUST NOT ask: through `decide` it SHALL return outcome `null` with a reason naming the `behavior` parameter of `spec_gate`. A conclusion SHALL be a `decision` record with point `behavior-change`, subject the capability, source `agent`, `reviewer` or `human`, the outcome, the rationale as `reason`, the item as facts, its files as the top-level `files` field, and as digest the SHA-256 of the files joined by newlines.
@@ -51,7 +51,7 @@ The `behavior-change` decision point SHALL be registered with `registerRule`, co
 
 #### Scenario: Agent conclusion recorded
 - **WHEN** `spec_gate define` records `rate-limit` `unchanged` with rationale `refactor only; scenarios green`
-- **THEN** a `decision` comment holds point `behavior-change`, subject `rate-limit`, source `agent`, outcome `unchanged`, reason `refactor only; scenarios green`, the files and the digest
+- **THEN** a `decision` ledger entry holds point `behavior-change`, subject `rate-limit`, source `agent`, outcome `unchanged`, reason `refactor only; scenarios green`, the files and the digest
 
 ### Requirement: Behavior conclusion precedence
 The effective conclusion of a behavior item SHALL come from its capability's valid `behavior-change` records with outcome `unchanged` or `changed` (human answers to older requests included). The candidates are those with the item's digest and facts, plus every human or reviewer `changed` record whose `files` share a file with the item. In record order, each newer candidate SHALL replace the current one unless the current one ranks higher: human `changed` 3, reviewer `changed` 2, others 1. At ship, a capability's latest conclusion SHALL use this order over all its records.
@@ -138,7 +138,7 @@ A reviewer result MAY carry `behavior` entries shaped as in "Behavior conclusion
 - **THEN** no `decision` record is posted
 
 ### Requirement: Human behavior override
-When a define gate answer with outcome `changes_requested` carries behavior overrides (approver-adapters "Behavior overrides") and is not superseded, completion SHALL post, as an effect before the `stale` and `gate` comments, a `human` `decision` record with outcome `changed` for each override of a current behavior item. The record SHALL hold the item's facts, digest and files, the reason `set by <by> at the gate`, and `overridden_by` with who, when and the previous effective outcome. Completion SHALL skip an override already recorded for the same answer, and one whose capability is no longer a behavior item.
+When a define gate answer with outcome `changes_requested` carries behavior overrides (approver-adapters "Behavior overrides") and is not superseded, completion SHALL append, as an effect before the `stale` and `gate` comments, a `human` `decision` ledger entry with outcome `changed` for each override of a current behavior item. The entry SHALL hold the item's facts, digest and files, the reason `set by <by> at the gate`, `overridden_by` with who, when and the previous effective outcome, and `request` naming the gate request. Completion SHALL skip an override already recorded for the same answer, and one whose capability is no longer a behavior item. Such an entry SHALL count only while the own forge `answer` comment of that gate request is valid, has outcome `changes_requested` and lists the capability in its behavior overrides (ledger-store: the ledger is never the source of a human decision).
 
 #### Scenario: Human flips a conclusion
 - **WHEN** the define gate shows `rate-limit` concluded agent `unchanged`, and the human requests changes with notes and a behavior override for `rate-limit`
@@ -147,6 +147,10 @@ When a define gate answer with outcome `changes_requested` carries behavior over
 #### Scenario: Superseded answer records no override
 - **WHEN** the human requests changes with a behavior override for `rate-limit`, and HEAD moved after the request was sent
 - **THEN** the `gate` comment is `superseded` and no human `changed` record is posted
+
+#### Scenario: Override without its forge answer
+- **WHEN** a human `changed` ledger entry for `rate-limit` names a gate request whose own forge `answer` comment is missing, or does not list `rate-limit` in its behavior overrides
+- **THEN** the entry does not count, and the effective conclusion stays the agent's
 
 #### Scenario: Override completed twice
 - **WHEN** the completion of that answer runs again after a crash before the `stale` comment
