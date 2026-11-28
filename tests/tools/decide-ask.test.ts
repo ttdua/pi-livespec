@@ -223,13 +223,13 @@ describe("unit digest reuse", () => {
 		expect(await ofKind(h, "request")).toHaveLength(2);
 	});
 
-	test("Dismissed answer not reused", async () => {
+	test("I3: a ledger-only dismissal is no human decision and does not mask the forge-backed answer", async () => {
 		const h = await change({ config: FORGE_CHAIN });
 		await answerInForge(h);
 		await recordDecision(h, { source: "human", outcome: null, digest: "d1", facts: FACTS, reason: "dismissed by alice" });
 		const r = await decidePick(h, { digest: "d1" });
-		expect(r).toMatchObject({ status: "pending" });
-		expect(await ofKind(h, "request")).toHaveLength(2);
+		expect(r).toMatchObject({ status: "decided", source: "human", outcome: "y" });
+		expect(await ofKind(h, "request")).toHaveLength(1);
 	});
 
 	test("Latest human record wins", async () => {

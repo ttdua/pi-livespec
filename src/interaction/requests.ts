@@ -2,6 +2,7 @@
 // a `request` comment with no `answer` is pending, an `answer` with no result
 // comment is applying, and a result record carrying `request: <id>` completes it.
 
+import { hasForgeAnswer } from "../decide/answered.ts";
 import { gateDigest } from "../engine/locks.ts";
 import { type MarkedComment, writeMarked } from "../forge/markers.ts";
 import { neutralise } from "./briefing.ts";
@@ -148,10 +149,15 @@ function asAnswerData(m: MarkedComment): AnswerData | undefined {
 	return d as AnswerData;
 }
 
+/** A human result written to the ledger completes its request only beside the own forge `answer` comment. */
+function resultCounts(marked: MarkedComment[], m: MarkedComment, data: Record<string, unknown>): boolean {
+	return m.source !== "ledger" || data.source !== "human" || hasForgeAnswer(marked, data.request as string);
+}
+
 function completedIds(marked: MarkedComment[]): Set<string> {
 	const ids = new Set<string>();
 	for (const m of marked) {
-		if (RESULT_KINDS.has(m.kind) && isObject(m.data) && typeof m.data.request === "string") ids.add(m.data.request);
+		if (RESULT_KINDS.has(m.kind) && isObject(m.data) && typeof m.data.request === "string" && resultCounts(marked, m, m.data)) ids.add(m.data.request);
 	}
 	return ids;
 }
@@ -207,7 +213,7 @@ export function closers(marked: MarkedComment[]): Map<string, Closer> {
 	const out = new Map<string, Closer>();
 	for (const m of marked) {
 		if (!isObject(m.data)) continue;
-		const id = m.kind === ANSWER_KIND ? m.id : RESULT_KINDS.has(m.kind) && typeof m.data.request === "string" ? m.data.request : undefined;
+		const id = m.kind === ANSWER_KIND ? m.id : RESULT_KINDS.has(m.kind) && typeof m.data.request === "string" && resultCounts(marked, m, m.data) ? m.data.request : undefined;
 		if (id === undefined || out.has(id)) continue;
 		const answer = m.kind === ANSWER_KIND && isObject(m.data.answer) && isObject(m.data.answer.answerComment) ? m.data.answer.answerComment.id : undefined;
 		out.set(id, typeof answer === "string" ? { commentId: m.ref, answerCommentId: answer } : { commentId: m.ref });

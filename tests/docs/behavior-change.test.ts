@@ -28,7 +28,8 @@ function marked(body: string): MarkedComment {
 
 function record(outcome: string, item: BehaviorItem = ITEM, extra: Partial<DecisionRecord> = {}): MarkedComment {
 	const r: DecisionRecord = { point: "behavior-change", subject: item.capability, digest: behaviorDigest(item.files), source: "human", outcome, facts: item, files: item.files, reason: "chosen by alice", ...extra };
-	return ledgerRecord(decisionComment(r), { ref: `c-${Math.random()}` });
+	// A human record from the forge (a pre-ledger comment); a ledger one counts only beside its forge answer (I3).
+	return { ...ledgerRecord(decisionComment(r), { ref: `c-${Math.random()}` }), source: "forge" };
 }
 
 function openRequest(capability: string): MarkedComment {

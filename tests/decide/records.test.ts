@@ -17,6 +17,17 @@ const TAGS_U3: DecisionRecord = {
 	agent_additions: ["api"],
 };
 
+/** The own forge `answer` comment of request `request` with outcome `choice`. */
+function answerFor(request: string, choice: string): MarkedComment {
+	return marked(request, { request: { subject: "decide:pick.U1" }, answer: { outcome: "answered", choice }, verdict: "valid" }, "answer");
+}
+
+/** A human decision as ledger entry plus the forge answer that backs it. */
+function backed(record: DecisionRecord): MarkedComment[] {
+	const withRequest = { ...record, request: "rq1" };
+	return [ledgerRecord(decisionComment(withRequest)), answerFor("rq1", String(record.outcome))];
+}
+
 function marked(id: string, data: unknown, kind = "decision"): MarkedComment {
 	return { source: "forge", ref: `c-${id}-${String((data as { outcome?: unknown }).outcome)}`, kind, id, author: "bot", data };
 }
@@ -118,6 +129,18 @@ describe("decision records", () => {
 		expect(reusableAnswer([marked("pick.U1", human)], "pick", "U1", "d1", facts)).toEqual(human);
 	});
 
+	test("I3: a human ledger decision without its own forge answer comment is not reused", () => {
+		const facts = { n: 1 };
+		const human: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r", request: "rq1" };
+		const entry = ledgerRecord(decisionComment(human));
+		expect(reusableAnswer([entry], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(reusableAnswer([entry, answerFor("rq1", "n")], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(reusableAnswer([entry, answerFor("rq1", "y")], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y" });
+		const ruleEntry = ledgerRecord(decisionComment({ ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", facts }));
+		expect(reusableAnswer([ruleEntry], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(currentDecision([ruleEntry], "pick", "U1", "d1")).toMatchObject({ source: "rule" });
+	});
+
 	test("reusableAnswer misses other digest, other facts, rule source and dismissed outcome", () => {
 		const facts = { files: ["a.ts"] };
 		const base: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
@@ -156,14 +179,13 @@ describe("decision records", () => {
 	test("reusableAnswer reuses by facts_hash for large facts", () => {
 		const facts = { blob: "x".repeat(2001) };
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
-		const parsed = ledgerRecord(decisionComment(record)) as MarkedComment;
-		expect(reusableAnswer([parsed], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
+		const parsed = backed(record);
+		expect(reusableAnswer(parsed, "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
 	});
 
 	test("reusableAnswer reuses after a forge round-trip", () => {
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts: { files: ["a.ts"], tags: ["ui"], n: 3 }, reason: "r" };
-		const parsed = ledgerRecord(decisionComment(record)) as MarkedComment;
-		expect(reusableAnswer([parsed], "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
+		expect(reusableAnswer(backed(record), "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
 	});
 
 	test("Proposal record is not current", () => {

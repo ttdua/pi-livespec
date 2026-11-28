@@ -6,6 +6,7 @@ import { parse, stringify } from "yaml";
 import type { Signature } from "../evidence/signature.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
+import { isBacked } from "./answered.ts";
 
 export type DecisionRecord = {
 	point: string;
@@ -97,10 +98,10 @@ export function latestDecisions(marked: MarkedComment[]): Map<string, DecisionRe
 }
 
 /** The latest `<point>.<subject>` record for `digest` that `include` accepts. */
-function latestFor(marked: MarkedComment[], id: string, digest: string, include: (r: DecisionRecord) => boolean): DecisionRecord | undefined {
+function latestFor(marked: MarkedComment[], id: string, digest: string, include: (r: DecisionRecord, m: MarkedComment) => boolean): DecisionRecord | undefined {
 	let found: DecisionRecord | undefined;
 	for (const m of marked) {
-		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest && include(m.data)) found = m.data;
+		if (m.kind === "decision" && m.id === id && isRecord(m.data) && m.data.digest === digest && include(m.data, m)) found = m.data;
 	}
 	return found;
 }
@@ -128,7 +129,7 @@ export function sameFacts(record: DecisionRecord, facts: unknown): boolean {
  * answer), when it is a human answer (not dismissed) for the same facts.
  */
 export function reusableAnswer(marked: MarkedComment[], point: string, subject: string, digest: string, facts: unknown): DecisionRecord | undefined {
-	const record = latestFor(marked, `${point}.${subject}`, digest, () => true);
+	const record = latestFor(marked, `${point}.${subject}`, digest, (r, m) => isBacked(marked, m, r));
 	if (record === undefined || record.source !== "human" || record.outcome === null || !sameFacts(record, facts)) return undefined;
 	return record;
 }

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
-import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
+import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -87,7 +87,9 @@ const behaviorTitles = (h: Gate): string[] => h.ctx.ui.select.mock.calls.map((c)
 async function seedRecord(h: Gate, files: string[], outcome: string): Promise<void> {
 	const item = { capability: "rate-limit", files };
 	const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome, facts: item, files, reason: "chosen by alice" };
-	await appendSeed(h, decisionComment(r));
+	// A human record counts only beside the own forge `answer` comment of its request (ledger-store, I3).
+	await h.world.postComment(h.n, BOT_LOGIN, writeMarked("answer", "seed-request", { request: { subject: "decide:behavior-change.rate-limit" }, answer: { outcome: "answered", choice: outcome }, verdict: "valid" }));
+	await appendSeed(h, decisionComment({ ...r, request: "seed-request" }));
 }
 
 describe("spec_gate behavior-change question", () => {

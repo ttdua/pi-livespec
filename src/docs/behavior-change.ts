@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Result } from "../core/result.ts";
+import { isBacked } from "../decide/answered.ts";
 import { type DecisionRecord, reusableAnswer, validDecisions } from "../decide/records.ts";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
@@ -50,8 +51,9 @@ export function behaviorDigest(files: string[]): string {
 /** Per capability, the latest `behavior-change` record answered by a human that is not a proposal. */
 export function latestBehaviorRecords(marked: MarkedComment[]): Map<string, DecisionRecord> {
 	const latest = new Map<string, DecisionRecord>();
-	for (const r of validDecisions(marked)) {
-		if (r.point === BEHAVIOR_POINT && r.source === "human" && r.proposal !== true) latest.set(r.subject, r);
+	for (const m of marked) {
+		const r = m.kind === "decision" ? validDecisions([m])[0] : undefined;
+		if (r?.point === BEHAVIOR_POINT && r.source === "human" && r.proposal !== true && isBacked(marked, m, r)) latest.set(r.subject, r);
 	}
 	return latest;
 }

@@ -229,7 +229,7 @@ describe("pollApprovals", () => {
 		expect(h.session.commandWarnings).toEqual([]);
 	});
 
-	test("a decide request whose decision is a ledger entry counts as completed", async () => {
+	test("I3: a human decision only in the ledger does not complete its request", async () => {
 		const h = await toolHarness({ branch: CHANGE_BRANCH });
 		const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
 		const r = request("stuck", "decide:tags.U3", { point: "tags", subject: "U3", facts: {} }, "", h.head, 1, STUCK_OPTIONS);
@@ -238,26 +238,22 @@ describe("pollApprovals", () => {
 		await h.session.refresh();
 		if (h.session.card.kind !== "change") throw new Error("no change card");
 		expect(h.session.card.state.requests.pending.map((p) => p.id)).toEqual([r.id]);
-		// Another session completed the request: its decision is in the ledger, which the card has not read yet.
+		// A ledger decision with no own forge answer completes nothing; the forge answer still drives the request.
 		await h.session.ledger.append(n, { kind: "decision", id: "tags.U3", data: { point: "tags", subject: "U3", source: "human", outcome: "A", reason: "r", request: r.id } });
 		await h.world.postComment(n, "alice", "/livespec choose A");
 
 		await pollApprovals(h.session);
 
-		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
-		if (h.session.card.kind !== "change") throw new Error("no change card");
-		expect(h.session.card.state.requests.pending).toEqual([]);
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(1);
 	});
 
-	test("a decision only on origin is fetched before the first tool's poll", async () => {
+	test("a decision only on origin is fetched before the first tool's poll, and alone completes nothing", async () => {
 		const { h, n, r } = await decidePending();
 		await appendFromOtherClone(h.origin, n, { kind: "decision", id: "tags.U3", data: { point: "tags", subject: "U3", source: "human", outcome: "A", reason: "r", request: r.id } });
 
 		await h.call("spec_status");
 
-		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
-		if (h.session.card.kind !== "change") throw new Error("no change card");
-		expect(h.session.card.state.requests.pending).toEqual([]);
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(1);
 	});
 
 	test("an unknown ledger while offline skips the poll and records it", async () => {
