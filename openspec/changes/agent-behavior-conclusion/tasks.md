@@ -2,12 +2,12 @@
 
 Blocked by: none
 
-- [ ] 1.1 Widen `DecisionRecord.source` in `src/decide/records.ts` to `rule | human | agent | reviewer`; `validDecisions` accepts `agent`/`reviewer` only for point `behavior-change` (decision-seam "Decision records", scenario "Agent source only for behavior-change"); `reusableAnswer` still requires `human`
-- [ ] 1.2 In `src/docs/behavior-change.ts`, add a `BehaviorConclusion` type, the pure resolver `effectiveConclusion(marked, item)` (digest+facts candidates plus intersecting human/reviewer `changed`, rank ordering) and `latestConclusions(marked)` over all digests (durable-doc-checks "Behavior conclusion precedence", all scenarios); remove `latestBehaviorRecords`
-- [ ] 1.3 Make `behaviorChangeRule` return outcome `null` with a reason naming `spec_gate` `behavior`; drop `BEHAVIOR_OPTIONS`/`BEHAVIOR_RATIONALE` (durable-doc-checks "Behavior conclusion rule", scenario "Rule never asks"); keep `registerRule` and the schema
-- [ ] 1.4 Rewrite `behaviorResults` over `effectiveConclusion`: no conclusion → error naming `behavior` and `spec_gate <phase>`, plus any open legacy request; `changed` → error naming the spec file and source (durable-doc-checks "Behavior conclusion check")
-- [ ] 1.5 Add `behaviorConclusionComment(item, { source, outcome, reason, overridden_by? })` building the full `decision` comment (facts, digest, files) for reuse by groups 2, 4 and 5
-- [ ] 1.6 Update `tests/docs/behavior-change.test.ts` and `tests/decide/records.test.ts` for the scenarios above
+- [x] 1.1 Widen `DecisionRecord.source` in `src/decide/records.ts` to `rule | human | agent | reviewer`; `validDecisions` accepts `agent`/`reviewer` only for point `behavior-change` (decision-seam "Decision records", scenario "Agent source only for behavior-change"); `reusableAnswer` still requires `human`
+- [x] 1.2 In `src/docs/behavior-change.ts`, add a `BehaviorConclusion` type, the pure resolver `effectiveConclusion(marked, item)` (digest+facts candidates plus intersecting human/reviewer `changed`, rank ordering) and `latestConclusions(marked)` over all digests (durable-doc-checks "Behavior conclusion precedence", all scenarios); remove `latestBehaviorRecords`
+- [x] 1.3 Make `behaviorChangeRule` return outcome `null` with a reason naming `spec_gate` `behavior`; drop `BEHAVIOR_OPTIONS`/`BEHAVIOR_RATIONALE` (durable-doc-checks "Behavior conclusion rule", scenario "Rule never asks"); keep `registerRule` and the schema
+- [x] 1.4 Rewrite `behaviorResults` over `effectiveConclusion`: no conclusion → error naming `behavior` and `spec_gate <phase>`, plus any open legacy request; `changed` → error naming the spec file and source (durable-doc-checks "Behavior conclusion check")
+- [x] 1.5 Add `behaviorConclusionComment(item, { source, outcome, reason, overridden_by? })` building the full `decision` comment (facts, digest, files) for reuse by groups 2, 4 and 5
+- [x] 1.6 Update `tests/docs/behavior-change.test.ts` and `tests/decide/records.test.ts` for the scenarios above
 
 ## 2. spec_gate behavior parameter
 
