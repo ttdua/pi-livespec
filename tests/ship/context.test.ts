@@ -6,6 +6,7 @@ import type { GateResult, LockState } from "../../src/engine/locks.ts";
 import type { ChangeState } from "../../src/engine/state-types.ts";
 import type { MarkedComment } from "../../src/forge/markers.ts";
 import { type ShipContext, shipContext } from "../../src/ship/context.ts";
+import { confirmationSection } from "../../src/ship/durable-check.ts";
 import { durableDocsRule } from "../../src/ship/durable-docs.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { parseMarked } from "../../src/forge/markers.ts";
@@ -225,9 +226,11 @@ describe("shipContext behavior records", () => {
 		const f = await limitDiff();
 		const base = sh(f.work, "rev-parse", "HEAD~1");
 		const marked = [record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] })];
-		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
+		const body = `${bodyFor(base)}| specs/rate-limit/spec.md | not needed — refactor |\n`;
+		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body }));
 		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }]);
 		expect(durableDocsRule(out.facts).confirm.filter((c) => c.startsWith("rate-limit:"))).toEqual([]);
+		expect(confirmationSection({ ship: { durableFacts: out.facts } } as never) ?? "").not.toMatch(/^- rate-limit:/m);
 	});
 
 	test("Newer changed record wins", async () => {

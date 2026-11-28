@@ -126,7 +126,7 @@ async function needsShipGate(git: Git, state: ShipInput, facts: DurableFacts): P
 	return durableDocsRule(facts).confirm.some((item) => !confirmed.has(item));
 }
 
-/** The latest human `behavior-change` record per capability, as ship facts. */
+/** The latest `behavior-change` conclusion per capability, from any source, as ship facts. */
 function behaviorFacts(marked: MarkedComment[]): DurableFacts["behavior"] {
 	return [...latestConclusions(marked)].map(([capability, c]) => ({ capability, files: c.files, outcome: c.outcome }));
 }
