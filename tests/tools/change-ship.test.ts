@@ -372,6 +372,21 @@ describe("change_ship ledger sync", () => {
 		await h.settle();
 	}
 
+	test("a second sync that fails at the publish names its cause and pushes nothing", async () => {
+		const h = await shipReady();
+		let syncs = 0;
+		// The first sync settles the ledger; the second one (right before the branch push) fails with a named reason.
+		const ledger = h.session.ledger;
+		const failing = { ...ledger, sync: async (n: number) => (++syncs === 2 ? { status: "pending" as const, reason: "origin unreachable" } : ledger.sync(n)) };
+		Object.defineProperty(h.session, "ledger", { value: failing });
+		const before = originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"));
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger could not be pushed: origin unreachable");
+		expect(textOf(out)).not.toContain("the ledger changed");
+		expect(originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"))).toEqual(before);
+	});
+
 	test("Ledger not pushed", async () => {
 		const h = await shipReady();
 		await withLedger(h);

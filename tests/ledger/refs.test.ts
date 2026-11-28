@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { defaultGitExec as exec } from "../../src/engine/git-exec.ts";
-import { readLedgerRefs } from "../../src/ledger/refs.ts";
+import { deleteRefIf, readLedgerRefs } from "../../src/ledger/refs.ts";
 import { isPending } from "../../src/ledger/sync.ts";
 import { twoClones } from "./fixtures.ts";
 
@@ -41,6 +41,13 @@ describe("readLedgerRefs", () => {
 		git(root, ["tag", "-a", "-m", "t", "tmp-tag", commit]);
 		git(root, ["update-ref", LOCAL, git(root, ["rev-parse", "tmp-tag"])]);
 		expect(await readLedgerRefs(exec, root, N)).toEqual({ local: commit, tracking: undefined });
+	});
+});
+
+describe("deleteRefIf", () => {
+	it("treats an already absent ref as deleted", async () => {
+		const { root, commit } = await repoWithCommit();
+		expect(await deleteRefIf(exec, root, LOCAL, commit)).toBe(true);
 	});
 });
 

@@ -107,7 +107,7 @@ async function settleLedger(w: WriteContext, n: number): Promise<string | undefi
 async function publish(s: Ship, adopt: PullRequest | undefined): Promise<ToolResult<undefined>> {
 	const n = s.state.issue.number;
 	const moved = await ledgerMovedSince(s);
-	if (moved) return refuse("the ledger changed while the change was being checked; run change_ship again.");
+	if (moved !== undefined) return refuse(moved);
 	try {
 		await guardedPush(s.w.session.exec, s.w.session.cwd, REMOTE, `HEAD:refs/heads/${s.branch}`);
 	} catch (error) {
@@ -127,11 +127,13 @@ async function publish(s: Ship, adopt: PullRequest | undefined): Promise<ToolRes
 	return toolResult(withStep(s.w.session, `Pushed ${s.branch} at ${s.state.git.head.slice(0, 7)}. ${verb} pull request #${pr.number} and recorded PR: #${pr.number} on #${n}.`), undefined);
 }
 
-/** True when the ledger cannot be synced now, or its local tip differs from the one the checks read. */
-async function ledgerMovedSince(s: Ship): Promise<boolean> {
+/** The refusal when the ledger cannot be synced now (naming the cause) or its local tip differs from the one the checks read. */
+async function ledgerMovedSince(s: Ship): Promise<string | undefined> {
 	const n = s.state.issue.number;
 	const ledger = await s.w.ledger.sync(n);
-	return ledger.status !== "synced" || (await s.w.ledger.read(n)).tip !== s.ledgerTip;
+	if (ledger.status !== "synced") return `the ledger could not be pushed: ${ledger.status === "pending" ? ledger.reason : ledger.message}.`;
+	if ((await s.w.ledger.read(n)).tip !== s.ledgerTip) return "the ledger changed while the change was being checked; run change_ship again.";
+	return undefined;
 }
 
 /** Every refusal in order, then the freshness check, the pull request choice and the publish. */

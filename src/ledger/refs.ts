@@ -89,12 +89,13 @@ export async function deleteRef(exec: GitExec, root: string, ref: string): Promi
 	if (r.code !== 0) throw gitFailure(args, r.spawnError ?? r.stderr);
 }
 
-/** Deletes `ref` only while it still is at `expected`; false when it moved (or is gone), nothing deleted. */
+/** Deletes `ref` only while it still is at `expected`; true when it is deleted (or already absent), false when it moved, nothing deleted. */
 export async function deleteRefIf(exec: GitExec, root: string, ref: string, expected: string): Promise<boolean> {
 	const args = ["update-ref", "-d", ref, expected];
 	const r = await exec(args, { cwd: root });
 	if (r.code === 0) return true;
 	const failure = r.spawnError ?? r.stderr;
+	if ((await readRef(exec, root, ref)) === undefined) return true;
 	if (await isLostSwap(exec, root, ref, expected, failure)) return false;
 	throw gitFailure(args, failure);
 }
