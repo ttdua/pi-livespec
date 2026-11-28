@@ -13,11 +13,11 @@ Blocked by: none
 
 Blocked by: 1
 
-- [ ] 2.1 Add `validateBehaviorParam(raw)` (shape, 300 code points, one line, neutralised rationale) in a new `src/docs/behavior-param.ts`; wire it into `runSpecGate` beside `briefingStep` for every target (durable-doc-checks "Behavior conclusion parameter"; phase-gates scenario "Bad behavior shape on another target")
-- [ ] 2.2 Add the `behavior` JSON schema and description to `spec_gate` in `src/tools/spec-gate.ts`
-- [ ] 2.3 Replace `askBehaviorChanges` with `recordBehaviorConclusions(w, state, behavior)`: coverage check (missing or extra capabilities named), skip-equal against the latest agent record, posting `agent` records; keep `behaviorStep` ordering (refusals without `behavior-change` first, refresh, re-run) (durable-doc-checks "Behavior conclusion at the gate", all scenarios; phase-gates "Gate tool" scenario "Behavior answer before a refusal")
-- [ ] 2.4 Delete `src/docs/behavior-ask.ts` and the `BEHAVIOR_POINT` branch in `src/tools/decide-ask.ts` that only fed asks (keep reading legacy pending requests)
-- [ ] 2.5 Rewrite `tests/tools/spec-gate-behavior.test.ts` for the new flow (two capabilities with no dialog, missing or unknown capability, other refusal writes nothing, changed blocks, not re-posted, flow without the check)
+- [x] 2.1 Add `validateBehaviorParam(raw)` (shape, 300 code points, one line, neutralised rationale) in a new `src/docs/behavior-param.ts`; wire it into `runSpecGate` beside `briefingStep` for every target (durable-doc-checks "Behavior conclusion parameter"; phase-gates scenario "Bad behavior shape on another target")
+- [x] 2.2 Add the `behavior` JSON schema and description to `spec_gate` in `src/tools/spec-gate.ts`
+- [x] 2.3 Replace `askBehaviorChanges` with `recordBehaviorConclusions(w, state, behavior)`: coverage check (missing or extra capabilities named), skip-equal against the latest agent record, posting `agent` records; keep `behaviorStep` ordering (refusals without `behavior-change` first, refresh, re-run) (durable-doc-checks "Behavior conclusion at the gate", all scenarios; phase-gates "Gate tool" scenario "Behavior answer before a refusal")
+- [x] 2.4 Delete `src/docs/behavior-ask.ts` and the `BEHAVIOR_POINT` branch in `src/tools/decide-ask.ts` that only fed asks (keep reading legacy pending requests)
+- [x] 2.5 Rewrite `tests/tools/spec-gate-behavior.test.ts` for the new flow (two capabilities with no dialog, missing or unknown capability, other refusal writes nothing, changed blocks, not re-posted, flow without the check)
 
 ## 3. Gate payload and forge text
 
