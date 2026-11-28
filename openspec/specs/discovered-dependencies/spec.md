@@ -68,7 +68,7 @@ After a valid approved `new-dependency` result, the next step SHALL name the fol
 - **THEN** the next step no longer names `unit_amend` for the dependency
 
 ### Requirement: Discovered dependencies counter
-`discovered_deps` SHALL be derived as the number of valid approved `new-dependency` gate results whose choice is `A`, `B`, `C` or `split`; an own `counter` comment for it MUST be ignored. The engine SHALL report it with its cap `loops.discovered_deps`. The cap SHALL block when the count is at least the cap and no stuck answer with a chosen option is dated after the latest counted result. While it blocks, `new_dependency` MUST refuse and the next step after a `missing-prerequisite` result SHALL name `spec_stuck`, so the human can send the work back to the initiative's shape.
+`discovered_deps` SHALL be derived as the number of valid approved `new-dependency` gate results whose choice is `A`, `B`, `C` or `split`; a `counter` ledger entry for it MUST be ignored. The engine SHALL report it with its cap `loops.discovered_deps`. The cap SHALL block when the count is at least the cap and no stuck answer with a chosen option is dated after the latest counted result. While it blocks, `new_dependency` MUST refuse and the next step after a `missing-prerequisite` result SHALL name `spec_stuck`, so the human can send the work back to the initiative's shape.
 
 #### Scenario: Counter shown
 - **WHEN** one `new-dependency` gate was approved with choice A

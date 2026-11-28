@@ -7,7 +7,7 @@ Defines how review findings become work: the aggregate record and de-duplication
 ## Requirements
 
 ### Requirement: Aggregate findings
-The aggregate stage SHALL post one `finding-summary` with id `finding-summary.change.review.<round>`, marked `aggregate: true`, holding the round, HEAD, the comment ids of the round's completed reviewer summaries, and the aggregate findings. It SHALL be posted only when every selected subject has a completed reviewer summary at HEAD. Aggregate findings SHALL be the parent findings of the `review-run` and the reviewers' findings, de-duplicated by normalized path, line and kind: a merged finding SHALL keep the highest severity, the first evidence and fix, the keys of every finding it merged, and the `needs-decision` mark when any merged finding had scope `needs-decision`. Each aggregate finding SHALL also hold its route (see "Finding scope rule") and whether it needs verification. An aggregate record MUST NOT count as a reviewer round, a unit review or a completed review of any subject.
+The aggregate stage SHALL append one `finding-summary` ledger entry with id `finding-summary.change.review.<round>`, marked `aggregate: true`, holding the round, HEAD, the entry refs of the round's completed reviewer summaries, and the aggregate findings. It SHALL be posted only when every selected subject has a completed reviewer summary at HEAD. Aggregate findings SHALL be the parent findings of the `review-run` and the reviewers' findings, de-duplicated by normalized path, line and kind: a merged finding SHALL keep the highest severity, the first evidence and fix, the keys of every finding it merged, and the `needs-decision` mark when any merged finding had scope `needs-decision`. Each aggregate finding SHALL also hold its route (see "Finding scope rule") and whether it needs verification. An aggregate record MUST NOT count as a reviewer round, a unit review or a completed review of any subject.
 
 #### Scenario: Two reviewers, one defect
 - **WHEN** the `change` reviewer reports a `WARNING` `defect` at `src/limit.ts:10` and the security persona reports a `CRITICAL` `defect` at `./src/limit.ts:10`
@@ -48,7 +48,7 @@ The `finding-scope` decision point SHALL be registered with `registerRule` and c
 4. the path matches a unit's `Files` (exact or glob) → `unit`, with the first such unit in body order;
 5. the path is in the diff, or the kind is `missed-context` → `in-change`;
 6. otherwise → `out-of-scope`.
-The rule MUST NOT ask a human. The aggregate stage SHALL post one `decision` comment `finding-scope.review-<round>` whose outcome maps each aggregate finding's index to its route and unit.
+The rule MUST NOT ask a human. The aggregate stage SHALL append one `decision` entry `finding-scope.review-<round>` whose outcome maps each aggregate finding's index to its route and unit.
 
 #### Scenario: Seeded defect routed to its unit
 - **WHEN** a reviewer reports a `WARNING` with scope `out-of-scope` at `src/limit.ts:10`, and U2's `Files` list `src/limit.ts`
@@ -83,7 +83,7 @@ The route stage SHALL apply, idempotently, for every aggregate finding that is n
 - `unit`: post one own `rebuild` comment with id `rebuild.<unit>.<round>` naming the finding, then untick the unit when it is done, and list the finding in that unit's next implementer packet;
 - `in-change`: nothing, the next step names `unit_amend --add`;
 - `out-of-scope`: nothing, the finding is listed as a follow-up in the aggregate and at the next human gate until a gate has shown it;
-- `question`: a non-blocking question, raised by livespec code through `spec_question`, with text naming `finding:<aggregateCommentId>:<index>`, the candidates `apply the proposed fix` ("The agent applies the reviewer's proposed fix in this change.") and `leave it out of this change` ("The finding is not fixed in this change."), the first recommended with the rationale `The reviewer proposed a fix; applying it keeps the change consistent.`, unless a question already names that key;
+- `question`: a non-blocking question, raised by livespec code through `spec_question`, with text naming `finding:<aggregateRef>:<index>`, where `<aggregateRef>` is the aggregate entry's `ref`, the candidates `apply the proposed fix` ("The agent applies the reviewer's proposed fix in this change.") and `leave it out of this change` ("The finding is not fixed in this change."), the first recommended with the rationale `The reviewer proposed a fix; applying it keeps the change consistent.`, unless a question already names that key;
 - `record`: nothing.
 
 #### Scenario: Unit unticked
@@ -94,13 +94,13 @@ The route stage SHALL apply, idempotently, for every aggregate finding that is n
 - **WHEN** the route stage runs twice for a `question` finding
 - **THEN** exactly one question names that finding
 
-#### Scenario: Out of scope does not block
-- **WHEN** the only blocking finding of the latest aggregate at HEAD is routed `out-of-scope`
-- **THEN** `spec_gate review` passes and the ship gate payload lists the finding as a follow-up
-
 #### Scenario: Routing question carries candidates
 - **WHEN** a `needs-decision` finding is routed `question`
 - **THEN** the question is `(non-blocking)`, and its request offers `apply the proposed fix` first, recommended, and `leave it out of this change`; either answer resolves the finding as before
+
+#### Scenario: Out of scope does not block
+- **WHEN** the only blocking finding of the latest aggregate at HEAD is routed `out-of-scope`
+- **THEN** `spec_gate review` passes and the ship gate payload lists the finding as a follow-up
 
 ### Requirement: Finding status
 An aggregate finding SHALL block the review gate when it is `CRITICAL` or `WARNING` or of kind `missed-context`, is not `DISPUTED`, is not rebutted (a `missed-context` finding cannot be rebutted), and is routed:
@@ -118,7 +118,7 @@ A finding that needs verification and has no completed verifier record SHALL blo
 - **THEN** it no longer blocks
 
 ### Requirement: Pull request review comments
-When an open pull request exists for the change branch, the route stage SHALL post each aggregate finding that is not `DISPUTED`, other than `record`, as a pull request review comment at its path and line, carrying a hidden marker with its aggregate key. A finding whose marker already appears in the pull request's review comments MUST NOT be posted again. A finding the forge rejects SHALL stay in the aggregate only, and the tool result SHALL name it. With no pull request, findings SHALL appear only in the aggregate on the issue. The findings of a round whose `review-run` has `source: pull-request` (see pull-request-feedback) MUST NOT be posted as review comments.
+When an open pull request exists for the change branch, the route stage SHALL post each aggregate finding that is not `DISPUTED`, other than `record`, as a pull request review comment at its path and line, carrying a hidden marker with its aggregate key. A finding whose marker already appears in the pull request's review comments MUST NOT be posted again. A finding the forge rejects SHALL stay in the aggregate only, and the tool result SHALL name it. With no pull request, findings SHALL appear only in the aggregate ledger entry. The findings of a round whose `review-run` has `source: pull-request` (see pull-request-feedback) MUST NOT be posted as review comments.
 
 #### Scenario: No pull request
 - **WHEN** the change branch has no open pull request

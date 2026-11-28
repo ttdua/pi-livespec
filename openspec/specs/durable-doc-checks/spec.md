@@ -76,7 +76,7 @@ The `behavior-change` decision point SHALL be registered with `registerRule`, co
 
 #### Scenario: Answer recorded
 - **WHEN** the human chooses `unchanged` in session
-- **THEN** a `decision` comment holds point `behavior-change`, subject `rate-limit`, source `human`, outcome `unchanged` and the files
+- **THEN** a `decision` ledger entry holds point `behavior-change`, subject `rate-limit`, source `human`, outcome `unchanged` and the files
 
 #### Scenario: New file asks again
 - **WHEN** a record answered `unchanged` for `[src/limit/cap.ts]` and the diff now also changes `src/limit/window.ts`
@@ -91,7 +91,7 @@ When the target phase lists the `behavior-change` check, `spec_gate define` and 
 
 #### Scenario: Other refusal asks nothing
 - **WHEN** `spec_gate define` runs with one behavior item and `spec-format` reports an error (or the tree is dirty, or a blocking question is open)
-- **THEN** `spec_gate` refuses with that reason, and no `decide:behavior-change` request or `decision` comment is written
+- **THEN** `spec_gate` refuses with that reason, and no `decide:behavior-change` request or `decision` entry is written
 
 #### Scenario: Changed answer blocks the same call
 - **WHEN** the human answers `changed` for `rate-limit` during `spec_gate define`

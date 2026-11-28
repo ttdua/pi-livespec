@@ -18,7 +18,7 @@ Reads SHALL write the raw issue, its `version` and the fetch time to `<cacheRoot
 - **THEN** the next read refetches from the forge and succeeds
 
 ### Requirement: Read-only mode
-When the forge cannot be reached, reads SHALL return the cached issue marked `stale: true`, and every write MUST be refused with a `ForgeError` of code `readonly` and a clear message.
+When the forge cannot be reached, reads SHALL return the cached issue marked `stale: true`, and every forge write MUST be refused with a `ForgeError` of code `readonly` and a clear message. Ledger appends are not forge writes and MUST NOT be refused by read-only mode (see `ledger-store`).
 
 #### Scenario: Unreachable read
 - **WHEN** the forge is unreachable and the issue is cached
@@ -31,6 +31,10 @@ When the forge cannot be reached, reads SHALL return the cached issue marked `st
 #### Scenario: Not cached
 - **WHEN** the forge is unreachable and the issue is not cached
 - **THEN** a `ForgeError` with code `unreachable` is thrown
+
+#### Scenario: Ledger append in read-only mode
+- **WHEN** the forge is in read-only mode and a ledger entry is appended
+- **THEN** the entry is written to the local ledger and no `ForgeError` is thrown
 
 ### Requirement: Read-only mode only for unreachability
 Read-only mode SHALL start only after a transport-level failure. HTTP error responses MUST NOT start it, and a later successful read MUST leave it.
