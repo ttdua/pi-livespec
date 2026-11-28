@@ -84,9 +84,9 @@ export function runAtHead(marked: MarkedComment[], head: string): ReviewRunData 
 }
 
 /** Valid, current aggregate records with their comment index, in comment order. */
-export function aggregates(marked: MarkedComment[]): { commentId: string; at: number; data: FindingSummaryData }[] {
+export function aggregates(marked: MarkedComment[]): { commentId: string; from?: string; at: number; data: FindingSummaryData }[] {
 	const kept = new Set(current(marked));
-	return marked.flatMap((m, at) => (kept.has(m) && m.kind === "finding-summary" && (m.data as FindingSummaryData).aggregate === true ? [{ commentId: m.ref, at, data: m.data as FindingSummaryData }] : []));
+	return marked.flatMap((m, at) => (kept.has(m) && m.kind === "finding-summary" && (m.data as FindingSummaryData).aggregate === true ? [{ commentId: m.ref, ...(m.from === undefined ? {} : { from: m.from }), at, data: m.data as FindingSummaryData }] : []));
 }
 
 /** The aggregate record of `round`; its single findings are read through `aggregateFinding`. */

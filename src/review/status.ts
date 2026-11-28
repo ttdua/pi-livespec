@@ -38,10 +38,10 @@ export function findingState(marked: MarkedComment[], aggregateCommentId: string
 
 /** The aggregate's findings that block the review gate: `blocking` and `unverified` ones. */
 export function blockingFindings(marked: MarkedComment[], aggregateCommentId: string, questions: Question[]): { index: number; finding: AggregateFinding }[] {
-	const found = aggregates(marked).find((a) => a.commentId === aggregateCommentId);
+	const found = aggregates(marked).find((a) => a.commentId === aggregateCommentId || a.from === aggregateCommentId);
 	if (found === undefined) return [];
 	return (found.data.findings as AggregateFinding[]).flatMap((finding, index) => {
-		const state = findingState(marked, aggregateCommentId, index, questions);
+		const state = findingState(marked, found.commentId, index, questions);
 		return state === "blocking" || state === "unverified" ? [{ index, finding }] : [];
 	});
 }

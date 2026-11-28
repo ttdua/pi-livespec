@@ -2,6 +2,7 @@
 
 import type { ChangeState } from "../engine/state-types.ts";
 import { type ChildCheckContext, isChildSession } from "../subagents/child.ts";
+import { aggregateFinding } from "../subagents/records.ts";
 import { AGENT_OF, ROLE_SUBJECTS, type ReviewSubject, type Role } from "../subagents/roles.ts";
 import { type ToolResult, toolResult } from "./guard.ts";
 
@@ -32,9 +33,15 @@ type FindingRef = { ok: true; finding?: string } | { ok: false; message: string 
 /** The finding reference of a verifier call, or why the reference cannot be used. */
 function checkFindingRef(role: Role, finding: unknown): FindingRef {
 	if (role !== "verifier") return { ok: true };
-	if (finding === undefined) return { ok: false, message: "a finding reference <aggregateCommentId>:<index> is required for a verifier." };
-	if (typeof finding !== "string" || !FINDING_REF.test(finding)) return { ok: false, message: `finding reference ${JSON.stringify(finding)} must look like <aggregateCommentId>:<index>.` };
+	if (finding === undefined) return { ok: false, message: "a finding reference <aggregateRef>:<index> is required for a verifier." };
+	if (typeof finding !== "string" || !FINDING_REF.test(finding)) return { ok: false, message: `finding reference ${JSON.stringify(finding)} must look like <aggregateRef>:<index>.` };
 	return { ok: true, finding };
+}
+
+/** The key as `<ref>:<index>` when its ref part is the `from` id of a migrated aggregate; any other key as given. */
+function canonicalKey(state: ChangeState, key: string): string {
+	const found = aggregateFinding(state.marked, key);
+	return found === undefined ? key : `${found.commentId}:${found.index}`;
 }
 
 /** The role, subject and unit, or why they cannot name a run; the unit must exist in the change. */
@@ -48,7 +55,8 @@ export function checkTarget(p: TargetParams, state: ChangeState): Target | strin
 	if (p.unit !== undefined && !state.change.units.some((u) => u.id === p.unit)) return `unit ${p.unit} does not exist in the change.`;
 	const ref = checkFindingRef(role, p.finding);
 	if (!ref.ok) return ref.message;
-	return { role, ...(ref.finding === undefined ? {} : { finding: ref.finding }), ...(p.unit === undefined ? {} : { unit: p.unit }), ...(p.subject === undefined ? {} : { subject: p.subject as ReviewSubject }) };
+	const finding = ref.finding === undefined ? undefined : canonicalKey(state, ref.finding);
+	return { role, ...(finding === undefined ? {} : { finding }), ...(p.unit === undefined ? {} : { unit: p.unit }), ...(p.subject === undefined ? {} : { subject: p.subject as ReviewSubject }) };
 }
 
 export const argsOf = (t: Target): string => [t.role, t.unit, t.subject, t.finding].filter((p) => p !== undefined).join(" ");
@@ -58,7 +66,7 @@ export const TARGET_PROPERTIES = {
 	role: { type: "string", enum: Object.keys(AGENT_OF) },
 	unit: { type: "string", description: "Unit id such as U3. Required for implementer and for reviewer subject unit; optional for scout and other reviewer subjects; omit for verifier." },
 	subject: { type: "string", description: "Only for role reviewer: spec, plan, unit, change or persona:<name>. Omit for other roles (ignored with a warning)." },
-	finding: { type: "string", description: "Only for role verifier (required): <aggregateCommentId>:<index>. Omit for other roles (ignored with a warning)." },
+	finding: { type: "string", description: "Only for role verifier (required): <aggregateRef>:<index>, the ref of an aggregate finding-summary ledger entry and the finding index. Omit for other roles (ignored with a warning)." },
 };
 
 /** Parameters by role, appended to the description of each subagent tool. */

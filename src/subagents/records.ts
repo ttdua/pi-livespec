@@ -183,18 +183,18 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 
 const isAggregate = (d: FindingSummaryData): boolean => d.aggregate === true;
 
-/** The aggregate `finding-summary` named by the key's comment id, and the finding at the key's index. */
+/** The aggregate `finding-summary` named by the key's ref (or the `from` id of a migrated copy), and the finding at the key's index. */
 export function aggregateFinding(marked: MarkedComment[], key: string): { commentId: string; index: number; finding: AggregateFinding } | undefined {
 	const cut = key.lastIndexOf(":");
 	const commentId = key.slice(0, cut);
 	const index = Number(key.slice(cut + 1));
 	if (cut <= 0 || !Number.isInteger(index) || index < 0) return undefined;
-	const found = summariesOf(marked).find((s) => s.commentId === commentId && isAggregate(s.data));
+	const found = summariesOf(marked).find((s) => (s.commentId === commentId || s.from === commentId) && isAggregate(s.data));
 	const finding = found?.data.findings[index];
-	return finding === undefined ? undefined : { commentId, index, finding: finding as AggregateFinding };
+	return finding === undefined || found === undefined ? undefined : { commentId: found.commentId, index, finding: finding as AggregateFinding };
 }
 
-type Summary = { commentId: string; at: number; data: FindingSummaryData };
+type Summary = { commentId: string; from?: string; at: number; data: FindingSummaryData };
 
 /** A parent-made record (a `Files` violation): it carries findings, but is no review of any commit. */
 const isSystem = (d: FindingSummaryData): boolean => d.system === "files-violation";
@@ -205,7 +205,7 @@ const isDerived = (d: FindingSummaryData): boolean => isSystem(d) || d.role === 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
 	current(marked).forEach((m, at) => {
-		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.ref, at, data: m.data as FindingSummaryData });
+		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.ref, ...(m.from === undefined ? {} : { from: m.from }), at, data: m.data as FindingSummaryData });
 	});
 	return found;
 }

@@ -55,7 +55,7 @@ describe("manifest", () => {
 			status: "DONE", commits: [], notes: "n", discoveries: ["the cache client retries twice"], sources_used: [],
 		}));
 		const placed = await sourcesOf(world, "implementer", "U3");
-		const found = placed.find((p) => p.source.id === `comment:${posted.ref}`);
+		const found = placed.find((p) => p.source.id === `ledger:7/${posted.ref}`);
 		expect(found?.source.text).toContain("the cache client retries twice");
 	});
 
@@ -70,10 +70,10 @@ describe("manifest", () => {
 		const decision = world.record({ kind: "decision", id: "decision.d1", data: { answer: "push now" } });
 		const text = (await buildPacket(world.refreshed(), "implementer", "U3")) as { ok: true; packet: { text: string } };
 		const review = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
-		for (const [packet, id, heading] of [[text, discovery.ref, `comment:${discovery.ref}`], [text, gate.id, `comment:${gate.id}`], [text, findings.ref, `comment:${findings.ref}`], [review, decision.ref, "records:decisions"]] as const) {
+		for (const [packet, id, heading] of [[text, discovery.ref, `ledger:7/${discovery.ref}`], [text, gate.id, `comment:${gate.id}`], [text, findings.ref, `ledger:7/${findings.ref}`], [review, decision.ref, "records:decisions"]] as const) {
 			const section = packet.packet.text.split(`### ${heading}`)[1]?.split("\n### ")[0] ?? "";
 			expect(section, heading).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
-			if (heading === "records:decisions") expect(section).toContain(`#### comment:${id}`);
+			if (heading === "records:decisions") expect(section).toContain(`#### ledger:7/${id}`);
 		}
 	});
 
@@ -201,7 +201,7 @@ describe("manifest", () => {
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE_WITH_CONCERNS", commits: ["abc1234"], notes: "flaky", discoveries: ["d1"], sources_used: ["spec:rate-limit"],
 		}));
-		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.ref}`);
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `ledger:7/${posted.ref}`);
 		for (const part of ["DONE_WITH_CONCERNS", "abc1234", "flaky", "d1", "spec:rate-limit"]) expect(found?.source.text).toContain(part);
 	});
 
@@ -278,11 +278,11 @@ describe("Unit unticked", () => {
 		const routed = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "off by one at the cap", fix: "use >", scope: "out-of-scope" as const, from: ["r1:0"], needsDecision: false };
 		const other = { ...routed, location: "src/context.ts:1", evidence: "context bug", route: "unit" as const, routeUnit: "U1", verify: "required" as const };
 		const posted = world.record(aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [{ ...routed, route: "unit", routeUnit: "U3", verify: "required" }, other] }));
-		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.ref}`);
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `ledger:7/${posted.ref}`);
 		expect(found?.source.text).toContain("off by one at the cap");
 		expect(found?.source.text).not.toContain("context bug");
 		expect(found?.source.untrusted).toBe(true);
-		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `comment:${posted.ref}`);
+		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `ledger:7/${posted.ref}`);
 		expect(u1?.source.text).toContain("context bug");
 	});
 });
@@ -327,7 +327,7 @@ describe("Persona file", () => {
 		const world = await withPersona("code-reviewer");
 		const summary = world.record({ kind: "finding-summary", id: "finding-summary.change.review.1", data: { subject: "change", findings: [{ severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "e", fix: "f", scope: "unit" }] } });
 		const got = ids(await sourcesOf(world, "reviewer", undefined, "change"));
-		expect(got).not.toContain(`comment:${summary.ref}`);
+		expect(got).not.toContain(`ledger:7/${summary.ref}`);
 	});
 });
 
@@ -353,9 +353,9 @@ describe("grouped records", () => {
 		const decision = world.record({ kind: "decision", id: "decision.d1", data: { answer: "push now" } });
 		const built = (await buildPacket(world.refreshed(), "reviewer", "U3", "unit")) as { ok: true; packet: { text: string } };
 		const section = built.packet.text.split("### records:decisions")[1]?.split("\n### ")[0] ?? "";
-		expect(section).toContain(`comment:${decision.ref}`);
+		expect(section).toContain(`ledger:7/${decision.ref}`);
 		expect(section).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
-		expect(ids(await sourcesOf(world, "reviewer", "U3", "unit"))).not.toContain(`comment:${decision.ref}`);
+		expect(ids(await sourcesOf(world, "reviewer", "U3", "unit"))).not.toContain(`ledger:7/${decision.ref}`);
 	});
 
 	test("record text cannot forge a heading", async () => {
@@ -364,7 +364,7 @@ describe("grouped records", () => {
 		const text = (await sourcesOf(world, "reviewer", undefined, "change")).find((p) => p.source.id === "records:decisions")?.source.text ?? "";
 		const lines = text.split("\n");
 		expect(lines.filter((l) => l.startsWith("### "))).toEqual([]);
-		expect(lines.filter((l) => l.startsWith("#"))).toEqual([`#### comment:${decision.ref}`]);
+		expect(lines.filter((l) => l.startsWith("#"))).toEqual([`#### ledger:7/${decision.ref}`]);
 		expect(lines).toEqual(expect.arrayContaining(["\\### records:fake", "\\#### comment:999"]));
 		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
 		const section = built.packet.text.split("### records:decisions")[1]?.split("\n### ")[0] ?? "";
@@ -400,5 +400,19 @@ describe("grouped records", () => {
 		expect(version(after)).not.toBe(version(before));
 		expect(second.packet.hash).not.toBe(first.packet.hash);
 		expect(required(after)).toEqual(required(before));
+	});
+});
+
+describe("ledger source ids", () => {
+	test("Ledger source: id carries the issue and ref, and the version is stable", async () => {
+		const world = await makeWorld();
+		const posted = world.record(dispatchComment({
+			role: "implementer", unit: "U1", attempt: 0, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
+		}));
+		const first = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `ledger:7/${posted.ref}`);
+		const again = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `ledger:7/${posted.ref}`);
+		expect(first).toBeDefined();
+		expect(again?.source.version).toBe(first?.source.version);
 	});
 });

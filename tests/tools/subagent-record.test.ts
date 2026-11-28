@@ -185,6 +185,24 @@ describe("verifier", () => {
 		expect(textOf(other)).toMatch(/^Warning: ignored finding/);
 	});
 
+	test("Verifier recorded with a ledger ref", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		await h.seed("finding-summary", "finding-summary.change.review.1", AGGREGATE);
+		const key = `${(await h.latest("finding-summary"))?.ref}:0`;
+		expect(key).toMatch(/^finding-summary\.change\.review\.1~[0-9a-f]{8}:0$/);
+		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ sources_used: footerIds(textOf(await h.call("subagent_packet", { role: "verifier", finding: key }))) }) });
+		expect(out.isError, textOf(out)).toBeFalsy();
+	});
+
+	test("a forge comment id is refused without a matching from", async () => {
+		const { h } = await seeded();
+		const before = (await h.marked()).length;
+		const out = await h.call("subagent_dispatch", { role: "verifier", finding: "c1:0" });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("names no aggregate finding");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
 	test("Verifier without a verdict is refused on record", async () => {
 		const { h, key } = await seeded();
 		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ verdict: undefined }) });

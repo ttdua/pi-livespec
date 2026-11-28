@@ -279,7 +279,7 @@ describe("subagent-dispatch tools", () => {
 		expect(record?.source).toBe("ledger");
 		const out = await h.call("subagent_packet", { role: "implementer", unit: "U2" });
 		expect(textOf(out)).toContain("the cache client retries twice");
-		expect(textOf(out)).toContain(`comment:${record?.ref}`);
+		expect(textOf(out)).toContain(`ledger:${h.n}/${record?.ref}`);
 	});
 
 	test("needs context names the source ids in the tool text", async () => {

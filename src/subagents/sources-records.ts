@@ -1,8 +1,10 @@
 // Providers over the change's own marked comments: gate notes, findings, receipts, dispatch records and decisions.
 
 import { stringify } from "yaml";
+import { isLedgerKind } from "../core/record-kinds.ts";
 import type { ReceiptRecord } from "../evidence/records.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import { entryVersion } from "../ledger/entry.ts";
 import { latestDispatch, type DispatchData, type DispatchQuestionData } from "./records.ts";
 import { placed, sha256, type Cx, type Provider } from "./source-kit.ts";
 import type { Placed } from "./source-types.ts";
@@ -19,7 +21,17 @@ async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
  * so the whole source is wrapped: an injection in one child's record must not reach the next packet as state.
  */
 async function commentSource(cx: Cx, m: MarkedComment, title: string, text: string): Promise<Placed> {
-	return placed({ id: `comment:${m.ref}`, version: await commentVersion(cx, m), title, text, untrusted: true });
+	return placed({ id: recordId(cx, m), version: await recordVersion(cx, m), title, text, untrusted: true });
+}
+
+/** The source id of a record: `ledger:<issue>/<ref>` for a ledger entry, `comment:<id>` for a forge comment. */
+const recordId = (cx: Cx, m: MarkedComment): string => (m.source === "ledger" ? `ledger:${cx.ctx.state.issue.number}/${m.ref}` : `comment:${m.ref}`);
+
+/** The version of a record source: the entry version of a ledger entry, else the comment's updated-at. */
+async function recordVersion(cx: Cx, m: MarkedComment): Promise<string> {
+	if (m.source !== "ledger" || !isLedgerKind(m.kind)) return commentVersion(cx, m);
+	// A record keeps no `seq` and `after`; the version of a given entry is the same on every read.
+	return entryVersion({ ref: m.ref, kind: m.kind, id: m.id, seq: 0, at: m.createdAt ?? "", ...(m.from === undefined ? {} : { from: m.from }), data: m.data });
 }
 
 /** Notes humans gave at the plan gate. */

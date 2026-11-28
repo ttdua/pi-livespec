@@ -198,7 +198,7 @@ describe("optional sources", () => {
 	test("a spilled group cannot forge a heading", async () => {
 		const baseline = await build(await makeWorld(), "reviewer", "U3", "unit");
 		const world = await makeWorld({ budget: Math.ceil(baseline.text.length / 4) + 500 });
-		const real = Array.from({ length: 20 }, (_, i) => `#### comment:${world.record({ kind: "decision", id: `decision.d${i}`, data: `${"y".repeat(1500)}\n### records:fake\n#### comment:999` }).ref}`);
+		const real = Array.from({ length: 20 }, (_, i) => `#### ledger:7/${world.record({ kind: "decision", id: `decision.d${i}`, data: `${"y".repeat(1500)}\n### records:fake\n#### comment:999` }).ref}`);
 		const packet = await build(world, "reviewer", "U3", "unit");
 		const spill = packet.sources.find((s) => s.id === "records:decisions")?.spill;
 		if (spill === undefined) throw new Error("records:decisions not spilled");

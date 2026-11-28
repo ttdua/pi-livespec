@@ -150,3 +150,27 @@ describe("stuckFor whitespace", () => {
 		expect(stuckReport(p, { strict: true })).not.toHaveProperty("refused");
 	});
 });
+
+describe("ledger records in freshness", () => {
+	test("a ledger dispatch entry appended after the build passes", async () => {
+		const world = await makeWorld();
+		const packet = await dispatched(world);
+		world.record(dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
+		}));
+		expect(await stale(world, packet)).toEqual([]);
+	});
+
+	test("a changed ledger source is stale by its entry version", async () => {
+		const world = await makeWorld();
+		const entry = world.record(dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: ["d"], sources_used: [],
+		}));
+		const packet = await dispatched(world);
+		expect(packet.sources.map((s) => s.id)).toContain(`ledger:7/${entry.ref}`);
+		(entry.data as { notes: string }).notes = "changed";
+		expect(await stale(world, packet)).toEqual([`ledger:7/${entry.ref}`]);
+	});
+});
