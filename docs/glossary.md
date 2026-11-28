@@ -19,6 +19,8 @@
 - **Guard**: a `tool_call` hook that blocks forbidden commands before they run.
 - **Initiative**: a tracking issue that groups several changes and their dependencies.
 - **Integration branch**: the branch changes are created from and merged into. Config `integrationBranch`, defaulting to the forge's default branch. Updates from it are merges, never rebases.
+- **Ledger**: the append-only git ref `refs/livespec/<issue>` that holds a change's machine records (decisions, dispatch records, finding summaries, receipts, unit starts, counters). It is synced with `origin` and never written by hand.
+- **Ledger entry**: one record of the ledger, with a unique `ref` (`<id>~<8 hex>`), kind, id, write time and data. Packets and tools cite it as `ledger:<issue>/<ref>`.
 - **Living spec**: the current truth about system behavior, kept in `specs/` and edited in place by changes.
 - **Packet**: the self-contained brief the parent builds for a subagent.
 - **Parallel lane**: one worktree in which a subagent builds a unit concurrently with others.

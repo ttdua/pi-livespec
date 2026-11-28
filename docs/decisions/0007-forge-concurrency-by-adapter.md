@@ -1,6 +1,6 @@
 # 0007: Write concurrency is checked per forge adapter
 
-Status: Accepted (2026-11-13)
+Status: Accepted (2026-11-13), refined by [0008](0008-machine-ledger.md)
 
 Refines [0002](0002-issue-is-source-of-truth.md): the rule "writes fail closed when the issue changed since it was read" stays; the mechanism is no longer ETags for every forge.
 

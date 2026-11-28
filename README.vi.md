@@ -560,6 +560,7 @@ Config project: `.pi/livespec/config.yaml`. Config user: `~/.pi/agent/livespec/c
 | `verify.timeout` | project | `600` | số giây cho mỗi lần chạy Verify |
 | `interaction.adapter` | project, rồi user | `[in-session]` | approver chain theo thứ tự: `in-session`, `forge` |
 | `agentSkills.channel` | chỉ user | `auto` | cập nhật agent-skills theo `auto`, `notify` hoặc `pinned` |
+| `ledger.retain` | project | `true` | giữ ledger của change (`refs/livespec/<issue>`) sau `change_close`; `false` xóa ledger ở local và trên `origin` |
 | `lanes` | user | `3` | số lane song song tối đa |
 | `packetBudgetTokens` | user | `24000` | kích thước packet trước khi nguồn được tách ra file |
 | `isolation.excludePackages` | user | `[]` | các package pi không nạp trong child của livespec |

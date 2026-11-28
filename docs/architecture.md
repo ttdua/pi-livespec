@@ -79,14 +79,42 @@ specs/
 |---|---|---|
 | Initiative | Tracking issue, label `livespec:initiative` | Goal, capabilities, the list of change issues with `Depends` |
 | Change | Issue, labels `livespec` and `livespec:phase/<phase>` | Ownership lines, capabilities, proposal, design, questions, units, durable docs table |
-| Receipt | Tool-written comment on the change issue | Verify command, pre and post SHA with exit codes, output, unit digest |
-| Gate decision, amendment, counter, decision record | Tool-written comments | Who approved and when, outcome, locked digests, counter values |
+| Gate decision, amendment | Tool-written comments | Who approved and when, outcome, locked digests |
+| Receipt, unit start, counter, decision record, dispatch record, finding summary | Not on the forge: entries of the [ledger](#ledger) (`refs/livespec/<issue>`) | Verify command, pre and post SHA with exit codes, output, unit digest; counter values; rule and human decisions |
 | Code and spec diff | One pull request that references the issue (`Refs #<change>`); the issue is closed by a tool after merge | Unit commits and `specs/` edits |
-| Review findings | Pull request review comments, plus a summary comment on the issue | Severity, location, evidence, fix, scope |
+| Review findings | Pull request review comments, plus a summary entry in the ledger | Severity, location, evidence, fix, scope |
 
 **Local, and only a cache:** `~/.pi/agent/livespec/` holds the agent-skills clone, user config and an issue cache. Deleting the cache loses nothing. `<git common dir>/livespec/` holds the packet spill files and `audit.json` ([Audit](#audit)); it is also safe to delete.
 
 **Forge writes are checked by version.** Every issue, pull request and comment the `Forge` returns carries an opaque `version`, and a body edit passes the version the caller read. A stale edit returns a conflict and writes nothing. The mechanism differs by adapter ([ADR 0007](decisions/0007-forge-concurrency-by-adapter.md)): Gitea uses `content_version` when the server sends it, GitHub (and Gitea without that field) re-reads and compares. When the forge cannot be reached, reads come from the cache marked stale and writes are refused.
+
+## Ledger
+
+Machine records of six kinds live in a per-change git ledger, not in issue comments ([ADR 0008](decisions/0008-machine-ledger.md)). The code is in `src/ledger/`; the guarded fetch, push and delete are in `src/guard/push.ts`.
+
+| Kind | Ledger file |
+|---|---|
+| `decision` | `decisions.jsonl` |
+| `dispatch` | `dispatch.jsonl` |
+| `finding-summary` | `findings.jsonl` |
+| `unit-start`, `receipt` | `units/<U>.yaml` |
+| `counter` | `change.yaml` |
+
+**Layout.** The ref is `refs/livespec/<issue>`, an orphan history in the clone's common git dir, shared by every worktree and lane. `ledger.yaml` holds `{ schema: 1, issue }`. Kinds written by earlier versions as comments are ignored with a warning.
+
+**Entries.** `{ ref, kind, id, seq, at, after?, from?, data }`: `ref` is the unique id `<id>~<8 hex>`, `id` the record id, `seq` the 1-based position, `at` the write time, `after` the ref of the latest own marked comment the writer had read, `from` a forge comment id reserved for the migration (#62). Files are append-only; reading skips invalid entries with a warning.
+
+**Append.** The tree is built with git plumbing in a temporary index (the real index and working tree are never touched) and the ref moves by compare-and-swap, retried up to 5 times. Commits use the fixed identity `livespec <livespec@localhost>`. An append then runs a best-effort sync and never fails because of it.
+
+**Sync.** Remote is `origin`; the tracking copy is `refs/livespec-origin/<issue>`. Sync fetches, fast-forwards the local ref, or (when diverged) replays the local entries missing on the remote onto the remote tip, matched by `ref`, then pushes without force; a rejected push restarts the sync (at most 3 times). An unreachable remote leaves entries `pending` until the next sync.
+
+**Fetch before first use.** Every session fetches a change's ledger once before the first state read; later reads use the local ref only. When the fetch fails and no ledger is known locally, appends refuse. `change_ship` syncs before it pushes the branch and refuses unless the ledger is pushed; `change_close` syncs before deleting.
+
+**Ordering.** One merged list: own marked comments in forge order, each entry placed right after its `after` anchor (entries of one anchor in file order); a lost anchor falls back to the last comment created before `at`. "Newer than" comparisons use positions in this list, never `seq` alone.
+
+**Retention.** Project config `ledger.retain` (default `true`). With `false`, `change_close` deletes the ref locally and on `origin` after closing the issue; a failed remote delete does not fail the close.
+
+**Trust and guards.** Entries carry no author check: whoever can push `refs/livespec/*` to `origin` can write state. The bash guard blocks agent git commands that name `refs/livespec` or `livespec-origin`, except `log`, `show`, `cat-file`, `rev-parse`, `rev-list`, `ls-tree`, `ls-remote`, `for-each-ref` and `diff`, and blocks `update-ref --stdin` and wildcard destination refspecs outside `refs/remotes/`. Accepted limits ([ADR 0004](decisions/0004-guards-inside-pi.md)): other plumbing (`pack-refs`, `replace`), refspecs from git config, ref names behind shell expansions, unmodelled git subcommands and direct writes under `.git`. A ledger kept by a failed remote delete, pushed again by another clone, or left by an `--abandon` close stays.
 
 ## Session, context and content
 
@@ -141,7 +169,7 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 - **Request.** The forge adapter writes a `request` comment with the subject (`gate:<phase|name>`, `amend:<n>`, `question:Q<n>`, `stuck:S<n>`, `decide:<point>.<subject>`), the mode, the options, `head_sha` and a snapshot of what the human sees. Only one request per subject may be pending.
 - **Answer.** An `answer` comment records the full request, the human's answer and the validation verdict (`valid` or `superseded`). A superseded `reason` is wrapped as untrusted where it is built and marked `reason_wrapped: true`; older answers without the mark are wrapped when shown. Validation runs once, before the answer is written: a gate checks that HEAD, the gate digest and the refusal conditions are unchanged; an amendment checks the affected units' digests and the resulting plan. The in-session adapter writes the `answer` comment directly, with no `request`.
-- **Result.** Completion applies the effects in a fixed order, each skipped when already applied (body edit, `stale` or `decision` comments, phase move), and writes the result comment (`gate`, `amendment`, `question`, `stuck` or `decision`) last. A crash leaves the request *applying*, and the next poll or livespec tool finishes it. Completion is one handler per subject kind.
+- **Result.** Completion applies the effects in a fixed order, each skipped when already applied (body edit, `stale` comments or `decision` entries, phase move), and writes the result last: a comment (`gate`, `amendment`, `question` or `stuck`) or a `decision` ledger entry. A crash leaves the request *applying*, and the next poll or livespec tool finishes it. Completion is one handler per subject kind.
 - **Derived advance.** A phase moves when its *valid gate result* (the latest own `gate` comment newer than the latest `stale` comment listing the phase, not superseded) is approved; `ship` never advances. A failed label move retries on every refresh. A gate result carries `waivers`: the waivable checks the human waived with `/livespec choose waive`, so an approved waived gate advances even though those checks still fail.
 
 **Briefing and presentation.** A request may carry a `Briefing` (`src/interaction/approver.ts`): `summary`, optional `watch`, `recommended` (an offered choice id), `rationale` and `author` (`agent` or `rule`). It is stored in the `request` comment yaml and in the `answer` record, so a completed request keeps what the human saw; a request without one (written before this) still parses and completes. Four pure modules shape what the human reads:
@@ -177,13 +205,13 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 ## Evidence and guards
 
-**Receipts.** Build evidence is two kinds of own marked comment on the change issue, both append-only:
+**Receipts.** Build evidence is two kinds of ledger entry, both append-only:
 
-- `unit_start U<n>` checks that the unit is pending, not frozen, its dependencies are done, no other unit is started and the tree is clean. It then runs the unit's `Verify` at `HEAD` and posts a `unit-start` comment with the unit digest and the pre run. A normal unit must be red at the start, and a refactor unit must be green. A command that cannot run (not found, timeout, spawn error) is never counted as red.
-- `unit_finish U<n>` runs `Verify` again at `HEAD`. When it is green, it posts a `receipt` with the pre and post SHA and exit codes, plus the tail of the output (at most 8 KB, with known tokens redacted). Then it ticks the unit, keeping every other byte of the body. A receipt without a tick, after a crash, is reconciled on the next call.
+- `unit_start U<n>` checks that the unit is pending, not frozen, its dependencies are done, no other unit is started and the tree is clean. It then runs the unit's `Verify` at `HEAD` and appends a `unit-start` entry with the unit digest and the pre run. A normal unit must be red at the start, and a refactor unit must be green. A command that cannot run (not found, timeout, spawn error) is never counted as red.
+- `unit_finish U<n>` runs `Verify` again at `HEAD`. When it is green, it appends a `receipt` with the pre and post SHA and exit codes, plus the tail of the output (at most 8 KB, with known tokens redacted). Then it ticks the unit, keeping every other byte of the body. A receipt without a tick, after a crash, is reconciled on the next call.
 - A unit whose test file in `Files` does not exist at the pre commit is *verifier-pending*: its first commit may change only those test files, and that commit becomes the pre.
 
-**Attempts and `BLOCKED`.** Each `unit_finish` that is not green posts a `progress` decision record with the attempt number and a failure signature (failing test names plus a normalized error hash). The `progress` rule stops early when two attempts in a row fail the same way. The unit is `BLOCKED` when the rule says stop or `loops.unit_attempts` is reached, and only a chosen stuck answer restarts its budget.
+**Attempts and `BLOCKED`.** Each `unit_finish` that is not green appends a `progress` decision entry with the attempt number and a failure signature (failing test names plus a normalized error hash). The `progress` rule stops early when two attempts in a row fail the same way. The unit is `BLOCKED` when the rule says stop or `loops.unit_attempts` is reached, and only a chosen stuck answer restarts its budget.
 
 **`verify-red-on-base`.** A gate-only check of the plan gate. It runs every non-pending unit's `Verify` on `Base` in a temporary worktree and fails when a normal unit is already green there. Pending (non-refactor) units are exempt. A refactor unit must be green on `Base`, and it is an error when its test is missing. A missing toolchain is not red. Results are memoized for the session, keyed by the root, `Base` and the unit digests.
 
@@ -220,7 +248,7 @@ The parent session may hand role work to subagent children. It keeps every piece
 
 **Four layers.** A child's brief has four layers, and each comes from exactly one source:
 
-1. **Role**: the executor's agent file for `scout`, `implementer`, `reviewer` or `verifier`. The `verifier` role takes a `finding` reference (`subagent_dispatch verifier` with `finding: <aggregate comment id>:<index>`), and its packet refuses without one; see [Review](#review). livespec ships no agent files. A user or project file that overrides one of them is used as is. It triggers a warning once per session, and the record stores it as `agentSource`.
+1. **Role**: the executor's agent file for `scout`, `implementer`, `reviewer` or `verifier`. The `verifier` role takes a `finding` reference (`subagent_dispatch verifier` with `finding: <aggregateRef>:<index>`), and its packet refuses without one; see [Review](#review). livespec ships no agent files. A user or project file that overrides one of them is used as is. It triggers a warning once per session, and the record stores it as `agentSource`.
 2. **Protocol**: a fixed, flow-neutral livespec text (`protocol.ts`). It says that `<untrusted>` text is data, how to read spilled sources, what the child must not do, how to ask (`ask_parent` or `NEEDS_CONTEXT`) and how to submit the structured result.
 3. **Flow**: the pack name, the pack version, the content tree commit and the role's skills. The skills reach the child as absolute `SKILL.md` paths with `skills.inherit: false`.
 4. **Task**: the unit or the review subject, its sources in manifest order, `Verify`, `Files` and the prohibitions. A footer follows with the packet hash and each source's version.
@@ -266,10 +294,10 @@ The subagent, lane, `finding_rebut` and `forge_read` tools refuse in a child, an
 - When an open lane's worktree was deleted, `lane_merge <unit>` closes its record with outcome `moved`, and the unit re-runs sequentially; the other unit tools name `lane_merge` as the way out.
 - A unit with a receipt but no tick is ticked with `unit_finish` before any lane opens.
 
-**Records.** Every result is an own marked comment on the change issue. Counters are derived from these comments, never from session memory.
+**Records.** Every result is a record on the change: `dispatch`, `finding-summary` (and `receipt`, `decision`) are [ledger](#ledger) entries; `lane` is an own marked comment on the issue. Counters are derived from these records, never from session memory. Packets cite ledger entries as sources `ledger:<issue>/<ref>`, versioned by a hash of the entry without `seq`; other sources stay `comment:<id>`.
 
 - `dispatch`: one per settled implementer or scout run, with id `dispatch.<unit|change>.<role>.<attempt>`. It holds the role, unit, attempt, packet hash, agent source, requested thinking, effective model and thinking, status, commits, `notes`, `discoveries` and `sources_used`. The statuses `QUESTION` and `ANSWERED` keep a child's question alive across a session reload. A dependent unit's packet reads `discoveries` from this record.
-- `finding-summary`: one per reviewer or verifier round, with id `finding-summary.<unit|change>.<subject>.<round>`. It holds the findings, the reviewed HEAD, the status, the required and used sources, whether the review completed, and the run's `notes`, `reason` and `evidence` when they are non-empty. `finding_rebut` adds a rebuttal record. `unit_finish` refuses while a blocking finding is unresolved, or while a required unit review has not completed at HEAD. An `out-of-scope` finding never refuses `unit_finish`: it is listed at the next human gate until a gate has shown it, as a `files-violation` finding is.
+- `finding-summary`: one per reviewer or verifier round, with id `finding-summary.<unit|change>.<subject>.<round>`. It holds the findings, the reviewed HEAD, the status, the required and used sources, whether the review completed, and the run's `notes`, `reason` and `evidence` when they are non-empty. `finding_rebut <ref> <index>` adds a rebuttal record naming the entry ref. `unit_finish` refuses while a blocking finding is unresolved, or while a required unit review has not completed at HEAD. An `out-of-scope` finding never refuses `unit_finish`: it is listed at the next human gate until a gate has shown it, as a `files-violation` finding is.
 - `lane`: one per lane, with id `lane.<unit>`. It holds the path, branch and base. A later `lane` record with `closed: true` ends the lane and names the outcome (`merged`, `violation`, `conflict`, `red` or `moved`).
 
 **Inline fallback.** Without a capable executor, or when the policy does not suggest a dispatch, the phase card names `subagent_packet` and `subagent_record`. The parent reads the same packet, does the work in its own session and records the result in the same schema. The dispatch records, finding summaries, receipts and ticks are the same as for a dispatched run, so a change completes either way.
@@ -280,7 +308,7 @@ The subagent, lane, `finding_rebut` and `forge_read` tools refuse in a child, an
 
 The `review` phase runs a fan-out of reviewers over the whole change, verifies and routes their findings, and returns defective units to `build`. The code lives in `src/review/`, the tool is `spec_review` (`src/tools/spec-review.ts`).
 
-**Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and every write is an own marked comment on the change issue:
+**Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and the `review-run` is an own marked comment on the change issue and the findings and decisions are ledger entries:
 
 1. `start`: refuses a dirty tree, a missing `Base`, an open blocking question or an unanswered stuck report. It runs every unit's `Verify` at `HEAD` and posts a `review-run` (round, `head`, selected subjects, tags, verify results, parent findings, `routed: false`). A `HEAD` that differs from the open round's restarts it as a new round.
 2. `review`: launches the missing reviewers in parallel (`subagent_packet`/`subagent_record` inline without an executor). A reviewer's packet holds no other reviewer's output.
@@ -288,18 +316,18 @@ The `review` phase runs a fan-out of reviewers over the whole change, verifies a
 4. `verify`: sends each finding that needs it to a `verifier` child.
 5. `route`: runs `finding-scope` per finding, applies the effects and updates the `review-run` with `routed: true`.
 
-A routed round is final: a second call posts nothing. Retried stages are idempotent because every comment has a derived id.
+A routed round is final: a second call posts nothing. Retried stages are idempotent because every record has a derived id.
 
 **Selection and personas.** `selectSubjects` takes the `reviewer` entries of the `review` phase in the pack that hold for the change facts: the whole-change reviewer always, and the personas (`security-auditor`, `test-engineer`, `web-performance-auditor`) by tag. Tags are the units' plus tags re-derived from the diff (`retag`, through the `tags` rule, e.g. an `auth/` path adds `security`); they are recorded on the `review-run` and never written to the units. A persona's agent file and skill come from the content tree.
 
 **`constraints-not-weakened`.** `checkStandards` parses the diff and reports a CRITICAL `lowered-standard` finding for an added `skip`/`only`, a suppression (`@ts-ignore`, `eslint-disable`, `@ts-expect-error` without a reason), a deleted test file, or a test file that removes more assertion lines than it adds. It cites `specs/constraints.md` when present. These parent findings are not sent to a verifier (`verify: skipped-parent`). A unit whose `Verify` is red at review also yields a CRITICAL parent finding on its first file.
 
-**Verifier and `DISPUTED`.** `subagent_dispatch verifier` takes a `finding` reference (`<aggregate comment id>:<index>`) and its packet carries that finding and the code it points at. The child returns `verdict: confirmed | refuted` and a `reason`, recorded as a `finding-summary`. A refuted finding is `DISPUTED`: it blocks nothing and is listed at the `ship` gate with the verifier's reason. Only findings that went to the verifier can be disputed; `missed-context` and parent findings skip it. A `finding_rebut` rebuttal is listed the same way. A finding that is neither verified nor resolved blocks.
+**Verifier and `DISPUTED`.** `subagent_dispatch verifier` takes a `finding` reference (`<aggregateRef>:<index>`) and its packet carries that finding and the code it points at. The child returns `verdict: confirmed | refuted` and a `reason`, recorded as a `finding-summary`. A refuted finding is `DISPUTED`: it blocks nothing and is listed at the `ship` gate with the verifier's reason. Only findings that went to the verifier can be disputed; `missed-context` and parent findings skip it. A `finding_rebut` rebuttal is listed the same way. A finding that is neither verified nor resolved blocks.
 
 **Routing.** `routeFinding(finding, facts)` is pure and sits behind the `finding-scope` rule (default mode, no question). In order:
 
 - a `SUGGESTION` is `record`ed (except `missed-context`);
-- `needs-decision` is a `question`: one non-blocking question, raised once, keyed by `finding:<comment id>:<index>`;
+- `needs-decision` is a `question`: one non-blocking question, raised once, keyed by `finding:<ref>:<index>`;
 - a path in a unit's `Files` is `unit`, routed to that unit;
 - a path in the diff, or `missed-context`, is `in-change`;
 - anything else is `out-of-scope`: it never blocks and is listed at `ship` as a follow-up.
@@ -405,7 +433,7 @@ One trigger and one check per durable file, enforced by code. The code lives in 
 **`behavior-change`.** A rule (`decisions.behavior-change: { mode: rule }`) that always asks, with the options `unchanged` and `changed`.
 
 - **Facts.** Per living spec whose `paths` match a changed non-`specs/` file in `Base..HEAD` while its `spec.md` is not in the diff: `{ capability, files }`, files sorted.
-- **Record.** A `decision` comment with subject `<capability>`, source `human`, the item as facts, a top-level `files` field (kept when the facts are compacted to `facts_hash`) and the SHA-256 of the files joined by newlines as digest. It is reusable only for the same digest and facts, so a new file under the capability asks again and re-editing the same files does not.
+- **Record.** A `decision` ledger entry with subject `<capability>`, source `human`, the item as facts, a top-level `files` field (kept when the facts are compacted to `facts_hash`) and the SHA-256 of the files joined by newlines as digest. It is reusable only for the same digest and facts, so a new file under the capability asks again and re-editing the same files does not.
 - **Check.** Per item: no reusable record is an error naming `spec_gate <phase>` (or the open `decide:behavior-change.<capability>` request); a `changed` record is an error naming `specs/<capability>/spec.md`; `unchanged` passes. An item leaves the facts once its `spec.md` is in the diff.
 - **Asking.** `spec_gate define` and `spec_gate review` first run the checks and refusals without the `behavior-change` results. Any refusal returns before anything is asked or written. Otherwise each unanswered capability is asked through the approver chain, one at a time; the state is refreshed and the full check run again, so a `changed` answer refuses in the same call. A pending forge request makes `spec_gate` refuse, naming it. A flow that does not list the check asks nothing.
 
@@ -433,7 +461,7 @@ One trigger and one check per durable file, enforced by code. The code lives in 
 
 `declared-none` reads the first-parent commits of `<fix cursor>..<audited commit>` (without a cursor, the last 30 days) whose subject names a pull request. It needs the forge; when the forge cannot be read it is skipped with a note and the other detectors still run.
 
-**Scout confirmation.** `scenario-untested` and `removed-reference` items go to one `scout` child through the dispatch API, in a temporary worktree of the audited commit (removed afterwards), with thinking `low` and no model. The packet has the protocol layer, no flow skills, the audited SHA and the items as untrusted data. The child returns a `confirmed` or `refuted` verdict per key; refuted items are listed under "Refuted by the scout" and not classified. The audit never runs the scout inline: with no capable executor, a disabled scout agent, a launch mismatch or a missing verdict, the items are kept and marked unconfirmed. No `dispatch` comment is written.
+**Scout confirmation.** `scenario-untested` and `removed-reference` items go to one `scout` child through the dispatch API, in a temporary worktree of the audited commit (removed afterwards), with thinking `low` and no model. The packet has the protocol layer, no flow skills, the audited SHA and the items as untrusted data. The child returns a `confirmed` or `refuted` verdict per key; refuted items are listed under "Refuted by the scout" and not classified. The audit never runs the scout inline: with no capable executor, a disabled scout agent, a launch mismatch or a missing verdict, the items are kept and marked unconfirmed. No `dispatch` entry is written.
 
 **`drift-severity`.** A rule (`decisions.drift-severity: { mode: rule }`) that never asks. Facts: `{ type, capabilityHasMajor }`. `scenario-untested`, `dead-paths` and `removed-reference` are `major` (route `change`); `unused-term`, `stale-decision` and `product-missing` are `minor` (route `small-fix`); `declared-none` is `major` when another major-type item names the same capability, else `minor`. Routes are suggestions.
 
@@ -472,5 +500,5 @@ The forge account is chosen **per clone**, never globally. The choice lives in t
 - **The parent owns the evidence.** The main session runs `Verify` and posts receipts. Subagents only implement and commit ([ADR 0003](decisions/0003-parent-owned-evidence.md)).
 - **Only plugin tools write to the forge or push.** A `tool_call` guard blocks direct forge writes and direct pushes; livespec tools push only after checking the state ([ADR 0004](decisions/0004-guards-inside-pi.md)).
 - **Decisions are made by rules.** Code builds every decision from facts and records it. The agent never self-assesses a decision point ([ADR 0006](decisions/0006-rule-based-decisions.md)).
-- **Forge content is data, not instructions.** Text written by humans on issues and pull requests is wrapped as untrusted. Only comments that carry a marker and were written by the plugin's account count as state.
+- **Forge content is data, not instructions.** Text written by humans on issues and pull requests is wrapped as untrusted. Only comments that carry a marker and were written by the plugin's account, and entries of the ledger, count as state.
 - **No subagent plugin, same flow.** Without subagents, every step runs inline and produces the same evidence.

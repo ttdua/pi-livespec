@@ -558,6 +558,7 @@ Project config: `.pi/livespec/config.yaml`. User config: `~/.pi/agent/livespec/c
 | `verify.timeout` | project | `600` | seconds per Verify run |
 | `interaction.adapter` | project, then user | `[in-session]` | ordered approver chain: `in-session`, `forge` |
 | `agentSkills.channel` | user only | `auto` | `auto`, `notify` or `pinned` updates of agent-skills |
+| `ledger.retain` | project | `true` | keep the change ledger (`refs/livespec/<issue>`) after `change_close`; `false` deletes it locally and on `origin` |
 | `lanes` | user | `3` | max parallel lanes |
 | `packetBudgetTokens` | user | `24000` | packet size before sources spill to files |
 | `isolation.excludePackages` | user | `[]` | pi packages not loaded in livespec children |
