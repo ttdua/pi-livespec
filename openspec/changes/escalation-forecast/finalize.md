@@ -2,7 +2,7 @@
 
 **Change**: `escalation-forecast`
 **Finalized at**: `2026-11-28 13:33 UTC`
-**Outcome**: `kept-as-is`
+**Outcome**: `pr-created`
 
 ---
 
@@ -10,10 +10,10 @@
 
 - **Branch**: `escalation-forecast`
 - **Base branch**: `main` (`57ab980`)
-- **Final state**: `kept-open`
-- **PR URL**: N/A
+- **Final state**: `pr-open`
+- **PR URL**: https://github.com/ttdua/pi-livespec/pull/81
 
-Deviation from the canonical git-side closeout: the worktree branch is also the feature branch (created with `wt` before apply), so there is no separate feature branch to fast-forward. Per the project AGENTS.md ("Git approval: no push, merge or PR without explicit permission in chat"), nothing was pushed and no PR was opened. Steps 3–7 and 10–12 were not run.
+Deviation from the canonical git-side closeout: the worktree branch is also the feature branch (created with `wt` before apply), so there is no separate feature branch to fast-forward. Steps 3–7 (merge into a feature branch, worktree removal) were not run. After explicit permission in chat (project AGENTS.md "Git approval"), the branch was pushed over HTTPS as `ttdua` and PR #81 was opened against `main` with `Closes #75`.
 
 ---
 
@@ -26,7 +26,7 @@ Deviation from the canonical git-side closeout: the worktree branch is also the 
 
 ## PR comment
 
-- **PR comment status**: `skipped (no PR)`
+- **PR comment status**: `posted` (https://github.com/ttdua/pi-livespec/pull/81#issuecomment-7240027278)
 
 ---
 
@@ -46,4 +46,4 @@ Deviation from the canonical git-side closeout: the worktree branch is also the 
 
 ## Next step
 
-When pushing is approved: check `gh auth status` against owner `ttdua`, push `escalation-forecast`, open a PR to `main` (`feat(flow-engine): escalation-forecast`, body `Closes #75`), post the code-reviewer orientation comment, then after approval run `/opsx-archive` on this branch, push the archive commits, and merge the PR.
+Wait for PR code review. After approval, run `/opsx-archive` on this branch (commits land here), push the archive commits to update PR #81, then merge the PR (`gh pr merge --squash --delete-branch` or GitHub UI); afterwards remove the worktree with `wt remove escalation-forecast` from `main`.
