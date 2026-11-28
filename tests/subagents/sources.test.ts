@@ -479,7 +479,7 @@ describe("behavior conclusions", () => {
 
 	test("Conclusions in the packet", async () => {
 		const world = await behaviorWorld();
-		world.post(BOT, behaviorConclusionComment({ capability: "request-context", files: ["src/context.ts"] }, { source: "agent", outcome: "unchanged", reason: "only a rename" }));
+		world.record(behaviorConclusionComment({ capability: "request-context", files: ["src/context.ts"] }, { source: "agent", outcome: "unchanged", reason: "only a rename" }));
 		const found = (await sourcesOf(world, "reviewer", undefined, "change")).find((p) => p.source.id === ID);
 		expect(found?.source.required).toBe(true);
 		for (const word of ["request-context", "src/context.ts", "unchanged", "agent", "only a rename"]) expect(found?.source.text).toContain(word);

@@ -1,10 +1,11 @@
 // Records the agent's `behavior` conclusions at `spec_gate define|review` (durable-doc-checks "Behavior conclusion
 // at the gate"): the list must cover every behavior item and no other capability; each conclusion that differs from
-// the latest agent record at the same digest is posted. Nothing is written when the coverage refusal, or the refusal
+// the latest agent record at the same digest is appended to the ledger. Nothing is written when the coverage refusal, or the refusal
 // for a legacy `decide:behavior-change` request still open for an item, applies.
 
 import { validDecisionEntries } from "../decide/records.ts";
 import type { ChangeState } from "../engine/state-types.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
 import type { WriteContext } from "../tools/guard.ts";
 import { BEHAVIOR_POINT, type BehaviorConclusionInput, type BehaviorItem, behaviorConclusionComment, behaviorDigest, legacyRequestRefusal } from "./behavior-change.ts";
 import { changeBehaviorItems } from "./behavior-check.ts";
@@ -30,16 +31,18 @@ function alreadyRecorded(state: ChangeState, item: BehaviorItem, e: BehaviorConc
 	return latest !== undefined && latest.outcome === e.outcome && latest.reason === e.rationale;
 }
 
-/** Posts one agent `decision` per conclusion not already recorded; `posted` says whether anything was written. */
+/** Appends one agent `decision` per conclusion not already recorded; `posted` says whether anything was written. */
 export async function recordBehaviorConclusions(w: WriteContext, state: ChangeState, entries: BehaviorConclusionInput[]): Promise<BehaviorRecordResult> {
 	const items = await changeBehaviorItems(w.session.cwd, w.session.git, state.change.header.base);
 	const refusal = legacyRequestRefusal(items, state.marked) ?? coverageRefusal(items, entries);
 	if (refusal !== undefined) return { ok: false, message: refusal };
+	const after = lastForgeRef(state.marked);
 	let posted = false;
 	for (const item of items) {
 		const entry = entries.find((e) => e.capability === item.capability);
 		if (entry === undefined || alreadyRecorded(state, item, entry)) continue;
-		await w.forge.createComment(state.issue.number, behaviorConclusionComment(item, { source: "agent", outcome: entry.outcome, reason: entry.rationale }));
+		const input = behaviorConclusionComment(item, { source: "agent", outcome: entry.outcome, reason: entry.rationale });
+		await w.ledger.append(state.issue.number, { ...input, ...(after === undefined ? {} : { after }) });
 		posted = true;
 	}
 	return { ok: true, posted };

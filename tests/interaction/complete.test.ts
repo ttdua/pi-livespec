@@ -12,6 +12,8 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
 import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
+import { behaviorConclusionComment, effectiveConclusion, latestConclusions } from "../../src/docs/behavior-change.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
@@ -799,6 +801,7 @@ describe("named gate seam", () => {
 });
 
 describe("human behavior override", () => {
+	const ITEM = { capability: "rate-limit", files: ["src/rate.ts"] };
 	const behaviorSnapshot = () => ({ ...gateSnapshot("define"), behavior: [{ capability: "rate-limit", files: ["src/rate.ts"], outcome: "unchanged" as const }] });
 	const changes = (over: Partial<Answered> = {}) => answer({ outcome: "changes_requested", notes: "cap semantics changed", behaviorOverrides: [{ capability: "rate-limit", outcome: "changed" }], ...over });
 	const humanRecords = (marked: MarkedComment[]) => ofKind(marked, "decision", "behavior-change.rate-limit").filter((m) => (m.data as { source?: string }).source === "human");
@@ -810,11 +813,33 @@ describe("human behavior override", () => {
 		const marked = await markedOf(f);
 		const records = humanRecords(marked);
 		expect(records).toHaveLength(1);
-		expect(records[0]?.data).toMatchObject({ point: "behavior-change", outcome: "changed", reason: "set by alice at the gate", files: ["src/rate.ts"], overridden_by: { by: "alice", at: AT, from: "unchanged" } });
+		expect(records[0]?.data).toMatchObject({ point: "behavior-change", outcome: "changed", reason: "set by alice at the gate", files: ["src/rate.ts"], overridden_by: { by: "alice", at: AT, from: "unchanged" }, request: record.id });
+		expect(records[0]?.source).toBe("ledger");
+		expect(effectiveConclusion(marked, ITEM)).toMatchObject({ outcome: "changed", source: "human" });
 		const kinds = marked.map((m) => m.kind);
 		const flip = marked.indexOf(records[0] as MarkedComment);
 		expect(kinds.indexOf("stale")).toBeGreaterThan(flip);
 		expect(kinds.lastIndexOf("gate")).toBeGreaterThan(kinds.indexOf("stale"));
+	});
+
+	test("Override without its forge answer", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
+		await completeAnswer(await ctxOf(f), record, changes());
+		const marked = await markedOf(f);
+		const [flip] = humanRecords(marked);
+		const agent = ledgerRecord({ ...behaviorConclusionComment(ITEM, { source: "agent", outcome: "unchanged", reason: "constant only" }), kind: "decision" });
+		const withAgent = (rest: MarkedComment[]) => [agent, ...rest];
+		// The ledger entry alone (its forge answer missing): the agent's conclusion stays effective.
+		expect(effectiveConclusion(withAgent([flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "unchanged", source: "agent" });
+		// The forge answer present but without rate-limit in its behavior overrides.
+		const answer = ofKind(marked, "answer", record.id)[0] as MarkedComment;
+		const data = answer.data as { answer: Answered };
+		const other = { ...answer, data: { ...data, answer: { ...data.answer, behaviorOverrides: [{ capability: "cache", outcome: "changed" }] } } };
+		expect(effectiveConclusion(withAgent([other, flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "unchanged", source: "agent" });
+		expect(latestConclusions(withAgent([other, flip as MarkedComment])).get("rate-limit")).toMatchObject({ source: "agent" });
+		// With its own answer, the override wins.
+		expect(effectiveConclusion(withAgent([answer, flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "changed", source: "human" });
 	});
 
 	test("Superseded answer records no override", async () => {
@@ -834,8 +859,12 @@ describe("human behavior override", () => {
 		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
 		const crashing = failingOnce(f.world.forge, commentOfKind("stale"));
 		await expect(completeAnswer(await ctxOf(f, crashing), record, changes())).rejects.toThrow("injected");
+		// The override entry names the request but is an effect: the request stays applying until its `gate` comment.
+		expect(readRequests(await markedOf(f)).applying.map((a) => a.id)).toEqual([record.id]);
 		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
-		expect(humanRecords(await markedOf(f))).toHaveLength(1);
+		const marked = await markedOf(f);
+		expect(humanRecords(marked)).toHaveLength(1);
+		expect(ofKind(marked, "gate").map((m) => (m.data as { request?: string }).request)).toContain(record.id);
 	});
 
 	test("an override for a capability missing from the snapshot is skipped", async () => {

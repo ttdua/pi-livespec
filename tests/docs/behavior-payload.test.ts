@@ -10,8 +10,9 @@ import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { resetRegistryForTests } from "../../src/engine/registry.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 import { stateFor } from "../helpers/change-state.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 
 let pack: Pack;
 beforeEach(async () => {
@@ -31,9 +32,7 @@ const NO_FACTS: ReviewFacts = { specsStat: "", specsFiles: [], specsDiff: "" };
 /** An agent `unchanged` record on `item` with `reason`, as `spec_gate` writes it. */
 function agentRecord(item: BehaviorItem, reason: string, outcome = "unchanged"): MarkedComment {
 	const r: DecisionRecord = { point: "behavior-change", subject: item.capability, digest: behaviorDigest(item.files), source: "agent", outcome, facts: item, files: item.files, reason };
-	const m = parseMarked(decisionComment(r));
-	if (m === undefined) throw new Error("not a marked comment");
-	return { ...m, commentId: `c-${item.capability}`, author: "bot" } as MarkedComment;
+	return ledgerRecord({ ...decisionComment(r), kind: "decision" }, { ref: `e-${item.capability}` });
 }
 
 function payload(marked: MarkedComment[], facts: ReviewFacts): string {

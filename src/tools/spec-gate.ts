@@ -240,9 +240,9 @@ async function behaviorStep(w: WriteContext, state: ChangeState, g: GateInput, e
 	if (!passing.ok) return passing;
 	const recorded = await recordBehaviorConclusions(w, state, entries);
 	if (!recorded.ok) return recorded;
-	// Nothing posted: the checks already ran on this state, `behavior-change` included.
+	// Nothing appended: the checks already ran on this state, `behavior-change` included.
 	if (!recorded.posted) return { ok: true, state: checked, checked: true };
-	await afterForgeWrite(w.session, state.issue.number);
+	await afterLedgerWrite(w.session, state.issue.number);
 	const fresh = requireChange(w.session);
 	return fresh.ok ? { ok: true, state: fresh.state, checked: false } : { ok: false, message: fresh.message };
 }

@@ -119,7 +119,7 @@ export function overrideWarner(session: Session, notify: (text: string) => void)
 /** The dispatch side effects of the tools: the executor, pi's event bus, the forge and git. */
 export function dispatchDeps(pi: ExtensionAPI, w: WriteContext, issue: number, service: DispatchDeps["service"], notify: (text: string) => void): DispatchDeps {
 	const record = recordDeps(w, issue);
-	return { ...record, prepareResult: cleanReviewerBehavior, afterRecord: (run, result) => recordReviewerConclusions(record.post, run, result, run.packet), service, events: (pi as unknown as { events: EventsLike }).events, onOverride: overrideWarner(w.session, notify) };
+	return { ...record, prepareResult: cleanReviewerBehavior, afterRecord: (run, result) => recordReviewerConclusions(record.record, run, result, run.packet), service, events: (pi as unknown as { events: EventsLike }).events, onOverride: overrideWarner(w.session, notify) };
 }
 
 /** The packet as text for the parent, untrusted parts already wrapped by the builder. */

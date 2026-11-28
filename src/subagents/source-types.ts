@@ -35,7 +35,7 @@ export type PacketSourceRef = { id: string; version: string; required: boolean; 
 /** The behavior items of a `change` review and their effective conclusions (`null`: none); shaped like the docs types, which `subagents/` must not import. */
 export type PacketBehavior = {
 	items: { capability: string; files: string[] }[];
-	effective: Record<string, { outcome: "unchanged" | "changed"; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; commentId: string } | null>;
+	effective: Record<string, { outcome: "unchanged" | "changed"; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; ref: string } | null>;
 };
 
 export type Packet = {

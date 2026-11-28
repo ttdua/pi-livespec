@@ -91,9 +91,9 @@ export function decisionComment(r: DecisionRecord): AppendInput {
 	return { kind: "decision", id: `${r.point}.${r.subject}`, data: compactFacts(r) };
 }
 
-/** Every valid `decision` record with its comment id, in comment order; malformed data is skipped. */
-export function validDecisionEntries(marked: MarkedComment[]): { record: DecisionRecord; commentId: string }[] {
-	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [{ record: m.data, commentId: m.commentId }] : []));
+/** Every valid `decision` record with the ref of its record, in merged order; malformed data is skipped. */
+export function validDecisionEntries(marked: MarkedComment[]): { record: DecisionRecord; ref: string }[] {
+	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [{ record: m.data, ref: m.ref }] : []));
 }
 
 /** Every valid `decision` record, in comment order; malformed data is skipped. */

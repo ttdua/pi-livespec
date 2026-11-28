@@ -86,7 +86,7 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const approvedPlan = validApproval({ outcome: answer.outcome, superseded }) && target === PLAN;
 	if (approvedPlan) await applyOverrides(run, answer);
 	if (validApproval({ outcome: answer.outcome, superseded })) await runEffects(run, record, target);
-	if (!superseded && answer.outcome === "changes_requested" && target === DEFINE) await applyBehaviorOverrides(run, answer, snapshot);
+	if (!superseded && answer.outcome === "changes_requested" && target === DEFINE) await applyBehaviorOverrides(run, request.id, answer, snapshot);
 	if (!superseded && answer.outcome === "changes_requested" && isPhase) await writeStale(run, request, target);
 	const input: GateCommentInput = {
 		request: request.id,

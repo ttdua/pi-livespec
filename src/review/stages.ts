@@ -153,8 +153,7 @@ async function replayLostConclusions(c: StageCtx, head: string): Promise<void> {
 	if (summary === undefined) return;
 	const pctx = packetContext(c.w, c.state, undefined);
 	const packet = await readPacket(pctx.root, changeName(pctx), summary.data.packet);
-	const posted = await replayReviewerConclusions((body) => c.w.forge.createComment(c.state.issue.number, body).then(() => undefined), c.state.marked, summary, packet);
-	if (posted > 0) await afterForgeWrite(c.w.session, c.state.issue.number);
+	await replayReviewerConclusions((input) => record(c, input), c.state.marked, summary, packet);
 }
 
 async function aggregateStage(c: StageCtx): Promise<StageReport> {

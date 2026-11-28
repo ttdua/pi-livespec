@@ -6,7 +6,9 @@ import { registerDocReaders } from "../../src/docs/readers.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { registerFindingRebut } from "../../src/tools/finding-rebut.ts";
+import { writeMarked } from "../../src/forge/markers.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { done, publish, unpublish } from "../subagents/fake-executor.ts";
 import { readPacket } from "../../src/subagents/packet-store.ts";
@@ -243,12 +245,20 @@ describe("reviewer behavior conclusions", () => {
 		registerDocReaders();
 		const h = await subagentHarness({ units: [U1] });
 		await h.commit({ [CAP]: "export const cap = 99;\n" });
-		if (conclusion) await h.world.postComment(h.n, BOT_LOGIN, behaviorConclusionComment(ITEM, { ...conclusion, reason: "initial" }));
+		if (conclusion?.source === "human") await seedOverride(h, conclusion.outcome);
+		else if (conclusion) await appendSeed(h, behaviorConclusionComment(ITEM, { ...conclusion, reason: "initial" }));
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
 		return h;
 	}
 	type Behavior = Awaited<ReturnType<typeof behaviorHarness>>;
+
+	/** A human override as completion appends it, beside the own forge `answer` of its gate request (`isBacked`). */
+	async function seedOverride(h: Awaited<ReturnType<typeof subagentHarness>>, outcome: "unchanged" | "changed"): Promise<void> {
+		const answer = { outcome: "changes_requested", by: "alice", at: "t", behaviorOverrides: [{ capability: ITEM.capability, outcome }] };
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("answer", "seed-gate", { request: { subject: "gate:define" }, answer, verdict: "valid" }));
+		await appendSeed(h, behaviorConclusionComment(ITEM, { source: "human", outcome, reason: "set by alice at the gate", overridden_by: { by: "alice", at: "t", from: "unchanged" }, request: "seed-gate" }));
+	}
 
 	const review = async (h: Behavior, over: Record<string, unknown>) => {
 		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "reviewer", subject: "change" })));
@@ -357,8 +367,8 @@ describe("reviewer behavior conclusions", () => {
 		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
 		registerFindingRebut(h.pi.api as never);
 		expect((await review(h, { findings: [atCap], behavior: [dispute] })).isError).toBeFalsy();
-		const summary = (await h.latest("finding-summary")) as { commentId: string };
-		const rebuttal = await h.call("finding_rebut", { comment: summary.commentId, index: 0, reason: "cap is per design", evidence: "design.md D3" });
+		const summary = await h.latest("finding-summary");
+		const rebuttal = await h.call("finding_rebut", { comment: summary?.ref, index: 0, reason: "cap is per design", evidence: "design.md D3" });
 		expect(rebuttal.isError, textOf(rebuttal)).toBeFalsy();
 		await h.session.refresh();
 		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");

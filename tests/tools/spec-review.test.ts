@@ -214,15 +214,15 @@ describe("spec_review reviewer behavior records", () => {
 			const meta = h.fake.spawned.find((s) => s.id === id)?.options.metadata ?? {};
 			return meta.subject === "change" ? { ...record, structuredResult: { ...(record.structuredResult as object), behavior: disputes } } : record;
 		};
-		const forge = h.world.forge;
-		const create = forge.createComment.bind(forge);
-		let reviewerPosts = 0;
-		forge.createComment = async (n: number, body: string) => {
-			if (body.includes("source: reviewer") && ++reviewerPosts === 2) throw new Error("forge write failed");
-			return create(n, body);
+		const ledger = h.session.ledger;
+		const append = ledger.append.bind(ledger);
+		let reviewerAppends = 0;
+		ledger.append = async (n, input) => {
+			if ((input.data as { source?: string }).source === "reviewer" && ++reviewerAppends === 2) throw new Error("ledger write failed");
+			return append(n, input);
 		};
 		const first = await h.review();
-		expect(textOf(first)).toContain("forge write failed");
+		expect(textOf(first)).toContain("ledger write failed");
 		const reviewer = async () => (await h.ofKind("decision")).filter((m) => (m.data as { source?: string }).source === "reviewer").map((m) => (m.data as { subject: string }).subject);
 		expect(await reviewer()).toEqual(["rate-limit"]);
 		const again = await h.review();

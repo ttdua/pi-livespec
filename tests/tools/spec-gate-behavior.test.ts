@@ -192,9 +192,7 @@ describe("spec_gate behavior conclusions", () => {
 
 	test("New file is concluded again", async () => {
 		const h = await change("define", { code: [CAP, WINDOW] });
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "behavior-change", subject: "rate-limit", digest: behaviorDigest([CAP]), source: "agent", outcome: "unchanged", facts: { capability: "rate-limit", files: [CAP] }, files: [CAP], reason: RATIONALE }));
-		await h.session.comments?.invalidate(h.n);
-		await h.session.refresh();
+		await appendSeed(h, decisionComment({ point: "behavior-change", subject: "rate-limit", digest: behaviorDigest([CAP]), source: "agent", outcome: "unchanged", facts: { capability: "rate-limit", files: [CAP] }, files: [CAP], reason: RATIONALE }));
 		const out = await gate(h, [unchanged("rate-limit")]);
 		expect(out.isError).toBe(false);
 		expect((await behaviorDecisions(h))[1]?.data).toMatchObject({ files: [CAP, WINDOW] });
@@ -230,11 +228,9 @@ describe("spec_gate behavior conclusions", () => {
 		const h = await change("plan", { code: [CAP], edit: allDone });
 		for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 			const digest = unitDigest(u);
-			await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-			await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+			await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+			await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 		}
-		await h.session.comments?.invalidate(h.n);
-		await h.session.refresh();
 		await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		const summaries = h.ctx.ui.select.mock.calls.map((c) => String(c[0]));
 		expect(summaries.some((s) => s.includes("Gate plan for"))).toBe(true);

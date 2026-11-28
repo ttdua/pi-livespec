@@ -578,7 +578,7 @@ describe("runDispatch", () => {
 describe("reviewer behavior disputes", () => {
 	const behavior: NonNullable<Packet["behavior"]> = {
 		items: [{ capability: "rate-limit", files: ["src/limit/cap.ts"] }],
-		effective: { "rate-limit": { outcome: "unchanged", source: "agent", reason: "refactor", files: ["src/limit/cap.ts"], commentId: "c1" } },
+		effective: { "rate-limit": { outcome: "unchanged", source: "agent", reason: "refactor", files: ["src/limit/cap.ts"], ref: "c1" } },
 	};
 	const dispute = { capability: "rate-limit", outcome: "changed", rationale: "cap now rejects at 99" };
 	const finding = (location: string, severity = "WARNING") => ({ severity, kind: "defect", location, evidence: "e", fix: "f", scope: "unit" });
@@ -589,7 +589,7 @@ describe("reviewer behavior disputes", () => {
 	function wired(fake: ReturnType<typeof fakeExecutor>) {
 		const out = deps(fake);
 		out.d.prepareResult = cleanReviewerBehavior;
-		out.d.afterRecord = (run, result) => recordReviewerConclusions(out.d.post, run, result, run.packet);
+		out.d.afterRecord = (run, result) => recordReviewerConclusions(out.d.record, run, result, run.packet);
 		return out;
 	}
 

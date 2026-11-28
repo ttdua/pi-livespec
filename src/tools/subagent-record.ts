@@ -62,7 +62,7 @@ async function runSubagentRecordBody(p: RecordParams, ctx: ToolCtx, deps: Subage
 	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const record = recordDeps(w, state.issue.number);
 	const kept = await recordResult(record, run, pctx.cwd, cleaned);
-	await recordReviewerConclusions(record.post, run, kept, built.packet);
+	await recordReviewerConclusions(record.record, run, kept, built.packet);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;
 	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT", outcomeOptions(state, w.pack));
 	return toolResult(withStep(w.session, `Inline run: ${text}`), undefined);

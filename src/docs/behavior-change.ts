@@ -7,10 +7,12 @@ import { createHash } from "node:crypto";
 import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Result } from "../core/result.ts";
-import { type DecisionRecord, decisionComment, sameFacts, validDecisionEntries } from "../decide/records.ts";
+import { isBacked } from "../decide/answered.ts";
+import { type DecisionRecord, decisionComment, sameFacts, validDecisions } from "../decide/records.ts";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { openRequestFor, readRequests } from "../interaction/requests.ts";
 
 export const BEHAVIOR_POINT = "behavior-change";
@@ -20,10 +22,10 @@ export type BehaviorItem = { capability: string; files: string[] };
 
 export type BehaviorOutcome = "unchanged" | "changed";
 export type BehaviorConclusionInput = { capability: string; outcome: BehaviorOutcome; rationale: string };
-export type BehaviorConclusion = { outcome: BehaviorOutcome; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; commentId: string };
+export type BehaviorConclusion = { outcome: BehaviorOutcome; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; ref: string };
 
 type SpecPaths = { capability: string; paths: string[] };
-type Entry = { record: DecisionRecord; commentId: string };
+type Entry = { record: DecisionRecord; ref: string };
 
 const SPECS_PATH = "specs/";
 const CODE = "behavior-change";
@@ -54,9 +56,18 @@ function rank(r: DecisionRecord): number {
 
 const isConclusionOutcome = (v: unknown): v is BehaviorOutcome => v === "unchanged" || v === "changed";
 
-/** Valid `behavior-change` conclusions of `capability` (all when omitted), in comment order, proposals and rules left out. */
+const isConclusion = (r: DecisionRecord, capability: string | undefined): boolean =>
+	r.point === BEHAVIOR_POINT && (capability === undefined || r.subject === capability) && r.source !== "rule" && r.proposal !== true && isConclusionOutcome(r.outcome);
+
+/**
+ * Valid `behavior-change` conclusions of `capability` (all when omitted), in merged order; proposals, rules and
+ * human ledger entries without their forge answer (`isBacked`) left out.
+ */
 function conclusionEntries(marked: MarkedComment[], capability?: string): Entry[] {
-	return validDecisionEntries(marked).filter(({ record: r }) => r.point === BEHAVIOR_POINT && (capability === undefined || r.subject === capability) && r.source !== "rule" && r.proposal !== true && isConclusionOutcome(r.outcome));
+	return marked.flatMap((m) => {
+		const record = validDecisions([m])[0];
+		return record !== undefined && isConclusion(record, capability) && isBacked(marked, m, record) ? [{ record, ref: m.ref }] : [];
+	});
 }
 
 /** The winner of `entries`: each newer entry replaces the current one unless the current one ranks higher. */
@@ -78,8 +89,8 @@ function isCandidate(e: Entry, item: BehaviorItem): boolean {
 }
 
 function toConclusion(e: Entry): BehaviorConclusion {
-	const { record, commentId } = e;
-	return { outcome: record.outcome as BehaviorOutcome, source: record.source as BehaviorConclusion["source"], reason: record.reason, files: record.files ?? [], commentId };
+	const { record, ref } = e;
+	return { outcome: record.outcome as BehaviorOutcome, source: record.source as BehaviorConclusion["source"], reason: record.reason, files: record.files ?? [], ref };
 }
 
 /** The item's effective conclusion: the winner among its candidates, or undefined when none applies. */
@@ -104,8 +115,11 @@ export function latestConclusions(marked: MarkedComment[]): Map<string, Behavior
 	return latest;
 }
 
-/** The `decision` comment of a conclusion on `item`: digest and files of the item, facts as the item. */
-export function behaviorConclusionComment(item: BehaviorItem, c: { source: "agent" | "reviewer" | "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown } }): string {
+/** A conclusion to record; a human override also names the gate request whose forge answer backs it. */
+export type ConclusionInput = { source: "agent" | "reviewer" | "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown }; request?: string };
+
+/** The `decision` ledger entry input of a conclusion on `item`: digest and files of the item, facts as the item. */
+export function behaviorConclusionComment(item: BehaviorItem, c: ConclusionInput): AppendInput {
 	return decisionComment({
 		point: BEHAVIOR_POINT,
 		subject: item.capability,
@@ -116,6 +130,7 @@ export function behaviorConclusionComment(item: BehaviorItem, c: { source: "agen
 		facts: item,
 		files: item.files,
 		...(c.overridden_by === undefined ? {} : { overridden_by: c.overridden_by }),
+		...(c.request === undefined ? {} : { request: c.request }),
 	});
 }
 
