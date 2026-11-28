@@ -6,9 +6,9 @@
 > Failed checks must be fixed in the corresponding artifact, then re-run verify.
 
 **Change**: `interaction-contract`
-**Verified at**: `2026-11-27 15:20` (UTC)
-**Iteration**: `1`
-**Verifier**: parent session. Independent evidence came from `superspec.verifier` (agent `717643b4`) in this run, and the parent re-ran the validation, tests, typecheck and tree checks itself.
+**Verified at**: `2026-11-28 02:46` (UTC)
+**Iteration**: `2`
+**Verifier**: parent session. Independent evidence came from `superspec.verifier` (agent `12b0cf05`) in this run, and the parent re-ran the validation, tests, typecheck and tree checks itself.
 
 ---
 
@@ -19,12 +19,10 @@
 **Result**:
 
 ```text
-$ openspec validate interaction-contract        (cwd: worktree)  exit 0
+$ openspec validate interaction-contract           (cwd: worktree)  exit 0
 Change 'interaction-contract' is valid
-5 warnings: requirement text >500 characters (approver-adapters "Interaction contract",
-"Contract enforced at construction"; decision-seam "Gate escalation facts";
-phase-gates "Self gate escalation", "Escalation in the next step")
---strict: 0 ERROR lines; it exits 1 only because --strict escalates those 5 length warnings
+$ openspec validate interaction-contract --strict  (cwd: worktree)  exit 0
+Change 'interaction-contract' is valid   (no warnings; iteration 1's W1 is resolved)
 ```
 
 ---
@@ -33,7 +31,7 @@ phase-gates "Self gate escalation", "Escalation in the next step")
 
 - [x] Every box is ticked, or each open box has a recorded reason
 
-`grep -c "- [x]"` gives 20 and `grep -c "- [ ]"` gives 0. `openspec instructions apply` reports progress `{"total":20,"complete":20,"remaining":0}`.
+`grep -c "- [x]"` gives 24 and `grep -c "- [ ]"` gives 0. `openspec instructions apply` reports progress `{"total":24,"complete":24,"remaining":0}`.
 
 | Open task | Reason | Blocks archive? |
 |---|---|---|
@@ -47,11 +45,12 @@ phase-gates "Self gate escalation", "Escalation in the next step")
 - [x] REMOVED: not applicable (the deltas have no REMOVED section)
 - [x] RENAMED: not applicable (the deltas have no RENAMED section)
 
-The deltas have 3 `## ADDED` sections and 11 `## MODIFIED` sections.
+The deltas have 3 `## ADDED` sections and 12 `## MODIFIED` sections, across 12 capabilities.
 
 | Requirement | Operation | Status | Evidence (file:line) or reason |
 |---|---|---|---|
 | approver-adapters: Interaction contract | ADDED | Pass | `src/interaction/requests.ts:94` and `:101`; `src/subagents/rubrics.ts:13,19` |
+| approver-adapters: Contract scope and review | ADDED | Pass | `src/subagents/rubrics.ts:13,19` (rubric sentence for every subject) |
 | approver-adapters: Contract enforced at construction | ADDED | Pass | `src/interaction/requests.ts:94` (`assertContract`, called first in `prepareRequest` at `:101`) |
 | approver-adapters: Approver contract | MODIFIED | Pass | `src/interaction/approver.ts` (`Answered` no longer writes `questionClass`); `src/interaction/complete-question.ts:13` |
 | approver-adapters: In-session adapter | MODIFIED | Pass | `src/interaction/in-session.ts` (deferred `Deferred`; no class on answers) |
@@ -61,13 +60,15 @@ The deltas have 3 `## ADDED` sections and 11 `## MODIFIED` sections.
 | approver-adapters: Dialog questions | MODIFIED | Pass | Behaviour unchanged for a stored question without candidates; `src/interaction/dialog/model.ts` |
 | request-briefing: Briefing shape | MODIFIED | Pass | `src/interaction/briefing.ts` (`validateRequiredBriefing`) |
 | request-briefing: Forge request text | MODIFIED | Pass | `src/interaction/forge-text.ts` (recommended row sorted first) |
-| phase-gates: Self gate escalation | ADDED | Pass | `src/tools/spec-gate.ts:279` (`decide`), `:319` (deduped decision record); `src/tools/spec-gate.ts` `escalatedBriefing` |
-| phase-gates: Escalation in the next step | ADDED | Pass | `src/engine/gate-decision.ts:17-20`; `src/engine/next-step.ts` (`escalationForecast`) |
+| phase-gates: Self gate escalation | ADDED | Pass | `src/tools/spec-gate.ts` `decideEscalation` (via `decide`), `escalateOrPass` (briefing, deduped record, pass or ask) |
+| phase-gates: Escalation in the next step | ADDED | Pass | `src/engine/gate-decision.ts:17-21` (the waive sentence at `:19`); `src/engine/next-step.ts:349` (`escalationForecast` passed to the gate step) |
+| flow-engine: Next step precedence | MODIFIED | Pass | `src/engine/next-step.ts:253-254` (`failingCheck` skips a waivable check only when the forecast is `human`) |
 | phase-gates: Gate tool | MODIFIED | Pass | `src/tools/spec-gate.ts` `briefingStep` and `proposerBriefing` (required) |
 | phase-gates: Waivable checks | MODIFIED | Pass | `src/tools/spec-gate.ts` `planGate` (`escalate` input offers `waive`) |
 | flow-pack: Default flow pack | MODIFIED | Pass | `src/packs/agent-skills.yaml:27` (`gate-escalation`), `:56` (`plan` `gate: self`) |
 | flow-pack: Project override | MODIFIED | Pass | `src/decide/rules/gate-escalation.ts` (merge replaces lists); `tests/helpers/flow.ts` `HUMAN_PLAN_FLOW` |
 | decision-seam: Gate escalation facts | ADDED | Pass | `src/engine/gate-escalation-facts.ts` |
+| decision-seam: Advisory review state | ADDED | Pass | `src/engine/gate-escalation-facts.ts:26-32` (every `always` advisory reviewer; `missing` beats `critical`, which beats `clean`) |
 | decision-seam: Gate escalation rule | ADDED | Pass | `src/decide/rules/gate-escalation.ts`; registered in `src/decide/registry.ts` |
 | decision-seam: Decision seam | MODIFIED | Pass | `src/decide/seam.ts` `checkRuleAsk`; `src/decide/registry.ts` `RuleResult.ask` |
 | durable-doc-checks: Behavior change rule | MODIFIED | Pass | `src/docs/behavior-change.ts:62` |
@@ -86,10 +87,19 @@ The deltas have 3 `## ADDED` sections and 11 `## MODIFIED` sections.
 - [x] Every scenario maps to a test
 - [x] The project test command was run fresh in this step
 
-**Test command**: `bunx vitest run` (cwd: worktree)
-**Result**: exit 0, 261 test files and 4140 tests passed. `bunx tsc --noEmit` exit 0.
+**Test command**: `bunx vitest run --maxWorkers=4` (cwd: worktree)
+**Result**: exit 0, 261 test files and 4148 tests passed (started 09:41:25 local). `bunx tsc --noEmit` exit 0.
 
-This run is independent: the parent started it at 22:08:00 local time, and the verifier ran its own suite with the same counts.
+Earlier fresh runs in this verify without a worker cap exited 1 while the host load average was 70–120 (unrelated `rustc` builds and a VM were running):
+- `bunx vitest run`: 1 failed of 4148. The test was `tests/e2e/subagent-build.test.ts` "five units complete with dispatches and lanes", which timed out at 30 s.
+- A second `bunx vitest run`: the same timeout failed again.
+- `bun run test`: 2 failed of 4148. Both were in `tests/evidence/worktree.test.ts`, about temp worktree cleanup.
+
+The failures point to host load, not this change:
+- The change does not modify any of these files (`git diff 0f03d93 HEAD --stat` on them is empty).
+- Run alone, both files pass, 13/13, twice.
+- The "five units" test takes 7–9 s on this branch and 6.5–8.7 s on the base `0f03d93`, measured three times each in a temporary base worktree.
+- The verifier saw the same failures, and they passed when it reran them.
 
 | Scenario | Test |
 |---|---|
@@ -106,6 +116,8 @@ This run is independent: the parent started it at 22:08:00 local time, and the v
 | Recommendation missing (briefing shape) | `tests/tools/unit-amend.test.ts` |
 | Recommended row first | `tests/interaction/forge-text.test.ts:182` |
 | Self gate escalation (7 scenarios) | `tests/tools/spec-gate.test.ts` |
+| Failing waivable check names the escalation; flow-engine Waivable check at an escalating self gate; baseline Next step precedence scenarios | `tests/engine/next-step.test.ts` (Task 8 describe block, incl. "a rule forecasting self keeps the fix step", "a superseded approval gives the gate step, not a fix") |
+| Second advisory reviewer counted / One advisory review missing | `tests/engine/gate-escalation-facts.test.ts` |
 | Next step names the escalation | `tests/engine/next-step.test.ts:1168` |
 | Proposer briefing | `tests/tools/initiative-propose.test.ts` |
 | Default pack loads / contents / spot check / Replace one key / Project adds a tag | `tests/engine/pack-load.test.ts` |
@@ -142,7 +154,7 @@ The table below covers both design decisions and contracts.
 | D8 rubrics | matched | `src/subagents/rubrics.ts` |
 | Contracts: `spec_question` params, `unit_amend` / proposer / `spec_gate` briefing, forge grammar, `decisions.gate-escalation`, `plan` gate default | matched | tool schemas, `commands.ts`, `agent-skills.yaml:27,56` |
 | Contracts: `assertContract`, `Answered.questionClass`, `runSpecQuestion` origin, `RuleResult.ask`, `GateEscalationFacts`, `gateEscalationFacts`, rule/schema, `escalationForecast`, decision record, `BRIEFING_SCHEMA`, `gateResultDecision(forecast?)`, `MatchResult.classes` removed, dialog `tabsOf`, `NEW_DEPENDENCY_OPTIONS` | matched by signature and file presence | the files listed above (no line-by-line shape review) |
-| apply.md deviations: `GateOption.description` required, `amendRequest` briefing required, `tabsOf` in `state.ts`, `EffectDeps` taking `SpecQuestionParams` | matched | `src/engine/gates.ts`, `src/tools/unit-amend.ts`, `src/interaction/dialog/state.ts`, `src/review/effects.ts` |
+| apply.md deviations: `GateOption.description` required, `amendRequest` briefing required, `tabsOf` in `state.ts`, `EffectDeps` taking `SpecQuestionParams`, `escalationForecast` returning `waivable` | matched | `src/engine/gates.ts`, `src/tools/unit-amend.ts`, `src/interaction/dialog/state.ts`, `src/review/effects.ts`, `src/engine/gate-escalation-facts.ts:64-70` |
 | `ApprovalRequest.question` (unchanged) | matched | `src/interaction/approver.ts` |
 
 **Drift warnings** (non-blocking):
@@ -155,7 +167,7 @@ The table below covers both design decisions and contracts.
 
 - [x] Working tree is clean: `git status --porcelain` printed nothing (before this receipt)
 
-**Commit range**: `0f03d93..d9c193c` (17 commits), plus this receipt commit
+**Commit range**: `0f03d93..52a3cf2` (24 commits), plus this receipt commit
 
 ---
 
@@ -164,21 +176,25 @@ The table below covers both design decisions and contracts.
 **CRITICAL**: none.
 
 **WARNING**
-- **`--strict` validation fails on five long requirements.** `openspec validate --strict` exits 1 because of the >500-character warnings on five ADDED requirements, though it reports no errors. If archive or CI runs `--strict`, move the examples into scenarios or split each requirement before archiving. Otherwise accept the warnings.
-- **Forecast and gate can disagree on gate-only checks** (see check 5). If agents are confused by a self forecast followed by an escalation, file a follow-up so the forecast can also cover a cached `verify-red-on-base` result.
+- **The full suite is flaky under host load.** Without a worker cap and with a load average of 70–120, `tests/e2e/subagent-build.test.ts` (30 s timeout) and `tests/evidence/worktree.test.ts` (temp cleanup) fail. The change does not touch them, and they show the same timings on the base commit. Before merging, confirm a green run in CI or on an idle machine. If they flake there too, open a follow-up to raise that e2e test's timeout or isolate its temp dirs.
+- **The forecast can differ from `spec_gate` on gate-only checks** (W2, design D4). For a covered self forecast the next step now says "can pass unless a gate-only check fails". Open a follow-up issue to forecast from a cached `verify-red-on-base` result.
 
-**SUGGESTION** (follow-ups recorded in apply.md Rulings)
-- **Failing waivable check at plan.** `src/engine/next-step.ts` (`failingCheck`) says "fix" before the gate step. Make it say that the plan gate will ask the human and that waiving is possible.
-- **Advisory reviewer lookup.** `src/engine/gate-escalation-facts.ts` uses `.find`, so only the first advisory `always` reviewer is checked. Consider every advisory reviewer entry of the phase.
-- **Gate escalation branch.** Extract the escalation, briefing and record branch of `runSpecGate` (`src/tools/spec-gate.ts`) into one helper.
-- **Unused code.** Drop the unused `r` parameter of `outcomeOf` (`src/interaction/dialog/host.ts:62`) and the `ApprovalRequest` type import in `src/interaction/dialog/result.ts:4`.
+**SUGGESTION**
+- **Legacy stuck reports.** When a legacy stuck report is resent, its briefing keeps author `agent` (`src/tools/spec-stuck.ts`). Either label it `rule`, or note that its summary and recommendation came from the stored agent report.
+
+Iteration 1 items now resolved:
+- W1: `--strict` exits 0.
+- S1: the rule 12 exception is in `next-step.ts:253`.
+- S2: `advisoryReview` covers every advisory reviewer.
+- S3: `escalateOrPass` is extracted.
+- S4: the unused `r`, the dead `DialogHost.r` field and the unused import are removed.
 
 ---
 
 ## Overall Decision
 
 - [ ] PASS: proceed with `/opsx-continue` to finalize
-- [x] PASS_WITH_WARNINGS: proceed, noting the `--strict` length warnings and the documented gap between the forecast and gate-only checks
+- [x] PASS_WITH_WARNINGS: proceed, noting that the unrelated e2e and worktree tests are flaky under host load (confirm a green run in CI or on an idle machine) and the documented gap between the forecast and gate-only checks (W2)
 - [ ] FAIL: fix the cause, then re-apply (iteration N+1)
 
 **Next step**:
