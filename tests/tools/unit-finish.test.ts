@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { registerSessionHooks } from "../../src/hooks/session.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { cleanupDirs, textOf } from "./helpers.ts";
+import { branchPushes, cleanupDirs, textOf } from "./helpers.ts";
 import { cardState, seedRebuild, type UnitHarness, type UnitHarnessOptions, type UnitSpec, unitHarness, waitFor, worktreeCount } from "./unit-helpers.ts";
 
 afterEach(async () => {
@@ -47,7 +47,10 @@ describe("unit-evidence", () => {
 		const [receipt] = await h.ofKind("receipt");
 		const [start] = await h.ofKind("unit-start");
 		expect(receipt?.id).toMatch(/^U1\./);
-		expect(receipt?.data).toMatchObject({ unit: "U1", verify: "sh check.sh", pre: { sha: h.head, exit: 1 }, post: { sha: post, exit: 0 }, start: start?.id });
+		expect(receipt?.source).toBe("ledger");
+		expect(await h.commentsOf("receipt")).toEqual([]);
+		expect(await h.commentsOf("unit-start")).toEqual([]);
+		expect(receipt?.data).toMatchObject({ unit: "U1", verify: "sh check.sh", pre: { sha: h.head, exit: 1 }, post: { sha: post, exit: 0 }, start: start?.ref });
 		const before = bodyBefore.split("\n");
 		const after = (await h.world.bodyOf(h.n)).split("\n");
 		expect(after).toHaveLength(before.length);
@@ -269,7 +272,13 @@ describe("unit-evidence", () => {
 		}
 		expect(outcomes).toEqual(["retry", "retry", "stop"]);
 		expect(last).toContain("spec_stuck");
-		expect(last).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-`);
+		const refs = (await h.ofKind("decision")).map((m) => `ledger:${h.n}/${m.ref}`);
+		expect(refs).toHaveLength(3);
+		expect(await h.commentsOf("decision")).toEqual([]);
+		expect(await h.inLedger("decision")).toHaveLength(3);
+		const [start] = await h.inLedger("unit-start");
+		for (const d of await h.inLedger("decision")) expect(dataOf<{ facts?: { start?: string } }>(d).facts?.start).toBe(start?.ref);
+		for (const ref of refs) expect(last).toContain(ref);
 		expect(cardState(h).state.evidence.blocked).toEqual({ U1: "attempts" });
 		await expectFinishRefusal(h, "U1", ["spec_stuck"]);
 	});
@@ -310,7 +319,7 @@ describe("unit-evidence", () => {
 		const decisions = (await h.ofKind("decision")).filter((m) => m.id === "progress.U1");
 		expect(decisions.length).toBeGreaterThan(1);
 		const text = await expectFinishRefusal(h, "U1", ["BLOCKED", "spec_stuck"]);
-		for (const d of decisions) expect(text).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-${d.commentId}`);
+		for (const d of decisions) expect(text).toContain(`ledger:${h.n}/${d.ref}`);
 	});
 
 	test("extra parameters are ignored", async () => {
@@ -325,7 +334,8 @@ describe("unit-evidence", () => {
 		const h = await started();
 		await h.commit({ "src/u1.ts": "x\n" });
 		await h.finish("U1");
-		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
+		await h.settle();
+		expect(branchPushes(h.gitCalls)).toEqual([]);
 	});
 });
 

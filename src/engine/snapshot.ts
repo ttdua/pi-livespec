@@ -4,10 +4,11 @@
 
 import { type Change, parseChange } from "../core/change.ts";
 import { sectionText } from "../core/sections.ts";
-import { isOffline } from "../forge/errors.ts";
 import { phaseLabel } from "../forge/labels.ts";
-import { filterMarked, type MarkedComment } from "../forge/markers.ts";
+import type { MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import type { FetchState, Ledger } from "../ledger/index.ts";
+import { fetchWarnings, readOwnRecords } from "../ledger/records.ts";
 import { readPullRequest } from "../ship/pull-request.ts";
 import { readRequests } from "../interaction/requests.ts";
 import { reviewRounds } from "../review/status.ts";
@@ -27,7 +28,8 @@ import type { ChangeState, PhaseState, SectionName } from "./state-types.ts";
 /** The pack's `loops.change_iterations`, `loops.unit_attempts`, `loops.review_rounds` and `loops.discovered_deps`; a missing cap never blocks. */
 export type Caps = { iterations: number | undefined; unitAttempts: number | undefined; reviewRounds: number | undefined; discoveredDeps?: number | undefined };
 
-export type SnapshotDeps = { forge: Forge; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number; reviewRounds?: number; discoveredDeps?: number } };
+/** `fetch`: run the first ledger fetch of the session before reading (ledger-store "Ledger fetched before use"). */
+export type SnapshotDeps = { forge: Forge; ledger: Ledger; fetch: boolean; isReadOnly(): boolean; git: Git; comments: CommentsCache; caps?: { iterations?: number; unitAttempts?: number; reviewRounds?: number; discoveredDeps?: number } };
 
 const PHASE_PREFIX = phaseLabel("");
 const BODY_SECTIONS = ["Proposal", "Design", "Units"] as const;
@@ -68,26 +70,11 @@ function incompleteItems(marked: MarkedComment[]): string[] {
 const attemptCounters = (attempts: Record<string, number>): Record<string, number> =>
 	Object.fromEntries(Object.entries(attempts).map(([unit, n]) => [`unit_attempts.${unit}`, n]));
 
-/**
- * The login confirmed by `whoami` now, or undefined when the forge is unreachable. A login seen
- * earlier is never reused: the account may have switched, and its state must not be counted.
- */
-async function currentLogin(forge: Forge): Promise<string | undefined> {
-	try {
-		return (await forge.whoami()).login;
-	} catch (error) {
-		if (isOffline(error)) return undefined;
-		throw error;
-	}
-}
-
 type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents" | "parkedCore">;
 
-type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
+type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[]; fetchState?: FetchState };
 
 const invalidWarnings = (marked: MarkedComment[]): string[] => [...invalidRecords(marked), ...invalidLanes(marked)];
-
-const UNKNOWN_LOGIN_WARNING = "the forge is unreachable and the current login is unknown: own marked comments are not read";
 
 /** Pure: every fact derived from the own marked comments and the parsed body. */
 export function deriveCommentFacts(
@@ -125,14 +112,17 @@ function deriveSubagents(marked: MarkedComment[]): ChangeState["subagents"] {
 	};
 }
 
+/** Own records from the cached comments and the local ledger, after the first fetch when `d.fetch`. */
 async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): Promise<CommentFacts> {
+	const fetchState = d.fetch ? await d.ledger.ensureFetched(issue.number) : undefined;
+	const fetched = fetchState === undefined ? [] : fetchWarnings(fetchState, issue.number);
 	const read = await d.comments.list(d.forge, issue);
-	const login = await currentLogin(d.forge);
-	const own = login === undefined ? { comments: [], warnings: [UNKNOWN_LOGIN_WARNING] } : filterMarked(read.comments, login);
+	const own = await readOwnRecords(d.forge, d.ledger, issue.number, { comments: read.comments });
 	return {
-		...deriveCommentFacts(own.comments, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds, discoveredDeps: d.caps?.discoveredDeps }),
-		stale: read.stale || login === undefined,
-		warnings: [...own.warnings, ...invalidWarnings(own.comments)],
+		...deriveCommentFacts(own.records, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds, discoveredDeps: d.caps?.discoveredDeps }),
+		stale: read.stale || own.stale,
+		warnings: [...fetched, ...own.warnings, ...invalidWarnings(own.records)],
+		...(fetchState === undefined ? {} : { fetchState }),
 	};
 }
 
@@ -172,6 +162,7 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		...(pull.pr === undefined ? {} : { pr: pull.pr }),
 		stale: issue.stale === true || comments.stale,
 		readOnly: d.isReadOnly(),
+		...(comments.fetchState === undefined ? {} : { fetchState: comments.fetchState }),
 		warnings: [...comments.warnings, ...git.warnings, ...pull.warnings],
 		marked: comments.marked,
 		requests: comments.requests,

@@ -126,7 +126,7 @@ const FIXABLE = (f: UnresolvedFinding): boolean => f.finding.scope !== "needs-de
 
 /** The open blocking findings, routed by the answered questions and the gates shown in the comments. */
 function openFindings(l: Loop): UnresolvedFinding[] {
-	return unresolvedBlocking(l.since, l.unit, answeredFindingKeys(l.questions), gatesShownKeys(l.since));
+	return unresolvedBlocking(l.since, l.unit, answeredFindingKeys(l.questions, l.since), gatesShownKeys(l.since));
 }
 
 function questionStep(l: Loop, f: UnresolvedFinding): LoopStep {

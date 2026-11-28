@@ -43,7 +43,7 @@ function bodyOf(units: U[]): string {
 let seq = 0;
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
-	return { commentId: `c${seq}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
 }
 
 const planGate = (record?: Record<string, string>): MarkedComment =>
@@ -96,6 +96,12 @@ describe("planSpecCascade", () => {
 	test("no lock → none", () => {
 		const input = inputOf({ marked: [], heads: { [CAP]: B, [BURST]: A } });
 		expect(planSpecCascade(input)).toEqual({ kind: "none" });
+	});
+
+	test("cascade id is stable across the ref rename", () => {
+		const gate: MarkedComment = { source: "forge", ref: "gate-pin", kind: "gate", id: "plan.pin", author: "bot", data: { phase: "plan", outcome: "approved", notes: "", by: "alice", at: "t", adapter: "forge", head_sha: "f".repeat(40), waivers: [], locked: {}, requirements: { [CAP]: A, [BURST]: A }, requirement_scope: ["rate-limit"] } };
+		const plan = cascadeOf(planSpecCascade(inputOf({ marked: [gate], heads: { [CAP]: B, [BURST]: A } })));
+		expect(plan.id).toBe("spec.adf2c172b958");
 	});
 
 	test("covered done unit → cascade", () => {

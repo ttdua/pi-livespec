@@ -46,7 +46,7 @@ function cache(): CommentsCache {
 
 async function seed(): Promise<number> {
 	const n = await world.seedIssue({ title: "per-ip-cap", labels: ["livespec"] });
-	await world.postComment(n, BOT_LOGIN, writeMarked("counter", "review_rounds", { value: 2 }));
+	await world.postComment(n, BOT_LOGIN, writeMarked("stale", "review_rounds", { value: 2 }));
 	return n;
 }
 
@@ -105,7 +105,7 @@ describe("CommentsCache", () => {
 		await c.invalidate(n);
 		const after = await c.list(forge, issue);
 		expect(listCalls).toBe(2);
-		expect(filterMarked(after.comments, BOT_LOGIN).comments.map((m) => m.kind)).toEqual(["counter", "skill-note"]);
+		expect(filterMarked(after.comments, BOT_LOGIN).comments.map((m) => m.kind)).toEqual(["stale", "skill-note"]);
 	});
 
 	test("invalidate of a missing entry is a no-op", async () => {

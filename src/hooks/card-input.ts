@@ -141,12 +141,12 @@ async function withRefreshFacts(session: Session, state: ChangeState): Promise<C
 	return merged;
 }
 
-async function changeState(session: Session, pack: Pack, n: number, warning: string | undefined): Promise<ChangeState> {
+async function changeState(session: Session, pack: Pack, n: number, warning: string | undefined, fetch: boolean): Promise<ChangeState> {
 	const forge = session.forge;
 	const comments = session.comments;
 	if (forge === undefined || comments === undefined) throw new Error(FORGE_NOT_CONNECTED);
 	const caps = { iterations: pack.loops.change_iterations, unitAttempts: pack.loops.unit_attempts, reviewRounds: pack.loops.review_rounds, discoveredDeps: pack.loops.discovered_deps };
-	const snapshot = await readChangeSnapshot({ forge, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
+	const snapshot = await readChangeSnapshot({ forge, ledger: session.ledger, fetch, isReadOnly: () => forge.isReadOnly(), git: session.git, comments, caps }, n);
 	const ship = await shipFor(session, snapshot);
 	const checks = await runChecks(pack, snapshot, { root: session.cwd, git: session.git, ...(ship === undefined ? {} : { ship }) });
 	const warnings = warning === undefined ? snapshot.warnings : [warning, ...snapshot.warnings];
@@ -158,8 +158,9 @@ async function changeState(session: Session, pack: Pack, n: number, warning: str
 	return withRefreshFacts(session, state);
 }
 
-export async function buildCardInput(d: { session: Session; first: boolean }): Promise<CardInput> {
-	const { session, first } = d;
+/** `fetch`: whether the snapshot runs the first ledger fetch of the change. */
+export async function buildCardInput(d: { session: Session; first: boolean; fetch: boolean }): Promise<CardInput> {
+	const { session, first, fetch } = d;
 	const common: Common = { first, constraintsTemplate: await constraintsTemplate(session.cwd), unnotedSkills: [], account: cardAccount(session), ...cardAudit(session) };
 	if (!session.pack.ok) return { ...common, kind: "pack-errors", errors: session.pack.errors };
 	const pack = session.pack.pack;
@@ -168,7 +169,7 @@ export async function buildCardInput(d: { session: Session; first: boolean }): P
 	if (slug !== undefined) return { ...common, kind: "fix", ...(await fixCard(session, slug)) };
 	const resolved = await resolve(session, common, branch);
 	if (resolved.kind !== "change") return resolved;
-	const state = await changeState(session, pack, resolved.number, resolved.warning);
+	const state = await changeState(session, pack, resolved.number, resolved.warning, fetch);
 	const step = nextStep(pack, state);
 	return { ...common, unnotedSkills: unnotedSkills(session, step, state), kind: "change", step, state };
 }

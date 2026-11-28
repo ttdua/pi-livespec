@@ -1,3 +1,4 @@
+import { appendSeed } from "../helpers/ledger.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
@@ -268,8 +269,7 @@ describe("change_sync", () => {
 		const h = await harness({ units: [...UNITS, PENDING_U3], faults });
 		const u2 = parseChange(await h.world.bodyOf(h.n)).units.find((u) => u.id === "U2");
 		const sha = h.git("rev-parse", "HEAD");
-		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("receipt", "U2.r", { unit: "U2", digest: unitDigest(u2 as never), verify: "sh u2.sh", pre: { sha, exit: 1 }, post: { sha, exit: 0 }, output: "", start: "U2.s" }));
-		await h.session.comments?.invalidate(h.n);
+		await appendSeed(h, { kind: "receipt", id: "U2.r", data: { unit: "U2", digest: unitDigest(u2 as never), verify: "sh u2.sh", pre: { sha, exit: 1 }, post: { sha, exit: 0 }, output: "", start: "U2.s" } });
 		await siblingMerges(h, { "sibling.txt": "s\n" });
 		await expect(h.call("change_sync")).rejects.toThrow("injected stale failure");
 		expect(await doneUnits(h)).toEqual(["U1", "U2"]);
@@ -328,8 +328,7 @@ describe("change_sync", () => {
 		const h = await harness({ units: [...UNITS, PENDING_U3] });
 		await siblingMerges(h, { "other.txt": "o\n" });
 		const sha = h.git("rev-parse", "HEAD");
-		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("unit-start", "U3.1", { unit: "U3", digest: "d", verify: "sh u1.sh", pre: { sha, exit: 1, verdict: "red" } }));
-		await h.session.comments?.invalidate(h.n);
+		await appendSeed(h, { kind: "unit-start", id: "U3.1", data: { unit: "U3", digest: "d", verify: "sh u1.sh", pre: { sha, exit: 1, verdict: "red" } } });
 		const out = await h.call("change_sync");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("U3 is started");

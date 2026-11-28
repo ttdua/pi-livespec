@@ -1,4 +1,5 @@
 // Tests of the freshness check before a unit finishes.
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -51,7 +52,7 @@ describe("freshness", () => {
 	test("own receipt passes", async () => {
 		const world = await makeWorld();
 		const packet = await dispatched(world);
-		world.post(BOT, receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "a", exit: 1 }, post: { sha: "b", exit: 0 }, output: "ok", start: "U1.s" }));
+		world.entries.push(ledgerRecord(receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "a", exit: 1 }, post: { sha: "b", exit: 0 }, output: "ok", start: "U1.s" })));
 		expect(await stale(world, packet)).toEqual([]);
 	});
 
@@ -81,14 +82,14 @@ describe("freshness", () => {
 	test("a newly recorded child answer stops", async () => {
 		const world = await makeWorld();
 		const packet = await dispatched(world);
-		world.post(BOT, dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-9", answer: "use redis" }));
+		world.record(dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-9", answer: "use redis" }));
 		expect(await stale(world, packet)).toEqual(["answer:agent-9:1"]);
 	});
 
 	test("an answer to the dispatched child itself is not stale; another child's still is", async () => {
 		const world = await makeWorld();
 		const packet = await dispatched(world);
-		world.post(BOT, dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-9", answer: "use redis" }));
+		world.record(dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-9", answer: "use redis" }));
 		const current = await readCurrent(world.refreshed(), "implementer", "U3");
 		expect(checkFreshness(packet, current, "agent-9").stale).toEqual([]);
 		expect(checkFreshness(packet, current, "agent-1").stale).toEqual(["answer:agent-9:1"]);
@@ -96,7 +97,7 @@ describe("freshness", () => {
 
 	test("a comment inserted while the packet is built is stale afterwards", async () => {
 		const world = await makeWorld();
-		world.post(BOT, dispatchComment({ role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] }));
+		world.record(dispatchComment({ role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] }));
 		let late: string | undefined;
 		const forge = world.forge;
 		let reads = 0;
@@ -147,5 +148,29 @@ describe("stuckFor whitespace", () => {
 		const p = stuckFor("U1", ["unreadable: boom\n\nat line 3\n\tdeep"]);
 		expect(p.hypothesis).not.toMatch(/[\r\n\t]/);
 		expect(stuckReport(p, { strict: true })).not.toHaveProperty("refused");
+	});
+});
+
+describe("ledger records in freshness", () => {
+	test("a ledger dispatch entry appended after the build passes", async () => {
+		const world = await makeWorld();
+		const packet = await dispatched(world);
+		world.record(dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
+		}));
+		expect(await stale(world, packet)).toEqual([]);
+	});
+
+	test("a changed ledger source is stale by its entry version", async () => {
+		const world = await makeWorld();
+		const entry = world.record(dispatchComment({
+			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
+			status: "DONE", commits: [], notes: "n", discoveries: ["d"], sources_used: [],
+		}));
+		const packet = await dispatched(world);
+		expect(packet.sources.map((s) => s.id)).toContain(`ledger:7/${entry.ref}`);
+		(entry.data as { notes: string }).notes = "changed";
+		expect(await stale(world, packet)).toEqual([`ledger:7/${entry.ref}`]);
 	});
 });

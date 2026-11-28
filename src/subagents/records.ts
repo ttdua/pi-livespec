@@ -1,11 +1,12 @@
-// Forge records of subagent runs: `dispatch` and `finding-summary` comments, and the queries the flow reads from them.
+// Records of subagent runs: `dispatch` and `finding-summary` ledger entries, and the queries the flow reads from them.
 
 import type { Question } from "../core/change.ts";
-import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { type MarkedComment } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
+import { canonicalKey, canonicalRef } from "../ledger/alias.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
-registerKind("dispatch");
 
 export type Thinking = "low" | "medium" | "high";
 
@@ -83,7 +84,7 @@ export type FindingSummaryData = {
 	reason?: string;
 	notes?: string;
 	evidence?: string;
-	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
+	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the entry refs it merged. */
 	aggregate?: true;
 	reviews?: string[];
 };
@@ -118,25 +119,25 @@ function runSuffix(data: DispatchData): string {
 	return data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
 }
 
-export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
+export function dispatchComment(data: DispatchData | DispatchQuestionData): AppendInput {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	if (data.status === "RETRY") return writeMarked("dispatch", `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data);
+	if (data.status === "RETRY") return { kind: "dispatch", id: `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data };
 	// A question and its answer name their child: two children of one role and attempt (verifiers of other findings) must not supersede each other. Older comments without the child still read.
 	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}.${token(data.agentId)}` : runSuffix(data);
-	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
+	return { kind: "dispatch", id: `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data };
 }
 
-export function findingSummaryComment(data: FindingSummaryData): string {
+export function findingSummaryComment(data: FindingSummaryData): AppendInput {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
 	const suffix = data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
 	// System summaries have their own namespace: a later review of the same round never supersedes them.
-	if (data.role === "verifier" && data.verifies !== undefined) return writeMarked("finding-summary", `finding-summary.verify.${token(data.verifies)}.${data.round}${suffix}`, data);
+	if (data.role === "verifier" && data.verifies !== undefined) return { kind: "finding-summary", id: `finding-summary.verify.${token(data.verifies)}.${data.round}${suffix}`, data };
 	const subject = data.system === undefined ? token(data.subject) : `system.${token(data.system)}`;
-	return writeMarked("finding-summary", `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data);
+	return { kind: "finding-summary", id: `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data };
 }
 
-export function rebuttalComment(data: RebuttalData): string {
-	return writeMarked("finding-summary", `finding-summary.rebut.${token(data.rebuts)}`, data);
+export function rebuttalComment(data: RebuttalData): AppendInput {
+	return { kind: "finding-summary", id: `finding-summary.rebut.${token(data.rebuts)}`, data };
 }
 
 const isResultRecord = (m: MarkedComment): boolean => {
@@ -164,7 +165,7 @@ const VALID: Record<string, (d: unknown) => boolean> = { dispatch: isDispatchDat
 
 /** Own `dispatch` and `finding-summary` records whose data does not have the expected shape. */
 export function invalidRecords(marked: MarkedComment[]): string[] {
-	return marked.filter((m) => m.kind in VALID && !(VALID[m.kind] as (d: unknown) => boolean)(m.data)).map((m) => `ignored invalid ${m.kind} record ${m.commentId} (${m.id})`);
+	return marked.filter((m) => m.kind in VALID && !(VALID[m.kind] as (d: unknown) => boolean)(m.data)).map((m) => `ignored invalid ${m.kind} record ${m.ref} (${m.id})`);
 }
 
 /** Valid records only, and of those the latest comment per marker identity: superseded comments are history. */
@@ -181,20 +182,22 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 	return marked.filter((m) => kept.has(m));
 }
 
+const isRebuttal = (d: unknown): d is RebuttalData => typeof (d as Partial<RebuttalData> | null)?.rebuts === "string" && isSummaryData(d);
+
 const isAggregate = (d: FindingSummaryData): boolean => d.aggregate === true;
 
-/** The aggregate `finding-summary` named by the key's comment id, and the finding at the key's index. */
+/** The aggregate `finding-summary` named by the key's ref (or the `from` id of a migrated copy), and the finding at the key's index. */
 export function aggregateFinding(marked: MarkedComment[], key: string): { commentId: string; index: number; finding: AggregateFinding } | undefined {
 	const cut = key.lastIndexOf(":");
 	const commentId = key.slice(0, cut);
 	const index = Number(key.slice(cut + 1));
 	if (cut <= 0 || !Number.isInteger(index) || index < 0) return undefined;
-	const found = summariesOf(marked).find((s) => s.commentId === commentId && isAggregate(s.data));
+	const found = summariesOf(marked).find((s) => (s.commentId === commentId || s.from === commentId) && isAggregate(s.data));
 	const finding = found?.data.findings[index];
-	return finding === undefined ? undefined : { commentId, index, finding: finding as AggregateFinding };
+	return finding === undefined || found === undefined ? undefined : { commentId: found.commentId, index, finding: finding as AggregateFinding };
 }
 
-type Summary = { commentId: string; at: number; data: FindingSummaryData };
+type Summary = { commentId: string; from?: string; at: number; data: FindingSummaryData };
 
 /** A parent-made record (a `Files` violation): it carries findings, but is no review of any commit. */
 const isSystem = (d: FindingSummaryData): boolean => d.system === "files-violation";
@@ -205,19 +208,31 @@ const isDerived = (d: FindingSummaryData): boolean => isSystem(d) || d.role === 
 function summariesOf(marked: MarkedComment[]): Summary[] {
 	const found: Summary[] = [];
 	current(marked).forEach((m, at) => {
-		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.commentId, at, data: m.data as FindingSummaryData });
+		if (m.kind === "finding-summary" && Array.isArray((m.data as FindingSummaryData).findings)) found.push({ commentId: m.ref, ...(m.from === undefined ? {} : { from: m.from }), at, data: m.data as FindingSummaryData });
 	});
 	return found;
 }
 
-/** Rebuttals as `commentId:index` keys; a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
+/**
+ * Every rebuttal item by canonical summary ref and finding index, folded over all rebuttal records in list order
+ * (not only the latest per id: two clones may each rebut other indices of one summary); the latest item per index wins.
+ */
+export function rebuttalItems(marked: MarkedComment[]): Map<string, Map<number, RebuttalData["items"][number]>> {
+	const folded = new Map<string, Map<number, RebuttalData["items"][number]>>();
+	for (const m of marked) {
+		if (m.kind !== "finding-summary" || !isRebuttal(m.data)) continue;
+		const ref = canonicalRef(marked, m.data.rebuts);
+		const items = folded.get(ref) ?? new Map();
+		for (const item of m.data.items) items.set(item.index, item);
+		folded.set(ref, items);
+	}
+	return folded;
+}
+
+/** Rebuttals as `commentId:index` keys (canonical refs); a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
 export function rebuttedKeys(marked: MarkedComment[]): Set<string> {
 	const keys = new Set<string>();
-	for (const m of current(marked)) {
-		const data = m.kind === "finding-summary" ? (m.data as Partial<RebuttalData>) : null;
-		if (!data || typeof data.rebuts !== "string" || !Array.isArray(data.items)) continue;
-		for (const item of data.items) keys.add(findingKey(data.rebuts, item.index));
-	}
+	for (const [ref, items] of rebuttalItems(marked)) for (const index of items.keys()) keys.add(findingKey(ref, index));
 	return keys;
 }
 
@@ -304,10 +319,17 @@ export function completedUnitRounds(marked: MarkedComment[], unit: string): numb
 
 const FINDING_REF = /finding:([^\s:]+:\d+)/g;
 
-/** Finding keys named as `finding:<commentId>:<index>` in the text of an answered question. */
-export function answeredFindingKeys(questions: Question[]): Set<string> {
+/** Finding keys named as `finding:<ref>:<index>` in the text of an answered question; with `marked`, a `from` alias maps to the canonical `<ref>:<index>`. */
+export function answeredFindingKeys(questions: Question[], marked: MarkedComment[] = []): Set<string> {
 	const keys = new Set<string>();
-	for (const q of questions) if (q.checked) for (const m of q.text.matchAll(FINDING_REF)) keys.add(m[1] as string);
+	for (const q of questions) {
+		if (!q.checked) continue;
+		for (const m of q.text.matchAll(FINDING_REF)) {
+			const key = m[1] as string;
+			const found = aggregateFinding(marked, key);
+			keys.add(found === undefined ? key : findingKey(found.commentId, found.index));
+		}
+	}
 	return keys;
 }
 

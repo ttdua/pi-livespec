@@ -7,6 +7,7 @@ import { reviewRounds } from "../../src/review/status.ts";
 import { pollFeedback } from "../../src/ship/feedback-poll.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { writeIn } from "../helpers/repo.ts";
 import { agg } from "../review/review-fixtures.ts";
 import { cleanupDirs, textOf, type ToolHarness } from "../tools/helpers.ts";
@@ -62,6 +63,16 @@ describe("pollFeedback preconditions", () => {
 		expect(await runs(h)).toHaveLength(1);
 	});
 
+	test("I1: an unknown ledger skips the read and reports a failure, so no round number is reused", async () => {
+		const h = await shipped();
+		await h.world.postComment(h.pr, "alice", "please rename");
+		await h.session.refresh();
+		const blind = { ...h.session.ledger, ensureFetched: async () => "unknown-offline" as const };
+		Object.defineProperty(h.session, "ledger", { value: blind });
+		expect(await pollFeedback(h.session)).toMatchObject({ failed: expect.stringContaining("could not be fetched") });
+		expect(await runs(h)).toEqual([]);
+	});
+
 	test("a closed pull request skips", async () => {
 		const h = await shipped();
 		await h.world.postComment(h.pr, "alice", "late");
@@ -115,7 +126,7 @@ describe("pollFeedback rounds", () => {
 		expect(await pollFeedback(h.session)).toEqual({ ingested: 1 });
 		// Route the round and pass the review gate again, as after a fix: the same comment must not come back.
 		const first = (await runs(h))[0]?.data as ReviewRunData;
-		await h.world.postComment(h.n, BOT_LOGIN, aggregateComment({ round: 1, head: first.head, reviews: [], findings: [] }));
+		await appendSeed(h, aggregateComment({ round: 1, head: first.head, reviews: [], findings: [] }));
 		await h.world.postComment(h.n, BOT_LOGIN, reviewRunComment({ ...first, routed: true }));
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-2", first.head));
 		await h.session.comments?.invalidate(h.n);
@@ -182,7 +193,7 @@ describe("pollFeedback rounds", () => {
 		for (const round of [1, 2]) {
 			const run = { round, head, selected: ["change" as const], tags: [], verify: {}, parentFindings: [], routed: true };
 			await h.world.postComment(h.n, BOT_LOGIN, reviewRunComment(run));
-			await h.world.postComment(h.n, BOT_LOGIN, aggregateComment({ round, head, reviews: [], findings: [] }));
+			await appendSeed(h, aggregateComment({ round, head, reviews: [], findings: [] }));
 		}
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
@@ -192,7 +203,7 @@ describe("pollFeedback rounds", () => {
 		expect(fb.source).toBe("pull-request");
 		// spec_review aggregates and routes it: one blocking in-change finding.
 		const finding = agg({ ...fb.parentFindings[0], route: "in-change", routeUnit: undefined, verify: "skipped-parent", from: ["parent:0"] });
-		await h.world.postComment(h.n, BOT_LOGIN, aggregateComment({ round: 3, head: fb.head, reviews: [], findings: [finding] }));
+		await appendSeed(h, aggregateComment({ round: 3, head: fb.head, reviews: [], findings: [finding] }));
 		await h.world.postComment(h.n, BOT_LOGIN, reviewRunComment({ ...fb, routed: true }));
 		expect(reviewRounds(await marked(h), 3)).toEqual({ value: 3, blocking: true });
 	});

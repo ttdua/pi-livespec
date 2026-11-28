@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the build evidence the parent session owns: the `unit_start` and `unit_finish` tools, which run each unit's `Verify` command and record red-before and green-after receipts on the change issue; verifier-pending units; attempts and `BLOCKED` units; the `verify-red-on-base` plan check; and the work-in-progress signal derived from started units.
+Defines the build evidence the parent session owns: the `unit_start` and `unit_finish` tools, which run each unit's `Verify` command and record red-before and green-after receipts in the change's ledger; verifier-pending units; attempts and `BLOCKED` units; the `verify-red-on-base` plan check; and the work-in-progress signal derived from started units.
 
 ## Requirements
 
@@ -20,19 +20,19 @@ Defines the build evidence the parent session owns: the `unit_start` and `unit_f
 - another unit is started in the same worktree;
 - the guard blocks its `Verify` command.
 
-Otherwise it SHALL record HEAD as the pre SHA. For a unit that is not verifier pending, it SHALL then run `Verify` at HEAD and require a valid red, or a green for a `Kind: refactor` unit or a **rebuild**. A `unit-start` older than an own `parked` record that lists its unit SHALL NOT count as started, and that unit's attempt budget SHALL start at that `parked` record. A unit SHALL be **resumed** when an own `parked` record newer than its latest `unit-start` lists it and a resume `parked` record follows that record; a resumed unit started green SHALL record verdict `resumed`. A unit SHALL be a rebuild when its latest own `rebuild` comment is newer than its latest receipt and its latest `unit-start`; a rebuild started green SHALL record verdict `rebuild`, and a red or invalid run SHALL still be accepted or refused as for any other unit. When the run has the wrong class, the tool MUST refuse, write nothing, and name the class, the exit code and the options: a regression pin or a drop through `unit_amend`, or a fixed `Verify`. On success it SHALL post one own `unit-start` comment with the unit, its digest, the `Verify` command, the pre SHA, the pre exit code, the verdict and the redacted output tail.
+Otherwise it SHALL record HEAD as the pre SHA. For a unit that is not verifier pending, it SHALL then run `Verify` at HEAD and require a valid red, or a green for a `Kind: refactor` unit or a **rebuild**. A `unit-start` older than an own `parked` record that lists its unit SHALL NOT count as started, and that unit's attempt budget SHALL start at that `parked` record. A unit SHALL be **resumed** when an own `parked` record newer than its latest `unit-start` lists it and a resume `parked` record follows that record; a resumed unit started green SHALL record verdict `resumed`. Records of the ledger and own marked comments SHALL be compared in the merged order of ledger-store "Ledger records in the change state". A unit SHALL be a rebuild when its latest own `rebuild` comment is newer than its latest receipt and its latest `unit-start`; a rebuild started green SHALL record verdict `rebuild`, and a red or invalid run SHALL still be accepted or refused as for any other unit. When the run has the wrong class, the tool MUST refuse, write nothing, and name the class, the exit code and the options: a regression pin or a drop through `unit_amend`, or a fixed `Verify`. On success it SHALL append one `unit-start` ledger entry with the unit, its digest, the `Verify` command, the pre SHA, the pre exit code, the verdict and the redacted output tail.
 
 #### Scenario: Red at pre starts the unit
 - **WHEN** U1 is locked, pending, with no unmet `Depends`, the tree is clean and `Verify` exits 1 at HEAD
-- **THEN** a `unit-start` comment for U1 records the HEAD SHA and exit 1, and U1 is started
+- **THEN** a `unit-start` entry for U1 records the HEAD SHA and exit 1, U1 is started, and no comment is posted
 
 #### Scenario: Green at pre is refused
 - **WHEN** U1 is not a refactor unit and its `Verify` exits 0 at HEAD
-- **THEN** `unit_start U1` refuses, names exit 0 and the regression-pin, drop and fix options, and posts nothing
+- **THEN** `unit_start U1` refuses, names exit 0 and the regression-pin, drop and fix options, and writes nothing
 
 #### Scenario: Refactor unit must pass at pre
 - **WHEN** U2 has `Kind: refactor` and its `Verify` exits 1 at HEAD
-- **THEN** `unit_start U2` refuses and posts nothing; and when its `Verify` exits 0, U2 is started with verdict `green`
+- **THEN** `unit_start U2` refuses and writes nothing; and when its `Verify` exits 0, U2 is started with verdict `green`
 
 #### Scenario: Dirty tree
 - **WHEN** the tree has an uncommitted change and `unit_start U1` runs
@@ -56,19 +56,19 @@ Otherwise it SHALL record HEAD as the pre SHA. For a unit that is not verifier p
 
 #### Scenario: Rebuild starts green
 - **WHEN** U2 was ticked with a receipt for its current digest, review round 1 routed a confirmed `WARNING` to U2, the change returned to `build`, and `Verify` exits 0 at HEAD
-- **THEN** `unit_start U2` posts a `unit-start` comment with verdict `rebuild`
+- **THEN** `unit_start U2` appends a `unit-start` entry with verdict `rebuild`
 
 #### Scenario: Restart after an amendment
 - **WHEN** U1 is started and an approved amendment changes U1's `Verify`
-- **THEN** `unit_start U1` runs again with the new `Verify` and posts a new `unit-start` comment
+- **THEN** `unit_start U1` runs again with the new `Verify` and appends a new `unit-start` entry
 
 #### Scenario: Parked change refuses
 - **WHEN** the change is parked and `unit_start U3` runs
-- **THEN** the tool refuses, names the parked state, and posts nothing
+- **THEN** the tool refuses, names the parked state, and writes nothing
 
 #### Scenario: Resumed unit starts green
 - **WHEN** U2 was started red, the change was parked with U2's wip branch and resumed, and U2's `Verify` exits 0 at HEAD
-- **THEN** `unit_start U2` posts a `unit-start` comment with verdict `resumed`
+- **THEN** `unit_start U2` appends a `unit-start` entry with verdict `resumed`
 
 ### Requirement: Valid red
 A `Verify` run SHALL be classified from its exit status:
@@ -78,11 +78,11 @@ A `Verify` run SHALL be classified from its exit status:
 
 An `invalid` run MUST NOT count as a red at pre or on `Base`, and SHALL count as a failed attempt at post. `Verify` SHALL run through `/bin/sh -c` with the worktree as its working directory, with `verify.timeout` seconds (default 600) as the limit. On timeout the process group is killed.
 
-Before every run (at pre, at the pending test-only commit, on `Base` and at post), the `Verify` command MUST be classified by the command guard. A blocked command MUST NOT be spawned: the tools refuse and point to `unit_amend`, and `verify-red-on-base` reports an error for the unit. Known tokens MUST be redacted from captured output before it is written anywhere: a `unit-start` comment, a receipt, a `progress` record, or a tool result.
+Before every run (at pre, at the pending test-only commit, on `Base` and at post), the `Verify` command MUST be classified by the command guard. A blocked command MUST NOT be spawned: the tools refuse and point to `unit_amend`, and `verify-red-on-base` reports an error for the unit. Known tokens MUST be redacted from captured output before it is written anywhere: a `unit-start` entry, a receipt, a `progress` record, or a tool result.
 
 #### Scenario: Command not found is not red
 - **WHEN** `Verify` is `nosuchtool test` and exits 127 at pre
-- **THEN** `unit_start` refuses, saying the command could not run, and posts nothing
+- **THEN** `unit_start` refuses, saying the command could not run, and writes nothing
 
 #### Scenario: Blocked Verify is never run
 - **WHEN** U1's `Verify` is `npm test && git push`
@@ -90,7 +90,7 @@ Before every run (at pre, at the pending test-only commit, on `Base` and at post
 
 #### Scenario: Token redacted everywhere
 - **WHEN** `Verify` prints the forge token at pre and again in a failed post run
-- **THEN** neither the `unit-start` comment, the `progress.U1` record nor the tool results contain the token
+- **THEN** neither the `unit-start` entry, the `progress.U1` record nor the tool results contain the token
 
 #### Scenario: Timeout
 - **WHEN** `verify.timeout` is 1 and `Verify` sleeps for 5 seconds
@@ -99,7 +99,7 @@ Before every run (at pre, at the pending test-only commit, on `Base` and at post
 ### Requirement: Verifier pending
 A unit SHALL be verifier pending when at least one entry of its `Files` is a test file that does not exist at the pre commit. Test files are matched by the patterns `**/*.test.*`, `**/*.spec.*`, `**/*_test.*`, `**/test_*.*`, `**/tests/**` and `**/test/**`. The pending state MUST be decided by code; no tool parameter SHALL set it. A refactor unit MUST NOT be verifier pending: `unit_start` SHALL refuse it, saying that a refactor needs an existing test.
 
-`unit_start` on a pending unit SHALL post a `unit-start` comment with `pending: true` and the HEAD SHA, without running `Verify`. Before its post run, `unit_finish` on a pending unit SHALL require that:
+`unit_start` on a pending unit SHALL append a `unit-start` entry with `pending: true` and the HEAD SHA, without running `Verify`. Before its post run, `unit_finish` on a pending unit SHALL require that:
 - a first commit after the recorded SHA exists;
 - that commit changes only test files listed in the unit's `Files`;
 - `Verify` is red at that commit, run in a temporary worktree.
@@ -108,7 +108,7 @@ It MUST refuse otherwise, naming the reason, and such a refusal MUST NOT count a
 
 #### Scenario: Pending start
 - **WHEN** U1 lists `test/limit.test.ts` in `Files`, the file does not exist at HEAD, and `unit_start U1` runs
-- **THEN** a `unit-start` comment with `pending: true` is posted and `Verify` is not run
+- **THEN** a `unit-start` entry with `pending: true` is appended and `Verify` is not run
 
 #### Scenario: First commit touches source
 - **WHEN** U1 is pending and the first commit after the start changes `test/limit.test.ts` and `src/limit.ts`
@@ -121,9 +121,9 @@ It MUST refuse otherwise, naming the reason, and such a refusal MUST NOT count a
 ### Requirement: Unit finish tool
 `unit_finish` SHALL take only a unit id and SHALL be the only tool that ticks a unit.
 
-A unit is **started** when its latest own `unit-start` comment is newer than its latest own `receipt` and its status line is pending. A unit is **receipted, not ticked** when its latest receipt is newer than its latest `unit-start` and than its latest own `rebuild` comment (see `finding-routing` "Route effects"), matches its current digest, and its status line is pending. Before any other check, `unit_finish` MUST refuse, writing nothing, when the change is not in a `per: unit` phase, naming the current phase, for a started unit and for a receipted, not-ticked unit alike; only the session, change and unit-worktree resolution that every unit tool runs MAY refuse before it. It MUST also refuse first, writing nothing, when the unit has an unresolved blocking finding (see `review-findings`), or when the pack's non-advisory unit-reviewer entry holds for the unit (evaluated without `context>=N%` conditions) and no completed unit review (see `review-findings`) records the reviewed commit. The reviewed commit SHALL be HEAD; for a unit that ran in a lane and was merged, it SHALL be the lane head that the merge commit at HEAD brought in as its second parent. Findings of an advisory entry MUST NOT refuse a tick. For a receipted, not-ticked unit, `unit_finish` SHALL only tick the unit, without running `Verify` and without posting another receipt, provided the tree is clean and the unit is neither frozen nor stale. Otherwise it MUST refuse, writing nothing, when:
+A unit is **started** when its latest `unit-start` entry is newer than its latest `receipt` entry and its status line is pending. A unit is **receipted, not ticked** when its latest receipt is newer than its latest `unit-start` and than its latest own `rebuild` comment (see `finding-routing` "Route effects"), matches its current digest, and its status line is pending. Before any other check, `unit_finish` MUST refuse, writing nothing, when the change is not in a `per: unit` phase, naming the current phase, for a started unit and for a receipted, not-ticked unit alike; only the session, change and unit-worktree resolution that every unit tool runs MAY refuse before it. It MUST also refuse first, writing nothing, when the unit has an unresolved blocking finding (see `review-findings`), or when the pack's non-advisory unit-reviewer entry holds for the unit (evaluated without `context>=N%` conditions) and no completed unit review (see `review-findings`) records the reviewed commit. The reviewed commit SHALL be HEAD; for a unit that ran in a lane and was merged, it SHALL be the lane head that the merge commit at HEAD brought in as its second parent. Findings of an advisory entry MUST NOT refuse a tick. For a receipted, not-ticked unit, `unit_finish` SHALL only tick the unit, without running `Verify` and without posting another receipt, provided the tree is clean and the unit is neither frozen nor stale. Otherwise it MUST refuse, writing nothing, when:
 - the unit is not started;
-- the unit is frozen or stale, or its digest differs from the digest in its `unit-start` comment;
+- the unit is frozen or stale, or its digest differs from the digest in its `unit-start` entry;
 - the unit has an open lane (it names `lane_merge` as the next step);
 - the unit is blocked;
 - the working tree is dirty;
@@ -131,20 +131,20 @@ A unit is **started** when its latest own `unit-start` comment is newer than its
 
 Otherwise it SHALL run `Verify` at HEAD.
 
-When the run is `green`, the tool SHALL first post a `receipt` comment, then tick the unit's status line with the byte-preserving tick in one version-checked body write. A unit whose latest receipt is newer than its latest `unit-start` and matches its digest, while its status line is pending, SHALL be ticked by `unit_finish` without running `Verify` again.
+When the run is `green`, the tool SHALL first append a `receipt` entry, then tick the unit's status line with the byte-preserving tick in one version-checked body write. A unit whose latest receipt is newer than its latest `unit-start` and matches its digest, while its status line is pending, SHALL be ticked by `unit_finish` without running `Verify` again.
 
-When the run is `red` or `invalid`, the tool SHALL post a `progress` decision record as a failed attempt and report the attempt count, the failure signature, and either a retry with the `debugging-and-error-recovery` skill or the block.
+When the run is `red` or `invalid`, the tool SHALL append a `progress` decision entry as a failed attempt and report the attempt count, the failure signature, and either a retry with the `debugging-and-error-recovery` skill or the block.
 
 #### Scenario: Green at post
 - **WHEN** U1 is started with pre exit 1, the work is committed, and `Verify` exits 0 at HEAD
-- **THEN** a `receipt` comment records the pre and post SHAs and exits, and U1's status line is the only line of the body that changed
+- **THEN** a `receipt` entry records the pre and post SHAs and exits, U1's status line is the only line of the body that changed, and no comment is posted
 
 #### Scenario: Not green at post
 - **WHEN** U1 is started and `Verify` exits 1 at HEAD
-- **THEN** no receipt is posted, U1 stays pending and started, a `progress.U1` record is posted, and `unit_attempts.U1` is 1
+- **THEN** no receipt is written, U1 stays pending and started, a `progress.U1` entry is appended, and `unit_attempts.U1` is 1
 
 #### Scenario: Not started
-- **WHEN** U1 is pending and has no `unit-start` comment
+- **WHEN** U1 is pending and has no `unit-start` entry
 - **THEN** `unit_finish U1` refuses and says to run `unit_start U1`
 
 #### Scenario: Open lane refuses finish
@@ -152,11 +152,11 @@ When the run is `red` or `invalid`, the tool SHALL post a `progress` decision re
 - **THEN** it refuses, names `lane_merge`, and writes nothing
 
 #### Scenario: Crash between receipt and tick
-- **WHEN** U1's receipt was posted and the tick write failed
-- **THEN** U1 is not started, the next step says to run `unit_finish U1` again, and that run ticks U1 exactly once without running `Verify` or posting another receipt
+- **WHEN** U1's receipt was appended and the tick write failed
+- **THEN** U1 is not started, the next step says to run `unit_finish U1` again, and that run ticks U1 exactly once without running `Verify` or appending another receipt
 
 #### Scenario: Digest changed since start
-- **WHEN** U1 is started and its body was edited, so its digest differs from the `unit-start` digest
+- **WHEN** U1 is started and its body was edited, so its digest differs from the `unit-start` entry's digest
 - **THEN** `unit_finish U1` refuses and points to `unit_amend`
 
 #### Scenario: Unresolved blocking finding
@@ -192,14 +192,14 @@ When the run is `red` or `invalid`, the tool SHALL post a `progress` decision re
 - **THEN** the tool refuses, names the phase `plan`, and U2 stays pending
 
 ### Requirement: Receipt
-A `receipt` comment SHALL be an own marked comment of kind `receipt` with id `U<n>.<suffix>` and data:
+A receipt SHALL be a ledger entry of kind `receipt` with id `U<n>.<suffix>` and data:
 - `unit` and `digest`;
 - `verify` (the command);
 - `pre: { sha, exit }` and `post: { sha, exit }`;
 - `output`, the tail of the post run's combined output, at most 8 KB, cut on a UTF-8 boundary and marked when truncated;
-- `start`, the id of the matching `unit-start` comment.
+- `start`, the `ref` of the matching `unit-start` entry.
 
-A receipt MUST NOT be edited after it is posted.
+A receipt MUST NOT be changed after it is appended.
 
 #### Scenario: Output tail
 - **WHEN** a green post run prints 20 KB
@@ -211,21 +211,21 @@ A receipt MUST NOT be edited after it is posted.
 
 ### Requirement: Unit attempts and blocked units
 `unit_attempts.U<n>` SHALL be derived as the number of `progress.U<n>` decision records newer than all of these:
-- the unit's latest `unit-start` comment;
+- the unit's latest `unit-start` entry;
 - its latest receipt;
 - the latest stuck answer that lifts its block.
 
-A `counter` comment for `unit_attempts.*` MUST be ignored.
+A `counter` entry for `unit_attempts.*` MUST be ignored.
 
 A unit SHALL be blocked when, with no lifting stuck answer newer than the event, either:
 - its attempts reached `loops.unit_attempts`;
 - its latest `progress` record has outcome `stop`.
 
-A stuck answer SHALL lift the block of every unit blocked before it when the answer has outcome `approved` or `approved_with_notes` and a chosen option. A dismissed stuck answer MUST NOT lift a block. While a unit is blocked, `unit_start` and `unit_finish` MUST refuse it and say to send a stuck report with `spec_stuck`, and `unit_finish`'s result SHALL link the unit's receipts and failed-attempt records.
+A stuck answer SHALL lift the block of every unit blocked before it when the answer has outcome `approved` or `approved_with_notes` and a chosen option. A dismissed stuck answer MUST NOT lift a block. While a unit is blocked, `unit_start` and `unit_finish` MUST refuse it and say to send a stuck report with `spec_stuck`, and `unit_finish`'s result SHALL name the unit's receipts and failed-attempt records as `ledger:<issue>/<ref>`.
 
 #### Scenario: Cap reached
 - **WHEN** `loops.unit_attempts` is 3 and U1's three post runs fail with a different signature each time
-- **THEN** U1 is blocked with reason `attempts`, and `unit_finish U1` refuses and says to send a stuck report
+- **THEN** U1 is blocked with reason `attempts`, and `unit_finish U1` refuses, says to send a stuck report, and names the three `progress.U1` entries as `ledger:<issue>/<ref>`
 
 #### Scenario: Chosen stuck answer restarts the budget
 - **WHEN** U1 is blocked and a stuck report sent afterwards is answered with outcome `approved` and choice `B`

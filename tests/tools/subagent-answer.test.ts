@@ -36,6 +36,8 @@ describe("questions from a child", () => {
 		expect(h.fake.resumed).toEqual([{ id: "agent-1", prompt: "the project one" }]);
 		const kinds = (await h.ofKind("dispatch")).map((m) => (m.data as { status: string }).status);
 		expect(kinds).toEqual(["QUESTION", "ANSWERED", "DONE"]);
+		expect((await h.inLedger("dispatch")).map((m) => (m.data as { status: string }).status)).toEqual(kinds);
+		expect(await h.commentsOf("dispatch")).toEqual([]);
 		expect((await h.latest("dispatch"))?.data).toMatchObject({ agentId: "agent-1", sources_used: expect.arrayContaining(["answer:agent-1:1"]) });
 	});
 
@@ -177,7 +179,7 @@ describe("verifier answer", () => {
 	test("resumes after the stored packet is gone, rebuilding with the finding", async () => {
 		const h = await subagentHarness({ executor: { records: [{ pendingQuestion: "Which?" }] } });
 		await h.seed("finding-summary", "finding-summary.change.review.1", AGG);
-		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const key = `${(await h.latest("finding-summary"))?.ref}:0`;
 		const out = await h.call("subagent_dispatch", { role: "verifier", finding: key });
 		expect(textOf(out)).toContain("agent-1 asks");
 		const { rmSync } = await import("node:fs");

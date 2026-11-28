@@ -31,5 +31,5 @@ export const applyQuestion: ApplyFn = async (run, record) => {
 	const data: Record<string, unknown> = { request: request.id, class: classOf(change, id, answer), answer: answered ? (answer.answer ?? "") : "" };
 	Object.assign(data, { by: answer.by, at: answer.at, adapter: answer.adapter });
 	if (answer.answerComment) data.answer_comment = answer.answerComment;
-	return writeMarked("question", `${id}.${request.id}`, data);
+	return { comment: writeMarked("question", `${id}.${request.id}`, data) };
 };

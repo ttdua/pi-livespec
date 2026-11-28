@@ -1,5 +1,6 @@
 import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { HUMAN_PLAN_FLOW } from "../helpers/flow.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,8 +36,8 @@ async function planChange(units: UnitSpec[], files: Record<string, string> = {},
 	setRedOnBaseEnv(withEnv ? () => verifyEnv(h.session) : async () => undefined);
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
@@ -54,7 +55,7 @@ async function requestOf(h: Gate): Promise<{ data: Record<string, any>; text: st
 	const marked = filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
 	const request = marked.filter((m: MarkedComment) => m.kind === "request").at(-1);
 	if (!request) throw new Error("no request");
-	return { data: request.data as Record<string, any>, text: await h.world.commentBodyOf(request.commentId) };
+	return { data: request.data as Record<string, any>, text: await h.world.commentBodyOf(request.ref) };
 }
 
 const COUNT = "echo run >> $LOG; exit 1";

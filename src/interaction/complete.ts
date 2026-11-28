@@ -1,6 +1,6 @@
 // The completion engine (design D2): validate an answer once, record it as an
 // own `answer` comment, run the subject's effects (each skipped when already
-// applied), and write the result comment last. A recorded answer is never
+// applied), and write the result record last. A recorded answer is never
 // validated again; `finishApplying` finishes every answer left applying.
 
 import { messageOf } from "../core/messages.ts";
@@ -8,7 +8,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Answered, RequestRecord } from "./approver.ts";
 import { applyAmend } from "./complete-amend.ts";
 import { applyDecide } from "./complete-decide.ts";
-import { type ApplyFn, type CompletionCtx, postComment, type Run, startRun } from "./complete-effects.ts";
+import { type ApplyFn, type CompletionCtx, postComment, type Run, startRun, writeResult } from "./complete-effects.ts";
 import { applyGate } from "./complete-gate.ts";
 import { applyQuestion } from "./complete-question.ts";
 import { applyStuck } from "./complete-stuck.ts";
@@ -86,10 +86,10 @@ export async function recordAnswer(run: Run, req: RequestRecord, ans: Answered):
 	return record;
 }
 
-/** Runs the effects of a recorded answer, then writes its result comment last. */
+/** Runs the effects of a recorded answer, then writes its result record last. */
 export async function applyAnswer(run: Run, record: AnswerData): Promise<Completion> {
 	const result = await applyFor(record.request.subject)(run, record);
-	await postComment(run, result);
+	await writeResult(run, result);
 	return summary(record);
 }
 

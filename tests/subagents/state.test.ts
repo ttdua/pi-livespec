@@ -8,7 +8,7 @@ let n = 0;
 const mark = (body: string): MarkedComment => {
 	const p = parseMarked(body);
 	if (!p) throw new Error("not marked");
-	return { commentId: `c${++n}`, kind: p.kind, id: p.id, author: "me", data: p.data };
+	return { source: "forge", ref: `c${++n}`, kind: p.kind, id: p.id, author: "me", data: p.data };
 };
 const lane = { unit: "U2", path: "/w/.worktrees/x--U2", branch: "livespec/x--lane-U2", base: "abc" };
 
@@ -28,14 +28,14 @@ describe("lanes", () => {
 
 describe("lane validation", () => {
 	it("a null or incomplete lane record is skipped", () => {
-		const m = (data: unknown): MarkedComment => ({ commentId: "x", kind: "lane", id: "lane.U9", author: "me", data });
+		const m = (data: unknown): MarkedComment => ({ source: "forge", ref: "x", kind: "lane", id: "lane.U9", author: "me", data });
 		expect(openLanes([m(null), m({ unit: "U9" }), mark(laneComment(lane))])).toEqual({ U2: lane });
 	});
 });
 
 describe("lane closed flag", () => {
 	it('closed: "true" is invalid, not an open lane', () => {
-		const m: MarkedComment = { commentId: "x", kind: "lane", id: "lane.U2", author: "me", data: { ...lane, closed: "true" } };
+		const m: MarkedComment = { source: "forge", ref: "x", kind: "lane", id: "lane.U2", author: "me", data: { ...lane, closed: "true" } };
 		expect(openLanes([m])).toEqual({});
 		expect(invalidLanes([m])).toHaveLength(1);
 	});

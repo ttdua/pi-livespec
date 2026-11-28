@@ -1,3 +1,6 @@
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { BRIEFING } from "../helpers/briefing.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { pickByLabel } from "../helpers/menu.ts";
@@ -20,7 +23,7 @@ afterEach(async () => {
 import { AT, FORGE_CHAIN, approveShip, branchOf, gateComment, marked, ofKind, openPulls, pushed, shipReady, type Opts } from "./ship-fixture.ts";
 
 async function expectNothingShipped(h: ToolHarness, before: string): Promise<void> {
-	expect(originRefs(h.origin)).toBe(before);
+	expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	expect(await openPulls(h)).toEqual([]);
 	expect(parseChange(await h.world.bodyOf(h.n)).header.pr).toBeUndefined();
 }
@@ -46,6 +49,28 @@ describe("change_ship", () => {
 		expect(textOf(out)).toContain(`#${pr.number}`);
 	});
 
+	test("I7: a ledger change landing between the snapshot and the publish refuses and pushes nothing", async () => {
+		const h = await shipReady();
+		const ledger = h.session.ledger;
+		let syncs = 0;
+		// The first sync settles the ledger; the second one (right before the branch push) sees a tip moved by another writer.
+		const racing = { ...ledger, sync: async (n: number) => {
+			if (++syncs === 2) await ledger.append(n, { kind: "decision", id: "race.U1", data: { point: "race", subject: "U1", source: "rule", outcome: "x", reason: "r" } });
+			return ledger.sync(n);
+		} };
+		Object.defineProperty(h.session, "ledger", { value: racing });
+		const before = originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"));
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger changed while the change was being checked");
+		expect(originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"))).toEqual(before);
+		expect(await openPulls(h)).toHaveLength(0);
+		// A rerun sees the settled ledger and ships.
+		Object.defineProperty(h.session, "ledger", { value: ledger });
+		const again = await h.call("change_ship");
+		expect(again.isError, textOf(again)).toBeFalsy();
+	});
+
 	test("Refspec from the issue", async () => {
 		const h = await shipReady({ branch: "livespec/rate-limit" });
 		const out = await h.call("change_ship");
@@ -63,7 +88,7 @@ describe("change_ship", () => {
 		// The review gate passed at d4, so the change stays in ship; the ship gate is still at c3.
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-2", d4));
 		await h.session.comments?.invalidate(h.n);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain(d4.slice(0, 7));
@@ -75,7 +100,7 @@ describe("change_ship", () => {
 		const h = await shipReady();
 		await writeIn(h.root, "src/limit.ts", "export const cap = 101;\n");
 		commitAll(h.root, "d4");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		await expectNothingShipped(h, before);
@@ -88,7 +113,7 @@ describe("change_ship", () => {
 		const head = h.git("rev-parse", "HEAD");
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-2", head));
 		await approveShip(h, "a1", head);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("src/extra.ts");
@@ -98,11 +123,11 @@ describe("change_ship", () => {
 	test("Another pull request open", async () => {
 		const h = await shipReady();
 		const other = await h.world.seedPullRequest({ head: "livespec/per-ip-cap", author: OTHER_LOGIN, body: `Refs #${h.n}` });
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain(`#${other}`);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(await openPulls(h)).toHaveLength(1);
 		expect(parseChange(await h.world.bodyOf(h.n)).header.pr).toBeUndefined();
 	});
@@ -140,7 +165,7 @@ describe("change_ship", () => {
 		await h.world.setPermission("alice", "write");
 		const id = await h.world.postComment(h.n, "alice", "wait, one more thing");
 		await h.session.comments?.invalidate(h.n);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("stale");
@@ -175,7 +200,7 @@ describe("change_ship", () => {
 		});
 		await h.world.postComment(h.n, "alice", "wait");
 		await h.session.comments?.invalidate(h.n);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("permission");
@@ -219,7 +244,7 @@ describe("change_ship", () => {
 		const h = await shipReady();
 		const body = (await h.world.bodyOf(h.n)).replace("Counter.", "Sliding counter.");
 		await h.world.editBodyBehindBack(h.n, body);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		await expectNothingShipped(h, before);
@@ -264,7 +289,7 @@ describe("change_ship", () => {
 
 	test("Ship gate not approved", async () => {
 		const h = await shipReady({ noShipGate: true });
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("ship gate");
@@ -274,7 +299,7 @@ describe("change_ship", () => {
 
 	test("Child ships", async () => {
 		const h = await shipReady();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const t = h.pi.tools.get("change_ship");
 		const out = (await t?.execute("c", {}, undefined, undefined, asChild(h.ctx))) as { isError: boolean; content: { text: string }[] };
 		expect(out.isError).toBe(true);
@@ -286,18 +311,18 @@ describe("change_ship", () => {
 		const h = await shipReady();
 		const body = (await h.world.bodyOf(h.n)).replace(/^Branch: .*\n/m, "");
 		await h.world.editBodyBehindBack(h.n, body);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("Branch");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(await openPulls(h)).toEqual([]);
 	});
 
 	test("a dirty tree refuses", async () => {
 		const h = await shipReady();
 		await writeIn(h.root, "src/limit.ts", "dirty\n");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("clean");
@@ -311,7 +336,7 @@ describe("change_ship", () => {
 		const head = h.git("rev-parse", "HEAD");
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-2", head));
 		await approveShip(h, "a1", head);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain(head.slice(0, 7));
@@ -322,11 +347,11 @@ describe("change_ship", () => {
 
 	test("a PR line refuses naming change_push", async () => {
 		const h = await shipReady({ body: (b) => b.replace("Depends: —", "Depends: —\nPR: #99") });
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_ship");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("change_push");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(await openPulls(h)).toEqual([]);
 	});
 
@@ -337,5 +362,61 @@ describe("change_ship", () => {
 		expect(await openPulls(h)).toHaveLength(1);
 		expect(await ofKind(h, "ship")).toHaveLength(1);
 		expect(pushed(h)).toBe(true);
+	});
+});
+
+describe("change_ship ledger sync", () => {
+	/** Appends one ledger entry so the change has a local ledger ref to push. */
+	async function withLedger(h: ToolHarness): Promise<void> {
+		await h.session.ledger.append(h.n, { kind: "decision", id: "D1", data: { answer: "x" } });
+		await h.settle();
+	}
+
+	test("a second sync that fails at the publish names its cause and pushes nothing", async () => {
+		const h = await shipReady();
+		let syncs = 0;
+		// The first sync settles the ledger; the second one (right before the branch push) fails with a named reason.
+		const ledger = h.session.ledger;
+		const failing = { ...ledger, sync: async (n: number) => (++syncs === 2 ? { status: "pending" as const, reason: "origin unreachable" } : ledger.sync(n)) };
+		Object.defineProperty(h.session, "ledger", { value: failing });
+		const before = originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"));
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger could not be pushed: origin unreachable");
+		expect(textOf(out)).not.toContain("the ledger changed");
+		expect(originRefs(h.origin).split("\n").filter((r) => r.includes("refs/heads/livespec"))).toEqual(before);
+	});
+
+	test("Ledger not pushed", async () => {
+		const h = await shipReady();
+		await withLedger(h);
+		// A pre-receive hook rejects every ref update under refs/livespec/, so the ledger push is refused.
+		writeFileSync(join(h.origin, "hooks", "pre-receive"), "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/livespec/*) echo rejected >&2; exit 1;; esac; done\n", { mode: 0o755 });
+		// An entry appended after the hook is not on origin, so the ship-time sync has to push it and is refused.
+		await h.session.ledger.append(h.n, { kind: "decision", id: "D2", data: { answer: "y" } });
+		await h.settle();
+		const before = originRefs(h.origin, { ignoreLedger: true });
+		const out = await h.call("change_ship");
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("the ledger could not be pushed");
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
+		expect(await openPulls(h)).toEqual([]);
+		expect(parseChange(await h.world.bodyOf(h.n)).header.pr).toBeUndefined();
+	});
+
+	test("ship pushes the ledger before the branch", async () => {
+		const h = await shipReady();
+		await withLedger(h);
+		// Origin has no ledger yet, so the ship-time sync is the one that pushes it.
+		execFileSync("git", ["update-ref", "-d", `refs/livespec/${h.n}`], { cwd: h.origin });
+		h.git("update-ref", "-d", `refs/livespec-origin/${h.n}`);
+		h.gitCalls.length = 0;
+		const out = await h.call("change_ship");
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const pushes = h.gitCalls.filter((args) => args[0] === "push");
+		const ledgerAt = pushes.findIndex((args) => args.some((s) => /:refs\/livespec\/\d+$/.test(s)));
+		const branchAt = pushes.findIndex((args) => args.includes(`HEAD:refs/heads/${h.git("branch", "--show-current")}`));
+		expect(ledgerAt).toBeGreaterThanOrEqual(0);
+		expect(branchAt).toBeGreaterThan(ledgerAt);
 	});
 });

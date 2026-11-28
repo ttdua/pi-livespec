@@ -11,3 +11,4 @@ Architecture decision records. A decision is never deleted; a replaced one is ma
 | [0005](0005-flow-as-yaml-data.md) | The flow is YAML data, agent-skills is the default pack | Accepted |
 | [0006](0006-rule-based-decisions.md) | Decision points use rules; Jev is a later upgrade | Accepted |
 | [0007](0007-forge-concurrency-by-adapter.md) | Write concurrency is checked per forge adapter | Accepted |
+| [0008](0008-machine-ledger.md) | Machine records live in a git ledger | Accepted |

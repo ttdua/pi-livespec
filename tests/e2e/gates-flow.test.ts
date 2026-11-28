@@ -16,6 +16,8 @@ import type { SelectFn } from "../hooks/fake-pi.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { replaceSection } from "../../src/core/sections.ts";
 import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { findingSummaryComment } from "../../src/subagents/records.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
@@ -92,7 +94,7 @@ function escalation(marked: MarkedComment[]): unknown {
 }
 
 /** A completed advisory plan review at HEAD, as `subagent_record` writes it for an inline run. */
-function planReview(head: string): string {
+function planReview(head: string): AppendInput {
 	return findingSummaryComment({
 		role: "reviewer", subject: "plan", round: 1, status: "DONE", advisory: true, head, packet: "p", sources_used: [], required: [], completed: true,
 		agentSource: "inline", requested: { thinking: "low" }, effective: {}, findings: [],
@@ -199,7 +201,7 @@ describe("gates and decisions", () => {
 		await h.call("spec_status");
 		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
 
-		await h.world.postComment(n, BOT_LOGIN, planReview(h.git("rev-parse", "HEAD")));
+		await appendSeed({ root: h.root, n, world: h.world, session: h.session }, planReview(h.git("rev-parse", "HEAD")));
 		await h.call("spec_status");
 		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
 		const plan = await h.call("spec_gate", { target: "plan" });

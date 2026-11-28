@@ -18,7 +18,7 @@ function describe({ comment, index, finding }: UnresolvedFinding): string {
 }
 
 function findingsRefusal(state: ChangeState, unit: string): string | undefined {
-	const open = tickBlocking(state.marked, unit, answeredFindingKeys(state.change.questions));
+	const open = tickBlocking(state.marked, unit, answeredFindingKeys(state.change.questions, state.marked));
 	return open.length === 0 ? undefined : `${unit} has ${open.length} unresolved blocking finding(s):\n${open.map(describe).join("\n")}`;
 }
 

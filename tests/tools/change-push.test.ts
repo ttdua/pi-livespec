@@ -69,32 +69,32 @@ describe("change_push", () => {
 
 	test("Unreviewed commits refused", async () => {
 		const h = await shipped();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const e5 = await fix(h, "src/limit.ts", false);
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain(e5.slice(0, 7));
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("Feedback arrived", async () => {
 		const h = await shipped();
 		await fix(h);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h, async () => ({ ingested: 1 }));
 		expect(out.isError).toBe(true);
 		expect(text).toContain("spec_review");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("poll failure refuses naming the cause", async () => {
 		const h = await shipped();
 		await fix(h);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h, async () => ({ failed: "forge offline" }));
 		expect(out.isError).toBe(true);
 		expect(text).toContain("forge offline");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("a refused move to review in the poll refuses the push", async () => {
@@ -104,7 +104,7 @@ describe("change_push", () => {
 		const pr = h.session.card.kind === "change" ? h.session.card.state.pr?.number : undefined;
 		if (pr === undefined) throw new Error("no pull request");
 		await h.world.postComment(pr, "alice", "please rename");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		// The real poll; a second phase label appears after the session refreshed, so its move to review is refused.
 		const { out, text } = await push(h, async (s) => {
 			await h.world.forge.addLabels(h.n, ["livespec:phase/build"]);
@@ -113,7 +113,7 @@ describe("change_push", () => {
 		expect(out.isError).toBe(true);
 		expect(text).toContain("polling the pull request feedback failed");
 		expect(text).toContain("cannot move to review");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("the registered change_push polls pull request feedback by default", async () => {
@@ -123,11 +123,11 @@ describe("change_push", () => {
 		const pr = h.session.card.kind === "change" ? h.session.card.state.pr?.number : undefined;
 		if (pr === undefined) throw new Error("no pull request");
 		await h.world.postComment(pr, "alice", "please rename the cap");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const out = await h.call("change_push");
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("new pull request feedback arrived");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		const runs = await ofKind(h, "review-run");
 		expect(runs.map((m) => (m.data as { source?: string }).source)).toContain("pull-request");
 	});
@@ -135,11 +135,11 @@ describe("change_push", () => {
 	test("Fix touches constraints", async () => {
 		const h = await shipped();
 		await constraintsFix(h);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain("ship gate");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(textOf(await h.call("spec_next"))).toContain("Ready for the ship gate");
 	});
 
@@ -162,12 +162,12 @@ describe("change_push", () => {
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", "self-x", sha));
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toMatch(/diverge/);
 		expect(text).toContain(pushedHead.slice(0, 7));
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("no pushed head refuses", async () => {
@@ -175,12 +175,12 @@ describe("change_push", () => {
 		const pr = await h.world.seedPullRequest({ head: branchOf(h), author: BOT_LOGIN, body: `Refs #${h.n}` });
 		await h.world.editBodyBehindBack(h.n, (await h.world.bodyOf(h.n)).replace("Depends: —", `Depends: —\nPR: #${pr}`));
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain("pushed head");
 		expect(text).toContain("Branch");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("no PR line refuses", async () => {
@@ -193,22 +193,22 @@ describe("change_push", () => {
 		const h = await shipped();
 		await fix(h);
 		await writeIn(h.root, "src/limit.ts", "dirty\n");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain("clean");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("wrong branch refuses", async () => {
 		const h = await shipped();
 		await fix(h);
 		h.git("switch", "-q", "-c", "other");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toMatch(/branch/i);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test.each([
@@ -220,22 +220,22 @@ describe("change_push", () => {
 		const [pr] = await h.world.forge.listPullRequests({ state: "open" });
 		await h.world.closePullRequestBehindBack(pr?.number ?? 0, merged);
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain(message);
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("a durable-docs error refuses", async () => {
 		const h = await shipped();
 		await fix(h, "specs/constraints.md");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain("durable-docs reports");
 		expect(text).toContain("decision file");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("a new confirmation item needs the ship gate", async () => {
@@ -244,21 +244,21 @@ describe("change_push", () => {
 		expect(out.isError, textOf(out)).toBeFalsy();
 		expect((await ofKind(h, "ship"))[0]?.data).toMatchObject({ confirmed: [] });
 		await fix(h, "src/other.ts");
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out: pushOut, text } = await push(h);
 		expect(pushOut.isError).toBe(true);
 		expect(text).toContain("ship gate");
 		expect(text).toContain("confirmation items");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("HEAD equal to the pushed head has nothing to push", async () => {
 		const h = await shipped();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBeFalsy();
 		expect(text).toContain("nothing to push");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect(await ofKind(h, "ship")).toHaveLength(1);
 	});
 
@@ -285,11 +285,11 @@ describe("change_push", () => {
 		expect(await ofKind(h, "ship")).toEqual([]);
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError, text).toBeFalsy();
 		expect(text).toContain("recorded");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 		expect((await ofKind(h, "ship")).map((m) => m.id)).toEqual([expect.stringContaining(head(h))]);
 	});
 
@@ -301,22 +301,22 @@ describe("change_push", () => {
 		await h.world.postComment(h.n, BOT_LOGIN, gateComment("review", `self-${sha.slice(0, 7)}`, sha));
 		await h.session.comments?.invalidate(h.n);
 		await h.session.refresh();
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const { out, text } = await push(h);
 		expect(out.isError).toBe(true);
 		expect(text).toContain(sha.slice(0, 7));
 		expect(text).toContain("reword");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 
 	test("Child pushes", async () => {
 		const h = await shipped();
 		await fix(h);
-		const before = originRefs(h.origin);
+		const before = originRefs(h.origin, { ignoreLedger: true });
 		const t = h.pi.tools.get("change_push");
 		const out = (await t?.execute("c", {}, undefined, undefined, asChild(h.ctx))) as { isError: boolean; content: { text: string }[] };
 		expect(out.isError).toBe(true);
 		expect(out.content[0]?.text).toContain("child session");
-		expect(originRefs(h.origin)).toBe(before);
+		expect(originRefs(h.origin, { ignoreLedger: true })).toBe(before);
 	});
 });

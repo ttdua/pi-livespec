@@ -13,6 +13,8 @@ import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
 import type { Comment, Forge, Issue, PullRequest, ReviewComment, Version } from "../../src/forge/types.ts";
 import type { PacketContext } from "../../src/subagents/source-types.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
 export const BOT = "livespec-bot";
@@ -35,6 +37,10 @@ export type World = {
 	head: string;
 	tree: string;
 	post(author: string, body: string, number?: number): Comment;
+	/** Ledger records of the change, merged after the forge comments, as the snapshot does. */
+	entries: MarkedComment[];
+	/** Appends a ledger record of `input` to `entries` and returns it. */
+	record(input: AppendInput): MarkedComment;
 	setBody(body: string): void;
 	/** The context with the state re-derived from the world's body and comments, as a refresh would. */
 	refreshed(): PacketContext;
@@ -92,7 +98,7 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 	const head = git(root, "rev-parse", "HEAD");
 	const world = {
 		issueBody: (over.body ?? FIXTURE_BODY).replace(FIXTURE_BASE, base), issueUpdatedAt: "t0",
-		comments: new Map<number, Comment[]>(), reviewComments: [], pulls: [], prFiles: new Map<number, string[]>(), issues: new Map<number, Issue>(), root, base, head,
+		entries: [], comments: new Map<number, Comment[]>(), reviewComments: [], pulls: [], prFiles: new Map<number, string[]>(), issues: new Map<number, Issue>(), root, base, head,
 	} as unknown as World;
 	world.forge = scriptedForge(world);
 	world.tree = over.tree ?? makeTree(DEFAULT_SKILLS);
@@ -101,6 +107,11 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 		const comment: Comment = { id: `c${++counter}`, author, body, createdAt: "t", updatedAt: String(counter), version: next() };
 		world.comments.set(number, [...list, comment]);
 		return comment;
+	};
+	world.record = (input) => {
+		const entry = ledgerRecord(input as AppendInput & { kind: "dispatch" });
+		world.entries.push(entry);
+		return entry;
 	};
 	world.setBody = (body) => {
 		world.issueBody = body;
@@ -114,7 +125,7 @@ export async function makeWorld(over: { body?: string; pack?: Pack; tree?: strin
 }
 
 function stateOf(world: World): ChangeState {
-	const marked: MarkedComment[] = filterMarked(world.comments.get(7) ?? [], BOT).comments;
+	const marked: MarkedComment[] = [...filterMarked(world.comments.get(7) ?? [], BOT).comments, ...world.entries];
 	const start = (unit: string) => ({ id: `${unit}.s`, commentId: "s", index: 0, unit, digest: "d", verify: "v", pre: { sha: world.base } });
 	const state = stateFor("build", { git: { branch: "livespec/per-ip-cap", head: world.head, dirty: false, specsChanged: true }, marked }, world.issueBody);
 	return { ...state, change: parseChange(world.issueBody), evidence: { ...state.evidence, receipts: deriveUnitEvidence(parseChange(world.issueBody), marked, undefined).receipts, started: { U3: start("U3") } } };

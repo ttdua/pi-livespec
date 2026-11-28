@@ -1,19 +1,24 @@
 // Builders of marked `dispatch` and `finding-summary` comments for tests of the build loop, gate payload and card.
 
+import type { LedgerKind } from "../../src/core/record-kinds.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { dispatchComment, type FindingSummaryData, findingSummaryComment, rebuttalComment } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
 
-export function mark(body: string): MarkedComment {
+/** A marked comment from a forge body, or a ledger record from the input of a ledger kind. */
+export function mark(body: string | AppendInput): MarkedComment {
+	if (typeof body !== "string") return ledgerRecord(body as AppendInput & { kind: LedgerKind });
 	const parsed = parseMarked(body);
 	if (!parsed) throw new Error("not a marked comment");
-	return { commentId: `c${++counter}`, kind: parsed.kind, id: parsed.id, author: "me", data: parsed.data };
+	return { source: "forge", ref: `c${++counter}`, kind: parsed.kind, id: parsed.id, author: "me", data: parsed.data };
 }
 
 /** A placeholder own comment, so the next records sit after a `unit-start` at index 0. */
-export const pad = (): MarkedComment => mark(writeMarked("counter", "pad", {}));
+export const pad = (): MarkedComment => mark({ kind: "counter", id: "pad", data: {} });
 
 export const finding = (over: Partial<Finding> = {}): Finding => ({
 	severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "the cap is off by one", fix: "use >=", scope: "unit", ...over,

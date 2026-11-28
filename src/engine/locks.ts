@@ -123,7 +123,7 @@ function readFacts(marked: MarkedComment[]): Fact[] {
 	marked.forEach((m, at) => {
 		if (m.kind === "gate") {
 			const data = gateData(m.data);
-			if (data) facts.push({ kind: "gate", at, commentId: m.commentId, data });
+			if (data) facts.push({ kind: "gate", at, commentId: m.ref, data });
 		} else if (m.kind === "amendment") {
 			const data = amendData(m.data);
 			if (data) facts.push({ kind: "amendment", at, data });

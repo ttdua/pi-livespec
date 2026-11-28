@@ -16,7 +16,9 @@ import type { Finding, SubagentEntry } from "../subagents/roles.ts";
 import { needsContextCount, nextAttempt, nextRound, nextVerifyRound, type RecordDeps } from "../subagents/run-record.ts";
 import type { Packet, PacketContext } from "../subagents/source-types.ts";
 import { unitRoot } from "../subagents/state.ts";
-import { afterForgeWrite, type WriteContext } from "./guard.ts";
+import type { AppendInput } from "../ledger/entry.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
+import { afterLedgerWrite, requireChange, type WriteContext } from "./guard.ts";
 import type { Target } from "./subagent-target.ts";
 
 /** Where the subagent tools read pi's settings from; tests point `home` at a scratch directory. */
@@ -77,13 +79,18 @@ export async function dispatchRequest(w: WriteContext, state: ChangeState, t: Ta
 	};
 }
 
-/** Posts on the change issue and keeps the card fresh; git reads run in the run's cwd. */
+/** Appends `input` to the change's ledger after the last own forge record of the session's current card, then refreshes the card. */
+export async function appendRecord(w: WriteContext, issue: number, input: AppendInput): Promise<void> {
+	const change = requireChange(w.session);
+	const after = change.ok ? lastForgeRef(change.state.marked) : undefined;
+	await w.ledger.append(issue, { ...input, ...(after === undefined ? {} : { after }) });
+	await afterLedgerWrite(w.session, issue);
+}
+
+/** Appends to the ledger and keeps the card fresh; git reads run in the run's cwd. */
 export function recordDeps(w: WriteContext, issue: number): RecordDeps {
 	return {
-		post: async (body) => {
-			await w.forge.createComment(issue, body);
-			await afterForgeWrite(w.session, issue);
-		},
+		record: (input) => appendRecord(w, issue, input),
 		headOf: (cwd) => createGit(cwd).head(),
 		reachable: async (cwd, commits) => {
 			const git = createGit(cwd);

@@ -13,6 +13,7 @@ import { decide } from "../decide/seam.ts";
 import { decisionComment, latestDecisions, sameFacts } from "../decide/records.ts";
 import { runChecks } from "../engine/checks.ts";
 import { type Escalation, escalationInput, escalationOutcome } from "../engine/gate-escalation-facts.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
 import { shipFor } from "../ship/context.ts";
 import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
@@ -29,7 +30,7 @@ import { agentSkillsOf } from "../interaction/session-ctx.ts";
 import { askBehaviorChanges } from "../docs/behavior-ask.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { afterForgeWrite, afterLedgerWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest, withStep } from "./request-flow.ts";
 
@@ -329,8 +330,9 @@ async function escalateOrPass(w: WriteContext, state: ChangeState, target: strin
 async function recordEscalation(w: WriteContext, state: ChangeState, e: Escalation): Promise<void> {
 	const latest = latestDecisions(state.marked).get(`${GATE_ESCALATION_POINT}.${e.facts.phase}`);
 	if (latest !== undefined && sameFacts(latest, e.facts)) return;
-	await w.forge.createComment(state.issue.number, decisionComment({ point: GATE_ESCALATION_POINT, subject: e.facts.phase, source: "rule", outcome: e.outcome, reason: e.reason, facts: e.facts }));
-	await w.session.comments?.invalidate(state.issue.number);
+	const record = decisionComment({ point: GATE_ESCALATION_POINT, subject: e.facts.phase, source: "rule", outcome: e.outcome, reason: e.reason, facts: e.facts });
+	await w.ledger.append(state.issue.number, { ...record, after: lastForgeRef(state.marked) });
+	await afterLedgerWrite(w.session, state.issue.number);
 }
 
 export const BRIEFING_SCHEMA = {

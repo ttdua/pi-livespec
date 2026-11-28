@@ -229,8 +229,9 @@ class MemoryState {
 	}
 
 	tick(): string {
-		this.clock += 1;
-		return new Date(Date.UTC(2026, 0, 1, 0, 0, this.clock)).toISOString();
+		// Real time, strictly increasing, so forge times order against ledger entries written with real time.
+		this.clock = Math.max(this.clock + 1, Date.now());
+		return new Date(this.clock).toISOString();
 	}
 
 	issue(n: number): IssueRecord {

@@ -1,5 +1,5 @@
 // Applying a rule `ask` answer (design D10): the `decision` record with
-// `source: human` is the result comment; no other effect.
+// `source: human` is the result ledger entry; no other effect.
 
 import { decisionComment, type DecisionRecord } from "../decide/records.ts";
 import type { ApplyFn } from "./complete-effects.ts";
@@ -23,5 +23,5 @@ export const applyDecide: ApplyFn = async (_run, record) => {
 		...(s.proposal === true ? { proposal: true as const } : {}),
 		...(s.files === undefined ? {} : { files: s.files }),
 	};
-	return decisionComment(decision);
+	return { entry: decisionComment(decision) };
 };

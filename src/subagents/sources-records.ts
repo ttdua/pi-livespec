@@ -1,8 +1,10 @@
 // Providers over the change's own marked comments: gate notes, findings, receipts, dispatch records and decisions.
 
 import { stringify } from "yaml";
+import { isLedgerKind } from "../core/record-kinds.ts";
 import type { ReceiptRecord } from "../evidence/records.ts";
 import type { MarkedComment } from "../forge/markers.ts";
+import { entryVersion } from "../ledger/entry.ts";
 import { latestDispatch, type DispatchData, type DispatchQuestionData } from "./records.ts";
 import { placed, sha256, type Cx, type Provider } from "./source-kit.ts";
 import type { Placed } from "./source-types.ts";
@@ -10,7 +12,7 @@ import type { Placed } from "./source-types.ts";
 
 /** The comment's updated-at, the version of a `comment:<id>` source; falls back to a content hash. */
 async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
-	const found = (await cx.reads.comments(cx.ctx.state.issue.number)).find((c) => c.id === m.commentId);
+	const found = (await cx.reads.comments(cx.ctx.state.issue.number)).find((c) => c.id === m.ref);
 	return found?.updatedAt ?? sha256(JSON.stringify(m.data));
 }
 
@@ -19,7 +21,17 @@ async function commentVersion(cx: Cx, m: MarkedComment): Promise<string> {
  * so the whole source is wrapped: an injection in one child's record must not reach the next packet as state.
  */
 async function commentSource(cx: Cx, m: MarkedComment, title: string, text: string): Promise<Placed> {
-	return placed({ id: `comment:${m.commentId}`, version: await commentVersion(cx, m), title, text, untrusted: true });
+	return placed({ id: recordId(cx, m), version: await recordVersion(cx, m), title, text, untrusted: true });
+}
+
+/** The source id of a record: `ledger:<issue>/<ref>` for a ledger entry, `comment:<id>` for a forge comment. */
+export const recordId = (cx: Cx, m: MarkedComment): string => (m.source === "ledger" ? `ledger:${cx.ctx.state.issue.number}/${m.ref}` : `comment:${m.ref}`);
+
+/** The version of a record source: the entry version of a ledger entry, else the comment's updated-at. */
+export async function recordVersion(cx: Cx, m: MarkedComment): Promise<string> {
+	if (m.source !== "ledger" || !isLedgerKind(m.kind)) return commentVersion(cx, m);
+	// `seq` is left out of the version, so the version of a given entry is the same on every read.
+	return entryVersion({ ref: m.ref, kind: m.kind, id: m.id, seq: 0, at: m.createdAt ?? "", ...(m.after === undefined ? {} : { after: m.after }), ...(m.from === undefined ? {} : { from: m.from }), data: m.data });
 }
 
 /** Notes humans gave at the plan gate. */
@@ -64,11 +76,21 @@ export const unitFindings: Provider = {
 export const receiptText = (unit: string, receipt: ReceiptRecord): string =>
 	`Receipt of ${unit}: pre ${receipt.pre.sha} exit ${receipt.pre.exit}, post ${receipt.post.sha} exit ${receipt.post.exit}\n${receipt.output}`;
 
-function receiptSource(cx: Cx, unit: string): Placed | undefined {
+/** The version of the receipts of `unit`: the hash of the versions of the records they came from (entry versions for ledger receipts). */
+export async function receiptsVersion(cx: Cx, receipts: ReceiptRecord[], extra = ""): Promise<string> {
+	const versions: string[] = [];
+	for (const r of receipts) {
+		const m = cx.ctx.state.marked.find((c) => c.ref === r.commentId);
+		versions.push(m === undefined ? sha256(receiptText(r.unit, r)) : await recordVersion(cx, m));
+	}
+	return sha256([extra, ...versions].join("\n"));
+}
+
+async function receiptSource(cx: Cx, unit: string): Promise<Placed | undefined> {
 	const receipt = cx.ctx.state.evidence.receipts[unit]?.at(-1);
 	if (!receipt) return undefined;
 	const text = receiptText(unit, receipt);
-	return placed({ id: `receipt:${unit}`, version: sha256(text), title: `Receipt of ${unit}`, text, untrusted: true });
+	return placed({ id: `receipt:${unit}`, version: await receiptsVersion(cx, [receipt]), title: `Receipt of ${unit}`, text, untrusted: true });
 }
 
 async function dispatchSource(cx: Cx, unit: string): Promise<Placed | undefined> {
@@ -91,7 +113,7 @@ export const dependencyRecords: Provider = {
 	async run(cx) {
 		const out: Placed[] = [];
 		for (const dep of cx.target.unit?.depends ?? []) {
-			const receipt = receiptSource(cx, dep);
+			const receipt = await receiptSource(cx, dep);
 			if (receipt) out.push(receipt);
 			const dispatch = await dispatchSource(cx, dep);
 			if (dispatch) out.push(dispatch);
@@ -104,10 +126,8 @@ export const dependencyRecords: Provider = {
 export const allReceipts: Provider = {
 	name: "receipts",
 	async run(cx) {
-		return Object.keys(cx.ctx.state.evidence.receipts).flatMap((unit) => {
-			const found = receiptSource(cx, unit);
-			return found ? [found] : [];
-		});
+		const found = await Promise.all(Object.keys(cx.ctx.state.evidence.receipts).map((unit) => receiptSource(cx, unit)));
+		return found.filter((p): p is Placed => p !== undefined);
 	},
 };
 
@@ -116,7 +136,7 @@ export function receiptsOf(unit: string | undefined): Provider {
 	return {
 		name: "unit-receipts",
 		run: async (cx) => {
-			const found = unit === undefined ? undefined : receiptSource(cx, unit);
+			const found = unit === undefined ? undefined : await receiptSource(cx, unit);
 			return found ? [found] : [];
 		},
 	};

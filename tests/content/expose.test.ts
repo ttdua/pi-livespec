@@ -11,6 +11,7 @@ import { loadPack } from "../../src/engine/pack-load.ts";
 import type { LoadedPack, Pack } from "../../src/engine/pack-types.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../../src/forge/labels.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
+import { emptyLedger } from "../helpers/ledger.ts";
 import { defaultPack, makeUpstream, skillFile, skillNamesOf, tempDir } from "./helpers.ts";
 
 let pack: Pack;
@@ -95,7 +96,7 @@ describe("work in progress", () => {
 		const world = new MemoryWorld();
 		await world.seedIssue({ title: "other", labels: [LABEL_LIVESPEC, phaseLabel("plan")], body: units("- [ ] pending") });
 		const n = await world.seedIssue({ title: "rate-limit", labels: BUILD, body: units("- [ ] pending") });
-		const wip = await workInProgress(world.forge);
+		const wip = await workInProgress(world.forge, emptyLedger());
 		expect(wip.busy).toBe(true);
 		expect(wip.change).toBe(n);
 		expect(wip.reason).toContain("U2");
@@ -106,13 +107,13 @@ describe("work in progress", () => {
 		await world.seedIssue({ labels: BUILD, body: units("- [x] done") });
 		await world.seedIssue({ labels: BUILD, body: units("- [ ] pending"), state: "closed" });
 		await world.seedIssue({ labels: [phaseLabel("build")], body: units("- [ ] pending") });
-		expect(await workInProgress(world.forge)).toEqual({ busy: false });
+		expect(await workInProgress(world.forge, emptyLedger())).toEqual({ busy: false });
 	});
 
 	test("the last registered predicate wins", async () => {
 		const world = new MemoryWorld();
 		registerWorkInProgress(async () => ({ busy: true, change: 1, reason: "first" }));
 		registerWorkInProgress(async () => ({ busy: true, change: 7, reason: "started" }));
-		expect(await workInProgress(world.forge)).toEqual({ busy: true, change: 7, reason: "started" });
+		expect(await workInProgress(world.forge, emptyLedger())).toEqual({ busy: true, change: 7, reason: "started" });
 	});
 });

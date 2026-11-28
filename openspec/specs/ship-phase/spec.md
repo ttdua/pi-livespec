@@ -118,7 +118,7 @@ The check `durable-docs` of the `ship` phase SHALL report each error with severi
 
 When the freshness condition is the only reason to refuse, `change_ship` SHALL write a `stale` comment listing `ship`, so the next step asks for the ship gate again, and SHALL do nothing else.
 
-When nothing refuses, `change_ship` SHALL push the branch through `guardedPush`, open exactly one pull request from the change branch to the integration branch, and write `PR: #<n>` in the ownership lines. An open pull request the current account opened with `Refs #<change>` SHALL be adopted instead of opening a second one. The pull request body SHALL hold the Proposal's first paragraph, the units with their status, the Durable docs table, the review result of the latest routed round, and the line `Refs #<change>`, and MUST NOT hold a closing keyword (`close`, `fix` or `resolve` in any form) followed by an issue reference; such a phrase taken from the Proposal SHALL be rewritten to `Refs #<n>`. After opening it, `change_ship` SHALL post an own `ship` record with id `ship.<pr>.<pushed head>`, holding the pull request, the pushed head and the confirmation items the ship gate showed. The marker kind `ship` SHALL be registered.
+When nothing refuses, `change_ship` SHALL first sync the change's ledger (see ledger-store "Ledger sync"); when the result is not `synced`, it MUST refuse, naming the cause, and push and open nothing. Otherwise it SHALL push the branch through `guardedPush`, open exactly one pull request from the change branch to the integration branch, and write `PR: #<n>` in the ownership lines. An open pull request the current account opened with `Refs #<change>` SHALL be adopted instead of opening a second one. The pull request body SHALL hold the Proposal's first paragraph, the units with their status, the Durable docs table, the review result of the latest routed round, and the line `Refs #<change>`, and MUST NOT hold a closing keyword (`close`, `fix` or `resolve` in any form) followed by an issue reference; such a phrase taken from the Proposal SHALL be rewritten to `Refs #<n>`. After opening it, `change_ship` SHALL post an own `ship` record with id `ship.<pr>.<pushed head>`, holding the pull request, the pushed head and the confirmation items the ship gate showed. The marker kind `ship` SHALL be registered.
 
 #### Scenario: One pull request
 - **WHEN** every refusal condition is false and `change_ship` runs
@@ -155,6 +155,10 @@ When nothing refuses, `change_ship` SHALL push the branch through `guardedPush`,
 #### Scenario: Clean merge after the ship gate
 - **WHEN** the ship gate was approved at `c3` and a clean merge of `origin/main` is HEAD
 - **THEN** `change_ship` does not refuse for the ship gate or for review, and opens the pull request
+
+#### Scenario: Ledger not pushed
+- **WHEN** every other refusal condition is false and `origin` rejects or cannot be reached for the ledger push
+- **THEN** `change_ship` refuses, naming the ledger sync, and pushes no branch and opens no pull request
 
 #### Scenario: Ship gate not approved
 - **WHEN** the ship gate has no valid approved result

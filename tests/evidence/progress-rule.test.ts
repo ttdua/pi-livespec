@@ -2,11 +2,12 @@ import { Buffer } from "node:buffer";
 import { parseDocument, stringify } from "yaml";
 import { beforeEach, describe, expect, test } from "vitest";
 import { decisionComment } from "../../src/decide/records.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { registerBuiltinRules, resetRulesForTests, ruleFor } from "../../src/decide/registry.ts";
 import { type Decided, decide } from "../../src/decide/seam.ts";
 import { PROGRESS_OUTPUT_BYTES, type ProgressFacts, previousSignature, progressRecord } from "../../src/evidence/progress-rule.ts";
 import { type Signature, failureSignature } from "../../src/evidence/signature.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 
 beforeEach(() => {
 	resetRulesForTests();
@@ -67,15 +68,14 @@ describe("progress rule", () => {
 		const first = await run({ attempt: 1, cap: 3, signature: failA });
 		const record = progressRecord(recordInput(failA, "x".repeat(PROGRESS_OUTPUT_BYTES), first));
 		expect(stringify(record.facts).length).toBeGreaterThan(2000);
-		const parsed = parseMarked(decisionComment(record));
-		if (!parsed) throw new Error("unparsable");
+		const parsed = ledgerRecord(decisionComment(record), { ref: "c1" });
 		expect(parsed.id).toBe("progress.U1");
 		const data = parsed.data as Record<string, unknown>;
 		expect(data.facts).toBeUndefined();
 		expect(data.facts_hash).toMatch(/^[0-9a-f]{64}$/);
 		expect(data.signature).toEqual(failA);
 		expect(data.attempt).toBe(1);
-		const marked: MarkedComment[] = [{ commentId: "c1", author: "bot", ...parsed }];
+		const marked: MarkedComment[] = [parsed];
 		const previous = previousSignature(marked, "U1", -1);
 		expect(previous).toEqual(failA);
 		expect((await run({ attempt: 2, cap: 3, signature: { ...failA }, previous })).outcome).toBe("stop");
@@ -93,8 +93,8 @@ describe("progress rule", () => {
 	});
 
 	test("previousSignature ignores records at or before the window start and other units", () => {
-		const rec = (subject: string, sig: Signature): MarkedComment => ({
-			commentId: "c",
+		const rec = (subject: string, sig: Signature): MarkedComment => ({ source: "forge", 
+			ref: "c",
 			author: "bot",
 			kind: "decision",
 			id: `progress.${subject}`,

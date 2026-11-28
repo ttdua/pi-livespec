@@ -1,3 +1,4 @@
+import { ledgerKindComments } from "../helpers/ledger.ts";
 // End-to-end build with subagents (issue #7 "Done when"): a driver follows the phase card through the real tools, a fake executor plays the children.
 
 import { mkdtempSync } from "node:fs";
@@ -191,6 +192,8 @@ describe("issue #7: build with subagents", () => {
 		expect(closes.map((d) => [d.unit, d.outcome])).toEqual(IDS.map((id) => [id, "merged"]));
 		expect(h.git("rev-list", "--merges", "--count", "HEAD")).toBe("5");
 		expect((await dataOf(h, "receipt")).map((r) => r.unit)).toEqual(IDS);
+		expect(await ledgerKindComments(h)).toEqual([]);
+		for (const kind of ["dispatch", "finding-summary", "receipt", "unit-start"]) expect((await h.inLedger(kind)).length, kind).toBeGreaterThan(0);
 	});
 
 	test("context threshold moves next unit to a subagent", async () => {

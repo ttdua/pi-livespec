@@ -26,7 +26,7 @@ const BODY = FIXTURE_BODY.replace("### U3 —", `${U2_BLOCK}### U3 —`);
 let seq = 0;
 function marked(kind: string, id: string, data: unknown): MarkedComment {
 	seq += 1;
-	return { commentId: `c${seq}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c${seq}`, kind, id, author: "bot", data };
 }
 
 function digests(change: Change): Record<string, string> {
@@ -165,7 +165,7 @@ describe("deriveLocks", () => {
 	test("valid gate result carries its request, head and comment", () => {
 		const reviewed = gate("review", "approved", { head_sha: "c3", request: "r7" });
 		const lock = deriveLocks(parseChange(BODY), [reviewed]);
-		expect(lock.gates.review).toMatchObject({ headSha: "c3", request: "r7", commentId: reviewed.commentId });
+		expect(lock.gates.review).toMatchObject({ headSha: "c3", request: "r7", commentId: reviewed.ref });
 		const self = deriveLocks(parseChange(BODY), [gate("review", "approved", { head_sha: 3, request: undefined })]);
 		expect(self.gates.review?.headSha).toBeUndefined();
 		expect(self.gates.review?.request).toBeUndefined();
@@ -208,13 +208,13 @@ describe("deriveLocks", () => {
 		const first = planGate(digests(change));
 		const second = planGate(digests(change), { requirements, requirement_scope: ["rate-limit"] });
 		const lock = deriveLocks(change, [first, second]);
-		expect(lock.baseline).toEqual({ at: 1, commentId: second.commentId, headSha: "f", requirements, scope: ["rate-limit"] });
+		expect(lock.baseline).toEqual({ at: 1, commentId: second.ref, headSha: "f", requirements, scope: ["rate-limit"] });
 	});
 
 	test("baseline without a requirement record has neither field", () => {
 		const change = parseChange(BODY);
 		const gate = planGate(digests(change), { requirements: "bad", requirement_scope: [1] });
-		expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.commentId, headSha: "f" });
+		expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.ref, headSha: "f" });
 		expect(deriveLocks(change, []).baseline).toBeUndefined();
 	});
 
@@ -224,7 +224,7 @@ describe("deriveLocks", () => {
 		const halves = [{ requirements }, { requirement_scope: ["rate-limit"] }, { requirements, requirement_scope: [1] }, { requirements: "bad", requirement_scope: ["rate-limit"] }];
 		for (const extra of halves) {
 			const gate = planGate(digests(change), extra);
-			expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.commentId, headSha: "f" });
+			expect(deriveLocks(change, [gate]).baseline).toEqual({ at: 0, commentId: gate.ref, headSha: "f" });
 		}
 	});
 
@@ -233,7 +233,7 @@ describe("deriveLocks", () => {
 		const gate = planGate(digests(change), { requirements: {}, requirement_scope: [] });
 		const lock = deriveLocks(change, [gate, stale("spec.abc", ["define", ...LATER], ["U3"], true)]);
 		expect(lock.gates.plan).toBeUndefined();
-		expect(lock.baseline).toMatchObject({ at: 0, commentId: gate.commentId });
+		expect(lock.baseline).toMatchObject({ at: 0, commentId: gate.ref });
 		expect(lock.locked).toBeDefined();
 	});
 

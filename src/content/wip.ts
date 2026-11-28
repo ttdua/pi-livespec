@@ -4,9 +4,10 @@
 import { parseChange } from "../core/change.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../forge/labels.ts";
 import type { Forge } from "../forge/types.ts";
+import type { Ledger } from "../ledger/index.ts";
 
 export type WorkInProgress = { busy: boolean; change?: number; reason?: string };
-export type WorkInProgressFn = (forge: Forge) => Promise<WorkInProgress>;
+export type WorkInProgressFn = (forge: Forge, ledger: Ledger) => Promise<WorkInProgress>;
 
 const BUILD_PHASE = "build";
 
@@ -28,8 +29,8 @@ export function registerWorkInProgress(fn: WorkInProgressFn): void {
 	predicate = fn;
 }
 
-export function workInProgress(forge: Forge): Promise<WorkInProgress> {
-	return predicate(forge);
+export function workInProgress(forge: Forge, ledger: Ledger): Promise<WorkInProgress> {
+	return predicate(forge, ledger);
 }
 
 export function resetWorkInProgressForTests(): void {

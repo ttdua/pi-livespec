@@ -30,9 +30,9 @@ A [pi](https://github.com/earendil-works/pi) extension that keeps a coding agent
 In long sessions agents forget steps: they skip verification or review, lose state, or declare work done without proof. A skill that only *asks* the agent to behave does not stop this. livespec moves the workflow into the extension:
 
 - **The extension owns the flow.** A flow pack (YAML) defines the phases `shape → define → plan → build → review → ship → close`. livespec computes the next step, shows it on a **phase card** every turn, and refuses tools the state does not allow.
-- **The change lives on an issue.** The issue body holds the proposal, design, questions and units. Tool-written comments hold receipts, gate decisions and review findings. Each change ships as exactly one pull request.
+- **The change lives on an issue.** The issue body holds the proposal, design, questions and units. Tool-written comments hold gate decisions; receipts and review findings live in a git ledger. Each change ships as exactly one pull request.
 - **The living spec lives in the repo.** `specs/<capability>/spec.md` is edited in place on the change branch, so the spec delta is part of the pull request diff.
-- **Evidence is collected by the extension, not claimed by the agent.** Each unit has one `Verify` command. livespec runs it, requires it to fail before the work and pass after, and posts a receipt. Only livespec ticks a unit done.
+- **Evidence is collected by the extension, not claimed by the agent.** Each unit has one `Verify` command. livespec runs it, requires it to fail before the work and pass after, and records a receipt. Only livespec ticks a unit done.
 - **Humans approve gates.** Approvals, questions and stuck reports reach you through a dialog in pi or a comment on the issue. No tool takes an "approved" parameter, so the agent cannot approve its own work.
 - **Guards block the shortcuts.** Direct `git push`, direct forge writes (`gh`, `tea`, `curl` to the forge) and edits to `.pi/livespec/` are blocked; livespec tools push only after checking the state.
 
@@ -200,9 +200,9 @@ Verify: `bun test ratelimit`
 
 For each ready unit the card says `Build U<n>`. The loop is:
 
-1. `unit_start U<n>` checks the tree is clean and dependencies are done, runs `Verify` and posts a `unit-start` receipt. `Verify` must be **red**.
+1. `unit_start U<n>` checks the tree is clean and dependencies are done, runs `Verify` and records a `unit-start` receipt. `Verify` must be **red**.
 2. The agent (or an implementer child) writes the test and code within the unit's `Files` and commits.
-3. `unit_finish U<n>` runs `Verify` again. When it is **green**, livespec posts a receipt with both SHAs and exit codes and ticks the unit.
+3. `unit_finish U<n>` runs `Verify` again. When it is **green**, livespec records a receipt with both SHAs and exit codes and ticks the unit.
 
 You do nothing here unless something waits for you:
 
@@ -560,6 +560,7 @@ Project config: `.pi/livespec/config.yaml`. User config: `~/.pi/agent/livespec/c
 | `verify.timeout` | project | `600` | seconds per Verify run |
 | `interaction.adapter` | project, then user | `[in-session]` | ordered approver chain: `in-session`, `forge` |
 | `agentSkills.channel` | user only | `auto` | `auto`, `notify` or `pinned` updates of agent-skills |
+| `ledger.retain` | project | `true` | keep the change ledger (`refs/livespec/<issue>`) after `change_close`; `false` deletes it locally and on `origin` (a `--abandon` close keeps it) |
 | `lanes` | user | `3` | max parallel lanes |
 | `packetBudgetTokens` | user | `24000` | packet size before sources spill to files |
 | `isolation.excludePackages` | user | `[]` | pi packages not loaded in livespec children |

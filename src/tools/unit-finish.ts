@@ -1,6 +1,6 @@
 // `unit_finish { unit }` (design D10): under the evidence lock, either reconciles
 // a receipted, unticked unit with a tick, or checks a pending unit's test-only
-// commit, runs `Verify` at HEAD, and records a receipt plus tick (green) or a
+// commit, runs `Verify` at HEAD, and records a receipt entry plus tick (green) or a
 // `progress` decision record (red or invalid).
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -28,7 +28,8 @@ import { staleSince, stuckFor } from "../subagents/finish-freshness.ts";
 import { finishGateRefusal } from "../subagents/finish-gate.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { runSpecCascade } from "../interaction/spec-cascade.ts";
-import { afterForgeWrite, type ToolResult, type WriteContext } from "./guard.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
+import { afterForgeWrite, afterLedgerWrite, requireChange, type ToolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { runSpecStuck } from "./spec-stuck.ts";
 import { invalidText, lockedEvidenceCall, type Precheck, type PrecheckFn, refusedRun, startable, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
@@ -127,29 +128,32 @@ async function green(c: UnitCall, start: StartRecord, pre: Pre, run: VerifyRun):
 		pre: { sha: pre.sha, exit: pre.exit },
 		post: { sha: state.git.head, exit: run.exit as number },
 		output: run.output,
-		start: start.id,
+		start: start.commentId,
 	};
 	if (pre.pendingCommit !== undefined) data.pending_commit = pre.pendingCommit;
 	const beforeReceipt = c.cancelled();
 	if (beforeReceipt !== undefined) return beforeReceipt;
-	await w.forge.createComment(state.issue.number, receiptComment(newEvidenceId(u.id, new Date()), data));
+	await w.ledger.append(state.issue.number, { ...receiptComment(newEvidenceId(u.id, new Date()), data), after: lastForgeRef(state.marked) });
 	// Before the tick: when the tick throws, the next refresh must still see the receipt to reconcile.
-	await w.session.comments?.invalidate(state.issue.number);
+	await afterLedgerWrite(w.session, state.issue.number);
 	const ticked = await tick(w.forge, state.issue.number, u.id, c.pack, () => c.cancelled() !== undefined);
 	await afterForgeWrite(w.session, state.issue.number);
-	if (typeof ticked === "object") return c.refuse(`${ticked.moved} The receipt for ${u.id} is posted; run unit_finish ${u.id} again in a per: unit phase to tick it.`);
-	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was posted, before the tick; run unit_finish ${u.id} again to tick it.`);
-	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt posted for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
+	if (typeof ticked === "object") return c.refuse(`${ticked.moved} The receipt for ${u.id} is recorded; run unit_finish ${u.id} again in a per: unit phase to tick it.`);
+	if (ticked === "cancelled") return c.refuse(`the call was cancelled after the receipt for ${u.id} was recorded, before the tick; run unit_finish ${u.id} again to tick it.`);
+	return c.done(`Verify passed at ${state.git.head.slice(0, 7)}: receipt recorded for ${u.id}. ${tickText(u.id, ticked)}\n${unitResult(run.output)}`);
 }
 
-const commentLink = (url: string | undefined, commentId: string): string => (url === undefined ? `comment ${commentId}` : `${url}#issuecomment-${commentId}`);
+/** A ledger entry as `ledger:<issue>/<ref>`; a forge comment (an older record) as its link. */
+function recordLink(state: ChangeState, ref: string): string {
+	if (state.marked.find((m) => m.ref === ref)?.source === "forge") return state.issue.url === undefined ? `comment ${ref}` : `${state.issue.url}#issuecomment-${ref}`;
+	return `ledger:${state.issue.number}/${ref}`;
+}
 
 /** Links to the unit's receipts and failed-attempt records in `state`, plus a record just `posted`, for a stuck report. */
 function evidenceLinks(state: ChangeState, unit: string, posted?: string): string[] {
-	const url = state.issue.url;
-	const receipts = (state.evidence.receipts[unit] ?? []).map((r) => `- receipt ${r.id}: ${commentLink(url, r.commentId)}`);
-	const attempts = state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${unit}`).map((m) => `- failed attempt: ${commentLink(url, m.commentId)}`);
-	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ${commentLink(url, posted)}`])];
+	const receipts = (state.evidence.receipts[unit] ?? []).map((r) => `- receipt ${r.id}: ${recordLink(state, r.commentId)}`);
+	const attempts = state.marked.filter((m) => m.kind === "decision" && m.id === `progress.${unit}`).map((m) => `- failed attempt: ${recordLink(state, m.ref)}`);
+	return [...receipts, ...attempts, ...(posted === undefined ? [] : [`- failed attempt: ledger:${state.issue.number}/${posted}`])];
 }
 
 /** Posts the `progress` record of a red or invalid run at `postSha` (HEAD by default) as a failed attempt; `lane_merge` reuses it. */
@@ -164,13 +168,15 @@ export async function failed(c: UnitCall, start: StartRecord, run: VerifyRun, po
 	if (decided.status !== "decided") throw new Error("the progress rule never asks");
 	const beforeRecord = c.cancelled();
 	if (beforeRecord !== undefined) return beforeRecord;
-	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.id, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
-	const comment = await w.forge.createComment(state.issue.number, decisionComment(record));
-	await afterForgeWrite(w.session, state.issue.number);
+	const record = progressRecord({ unit: u.id, digest: unitDigest(u), start: start.commentId, attempt, exit: run.exit, postSha, signature, outputTail: run.output, decided });
+	// The anchor comes from the current state: a caller (lane_merge) may have posted a comment since `state` was read.
+	const now = requireChange(w.session);
+	const entry = await w.ledger.append(state.issue.number, { ...decisionComment(record), after: lastForgeRef(now.ok ? now.state.marked : state.marked) });
+	await afterLedgerWrite(w.session, state.issue.number);
 	const cls = classifyRun(run);
 	const what = typeof cls === "object" ? invalidText(cls, run) : `Verify failed (exit ${run.exit}).`;
 	const head = `${what} Attempt ${attempt} of ${cap} for ${u.id}; signature ${signature.tests.length === 0 ? "without test names" : `tests ${untrusted(signature.tests.join(", "))}`}, hash ${signature.hash.slice(0, 12)}.`;
-	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${untrusted(decided.reason)}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, comment.id)].join("\n") : RETRY;
+	const next = record.outcome === "stop" ? [`${u.id} is now BLOCKED: ${untrusted(decided.reason)}. Send a stuck report with spec_stuck, linking:`, ...evidenceLinks(state, u.id, entry.ref)].join("\n") : RETRY;
 	return { ...c.done(`${head}\n${next}\n${unitResult(run.output)}`), isError: true };
 }
 
@@ -249,7 +255,7 @@ export function registerUnitFinish(pi: ExtensionAPI): void {
 		name: TOOL,
 		label: "Finish a livespec unit",
 		description:
-			"Finish a started unit: livespec runs its Verify at HEAD. When it passes, a receipt is posted and the unit is ticked done; when it fails, the failed attempt is recorded. A unit with a receipt but no tick is ticked without running Verify. Takes only the unit id.",
+			"Finish a started unit: livespec runs its Verify at HEAD. When it passes, a receipt is recorded and the unit is ticked done; when it fails, the failed attempt is recorded. A unit with a receipt but no tick is ticked without running Verify. Takes only the unit id.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No outcome, verdict, attempt or exit parameter.
 		parameters: UNIT_PARAMETERS as never,
 		execute: (_id, params, signal, _update, ctx) => runUnitFinish((params as { unit: string }).unit, signal, ctx as ApproverCtx),

@@ -1,5 +1,6 @@
 // Tests of lane eligibility and naming (pure) and of the lane git operations in temporary repositories.
 import { execFileSync } from "node:child_process";
+import type { AppendInput } from "../../src/ledger/entry.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -84,9 +85,10 @@ async function repo() {
 	commitAll(root);
 	git(root, "switch", "-q", "-c", "livespec/per-ip-cap");
 	const posted: string[] = [];
-	const ops = { git: createGit(root), root, post: async (body: string) => void posted.push(body) };
-	const records = () => openLanes(posted.map((b, i) => ({ ...(parseMarked(b) as { kind: string; id: string; data: unknown }), commentId: `${i}`, author: "me" })));
-	return { root, ops, posted, records };
+	const recorded: AppendInput[] = [];
+	const ops = { git: createGit(root), root, post: async (body: string) => void posted.push(body), record: async (input: AppendInput) => void recorded.push(input) };
+	const records = () => openLanes(posted.map((b, i) => ({ ...(parseMarked(b) as { kind: string; id: string; data: unknown }), ref: `${i}`, source: "forge" as const, author: "me" })));
+	return { root, ops, posted, recorded, records };
 }
 
 async function laneWith(r: Awaited<ReturnType<typeof repo>>, unit: string, files: Record<string, string>): Promise<LaneRecord> {
@@ -158,7 +160,8 @@ describe("parallel-lanes worktrees", () => {
 		const r = await repo();
 		const l = await laneWith(r, "U2", { "src/other.ts": "y\n" });
 		await mergeLane(r.ops, l, { files: ["src/u2.ts"], round: 1, verify: async () => "green" });
-		const summary = r.posted.map((b) => parseMarked(b)).find((m) => m?.kind === "finding-summary")?.data as { advisory: boolean; system?: string; findings: { scope: string }[] };
+		expect(r.posted.map((b) => parseMarked(b)?.kind)).not.toContain("finding-summary");
+		const summary = r.recorded.find((m) => m.kind === "finding-summary")?.data as { advisory: boolean; system?: string; findings: { scope: string }[] };
 		expect(summary).toMatchObject({ advisory: false, system: "files-violation" });
 		expect(summary.findings[0]?.scope).toBe("out-of-scope");
 	});

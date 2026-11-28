@@ -1,5 +1,10 @@
 // Tests of the dispatch and finding-summary records and the queries over them.
 import { describe, expect, it } from "vitest";
+import type { LedgerKind } from "../../src/core/record-kinds.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
+import { agg, aggregate } from "../review/review-fixtures.ts";
+import { answeredFindingKeys } from "../../src/subagents/records.ts";
 import { isDispatchData } from "../../src/subagents/validate.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import {
@@ -21,6 +26,8 @@ import {
 	latestDispatch,
 	pendingQuestion,
 	rebuttalComment,
+	rebuttalItems,
+	rebuttedKeys,
 	unresolvedBlocking,
 	unshownSystemFindings,
 } from "../../src/subagents/records.ts";
@@ -29,10 +36,11 @@ import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/r
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
-function mark(body: string): MarkedComment {
+function mark(body: string | AppendInput): MarkedComment {
+	if (typeof body !== "string") return ledgerRecord(body as AppendInput & { kind: LedgerKind });
 	const p = parseMarked(body);
 	if (!p) throw new Error("not marked");
-	return { commentId: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
+	return { source: "forge", ref: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
 }
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
@@ -49,12 +57,13 @@ function summary(over: Partial<FindingSummaryData> = {}): MarkedComment {
 
 describe("records", () => {
 	it("dispatch marker kind registered", () => {
-		const body = dispatchComment({
+		const input = dispatchComment({
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE", commits: ["a"], notes: "n", discoveries: ["d"], sources_used: [],
 		});
-		expect(parseMarked(body)?.kind).toBe("dispatch");
-		expect(latestDispatch([mark(body)], "U1")?.discoveries).toEqual(["d"]);
+		expect(input.kind).toBe("dispatch");
+		expect(() => writeMarked(input.kind, "dispatch.U1", {})).toThrow(/live in the ledger/);
+		expect(latestDispatch([mark(input)], "U1")?.discoveries).toEqual(["d"]);
 	});
 
 	it("blocked round resolves nothing", () => {
@@ -76,20 +85,35 @@ describe("records", () => {
 
 	it("rebutted warning resolved", () => {
 		const r = summary({ findings: [finding()] });
-		const rebut = mark(rebuttalComment({ rebuts: r.commentId, items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		const rebut = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 0, reason: "r", evidence: "e" }] }));
 		expect(unresolvedBlocking([r, rebut], "U1", new Set(), new Set())).toEqual([]);
+	});
+
+	it("I4: a rebuttal naming the `from` alias of a migrated summary resolves it", () => {
+		const r = { ...summary({ findings: [finding()] }), from: "501" };
+		const rebut = mark(rebuttalComment({ rebuts: "501", items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		expect(unresolvedBlocking([r, rebut], "U1", new Set(), new Set())).toEqual([]);
+		expect([...rebuttedKeys([r, rebut])]).toEqual([`${r.ref}:0`]);
+	});
+
+	it("I4: concurrent rebuttals of different indices of one summary both count", () => {
+		const r = summary({ findings: [finding(), finding({ location: "b.ts:2" })] });
+		const one = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		const two = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 1, reason: "r", evidence: "e" }] }));
+		expect(unresolvedBlocking([r, one, two], "U1", new Set(), new Set())).toEqual([]);
+		expect([...rebuttalItems([r, one, two]).get(r.ref)!.keys()].sort()).toEqual([0, 1]);
 	});
 
 	it("missed-context not resolvable by rebuttal", () => {
 		const r = summary({ findings: [finding({ kind: "missed-context", severity: "SUGGESTION" })] });
-		const rebut = mark(rebuttalComment({ rebuts: r.commentId, items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		const rebut = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 0, reason: "r", evidence: "e" }] }));
 		expect(unresolvedBlocking([r, rebut], "U1", new Set(), new Set())).toHaveLength(1);
 	});
 
 	it("needs-decision resolved after answer, out-of-scope after a gate", () => {
 		const r = summary({ findings: [finding({ scope: "needs-decision" }), finding({ scope: "out-of-scope", location: "b.ts:2" })] });
 		expect(unresolvedBlocking([r], "U1", new Set(), new Set())).toHaveLength(2);
-		const left = unresolvedBlocking([r], "U1", new Set([findingKey(r.commentId, 0)]), new Set([findingKey(r.commentId, 1)]));
+		const left = unresolvedBlocking([r], "U1", new Set([findingKey(r.ref, 0)]), new Set([findingKey(r.ref, 1)]));
 		expect(left).toEqual([]);
 	});
 
@@ -142,10 +166,10 @@ describe("records", () => {
 describe("verifier and aggregate records", () => {
 	const aggregateFindings = [{ ...finding({ location: "src/u1.ts:1", severity: "CRITICAL" }), from: ["c9"], needsDecision: false, route: "unit" as const, routeUnit: "U1", verify: "required" as const }];
 	const aggregate = (over: Partial<FindingSummaryData> = {}) =>
-		mark(writeMarked("finding-summary", "finding-summary.change.review.1", {
+		mark({ kind: "finding-summary", id: "finding-summary.change.review.1", data: {
 			role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
 			agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: aggregateFindings, aggregate: true, reviews: ["c9"], ...over,
-		}));
+		} });
 	const verifier = (over: Partial<FindingSummaryData> = {}) =>
 		mark(findingSummaryComment({
 			role: "verifier", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
@@ -177,12 +201,12 @@ describe("verifier and aggregate records", () => {
 
 	it("aggregateFinding finds the aggregate by comment id and index", () => {
 		const a = aggregate();
-		expect(aggregateFinding([a], `${a.commentId}:0`)).toMatchObject({ commentId: a.commentId, index: 0, finding: { location: "src/u1.ts:1", route: "unit" } });
-		expect(aggregateFinding([a], `${a.commentId}:1`)).toBeUndefined();
+		expect(aggregateFinding([a], `${a.ref}:0`)).toMatchObject({ commentId: a.ref, index: 0, finding: { location: "src/u1.ts:1", route: "unit" } });
+		expect(aggregateFinding([a], `${a.ref}:1`)).toBeUndefined();
 		expect(aggregateFinding([a], "nope:0")).toBeUndefined();
 		expect(aggregateFinding([a], "garbage")).toBeUndefined();
 		const plain = summary({ findings: [finding()] });
-		expect(aggregateFinding([plain], `${plain.commentId}:0`)).toBeUndefined();
+		expect(aggregateFinding([plain], `${plain.ref}:0`)).toBeUndefined();
 	});
 });
 
@@ -209,7 +233,7 @@ describe("pendingQuestion", () => {
 });
 
 describe("fix round 1", () => {
-	const sameId = (m: MarkedComment, over: Partial<MarkedComment>): MarkedComment => ({ ...m, commentId: `c${++counter}`, ...over });
+	const sameId = (m: MarkedComment, over: Partial<MarkedComment>): MarkedComment => ({ ...m, ref: `c${++counter}`, ...over });
 
 	it("superseded summary neither satisfies a review nor resolves a finding", () => {
 		const good = summary({ head: "h1" });
@@ -232,7 +256,7 @@ describe("fix round 1", () => {
 	});
 
 	it("invalid records are skipped, not thrown", () => {
-		const bad = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+		const bad = (kind: string, id: string, data: unknown): MarkedComment => ({ source: "forge", ref: `c${++counter}`, kind, id, author: "me", data });
 		const junk = [
 			bad("dispatch", "d1", null),
 			bad("dispatch", "d2", { status: "QUESTION", agentId: "a" }),
@@ -249,7 +273,7 @@ describe("fix round 1", () => {
 });
 
 describe("fix round 2", () => {
-	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ source: "forge", ref: `c${++counter}`, kind, id, author: "me", data });
 	const goodDispatch = { role: "implementer", unit: "U1", attempt: 1, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] };
 
 	it.each([
@@ -287,7 +311,7 @@ describe("fix round 2", () => {
 });
 
 describe("fix round 3", () => {
-	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ commentId: `c${++counter}`, kind, id, author: "me", data });
+	const raw = (kind: string, id: string, data: unknown): MarkedComment => ({ source: "forge", ref: `c${++counter}`, kind, id, author: "me", data });
 	const full = {
 		role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: { model: "m", thinking: "high" },
 		status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [],
@@ -381,7 +405,7 @@ describe("retry records", () => {
 	});
 
 	it("an old question marker without the agent still reads", () => {
-		const old: MarkedComment = { commentId: `c${++counter}`, kind: "dispatch", id: "dispatch.U1.implementer.1.question", author: "me", data: { status: "QUESTION", role: "implementer", unit: "U1", agentId: "agent-1", attempt: 1, question: "?" } };
+		const old: MarkedComment = { source: "forge", ref: `c${++counter}`, kind: "dispatch", id: "dispatch.U1.implementer.1.question", author: "me", data: { status: "QUESTION", role: "implementer", unit: "U1", agentId: "agent-1", attempt: 1, question: "?" } };
 		expect(pendingQuestionOf([old], "agent-1")?.question).toBe("?");
 	});
 
@@ -389,5 +413,13 @@ describe("retry records", () => {
 		const marked = [mark(dispatchComment(retry))];
 		expect(isFallbackChild(marked, "agent-2")).toBe(true);
 		expect(isFallbackChild(marked, "agent-1")).toBe(false);
+	});
+});
+
+describe("answeredFindingKeys aliases", () => {
+	it("a question naming the from id of a migrated aggregate matches the canonical key", () => {
+		const entry = { ...aggregate([agg()]), from: "501" };
+		const questions = [{ id: "Q1", checked: true, text: "Review finding:501:0 needs a decision" }] as never;
+		expect([...answeredFindingKeys(questions, [entry])]).toEqual([`${entry.ref}:0`]);
 	});
 });

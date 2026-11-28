@@ -6,6 +6,8 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 ### Breaking
 
+- Machine records (`decision`, `dispatch`, `finding-summary`, `receipt`, `unit-start`, `counter`) move from issue comments to a git ledger (#59). Changes in flight lose their comment-based receipts, decisions and counters: finish them on the previous version, or wait for the migration (#62). Comments of these kinds are ignored with a warning.
+- `finding_rebut`: the first argument is now a ledger entry ref, not a comment id. The verifier `finding` reference is `<aggregateRef>:<index>`. Packet source ids for these records are `ledger:<issue>/<ref>`.
 - `/livespec answer --changes` is removed: the forge refuses it with a message that names the replacement. Edit the spec instead; livespec cascades requirement edits from the spec diff.
 - `unit_finish` refuses outside the per-unit phase (`build`).
 - `/livespec class` and `/livespec answer --class` are removed: the question class is no longer a human choice. Use **answer later** in session to make a question non-blocking.
@@ -16,8 +18,15 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 - The in-session Adjust units tab opens with `u`.
 - The forge "How to answer" table lists the recommended row first; every request now carries a recommendation (interaction contract).
 
+### Added
+
+- **Git ledger:** machine records are append-only entries on `refs/livespec/<issue>`, synced with `origin` (fetch before first use, replay on divergence, fast-forward-only push). `change_ship` refuses until the ledger is pushed (#59).
+- **`ledger.retain`** project config (default `true`); `false` deletes the ledger at `change_close`.
+
 ### Changed
 
+- Agent git commands that write `refs/livespec/*` are blocked; reads stay allowed.
+- Issues carry far fewer comments: only human-facing records stay on the forge.
 - The requirement cascade is derived from the spec diff, with whitespace-only edits ignored. Plan gates record requirement digests as the cascade baseline.
 
 ## [0.2.0] - 2026-11-26

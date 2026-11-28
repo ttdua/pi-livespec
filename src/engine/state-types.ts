@@ -15,6 +15,7 @@ import type { UnfamiliarFacts } from "../subagents/unfamiliar.ts";
 import type { DepFact, ParkedUnit } from "./deps-facts.ts";
 import type { IterationState } from "./iterations.ts";
 import type { LockState } from "./locks.ts";
+import type { FetchState } from "../ledger/index.ts";
 import type { ParkedCore } from "./parked.ts";
 
 /** A check Result tagged with the registered name of the check that produced it. */
@@ -53,6 +54,8 @@ export type ChangeState = {
 	};
 	stale: boolean;
 	readOnly: boolean;
+	/** The first-fetch result of this read; absent when the read did not fetch (context hook, session start). */
+	fetchState?: FetchState;
 	warnings: string[];
 	/** Own marked comments of the issue, in comment order. */
 	marked: MarkedComment[];

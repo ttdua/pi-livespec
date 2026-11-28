@@ -1,5 +1,6 @@
 // Shared fixture of the ship-phase tool tests: a change in `ship` on its branch with the review and ship gates at HEAD.
 
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import { gateDigest } from "../../src/engine/locks.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
@@ -82,7 +83,7 @@ export async function shipReady(o: Opts = {}): Promise<ToolHarness> {
 }
 
 export async function marked(h: ToolHarness): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
 export const ofKind = async (h: ToolHarness, kind: string) => (await marked(h)).filter((m) => m.kind === kind);

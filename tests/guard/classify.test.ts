@@ -29,7 +29,7 @@ function expectAllowed(commands: string[], ctx: GuardContext = github): void {
 
 describe("forgeEndpoints", () => {
 	it("lists host, authority, GitHub API hosts and config hosts", () => {
-		const config: ProjectConfig = { githubHosts: ["ghe.corp"], giteaUrl: "https://Gitea.Corp:3000/", agentSkillsChannelSet: false };
+		const config: ProjectConfig = { githubHosts: ["ghe.corp"], giteaUrl: "https://Gitea.Corp:3000/", agentSkillsChannelSet: false, ledger: { retain: true } };
 		expect(forgeEndpoints({ kind: "github", host: "github.com", authority: "github.com" }, config)).toEqual([
 			"github.com",
 			"api.github.com",
@@ -392,4 +392,24 @@ describe("wrapper chdir reaches nested scripts", () => {
 	const blockedCases = ["env -C .pi sh -c 'rm livespec/flow.yaml'", "env -C .pi env -S 'rm livespec/flow.yaml'", "sudo -D .pi sh -c 'tee livespec/flow.yaml'"];
 	for (const c of blockedCases) it(`blocks ${c}`, () => expectBlocked([c]));
 	it("allows a nested script in another directory", () => expectAllowed(["env -C /tmp sh -c 'rm livespec/flow.yaml'", "env -C .pi sh -c 'cat livespec/flow.yaml'"]));
+});
+
+describe("ledger refs", () => {
+	it("Agent ledger writes blocked", () => {
+		const commands = [
+			"git update-ref refs/livespec/59 HEAD",
+			"git push origin x:refs/livespec/59",
+			"git fetch origin refs/livespec/59:refs/livespec/59",
+			"git update-ref --stdin",
+			"git fetch origin '+refs/*:refs/*'",
+			"git fetch --refmap='+refs/*:refs/*' origin 'refs/livespec/*'",
+			"git fetch --refmap '+refs/*:refs/*' origin x",
+		];
+		expectBlocked(commands);
+		for (const c of commands.filter((c) => c !== "git update-ref --stdin")) expect(blocked(c).reason).toContain("the ledger is written only by livespec tools");
+	});
+
+	it("Agent ledger reads allowed", () => {
+		expectAllowed(["git show refs/livespec/59:findings.jsonl", "git log refs/livespec/59", "git cat-file -p refs/livespec/59", "git fetch origin", "git fetch origin '+refs/heads/*:refs/remotes/origin/*'"]);
+	});
 });

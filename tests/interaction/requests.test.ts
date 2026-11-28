@@ -35,7 +35,7 @@ const ANSWER: Answered = { status: "answered", outcome: "approved", notes: "", b
 function fromBody(body: string, n: number): MarkedComment {
 	const parsed = parseMarked(body);
 	if (!parsed) throw new Error(`not a marked comment: ${body}`);
-	return { commentId: `c${n}`, author: "bot", ...parsed };
+	return { source: "forge", ref: `c${n}`, author: "bot", ...parsed };
 }
 
 function comments(...bodies: string[]): MarkedComment[] {

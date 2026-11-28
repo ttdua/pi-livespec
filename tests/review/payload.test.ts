@@ -13,7 +13,7 @@ import { agg, aggregate, mark, rebut, run, verifier } from "./review-fixtures.ts
 
 const H = "f".repeat(40);
 const FACTS = { specsStat: "", specsFiles: [], specsDiff: "" };
-const key = (m: { commentId: string }, i: number) => `${m.commentId}:${i}`;
+const key = (m: { ref: string }, i: number) => `${m.ref}:${i}`;
 
 async function ship(marked: ReturnType<typeof run>[]) {
 	const loaded = await loadPack("/nowhere", { readFile: async () => undefined });
@@ -47,7 +47,7 @@ describe("ship payload", () => {
 
 	test("Rebutted aggregate finding", async () => {
 		const a = aggregate([agg({ verify: "skipped-off" })], 1, H);
-		const { summary } = await ship([run({ head: H, routed: true }), a, rebut(a.commentId, 0)]);
+		const { summary } = await ship([run({ head: H, routed: true }), a, rebut(a.ref, 0)]);
 		expect(summary).toContain("Rebutted:");
 	});
 

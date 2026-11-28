@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { readOwnRecords } from "../../src/ledger/records.ts";
+import { appendEntry } from "../../src/ledger/store.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import "../../src/deps/markers.ts";
@@ -13,7 +15,9 @@ import { currentDecision, decisionComment, latestDecisions } from "../../src/dec
 import { advancePhase } from "../../src/engine/advance.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
+import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
+import { createLedger, type Ledger } from "../../src/ledger/index.ts";
 import { deriveLocks, validApproval } from "../../src/engine/locks.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { nextStep } from "../../src/engine/next-step.ts";
@@ -68,18 +72,18 @@ async function fixture(phase: string, edit?: (b: string) => string, opts: { crlf
 }
 
 async function markedOf(f: Fixture): Promise<MarkedComment[]> {
-	return filterMarked(await f.world.forge.listComments(f.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(f.world.forge, createLedger(defaultGitExec, f.root), f.n, { login: BOT_LOGIN })).records;
 }
 
-async function ctxOf(f: Fixture, forge: Forge = f.world.forge): Promise<CompletionCtx> {
-	return { forge, git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
+async function ctxOf(f: Fixture, forge: Forge = f.world.forge, ledger: Ledger = createLedger(defaultGitExec, f.root)): Promise<CompletionCtx> {
+	return { forge, ledger, git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
 }
 
 const comments = { list: async (forge: Forge, issue: { number: number }) => ({ comments: await forge.listComments(issue.number), stale: false }) } as unknown as CommentsCache;
 
 /** The change state and next step as `Session.refresh` sees them. */
 async function stateOf(f: Fixture): Promise<{ state: ChangeState; step: ReturnType<typeof nextStep> }> {
-	const snapshot = await readChangeSnapshot({ forge: f.world.forge, isReadOnly: () => false, git: f.git, comments, caps: { iterations: f.pack.loops.change_iterations, unitAttempts: f.pack.loops.unit_attempts } }, f.n);
+	const snapshot = await readChangeSnapshot({ forge: f.world.forge, ledger: createLedger(defaultGitExec, f.root), fetch: false, isReadOnly: () => false, git: f.git, comments, caps: { iterations: f.pack.loops.change_iterations, unitAttempts: f.pack.loops.unit_attempts } }, f.n);
 	const state = { ...snapshot, checks: await runChecks(f.pack, snapshot, { root: f.root, git: f.git }) };
 	return { state, step: nextStep(f.pack, state) };
 }
@@ -106,7 +110,7 @@ const gateSnapshot = (target: string) => ({ target, failingWaivable: [] });
 
 /** Posts the forge request, then a writer's command, and returns the polled answer. */
 async function forgeAnswer(f: Fixture, record: RequestRecord, command: string): Promise<Answered> {
-	const approver = createForgeApprover(f.world.forge, f.n);
+	const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 	await approver.request(envelope(record));
 	await f.world.setPermission("alice", "write");
 	await f.world.postComment(f.n, "alice", command);
@@ -122,8 +126,8 @@ function ofKind(marked: MarkedComment[], kind: string, id?: string): MarkedComme
 async function seedClassification(f: Fixture): Promise<void> {
 	for (const u of parseChange(await f.world.bodyOf(f.n)).units) {
 		const digest = unitDigest(u);
-		await f.world.postComment(f.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-		await f.world.postComment(f.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		await appendEntry(defaultGitExec, f.root, f.n, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendEntry(defaultGitExec, f.root, f.n, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 }
 
@@ -135,7 +139,7 @@ async function seedLock(f: Fixture): Promise<void> {
 }
 
 /** A forge wrapper that throws once on the first call `failsOn` matches. */
-function failingOnce(inner: Forge, failsOn: (op: string, args: unknown[]) => boolean): Forge {
+function failingOnce<T extends object>(inner: T, failsOn: (op: string, args: unknown[]) => boolean): T {
 	let failed = false;
 	return new Proxy(inner, {
 		get(target, prop, receiver) {
@@ -219,7 +223,7 @@ describe("completion engine", () => {
 	test("Issue edited before the answer", async () => {
 		const f = await fixture("define");
 		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
-		const approver = createForgeApprover(f.world.forge, f.n);
+		const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 		await approver.request(envelope(record));
 		await f.world.editBodyBehindBack(f.n, (await f.world.bodyOf(f.n)).replace("Limit each client IP.", "Limit each client IP and user."));
 		await f.world.setPermission("alice", "write");
@@ -343,7 +347,7 @@ describe("completion engine", () => {
 		await seedLock(f);
 		const u3 = parseChange(await f.world.bodyOf(f.n)).units[1]!;
 		const record = await prepare(f, "gate", "amend:1", { action: "drop", unit: "U3", oldDigest: unitDigest(u3), oldDone: false, records: [] });
-		const approver = createForgeApprover(f.world.forge, f.n);
+		const approver = createForgeApprover(f.world.forge, createLedger(defaultGitExec, f.root), f.n);
 		await approver.request(envelope(record));
 		await f.world.editBodyBehindBack(f.n, u3Done(await f.world.bodyOf(f.n)));
 		await f.world.setPermission("alice", "write");
@@ -460,8 +464,8 @@ describe("completion engine", () => {
 		const f = await fixture("plan");
 		await seedClassification(f);
 		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
-		const crashing = failingOnce(f.world.forge, commentOfKind("decision"));
-		await expect(completeAnswer(await ctxOf(f, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
+		const crashing = failingOnce(createLedger(defaultGitExec, f.root), (op) => op === "append");
+		await expect(completeAnswer(await ctxOf(f, f.world.forge, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
 		expect(parseChange(await f.world.bodyOf(f.n)).units[1]?.difficulty).toBe("high");
 
 		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
@@ -472,6 +476,36 @@ describe("completion engine", () => {
 		expect(ofKind(marked, "gate").filter((m) => (m.data as { request?: string }).request === record.id)).toHaveLength(1);
 		expect(readRequests(marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("Decision result in the ledger", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "x", label: "X" }, { id: "y", label: "Y" }];
+		const record = await prepare(f, "stuck", "decide:pick.U1", { point: "pick", subject: "U1", facts: {}, digest: "d1" }, options);
+		await completeAnswer(await ctxOf(f), record, answer({ choice: "y" }));
+		const forgeKinds = filterMarked(await f.world.forge.listComments(f.n), BOT_LOGIN).comments.map((m) => m.kind);
+		expect(forgeKinds).not.toContain("decision");
+		const marked = await markedOf(f);
+		const [decision] = ofKind(marked, "decision", "pick.U1");
+		expect(decision).toMatchObject({ source: "ledger", data: { source: "human", outcome: "y", request: record.id } });
+		expect(readRequests(marked)).toEqual({ pending: [], applying: [] });
+		// Completed by the entry alone: finishing again appends nothing.
+		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+		expect(ofKind(await markedOf(f), "decision", "pick.U1")).toHaveLength(1);
+	});
+
+	test("decide resumes after a crash before the decision entry", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "x", label: "X" }, { id: "y", label: "Y" }];
+		const record = await prepare(f, "stuck", "decide:pick.U1", { point: "pick", subject: "U1", facts: {}, digest: "d1" }, options);
+		const crashing = failingOnce(createLedger(defaultGitExec, f.root), (op) => op === "append");
+		await expect(completeAnswer(await ctxOf(f, f.world.forge, crashing), record, answer({ choice: "y" }))).rejects.toThrow("injected");
+		expect(ofKind(await markedOf(f), "decision", "pick.U1")).toEqual([]);
+
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		const marked = await markedOf(f);
+		expect(ofKind(marked, "decision", "pick.U1")).toHaveLength(1);
+		expect(readRequests(marked)).toEqual({ pending: [], applying: [] });
 	});
 
 	test("changes requested resumes after a crash before the gate result", async () => {

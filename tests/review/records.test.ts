@@ -9,7 +9,7 @@ describe("review-run", () => {
 		const first = run();
 		const routed = run({ routed: true });
 		expect(first.id).toBe("review-run.1");
-		expect(latestRun([first, routed])).toMatchObject({ round: 1, routed: true, commentId: routed.commentId });
+		expect(latestRun([first, routed])).toMatchObject({ round: 1, routed: true, commentId: routed.ref });
 		expect(latestRun([])).toBeUndefined();
 	});
 
@@ -34,7 +34,7 @@ describe("aggregate and verifier records", () => {
 		const a = aggregate([agg()], 2);
 		expect(a.id).toBe("finding-summary.change.review.2");
 		expect(invalidRecords([a])).toEqual([]);
-		expect(aggregateOf([a], 2)).toMatchObject({ commentId: a.commentId, data: { aggregate: true, round: 2, reviews: ["r1"] } });
+		expect(aggregateOf([a], 2)).toMatchObject({ commentId: a.ref, data: { aggregate: true, round: 2, reviews: ["r1"] } });
 		expect(aggregateOf([a], 1)).toBeUndefined();
 	});
 
@@ -46,5 +46,12 @@ describe("aggregate and verifier records", () => {
 		expect(verifierRecord([first], "c1:0")).toMatchObject({ status: "BLOCKED" });
 		expect(verifierRecord([partial], "c1:0")).toBeUndefined();
 		expect(verifierRecord([first], "c1:9")).toBeUndefined();
+	});
+
+	it("I4: a verifier record naming the `from` alias of the aggregate matches the canonical key", () => {
+		const migrated = { ...aggregate([agg()], 1), from: "777" };
+		const v = verifier("777:0", { round: 2, verdict: "refuted" });
+		expect(verifierRecord([migrated, v], `${migrated.ref}:0`)).toMatchObject({ verdict: "refuted" });
+		expect(verifierRecord([migrated, verifier(`${migrated.ref}:0`)], "777:0")).toBeDefined();
 	});
 });

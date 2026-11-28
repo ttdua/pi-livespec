@@ -57,7 +57,7 @@ function state(phase: string, body: string, overrides: Partial<ChangeState> = {}
 /** A completed advisory review of a whole-change subject at the fixture HEAD: the phase's reviewer step is done. */
 function changeReview(subject: "spec" | "plan"): MarkedComment {
 	const { unit: _unit, ...data } = JSON.parse(JSON.stringify(reviewed({ subject, advisory: true }).data)) as Record<string, unknown>;
-	return mark(writeMarked("finding-summary", `finding-summary.change.${subject}.1`, data));
+	return mark({ kind: "finding-summary", id: `finding-summary.change.${subject}.1`, data: data });
 }
 
 /** A define or plan state whose default `always` reviewer already ran, so the gate is next. */
@@ -363,7 +363,7 @@ function iterations(over: Partial<IterationState>): IterationState {
 }
 
 function staleComment(id: string, units: string[]): MarkedComment {
-	return { commentId: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
+	return { source: "forge", ref: `c-${id}`, kind: "stale", id, author: "bot", data: { reason: id, phases: ["define", "plan", "build"], units, after_plan: true } };
 }
 
 const gateResult = (outcome: GateResult["outcome"], superseded = false, waivers: string[] = [], notes = ""): GateResult => ({ outcome, superseded, at: "t", waivers, notes, commentId: "c1" });
@@ -603,8 +603,8 @@ describe("unit evidence rules", () => {
 	});
 
 	test("Derived unit attempts", () => {
-		const prog = (n: number): MarkedComment => ({ commentId: `p${n}`, kind: "decision", id: "progress.U3", author: "bot", data: { point: "progress", outcome: "retry", attempt: n } });
-		const counter: MarkedComment = { commentId: "k", kind: "counter", id: "unit_attempts.U3", author: "bot", data: { value: 9 } };
+		const prog = (n: number): MarkedComment => ({ source: "forge", ref: `p${n}`, kind: "decision", id: "progress.U3", author: "bot", data: { point: "progress", outcome: "retry", attempt: n } });
+		const counter: MarkedComment = { source: "forge", ref: "k", kind: "counter", id: "unit_attempts.U3", author: "bot", data: { value: 9 } };
 		const facts = deriveCommentFacts([counter, prog(1), prog(2)], parseChange(NO_QUESTION), { iterations: 5, unitAttempts: 3, reviewRounds: 3 });
 		const s = state("build", NO_QUESTION, { counters: facts.counters, evidence: facts.evidence });
 		expect(nextStep(pack, s).counters).toContainEqual({ name: "unit_attempts.U3", value: 2, cap: 3 });
@@ -733,10 +733,10 @@ describe("build loop with subagents", () => {
 		const marked = [implemented("U3"), review];
 		const asks = nextStep(pack, build("U3", marked));
 		expect(asks.next).toContain("spec_question");
-		expect(asks.next).toContain(`finding:${review.commentId}:0`);
+		expect(asks.next).toContain(`finding:${review.ref}:0`);
 		expect(asks.next).not.toContain("Fix round");
 		expect(asks.dispatch).toBeUndefined();
-		const body = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", `- [x] Q1 (blocking): finding:${review.commentId}:0 which? — Answer: yes`);
+		const body = FIXTURE_BODY.replace("- [ ] Q1 (blocking): Which header carries the client IP behind the proxy?", `- [x] Q1 (blocking): finding:${review.ref}:0 which? — Answer: yes`);
 		const answered = nextStep(pack, build("U3", marked, { change: parseChange(body) }));
 		expect(answered.next).toContain("Finish U3");
 	});

@@ -1,12 +1,12 @@
-// Evidence records: the `unit-start`, `receipt` and `rebuild` marked comments, their ids and their parsers.
+// Evidence records: the `unit-start` and `receipt` ledger entries and the `rebuild` marked comment, their ids and their parsers.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 
-const START_KIND = "unit-start";
-const RECEIPT_KIND = "receipt";
+const START_KIND = "unit-start" as const;
+const RECEIPT_KIND = "receipt" as const;
 const REBUILD_KIND = "rebuild";
 
-registerKind(START_KIND);
 registerKind(REBUILD_KIND);
 
 /** `rebuild`: a review-routed rebuild started green; `resumed`: a unit of a resumed park started green. */
@@ -29,7 +29,7 @@ export type ReceiptData = {
 	pre: { sha: string; exit: number };
 	post: { sha: string; exit: number };
 	output: string;
-	/** The id of the matching `unit-start` comment. */
+	/** The `ref` of the matching `unit-start` entry. */
 	start: string;
 	pending_commit?: string;
 };
@@ -68,14 +68,14 @@ function isReceiptData(d: unknown): d is ReceiptData {
 	return isString(d.output) && isString(d.start) && optional(d, "pending_commit", isString);
 }
 
-/** The `unit-start` comment body. */
-export function startComment(id: string, d: StartData): string {
-	return writeMarked(START_KIND, id, d);
+/** The `unit-start` ledger entry input. */
+export function startComment(id: string, d: StartData): AppendInput {
+	return { kind: START_KIND, id, data: d };
 }
 
-/** The `receipt` comment body. */
-export function receiptComment(id: string, d: ReceiptData): string {
-	return writeMarked(RECEIPT_KIND, id, d);
+/** The `receipt` ledger entry input. */
+export function receiptComment(id: string, d: ReceiptData): AppendInput {
+	return { kind: RECEIPT_KIND, id, data: d };
 }
 
 /** The `rebuild` comment body. */
@@ -89,7 +89,7 @@ export function newEvidenceId(unit: string, now: Date): string {
 }
 
 function located<T>(m: MarkedComment, index: number, kind: string, valid: (d: unknown) => d is T): (T & Located) | undefined {
-	return m.kind === kind && valid(m.data) ? { ...m.data, id: m.id, commentId: m.commentId, index } : undefined;
+	return m.kind === kind && valid(m.data) ? { ...m.data, id: m.id, commentId: m.ref, index } : undefined;
 }
 
 /** The start record of comment `m` at comment index `index`, when it is a well-formed `unit-start`. */

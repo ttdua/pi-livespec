@@ -40,8 +40,10 @@ export type ToolHarness = {
 	/** Runs a registered tool; `signal` is the tool call's abort signal. */
 	call(tool: string, params?: unknown, signal?: AbortSignal): Promise<ToolOut>;
 	git(...args: string[]): string;
-	/** Every git command the session ran, in order (args only). */
+	/** Every git command the session ran, in order (args only); call `settle()` first when background syncs may run. */
 	gitCalls: string[][];
+	/** Waits until every background ledger sync the session started has settled. */
+	settle(): Promise<void>;
 	/** The change issue seeded from `change`, if any. */
 	n: number;
 };
@@ -78,8 +80,14 @@ async function seedChange(world: MemoryWorld, o: ToolHarnessOptions, head: strin
 }
 
 const dirs: string[] = [];
+const sessions: Session[] = [];
 
+/** Waits for the background ledger syncs of every harness session, then removes the temp dirs. */
 export async function cleanupDirs(): Promise<void> {
+	for (const session of sessions.splice(0)) {
+		await session.startInFlight;
+		await session.ledger.background();
+	}
 	for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 
@@ -117,6 +125,7 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 		return defaultGitExec(args, opts);
 	};
 	const session = new Session(root, createGit(root, recording), recording);
+	sessions.push(session);
 	session.config = await loadConfig(root, home);
 	session.pack = await loadPack(root);
 	session.forge = forge;
@@ -132,14 +141,18 @@ export async function toolHarness(o: ToolHarnessOptions = {}): Promise<ToolHarne
 		if (!t) throw new Error(`tool ${tool} is not registered`);
 		return (await t.execute("call-1", params, signal, undefined, ctx)) as ToolOut;
 	};
-	return { root, origin, head, world, forge, session, pi, ctx, call, git, gitCalls, n };
+	return { root, origin, head, world, forge, session, pi, ctx, call, git, gitCalls, settle: () => session.ledger.background(), n };
 }
 
 export const textOf = (out: ToolOut): string => out.content.map((c) => c.text).join("\n");
 
-/** Every ref of the bare origin with its sha, for "no push" assertions. */
-export function originRefs(origin: string): string {
-	return execFileSync("git", ["for-each-ref", "--format=%(objectname) %(refname)"], { cwd: origin, encoding: "utf8" });
+/**
+ * Every ref of the bare origin with its sha, for "no push" assertions. `ignoreLedger` leaves out
+ * `refs/livespec/*`, which ledger syncs push on their own, so the assertion means "no branch push".
+ */
+export function originRefs(origin: string, o: { ignoreLedger?: boolean } = {}): string {
+	const refs = execFileSync("git", ["for-each-ref", "--format=%(objectname) %(refname)"], { cwd: origin, encoding: "utf8" });
+	return o.ignoreLedger ? refs.split("\n").filter((line) => !line.includes(" refs/livespec/")).join("\n") : refs;
 }
 
 /** Simulates a squash merge of `branch` into `main`: the content lands on origin/main, the fix commit is not an ancestor of it. */
@@ -149,4 +162,13 @@ export function squashOntoMain(h: ToolHarness, branch: string): void {
 	h.git("commit", "-q", "-m", "Squash");
 	h.git("push", "-q", "origin", "main");
 	h.git("switch", "-q", branch);
+}
+
+/** The pushes among `calls` that are not ledger pushes: a push whose refspecs are not all `<sha>:refs/livespec/<n>`. */
+export function branchPushes(calls: string[][]): string[][] {
+	const ledgerOnly = (args: string[]): boolean => {
+		const specs = args.slice(args.indexOf("origin") + 1);
+		return specs.length > 0 && specs.every((s) => /:refs\/livespec\/\d+$/.test(s));
+	};
+	return calls.filter((args) => args[0] === "push" && !ledgerOnly(args));
 }

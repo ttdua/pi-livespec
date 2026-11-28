@@ -186,7 +186,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("create, list and edit a comment", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const hello = writeMarked("receipt", "u1", { v: "hello" });
+				const hello = writeMarked("stale", "u1", { v: "hello" });
 				const created = await w.forge.createComment(n, hello);
 				expect(created).toMatchObject({ author: BOT_LOGIN, body: hello });
 				expect(created.id).toBeTruthy();
@@ -197,7 +197,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 				expect(listed.map((c) => c.id)).toEqual([created.id]);
 				expect(listed[0]).toMatchObject({ author: BOT_LOGIN, body: hello });
 
-				const edited = writeMarked("receipt", "u1", { v: "edited" });
+				const edited = writeMarked("stale", "u1", { v: "edited" });
 				const result = await w.forge.updateComment(created.id, edited, created.version);
 				expect(result.status).toBe("written");
 				if (result.status === "written") {
@@ -221,7 +221,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("comment edits are last-write-wins even with a stale version", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const bodyOf = (v: string) => writeMarked("receipt", "u1", { v });
+				const bodyOf = (v: string) => writeMarked("stale", "u1", { v });
 				const created = await w.forge.createComment(n, bodyOf("first"));
 				const original = created.version;
 
@@ -239,7 +239,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("foreign marker ignored", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				await w.postComment(n, OTHER_LOGIN, writeMarked("decision", "d1", { choice: "x" }));
+				await w.postComment(n, OTHER_LOGIN, writeMarked("gate", "d1", { choice: "x" }));
 
 				const read = await readMarkedComments(w.forge, n);
 
@@ -251,13 +251,13 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("own marked comment is returned with data", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { ok: true, n: 3 }));
+				const created = await w.forge.createComment(n, writeMarked("stale", "u1", { ok: true, n: 3 }));
 
 				const read = await readMarkedComments(w.forge, n);
 
 				expect(read.warnings).toEqual([]);
 				expect(read.comments).toEqual([
-					{ commentId: created.id, kind: "receipt", id: "u1", author: BOT_LOGIN, data: { ok: true, n: 3 } },
+					{ ref: created.id, source: "forge", kind: "stale", id: "u1", author: BOT_LOGIN, data: { ok: true, n: 3 }, createdAt: created.createdAt },
 				]);
 			});
 
@@ -275,11 +275,11 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("foreign comment edit refused", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const body = writeMarked("decision", "d1", { choice: "x" });
+				const body = writeMarked("gate", "d1", { choice: "x" });
 				const id = await w.postComment(n, OTHER_LOGIN, body);
 				const [foreign] = await w.forge.listComments(n);
 
-				await expect(w.forge.updateComment(id, writeMarked("decision", "d1", { choice: "y" }), foreign.version)).rejects.toBeInstanceOf(ForgeError);
+				await expect(w.forge.updateComment(id, writeMarked("gate", "d1", { choice: "y" }), foreign.version)).rejects.toBeInstanceOf(ForgeError);
 				await expect(assertOwnMarkedComment(w.forge, foreign)).rejects.toBeInstanceOf(ForgeError);
 
 				expect(await w.commentBodyOf(id)).toBe(body);
@@ -298,7 +298,7 @@ export function runContract(name: string, makeWorld: WorldFactory): void {
 			it("own marked comment edit allowed", async () => {
 				const w = await world();
 				const n = await w.seedIssue();
-				const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+				const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
 
 				await expect(assertOwnMarkedComment(w.forge, created)).resolves.toBeUndefined();
 			});

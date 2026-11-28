@@ -11,6 +11,7 @@ import type { AggregateFinding, FindingSummaryData } from "../../src/subagents/r
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { stateFor } from "../helpers/change-state.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { changeBody } from "../tools/unit-helpers.ts";
 import { agg, aggregate, verifier } from "./review-fixtures.ts";
 
@@ -30,7 +31,8 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 	const w = new MemoryWorld();
 	const n = await w.seedIssue({ body: BODY });
 	const a = aggregate(findings, 1, "h1");
-	const marked = [a, ...extra((i) => `${a.commentId}:${i}`)];
+	const marked = [a, ...extra((i) => `${a.ref}:${i}`)];
+	const entries: MarkedComment[] = [];
 	const order: string[] = [];
 	const asked: string[] = [];
 	const params: SpecQuestionParams[] = [];
@@ -44,7 +46,7 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 			};
 		},
 	});
-	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments] }, await w.bodyOf(n));
+	const state = async () => stateFor("review", { marked: [...marked, ...filterMarked(await w.forge.listComments(n), BOT_LOGIN).comments, ...entries] }, await w.bodyOf(n));
 	const deps = (over: Partial<EffectDeps> = {}): EffectDeps => ({
 		forge, issue: n, branch: BRANCH, afterWrite: async () => undefined,
 		reask: async (p) => {
@@ -61,8 +63,8 @@ async function world(findings: AggregateFinding[], extra: (key: (i: number) => s
 		},
 		...over,
 	});
-	const agg1 = { commentId: a.commentId, data: a.data as FindingSummaryData };
-	return { w, n, a, order, asked, params, state, deps, agg: agg1 };
+	const agg1 = { commentId: a.ref, data: a.data as FindingSummaryData };
+	return { w, n, a, order, asked, params, entries, state, deps, agg: agg1 };
 }
 
 describe("applyRoutes", () => {
@@ -87,13 +89,13 @@ describe("applyRoutes", () => {
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		expect(t.asked).toHaveLength(1);
-		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:0`);
+		expect(t.asked[0]).toContain(`finding:${t.a.ref}:0`);
 	});
 
 	test("routing question carries candidates", async () => {
 		const t = await world([agg({ route: "question", needsDecision: true, verify: "skipped-parent" })]);
 		await applyRoutes(t.deps(), await t.state(), t.agg);
-		expect(t.params).toEqual([{ text: expect.stringContaining(`finding:${t.a.commentId}:0`), ...ROUTING_CHOICE }]);
+		expect(t.params).toEqual([{ text: expect.stringContaining(`finding:${t.a.ref}:0`), ...ROUTING_CHOICE }]);
 		expect(parseChange(await t.w.bodyOf(t.n)).questions[0]?.kind).toBe("non-blocking");
 	});
 
@@ -116,11 +118,11 @@ describe("applyRoutes", () => {
 			[1, 10].includes(i) ? agg({ route: "question", needsDecision: true, verify: "skipped-parent", location: `q${i}.ts:1` }) : agg({ severity: "SUGGESTION", route: "record", location: `r${i}.ts:1`, verify: "skipped-suggestion" }));
 		const t = await world(findings);
 		const issue = await t.w.forge.getIssue(t.n);
-		await t.w.forge.updateIssueBody(t.n, issue.body.replace("## Questions\n", `## Questions\n- [x] Q1 (non-blocking): Review finding:${t.a.commentId}:10 needs a decision\n`), issue.version);
+		await t.w.forge.updateIssueBody(t.n, issue.body.replace("## Questions\n", `## Questions\n- [x] Q1 (non-blocking): Review finding:${t.a.ref}:10 needs a decision\n`), issue.version);
 		const out = await applyRoutes(t.deps(), await t.state(), t.agg);
 		expect(t.asked).toHaveLength(1);
-		expect(t.asked[0]).toContain(`finding:${t.a.commentId}:1 `);
-		expect(out.posted).toEqual([`question ${t.a.commentId}:1`]);
+		expect(t.asked[0]).toContain(`finding:${t.a.ref}:1 `);
+		expect(out.posted).toEqual([`question ${t.a.ref}:1`]);
 	});
 
 	test("a question that was not sent is not reported as posted", async () => {
@@ -141,13 +143,13 @@ describe("applyRoutes", () => {
 	test("Retried stage: each finding has exactly one review comment", async () => {
 		const t = await world([agg({ route: "in-change", verify: "skipped-parent" }), agg({ route: "out-of-scope", location: "src/legacy.ts:1", verify: "skipped-parent" }), agg({ severity: "SUGGESTION", route: "record", location: "x.ts:2", verify: "skipped-suggestion" })]);
 		const pr = await t.w.seedPullRequest({ head: BRANCH });
-		await t.w.forge.createReviewComment(pr, { path: "src/limit.ts", line: 10, body: `${prMarker(`${t.a.commentId}:0`)}\nold` });
+		await t.w.forge.createReviewComment(pr, { path: "src/limit.ts", line: 10, body: `${prMarker(`${t.a.ref}:0`)}\nold` });
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		await applyRoutes(t.deps(), await t.state(), t.agg);
 		const bodies = (await t.w.reviewCommentsOf(pr)).map((c) => c.body);
-		expect(bodies.filter((b) => b.includes(prMarker(`${t.a.commentId}:0`)))).toHaveLength(1);
-		expect(bodies.filter((b) => b.includes(prMarker(`${t.a.commentId}:1`)))).toHaveLength(1);
-		expect(bodies.some((b) => b.includes(prMarker(`${t.a.commentId}:2`)))).toBe(false);
+		expect(bodies.filter((b) => b.includes(prMarker(`${t.a.ref}:0`)))).toHaveLength(1);
+		expect(bodies.filter((b) => b.includes(prMarker(`${t.a.ref}:1`)))).toHaveLength(1);
+		expect(bodies.some((b) => b.includes(prMarker(`${t.a.ref}:2`)))).toBe(false);
 	});
 
 	test("a forge rejection is reported", async () => {
@@ -155,7 +157,7 @@ describe("applyRoutes", () => {
 		await t.w.seedPullRequest({ head: BRANCH });
 		const forge = new Proxy(t.w.forge, { get: (target, prop) => (prop === "createReviewComment" ? async () => { throw new Error("line not in diff"); } : Reflect.get(target, prop, target)) });
 		const out = await applyRoutes(t.deps({ forge: forge as EffectDeps["forge"] }), await t.state(), t.agg);
-		expect(out.rejected).toEqual([`${t.a.commentId}:0 (line not in diff)`]);
+		expect(out.rejected).toEqual([`${t.a.ref}:0 (line not in diff)`]);
 	});
 });
 
@@ -172,8 +174,10 @@ describe("applyRoutes feedback round", () => {
 describe("applyRoutes retry after a question was not sent", () => {
 	const rebuilt = async (t: Awaited<ReturnType<typeof world>>) => {
 		const digest = "d";
-		await t.w.forge.createComment(t.n, startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } }));
-		await t.w.forge.createComment(t.n, receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a" }));
+		t.entries.push(
+			ledgerRecord(startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } }), { ref: "U2.a~00000001", at: "9999-01-01T00:00:00.000Z" }),
+			ledgerRecord(receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a~00000001" }), { at: "9999-01-01T00:00:00.001Z" }),
+		);
 		const issue = await t.w.forge.getIssue(t.n);
 		await t.w.forge.updateIssueBody(t.n, tickUnit(issue.body, "U2"), issue.version);
 	};
@@ -196,7 +200,7 @@ describe("applyRoutes retry after a question was not sent", () => {
 		const reasked: (string | undefined)[] = [];
 		const out = await applyRoutes(t.deps({ reask: async (p) => { reasked.push(p.reask); return undefined; } }), await t.state(), t.agg);
 		expect(reasked).toEqual(["Q1"]);
-		expect(out.posted).toEqual([`question ${t.a.commentId}:0`]);
+		expect(out.posted).toEqual([`question ${t.a.ref}:0`]);
 	});
 
 	test("a question with an open request is not asked again", async () => {

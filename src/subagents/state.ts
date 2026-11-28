@@ -20,7 +20,7 @@ const isLane = (d: unknown): d is LaneData => isLaneData(d);
 
 /** Lane records whose data does not have the expected shape. */
 export function invalidLanes(marked: MarkedComment[]): string[] {
-	return marked.filter((m) => m.kind === "lane" && !isLane(m.data)).map((m) => `ignored invalid lane record ${m.commentId} (${m.id})`);
+	return marked.filter((m) => m.kind === "lane" && !isLane(m.data)).map((m) => `ignored invalid lane record ${m.ref} (${m.id})`);
 }
 
 /** Units whose latest own `lane` record is not closed. */

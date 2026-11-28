@@ -125,6 +125,7 @@ describe("confirmItems", () => {
 		expect(out.kept.find((i) => i.key === UNTESTED.key)?.confirmed).toBe(true);
 		expect(out.kept.find((i) => i.key === REMOVED.key)?.confirmed).toBe(false);
 		expect(await world.forge.listComments(issue)).toEqual([]);
+		expect(execFileSync("git", ["for-each-ref", "refs/livespec"], { cwd: root, encoding: "utf8" })).toBe("");
 	});
 
 	test("a worktree that cannot be created leaves the items unconfirmed", async () => {

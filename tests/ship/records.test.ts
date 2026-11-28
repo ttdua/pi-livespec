@@ -5,7 +5,7 @@ import { latestShipRecord, shipComment } from "../../src/ship/records.ts";
 function marked(pr: number, pushedHead: string) {
 	const body = shipComment({ pr, pushedHead, confirmed: ["x"] });
 	const m = parseMarked(body)!;
-	return { commentId: "c", kind: m.kind, id: m.id, author: "me", data: m.data };
+	return { ref: "c", source: "forge" as const, kind: m.kind, id: m.id, author: "me", data: m.data };
 }
 
 describe("ship records", () => {

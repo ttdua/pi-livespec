@@ -176,9 +176,9 @@ async function mismatchOutcome(deps: DispatchDeps, request: DispatchRequest, run
 	const confirmed = await settledWithin(waited, limit);
 	if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 	const found = mismatchEvidence(check.mismatches);
-	// The tool never writes to the forge before the child's run has settled.
+	// The tool never writes to the forge or the ledger before the child's run has settled.
 	const note = confirmed ? "" : `; the mismatch was not recorded: child ${run.agentId} did not settle within ${limit / 1000} s of the abort`;
-	if (confirmed) await deps.post(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, found));
+	if (confirmed) await deps.record(mismatchComment(runFacts(request, run), `The executor did not apply the launch as requested; child ${run.agentId} was aborted.`, found));
 	if (check.laneCwd) return { kind: "sequential", reason: `child ${run.agentId} was aborted: its effective cwd differs from the lane (${found})${note}; re-run ${request.unit} sequentially` };
 	const recorded = confirmed ? `${LAUNCH_MISMATCH} recorded` : "no record written";
 	return { kind: "inline", reason: `child ${run.agentId} was aborted, ${recorded} (mismatch: ${found})${note}; ${request.role} runs inline`, packet: request.packet };
@@ -193,7 +193,7 @@ function questionLaunch(facts: RunFacts): QuestionLaunch {
 export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: LaunchFacts, decision: Exclude<ResultDecision, { kind: "retry" } | { kind: "return" }>): Promise<DispatchOutcome> {
 	switch (decision.kind) {
 		case "question":
-			await deps.post(dispatchComment({ status: "QUESTION", role: run.role, ...(run.unit === undefined ? {} : { unit: run.unit }), ...(run.subject === undefined ? {} : { subject: run.subject }), ...(run.finding === undefined ? {} : { finding: run.finding }), agentId: run.agentId as string, attempt: run.attempt, question: decision.text, launch: questionLaunch(run) }));
+			await deps.record(dispatchComment({ status: "QUESTION", role: run.role, ...(run.unit === undefined ? {} : { unit: run.unit }), ...(run.subject === undefined ? {} : { subject: run.subject }), ...(run.finding === undefined ? {} : { finding: run.finding }), agentId: run.agentId as string, attempt: run.attempt, question: decision.text, launch: questionLaunch(run) }));
 			return { kind: "question", id: run.agentId as string, text: decision.text };
 		case "blocked":
 			await recordResult(deps, run, cwd, blockedResult(decision.reason));

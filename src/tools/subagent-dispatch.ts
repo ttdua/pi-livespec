@@ -13,7 +13,7 @@ import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResu
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
 import { inlineText, outcomeOptions, outcomeText } from "./subagent-outcome.ts";
-import { defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
+import { appendRecord, defaultSubagentDeps, dispatchDeps, dispatchRequest, findingOf, packetContext, type SubagentToolDeps } from "./subagent-request.ts";
 import { argsOf, checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type Target, type TargetParams, type ToolCtx, warn } from "./subagent-target.ts";
 
 const TOOL = "subagent_dispatch";
@@ -88,7 +88,7 @@ async function closeMovedLane(w: WriteContext, state: ChangeState, unit: string 
 	const lane = unit === undefined ? undefined : state.subagents.lanes[unit];
 	if (lane === undefined) return;
 	const issue = state.issue.number;
-	await closeLane({ git: w.session.git, root: w.session.cwd, post: (body) => w.forge.createComment(issue, body).then(() => undefined) }, lane, { outcome: "moved" });
+	await closeLane({ git: w.session.git, root: w.session.cwd, post: (body) => w.forge.createComment(issue, body).then(() => undefined), record: (input) => appendRecord(w, issue, input) }, lane, { outcome: "moved" });
 	await afterForgeWrite(w.session, issue);
 }
 

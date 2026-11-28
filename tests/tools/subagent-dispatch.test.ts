@@ -86,6 +86,8 @@ describe("subagent-dispatch tools", () => {
 		expect(h.fake.spawned).toHaveLength(1);
 		const record = await h.latest("dispatch");
 		expect(record?.data).toMatchObject({ role: "implementer", unit: "U1", agentId: "agent-1", status: "DONE", attempt: 1 });
+		expect(record?.source).toBe("ledger");
+		expect(await h.commentsOf("dispatch")).toEqual([]);
 	});
 
 	test("legacy service key launches", async () => {
@@ -274,9 +276,10 @@ describe("subagent-dispatch tools", () => {
 		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 		const record = await h.latest("dispatch");
 		expect(record?.data).toMatchObject({ discoveries: ["the cache client retries twice"] });
+		expect(record?.source).toBe("ledger");
 		const out = await h.call("subagent_packet", { role: "implementer", unit: "U2" });
 		expect(textOf(out)).toContain("the cache client retries twice");
-		expect(textOf(out)).toContain(`comment:${record?.commentId}`);
+		expect(textOf(out)).toContain(`ledger:${h.n}/${record?.ref}`);
 	});
 
 	test("needs context names the source ids in the tool text", async () => {
@@ -365,7 +368,7 @@ describe("subagent-dispatch tools", () => {
 		}
 		const decisions = (await h.ofKind("decision")).filter((m) => m.id.startsWith("tags.d"));
 		const answered = (await h.ofKind("dispatch")).filter((m) => m.id.startsWith("dispatch.change.reviewer.answered."));
-		expect(new Set(decisions.map((m) => m.commentId)).size).toBe(29);
+		expect(new Set(decisions.map((m) => m.ref)).size).toBe(29);
 		expect(new Set(answered.map((m) => (m.data as { agentId: string }).agentId)).size).toBe(14);
 		next(h, () => done({ sources_used: footerIds(h.fake.spawned.at(-1)?.prompt ?? "").filter((id) => !id.startsWith("records:")), commits: undefined, findings: [] }));
 		const out = await h.call("subagent_dispatch", { role: "reviewer", subject: "change" });
@@ -375,7 +378,7 @@ describe("subagent-dispatch tools", () => {
 		expect(h.fake.resumed).toEqual([]);
 		const summary = (await h.latest("finding-summary"))?.data as { required: string[] };
 		expect(summary).toMatchObject({ status: "DONE", completed: true, round: 1 });
-		const seededComments = new Set(decisions.map((m) => `comment:${m.commentId}`));
+		const seededComments = new Set(decisions.map((m) => `comment:${m.ref}`));
 		const leaked = summary.required.filter((id) => id.startsWith("records:") || seededComments.has(id) || id.startsWith("answer:agent-old-"));
 		expect(leaked).toEqual([]);
 	});
@@ -420,7 +423,7 @@ describe("verifier dispatch", () => {
 	test("Verifier without a verdict is retried, with one it is recorded", async () => {
 		const h = await subagentHarness({ executor: {} });
 		await h.seed("finding-summary", "finding-summary.change.review.1", AGG);
-		const key = `${(await h.latest("finding-summary"))?.commentId}:0`;
+		const key = `${(await h.latest("finding-summary"))?.ref}:0`;
 		const noVerdict = () => citing(h, { findings: [], commits: undefined });
 		next(h, noVerdict());
 		next(h, noVerdict());

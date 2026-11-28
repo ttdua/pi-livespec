@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
 import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
-import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
+import type { MarkedComment } from "../../src/forge/markers.ts";
 import { behaviorDigest, latestBehaviorRecords } from "../../src/docs/behavior-change.ts";
 
 const TAGS_U3: DecisionRecord = {
@@ -16,13 +17,24 @@ const TAGS_U3: DecisionRecord = {
 	agent_additions: ["api"],
 };
 
+/** The own forge `answer` comment of request `request` with outcome `choice`. */
+function answerFor(request: string, choice: string): MarkedComment {
+	return marked(request, { request: { subject: "decide:pick.U1" }, answer: { outcome: "answered", choice }, verdict: "valid" }, "answer");
+}
+
+/** A human decision as ledger entry plus the forge answer that backs it. */
+function backed(record: DecisionRecord): MarkedComment[] {
+	const withRequest = { ...record, request: "rq1" };
+	return [ledgerRecord(decisionComment(withRequest)), answerFor("rq1", String(record.outcome))];
+}
+
 function marked(id: string, data: unknown, kind = "decision"): MarkedComment {
-	return { commentId: `c-${id}-${String((data as { outcome?: unknown }).outcome)}`, kind, id, author: "bot", data };
+	return { source: "forge", ref: `c-${id}-${String((data as { outcome?: unknown }).outcome)}`, kind, id, author: "bot", data };
 }
 
 describe("decision records", () => {
 	test("Record fields", () => {
-		const parsed = parseMarked(decisionComment(TAGS_U3));
+		const parsed = ledgerRecord(decisionComment(TAGS_U3));
 		expect(parsed).toMatchObject({ kind: "decision", id: "tags.U3" });
 		expect(parsed?.data).toEqual(TAGS_U3);
 		expect(parsed?.data).toMatchObject({ source: "rule", outcome: ["security", "api"], agent_additions: ["api"] });
@@ -32,7 +44,7 @@ describe("decision records", () => {
 		const facts = { blob: "x".repeat(2001) };
 		const yaml = stringify(facts);
 		expect(yaml.length).toBeGreaterThan(2000);
-		const data = parseMarked(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
+		const data = ledgerRecord(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
 		expect(data.facts_hash).toBe(createHash("sha256").update(yaml).digest("hex"));
 		expect(data).not.toHaveProperty("facts");
 	});
@@ -40,7 +52,7 @@ describe("decision records", () => {
 	test("facts at the limit are kept", () => {
 		const facts = { blob: "x".repeat(1990) };
 		expect(stringify(facts).length).toBeLessThanOrEqual(2000);
-		const data = parseMarked(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
+		const data = ledgerRecord(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
 		expect(data.facts).toEqual(facts);
 		expect(data).not.toHaveProperty("facts_hash");
 	});
@@ -117,6 +129,18 @@ describe("decision records", () => {
 		expect(reusableAnswer([marked("pick.U1", human)], "pick", "U1", "d1", facts)).toEqual(human);
 	});
 
+	test("I3: a human ledger decision without its own forge answer comment is not reused", () => {
+		const facts = { n: 1 };
+		const human: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r", request: "rq1" };
+		const entry = ledgerRecord(decisionComment(human));
+		expect(reusableAnswer([entry], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(reusableAnswer([entry, answerFor("rq1", "n")], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(reusableAnswer([entry, answerFor("rq1", "y")], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y" });
+		const ruleEntry = ledgerRecord(decisionComment({ ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", facts }));
+		expect(reusableAnswer([ruleEntry], "pick", "U1", "d1", facts)).toBeUndefined();
+		expect(currentDecision([ruleEntry], "pick", "U1", "d1")).toMatchObject({ source: "rule" });
+	});
+
 	test("reusableAnswer misses other digest, other facts, rule source and dismissed outcome", () => {
 		const facts = { files: ["a.ts"] };
 		const base: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
@@ -155,14 +179,13 @@ describe("decision records", () => {
 	test("reusableAnswer reuses by facts_hash for large facts", () => {
 		const facts = { blob: "x".repeat(2001) };
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
-		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
-		expect(reusableAnswer([parsed], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
+		const parsed = backed(record);
+		expect(reusableAnswer(parsed, "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
 	});
 
 	test("reusableAnswer reuses after a forge round-trip", () => {
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts: { files: ["a.ts"], tags: ["ui"], n: 3 }, reason: "r" };
-		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
-		expect(reusableAnswer([parsed], "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
+		expect(reusableAnswer(backed(record), "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
 	});
 
 	test("Proposal record is not current", () => {
@@ -187,7 +210,7 @@ describe("decision records", () => {
 		const files = Array.from({ length: 300 }, (_, i) => `src/limit/file-${String(i).padStart(3, "0")}.ts`);
 		const item = { capability: "rate-limit", files };
 		const record: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome: "unchanged", facts: item, files, reason: "chosen by alice" };
-		const data = parseMarked(decisionComment(record))?.data as DecisionRecord;
+		const data = ledgerRecord(decisionComment(record))?.data as DecisionRecord;
 		expect(data.facts_hash).toEqual(expect.any(String));
 		expect(data).not.toHaveProperty("facts");
 		expect(data.files).toHaveLength(300);

@@ -34,6 +34,7 @@ import { type DetectDeps, detectForge, type ForgeTarget, resolveForgeTarget } fr
 import { ForgeError } from "../forge/errors.ts";
 import { RedactingForge } from "../forge/redact.ts";
 import { drainEvidenceLocks } from "../evidence/lock.ts";
+import { createLedger, type Ledger } from "../ledger/index.ts";
 import { pollApprovals } from "../interaction/poll.ts";
 import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { type FeedbackPollResult, pollFeedback } from "../ship/feedback-poll.ts";
@@ -41,6 +42,7 @@ import { isChildSession } from "../subagents/child.ts";
 import { buildCardInput, cardAccount, cardAudit } from "./card-input.ts";
 import { type CardInput, type FixCard, renderCard, untrusted } from "./phase-card.ts";
 import { appendResumeEntry, registerResumeRenderer } from "./resume-entry.ts";
+import { startLedgerSync } from "./ledger-sync.ts";
 import { getSession, setSession } from "./session-store.ts";
 import { SkillReads } from "./skill-reads.ts";
 
@@ -51,6 +53,8 @@ export type SessionDeps = {
 	now: () => Date;
 	/** Every account I/O (gh, git config, access check, tea config). */
 	accounts: AccountEnv;
+	/** The runner of the session's git and ledger. */
+	gitExec: GitExec;
 };
 
 export const AGENT_SKILLS_SOURCE = "https://github.com/addyosmani/agent-skills.git";
@@ -76,6 +80,7 @@ export function defaultSessionDeps(): SessionDeps {
 		},
 		now: () => new Date(),
 		accounts: defaultAccountEnv(),
+		gitExec: defaultGitExec,
 	};
 }
 
@@ -119,6 +124,10 @@ export class Session {
 	cascadeInFlight?: Promise<boolean>;
 	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
 	feedbackPollInFlight?: Promise<FeedbackPollResult>;
+	/** The session-start work run after the first card (approval poll, cascade, feedback poll); never rejects. */
+	startInFlight?: Promise<void>;
+	/** The change ledgers of this repository; remembers which were fetched in this session. */
+	readonly ledger: Ledger;
 	private first = true;
 	private link?: SessionLink;
 	/** Every token the forge adapter can send, as the `RedactingForge` uses them; set by `connect`. */
@@ -134,6 +143,7 @@ export class Session {
 		readonly git: Git,
 		readonly exec: GitExec = defaultGitExec,
 	) {
+		this.ledger = createLedger(exec, cwd);
 		this.card = { first: true, constraintsTemplate: false, unnotedSkills: [], kind: "forge-unavailable", message: NOT_CONNECTED };
 	}
 
@@ -195,18 +205,18 @@ export class Session {
 	}
 
 	/** Re-runs target, account resolution, adapter and identity steps, then rebuilds the card. Never throws. */
-	async reconnect(): Promise<void> {
-		await this.connect();
+	async reconnect(o: RefreshOptions = {}): Promise<void> {
+		await this.connect(undefined, o);
 	}
 
 	/** Connects with `chosen` when given (an explicit switch already resolved it), else runs the selection. */
-	private async connect(chosen?: ResolvedAccount): Promise<void> {
+	private async connect(chosen?: ResolvedAccount, o: RefreshOptions = {}): Promise<void> {
 		if (!this.link) {
 			this.record("account", NOT_BOUND);
 			return;
 		}
 		await connectForge(this, this.link, chosen);
-		await this.refresh();
+		await this.refresh(o);
 	}
 
 	/** `/livespec account <name>`: stores `name` when it can push, then reconnects with that resolution. Never throws. */
@@ -232,22 +242,28 @@ export class Session {
 		return this.first;
 	}
 
-	/** Rebuilds the card, applying an automatic advance once. Never throws. */
-	async refresh(): Promise<void> {
+	/**
+	 * Rebuilds the card, applying an automatic advance once. Never throws. `fetch` (default true) runs the
+	 * first ledger fetch of the change before reading; the context hook and session start pass false.
+	 */
+	async refresh(o: RefreshOptions = {}): Promise<void> {
 		if (!this.initialized) return;
-		await resolveAndSnapshot(this);
-		if (await applyAdvance(this)) await resolveAndSnapshot(this);
+		const fetch = o.fetch ?? true;
+		await resolveAndSnapshot(this, fetch);
+		if (await applyAdvance(this)) await resolveAndSnapshot(this, fetch);
 	}
 }
+
+export type RefreshOptions = { fetch?: boolean };
 
 /**
  * Resolves the change and rebuilds the card. When the forge or git cannot be read (auth expired
  * mid-session, transport failure), the card says the forge is unavailable with the reason, and the
  * agent keeps working.
  */
-async function resolveAndSnapshot(session: Session): Promise<void> {
+async function resolveAndSnapshot(session: Session, fetch: boolean): Promise<void> {
 	try {
-		session.card = await buildCardInput({ session, first: session.isFirstCard });
+		session.card = await buildCardInput({ session, first: session.isFirstCard, fetch });
 	} catch (error) {
 		const message = session.record("refresh", error);
 		session.card = { ...cardBasics(session.card), account: cardAccount(session), ...cardAudit(session), kind: "forge-unavailable", message };
@@ -264,6 +280,9 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	const forge = session.forge;
 	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
+	// An empty read of an unknown ledger is not "no records": advancing on it could skip work (M1). A card built
+	// without a fetch (session start, context hook) saw only local records, so it never mutates the issue.
+	if (card.state.fetchState !== "fetched") return false;
 	try {
 		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack, { merged: card.state.pr?.merged === true });
 		if (r.status === "refused") session.record("advance", r.reason);
@@ -500,7 +519,7 @@ async function runUpgrade(session: Session, content: ContentManager, ctx: Extens
 		return;
 	}
 	try {
-		const wip = await workInProgress(session.forge);
+		const wip = await workInProgress(session.forge, session.ledger);
 		const notice = upgradeNotice(await content.autoCheck(session.pack.pack, session.config.user.agentSkills.channel, wip));
 		if (notice) safeNotify(ctx, notice.message, notice.type);
 	} catch (error) {
@@ -536,27 +555,48 @@ async function suggestInit(session: Session, ctx: ExtensionContext): Promise<voi
  */
 async function startChild(d: SessionDeps, ctx: ExtensionContext): Promise<void> {
 	if (getSession() !== undefined) return;
-	const session = new Session(ctx.cwd, createGit(ctx.cwd));
+	const session = new Session(ctx.cwd, createGit(ctx.cwd, d.gitExec), d.gitExec);
 	await loadSessionBasics(session, d, d.content(d.home));
 	if (session.initialized) await targetFor(session, d);
 	if (getSession() === undefined) setSession(session);
 }
 
 async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionContext): Promise<void> {
-	const session = new Session(ctx.cwd, createGit(ctx.cwd));
+	const session = new Session(ctx.cwd, createGit(ctx.cwd, d.gitExec), d.gitExec);
 	setSession(session);
 	const content = d.content(d.home);
 	await loadSessionBasics(session, d, content);
 	if (!session.initialized) return suggestInit(session, ctx);
 	session.bind({ deps: d, ui: accountUI(ctx) });
-	await session.reconnect();
-	await pollApprovals(session);
-	await runSpecCascade(session);
-	await pollFeedback(session);
+	// The start card reads the local ledger; the session-start sync pushes pending entries in the background.
+	await session.reconnect({ fetch: false });
+	startLedgerSync(session);
 	await suggestAudits(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
+	session.startInFlight = runStartPolls(session);
 	kickOffUpgrade(session, content, ctx);
+}
+
+/**
+ * The session-start polls, not awaited by `session_start` so the first card never waits for the ledger fetch
+ * they run first (ledger-store "Ledger fetched before use"). Each poll records its own failures; anything
+ * else is recorded here, so the promise never rejects.
+ */
+async function runStartPolls(session: Session): Promise<void> {
+	try {
+		await advanceAfterFetch(session);
+		await pollApprovals(session);
+		await runSpecCascade(session);
+		await pollFeedback(session);
+	} catch (error) {
+		session.record("start", error);
+	}
+}
+
+/** The start card was built from the local ledger and so never advanced; once the ledger is fetched, a derived advance may apply. */
+async function advanceAfterFetch(session: Session): Promise<void> {
+	if (session.card.kind === "change" && session.card.step.advance !== undefined) await session.refresh();
 }
 
 /** Reads and advances the audit suggestions, then shows them on the card already built. Never throws. */

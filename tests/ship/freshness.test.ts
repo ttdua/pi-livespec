@@ -12,7 +12,7 @@ function shipState(digest = gateDigest(FIXTURE_BODY)) {
 	const gate = { outcome: "approved" as const, superseded: false, at: "", waivers: [], notes: "", request: "r1", commentId: "g1" };
 	return stateFor("ship", {
 		lock: { locked: undefined, frozen: [], staleUnits: [], gates: { ship: gate } },
-		marked: [{ commentId: "q1", kind: "request", id: "r1", author: "me", data: { gate_digest: digest } }],
+		marked: [{ source: "forge", ref: "q1", kind: "request", id: "r1", author: "me", data: { gate_digest: digest } }],
 	});
 }
 
@@ -33,7 +33,7 @@ describe("shipStale", () => {
 	});
 	test("an in-session approval reads the digest from the answer record", () => {
 		const gate = { outcome: "approved" as const, superseded: false, at: "", waivers: [], notes: "", request: "r1", commentId: "g1" };
-		const answer = { commentId: "a9", kind: "answer", id: "r1", author: "me", data: { request: { gate_digest: gateDigest(FIXTURE_BODY) } } };
+		const answer = { ref: "a9", source: "forge" as const, kind: "answer", id: "r1", author: "me", data: { request: { gate_digest: gateDigest(FIXTURE_BODY) } } };
 		const state = stateFor("ship", { lock: { locked: undefined, frozen: [], staleUnits: [], gates: { ship: gate } }, marked: [answer] });
 		expect(shipStale(state, GATE, [])).toBeUndefined();
 	});

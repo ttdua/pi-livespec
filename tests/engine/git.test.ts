@@ -7,7 +7,7 @@ import { createGit, diffFilesOf, type Git, GitError, integrationBranch } from ".
 import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
 
-const PROJECT: ProjectConfig = { githubHosts: [], agentSkillsChannelSet: false };
+const PROJECT: ProjectConfig = { githubHosts: [], agentSkillsChannelSet: false, ledger: { retain: true } };
 
 function git(cwd: string, ...args: string[]): string {
 	return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();

@@ -2,6 +2,8 @@
 // the gate", phase-gates "Gate tool"): only when no other refusal applies, one capability at a time, and the
 // re-run check refuses a `changed` answer in the same call.
 
+import { readOwnRecords } from "../../src/ledger/records.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
@@ -9,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
-import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
+import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -75,7 +77,7 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 }
 
 async function marked(h: Gate): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 const ofKind = async (h: Gate, kind: string) => (await marked(h)).filter((m) => m.kind === kind);
 const subjectOf = (m: MarkedComment): string => (m.data as { subject?: string; request?: { subject?: string } }).subject ?? (m.data as { request?: { subject?: string } }).request?.subject ?? "";
@@ -85,9 +87,9 @@ const behaviorTitles = (h: Gate): string[] => h.ctx.ui.select.mock.calls.map((c)
 async function seedRecord(h: Gate, files: string[], outcome: string): Promise<void> {
 	const item = { capability: "rate-limit", files };
 	const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome, facts: item, files, reason: "chosen by alice" };
-	await h.world.postComment(h.n, BOT_LOGIN, decisionComment(r));
-	await h.session.comments?.invalidate(h.n);
-	await h.session.refresh();
+	// A human record counts only beside the own forge `answer` comment of its request (ledger-store, I3).
+	await h.world.postComment(h.n, BOT_LOGIN, writeMarked("answer", "seed-request", { request: { subject: "decide:behavior-change.rate-limit" }, answer: { outcome: "answered", choice: outcome }, verdict: "valid" }));
+	await appendSeed(h, decisionComment({ ...r, request: "seed-request" }));
 }
 
 describe("spec_gate behavior-change question", () => {
@@ -98,6 +100,9 @@ describe("spec_gate behavior-change question", () => {
 		expect(out.isError).toBe(false);
 		const [decision] = await behaviorDecisions(h);
 		expect(decision?.data).toMatchObject({ point: "behavior-change", subject: "rate-limit", source: "human", outcome: "unchanged", files: [CAP], digest: behaviorDigest([CAP]) });
+		// Answer recorded: the decision is a ledger entry, never a forge comment.
+		expect(decision?.source).toBe("ledger");
+		expect(filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments.map((m) => m.kind)).not.toContain("decision");
 		const gate = (await ofKind(h, "gate"))[0];
 		expect(gate?.data).toMatchObject({ phase: "define", outcome: "approved" });
 		// The behavior question came before the gate dialog.

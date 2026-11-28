@@ -94,7 +94,7 @@ function dispatchScout(deps: ConfirmDeps & { service: SubagentsServiceLike }, pa
 		service: deps.service,
 		events: deps.events,
 		onOverride: () => undefined,
-		post: async () => undefined,
+		record: async () => undefined,
 		headOf: async () => "",
 		reachable: async () => [],
 		...(deps.signal === undefined ? {} : { signal: deps.signal }),

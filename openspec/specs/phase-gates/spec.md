@@ -210,15 +210,15 @@ On `approved` or `approved_with_notes`, a phase gate SHALL move the change to th
 - **THEN** the change stays in `plan` and the next step says to ask the human how to proceed
 
 ### Requirement: Self gate escalation
-A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` after its checks and refusals; a `human` phase gate MUST NOT. On `human` without a valid `briefing` it MUST refuse naming `briefing`, writing nothing. Otherwise it SHALL record the `decision` `gate-escalation.<phase>` unless the latest has equal facts, then pass, or send a human gate, with `waive` when a waivable check fails, whose payload names the reason.
+A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` after its checks and refusals; a `human` phase gate MUST NOT. On `human` without a valid `briefing` it MUST refuse naming `briefing`, writing nothing. Otherwise it SHALL append the `decision` `gate-escalation.<phase>` to the ledger unless the latest has equal facts, then pass, or send a human gate, with `waive` when a waivable check fails, whose payload names the reason.
 
 #### Scenario: Plan without triggers passes alone
 - **WHEN** the change is in `plan`, every check passes, the plan reviewer's advisory review at HEAD has no `CRITICAL` finding, no unit is tagged `security` or `migration`, and `spec_gate plan` runs without a briefing
-- **THEN** a `gate-escalation.plan` decision with outcome `self` is posted, a `gate` comment with `by: livespec` records the locked digests, the change moves to `build`, and no request is sent
+- **THEN** a `gate-escalation.plan` decision ledger entry with outcome `self` is appended, a `gate` comment with `by: livespec` records the locked digests, the change moves to `build`, and no request is sent
 
 #### Scenario: Waived size limit asks the human
 - **WHEN** the change is in `plan`, `size-limits` fails, and `spec_gate plan` runs with a briefing recommending `waive`
-- **THEN** a `gate-escalation.plan` decision with outcome `human` names `size-limits`, and a `gate:plan` request offering `waive` is sent
+- **THEN** a `gate-escalation.plan` decision ledger entry with outcome `human` names `size-limits`, and a `gate:plan` request offering `waive` is sent
 
 #### Scenario: Security unit asks the human
 - **WHEN** the change is in `plan`, every check passes, U2 is tagged `security`, and `spec_gate plan` runs with a briefing recommending `approve`
@@ -230,15 +230,15 @@ A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL cons
 
 #### Scenario: Escalated gate without a briefing
 - **WHEN** U2 is tagged `migration` and `spec_gate plan` runs without a briefing
-- **THEN** the tool refuses, names `briefing`, sends no request, and posts no `gate-escalation` decision
+- **THEN** the tool refuses, names `briefing`, sends no request, and appends no `gate-escalation` decision
 
 #### Scenario: Project keeps a human plan gate
 - **WHEN** `.pi/livespec/flow.yaml` sets phase `plan` to `gate: human` and no trigger holds
-- **THEN** `spec_gate plan` requires a briefing and sends a `gate:plan` request, and no `gate-escalation` decision is posted
+- **THEN** `spec_gate plan` requires a briefing and sends a `gate:plan` request, and no `gate-escalation` decision is appended
 
 #### Scenario: Unlisted self gate unchanged
 - **WHEN** the change is in `shape` and `spec_gate shape` runs
-- **THEN** no `gate-escalation` decision is posted and the self gate passes as before
+- **THEN** no `gate-escalation` decision is appended and the self gate passes as before
 
 ### Requirement: Escalation in the next step
 Before a gate that "Self gate escalation" covers is requested, the next step SHALL forecast its outcome from the same facts, writing nothing; gate-only checks that have not run are left out. On `human` it SHALL say the gate will ask the human, name the reasons, and say to pass a briefing; it SHALL name a missing advisory review's dispatch first. On `self` it SHALL say the gate can pass unless a gate-only check fails.

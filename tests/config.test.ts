@@ -40,7 +40,7 @@ describe("loadConfig", () => {
 	test("empty project file is initialized with defaults", async () => {
 		projectFile("");
 		const { project, warnings } = await loadConfig(root, home);
-		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false });
+		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false, ledger: { retain: true } });
 		expect(warnings).toEqual([]);
 	});
 
@@ -56,6 +56,7 @@ describe("loadConfig", () => {
 			giteaUrl: "https://g.example",
 			integrationBranch: "dev",
 			agentSkillsChannelSet: false,
+			ledger: { retain: true },
 		});
 	});
 
@@ -103,7 +104,7 @@ describe("loadConfig", () => {
 		projectFile("forge: [unclosed\n");
 		userFile("agentSkills: {channel\n");
 		const { project, user, warnings } = await loadConfig(root, home);
-		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false });
+		expect(project).toEqual({ githubHosts: [], agentSkillsChannelSet: false, ledger: { retain: true } });
 		expect(user.agentSkills.channel).toBe("auto");
 		expect(warnings.some((w) => w.includes(join(root, ".pi/livespec/config.yaml")))).toBe(true);
 		expect(warnings.some((w) => w.includes(join(home, ".pi/agent/livespec/config.yaml")))).toBe(true);
@@ -297,5 +298,33 @@ describe("test command config", () => {
 		const { project, warnings } = await loadConfig(root, home);
 		expect(project?.testCommand).toBeUndefined();
 		expect(warnings.some((w) => w.includes("testCommand"))).toBe(true);
+	});
+});
+
+describe("ledger config", () => {
+	test("Ledger retention", async () => {
+		projectFile("ledger: { retain: false }\n");
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.ledger).toEqual({ retain: false });
+		expect(warnings).toEqual([]);
+	});
+
+	test("Ledger retention defaults to true", async () => {
+		projectFile("forge: github\n");
+		const { project } = await loadConfig(root, home);
+		expect(project?.ledger).toEqual({ retain: true });
+	});
+
+	test("Invalid ledger retention", async () => {
+		projectFile('ledger: { retain: "no" }\n');
+		const { project, warnings } = await loadConfig(root, home);
+		expect(project?.ledger).toEqual({ retain: true });
+		expect(warnings.some((w) => w.includes("ledger.retain"))).toBe(true);
+	});
+
+	test("unknown ledger key warns", async () => {
+		projectFile("ledger: { keep: true }\n");
+		const { warnings } = await loadConfig(root, home);
+		expect(warnings.some((w) => w.includes("ledger.keep"))).toBe(true);
 	});
 });

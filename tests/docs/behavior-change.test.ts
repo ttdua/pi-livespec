@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import "../../src/decide/builtin.ts";
 import { type DecisionAsk, decide } from "../../src/decide/seam.ts";
 import { behaviorDigest, behaviorFacts, behaviorResults, type BehaviorItem } from "../../src/docs/behavior-change.ts";
@@ -22,12 +23,13 @@ const ITEM: BehaviorItem = { capability: "rate-limit", files: [CAP] };
 function marked(body: string): MarkedComment {
 	const m = parseMarked(body);
 	if (m === undefined) throw new Error(`not a marked comment: ${body}`);
-	return { ...m, commentId: `c-${Math.random()}`, author: "bot" } as MarkedComment;
+	return { ...m, source: "forge", ref: `c-${Math.random()}`, author: "bot" } as MarkedComment;
 }
 
 function record(outcome: string, item: BehaviorItem = ITEM, extra: Partial<DecisionRecord> = {}): MarkedComment {
 	const r: DecisionRecord = { point: "behavior-change", subject: item.capability, digest: behaviorDigest(item.files), source: "human", outcome, facts: item, files: item.files, reason: "chosen by alice", ...extra };
-	return marked(decisionComment(r));
+	// A human record from the forge (a pre-ledger comment); a ledger one counts only beside its forge answer (I3).
+	return { ...ledgerRecord(decisionComment(r), { ref: `c-${Math.random()}` }), source: "forge" };
 }
 
 function openRequest(capability: string): MarkedComment {

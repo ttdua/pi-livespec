@@ -4,7 +4,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { aggregateOf, latestRun } from "../review/records.ts";
 import { findingState } from "../review/status.ts";
-import { type AggregateFinding, current, findingKey, gatesShownKeys, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
+import { type AggregateFinding, current, findingKey, gatesShownKeys, rebuttalItems, type FindingSummaryData, type RebuttalData, reviewedUnits, unresolvedBlocking, unshownSystemFindings } from "./records.ts";
 import type { Finding } from "./roles.ts";
 
 const HEADING = "Subagent findings:";
@@ -24,7 +24,7 @@ function advisoryListed(marked: MarkedComment[]): Listed {
 		const data = m.data as FindingSummaryData;
 		if (data.advisory !== true) continue;
 		data.findings.forEach((f, i) => {
-			const key = findingKey(m.commentId, i);
+			const key = findingKey(m.ref, i);
 			if (shown.has(key)) return;
 			out.lines.push(findingLine(f));
 			out.keys.push(key);
@@ -35,8 +35,7 @@ function advisoryListed(marked: MarkedComment[]): Listed {
 
 /** Rebuttals as `summary:index reason — evidence`; reason and evidence are the parent's text, shown as data. */
 function rebuttalLines(marked: MarkedComment[]): string[] {
-	const found = current(marked).filter((m) => m.kind === "finding-summary" && isRebuttal(m.data));
-	return found.flatMap((m) => (m.data as RebuttalData).items.map((i) => `- ${(m.data as RebuttalData).rebuts}:${i.index} ${untrusted(i.reason)} — ${untrusted(i.evidence)}`));
+	return [...rebuttalItems(marked)].flatMap(([ref, items]) => [...items.values()].map((i) => `- ${ref}:${i.index} ${untrusted(i.reason)} — ${untrusted(i.evidence)}`));
 }
 
 /** Blocking `out-of-scope` findings and informational system findings no completed gate has recorded yet: this gate's payload carries them. */

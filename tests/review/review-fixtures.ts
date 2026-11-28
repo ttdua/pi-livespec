@@ -4,11 +4,16 @@ import { aggregateComment, reviewRunComment, type ReviewRunData } from "../../sr
 import { type AggregateFinding, type FindingSummaryData, findingSummaryComment, rebuttalComment } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
+import type { LedgerKind } from "../../src/core/record-kinds.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
+
 let counter = 0;
-export function mark(body: string): MarkedComment {
+export function mark(body: string | AppendInput): MarkedComment {
+	if (typeof body !== "string") return ledgerRecord(body as AppendInput & { kind: LedgerKind });
 	const p = parseMarked(body);
 	if (!p) throw new Error("not marked");
-	return { commentId: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
+	return { source: "forge", ref: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
 }
 
 export const finding = (over: Partial<Finding> = {}): Finding => ({

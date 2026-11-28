@@ -32,9 +32,9 @@ Tên lệnh, tool, key config, phase, label và từ khóa (SHALL, WHEN, THEN) �
 Trong session dài, agent hay quên bước: bỏ qua verify hoặc review, mất state, hoặc tuyên bố đã xong mà không có bằng chứng. Một skill chỉ *nhắc* agent làm đúng thì không ngăn được điều này. livespec chuyển quy trình vào extension:
 
 - **Extension nắm quy trình.** Một flow pack (YAML) định nghĩa các phase `shape → define → plan → build → review → ship → close`. livespec tính bước tiếp theo, hiển thị nó trên **phase card** mỗi lượt, và từ chối các tool mà state không cho phép.
-- **Change nằm trên issue.** Body của issue chứa proposal, design, câu hỏi và unit. Comment do tool viết chứa receipt, quyết định gate và review finding. Mỗi change được ship đúng bằng một pull request.
+- **Change nằm trên issue.** Body của issue chứa proposal, design, câu hỏi và unit. Comment do tool viết chứa quyết định gate; receipt và review finding nằm trong git ledger. Mỗi change được ship đúng bằng một pull request.
 - **Living spec nằm trong repo.** `specs/<capability>/spec.md` được sửa trực tiếp trên change branch, nên phần thay đổi spec là một phần của diff pull request.
-- **Bằng chứng do extension thu thập, không phải do agent tự nhận.** Mỗi unit có một lệnh `Verify`. livespec chạy lệnh đó, yêu cầu nó fail trước khi làm và pass sau khi làm, rồi đăng receipt. Chỉ livespec mới đánh dấu unit là done.
+- **Bằng chứng do extension thu thập, không phải do agent tự nhận.** Mỗi unit có một lệnh `Verify`. livespec chạy lệnh đó, yêu cầu nó fail trước khi làm và pass sau khi làm, rồi ghi receipt. Chỉ livespec mới đánh dấu unit là done.
 - **Con người duyệt gate.** Yêu cầu duyệt, câu hỏi và stuck report đến với bạn qua dialog trong pi hoặc comment trên issue. Không tool nào nhận tham số "approved", nên agent không thể tự duyệt công việc của mình.
 - **Guard chặn đường tắt.** `git push` trực tiếp, ghi forge trực tiếp (`gh`, `tea`, `curl` tới forge) và sửa `.pi/livespec/` đều bị chặn; tool của livespec chỉ push sau khi đã kiểm tra state.
 
@@ -202,9 +202,9 @@ Verify: `bun test ratelimit`
 
 Với mỗi unit sẵn sàng, card ghi `Build U<n>`. Vòng lặp là:
 
-1. `unit_start U<n>` kiểm tra tree sạch và dependency đã xong, chạy `Verify` và đăng receipt `unit-start`. `Verify` phải **đỏ** (fail).
+1. `unit_start U<n>` kiểm tra tree sạch và dependency đã xong, chạy `Verify` và ghi receipt `unit-start`. `Verify` phải **đỏ** (fail).
 2. Agent (hoặc child implementer) viết test và code trong phạm vi `Files` của unit rồi commit.
-3. `unit_finish U<n>` chạy lại `Verify`. Khi **xanh** (pass), livespec đăng receipt có cả hai SHA và exit code, rồi tick unit.
+3. `unit_finish U<n>` chạy lại `Verify`. Khi **xanh** (pass), livespec ghi receipt có cả hai SHA và exit code, rồi tick unit.
 
 Bạn không cần làm gì ở đây, trừ khi có thứ chờ bạn:
 
@@ -562,6 +562,7 @@ Config project: `.pi/livespec/config.yaml`. Config user: `~/.pi/agent/livespec/c
 | `verify.timeout` | project | `600` | số giây cho mỗi lần chạy Verify |
 | `interaction.adapter` | project, rồi user | `[in-session]` | approver chain theo thứ tự: `in-session`, `forge` |
 | `agentSkills.channel` | chỉ user | `auto` | cập nhật agent-skills theo `auto`, `notify` hoặc `pinned` |
+| `ledger.retain` | project | `true` | giữ ledger của change (`refs/livespec/<issue>`) sau `change_close`; `false` xóa ledger ở local và trên `origin` (close bằng `--abandon` giữ lại ledger) |
 | `lanes` | user | `3` | số lane song song tối đa |
 | `packetBudgetTokens` | user | `24000` | kích thước packet trước khi nguồn được tách ra file |
 | `isolation.excludePackages` | user | `[]` | các package pi không nạp trong child của livespec |

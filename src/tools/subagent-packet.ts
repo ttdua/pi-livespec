@@ -31,7 +31,7 @@ async function runSubagentPacketBody(p: TargetParams, ctx: ToolCtx): Promise<Too
 	if (typeof target === "string") return refusal(TOOL, target);
 	const found = findingOf(change.state, target);
 	if (typeof found === "string") return refusal(TOOL, found);
-	const pctx = packetContext({ session: s.session, pack: pack.pack, forge: writable.forge }, change.state, target.unit, found);
+	const pctx = packetContext({ session: s.session, pack: pack.pack, forge: writable.forge, ledger: s.session.ledger }, change.state, target.unit, found);
 	const built = await buildPacket(pctx, target.role, target.unit, target.subject);
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);

@@ -6,8 +6,9 @@ import { advancePhase } from "../engine/advance.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
-import { filterMarked, type MarkedComment } from "../forge/markers.ts";
+import type { MarkedComment } from "../forge/markers.ts";
 import type { Session } from "../hooks/session.ts";
+import { readOwnRecords } from "../ledger/records.ts";
 import { staleComment } from "../interaction/stale.ts";
 import { latestRun, reviewRunComment } from "../review/records.ts";
 import { roundNumber } from "../review/round.ts";
@@ -79,9 +80,11 @@ async function postRound(t: Target, marked: MarkedComment[], items: FeedbackItem
 }
 
 async function pollChange(t: Target): Promise<FeedbackPollResult> {
+	// A review round number comes from the merged records: read them only after the first fetch (ledger-store "Ledger fetched before use").
+	if ((await t.session.ledger.ensureFetched(t.state.issue.number)) === "unknown-offline") return { failed: t.session.record(STEP, `the ledger of #${t.state.issue.number} could not be fetched and no copy of it is known`) };
 	const { login } = await t.forge.whoami();
 	// Read the issue's own records fresh: another session may have posted a feedback round since the last refresh.
-	const marked = filterMarked(await t.forge.listComments(t.state.issue.number), login).comments;
+	const { records: marked } = await readOwnRecords(t.forge, t.session.ledger, t.state.issue.number, { login });
 	const interrupted = interruptedRound(marked);
 	if (interrupted !== undefined) {
 		const refused = await staleAndMove(t, marked, interrupted, latestRun(marked)?.feedbackKeys?.length ?? 0);

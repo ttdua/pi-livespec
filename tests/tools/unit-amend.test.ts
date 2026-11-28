@@ -1,4 +1,6 @@
+import { isLedgerKind } from "../../src/core/record-kinds.ts";
 import { validBriefing } from "../helpers/briefing.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
@@ -6,7 +8,8 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import type { Subject } from "../../src/interaction/approver.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
@@ -108,7 +111,7 @@ async function lock(h: Amend): Promise<void> {
 }
 
 async function marked(h: Amend): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
 const ofKind = async (h: Amend, kind: string) => (await marked(h)).filter((m) => m.kind === kind);
@@ -116,6 +119,7 @@ const units = async (h: Amend) => parseChange(await h.world.bodyOf(h.n)).units;
 
 /** Stores a marked comment on the issue and refreshes the comment cache. */
 async function seed(h: Amend, kind: string, id: string, data: unknown): Promise<void> {
+	if (isLedgerKind(kind)) return appendSeed(h, { kind, id, data });
 	await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data));
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
@@ -525,7 +529,7 @@ describe("Amendment with a briefing", () => {
 });
 
 describe("historyUnitIds", () => {
-	const decision = (id: string, data: Record<string, unknown>): MarkedComment => ({ commentId: id, kind: "decision", id, author: BOT_LOGIN, data });
+	const decision = (id: string, data: Record<string, unknown>): MarkedComment => ({ source: "forge", ref: id, kind: "decision", id, author: BOT_LOGIN, data });
 
 	test("skips the answer of a rule ask, keeps rule records and overrides", () => {
 		const marked = [

@@ -72,7 +72,7 @@ async function world(fault?: Fault): Promise<World> {
 	};
 	const accounts: AccountEnv = { ...inner, exec, git };
 	const pi = new FakePi();
-	extension(pi.api as never, { home: h.home, accounts, content: () => h.content.manager, detect: detectForge });
+	extension(pi.api as never, { home: h.home, accounts, gitExec: h.gitExec, content: () => h.content.manager, detect: detectForge });
 	const ctx = fakeCtx(h.root);
 	await pi.fire("session_start", { type: "session_start", reason: "startup" }, ctx);
 	return { h, pi, ctx, argv, issue };

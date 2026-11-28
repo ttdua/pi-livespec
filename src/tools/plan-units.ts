@@ -10,11 +10,12 @@ import { integrationBranch } from "../engine/git.ts";
 import { blockingRequests } from "../engine/request-mode.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { Issue } from "../forge/types.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { normalizeUnitInput } from "./classify-units.ts";
 import { createDecisionAsker } from "./decide-ask.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
+import { afterForgeWrite, afterLedgerWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import {
 	classifyPlan,
 	mergeIntegration,
@@ -81,9 +82,9 @@ async function runPlan(w: WriteContext, state: ChangeState, units: UnitInput[], 
 	const merged = await mergeIntegration(git, integration);
 	if (!merged.ok) return refuse(merged.message);
 	// Human decisions are already effective records on the issue (written when answered).
-	const unrecorded = await postDecisionRecords(w.forge, n, classified.records.filter((r) => r.source === "rule"));
+	const unrecorded = await postDecisionRecords(w.ledger, n, classified.records.filter((r) => r.source === "rule"), lastForgeRef(state.marked));
+	await afterLedgerWrite(w.session, n);
 	if (unrecorded) {
-		await afterForgeWrite(w.session, n);
 		return refuse(unrecorded);
 	}
 	const failed = await recordPlan(w, issue, plannedBody(valid.body, merged.base), merged.base);

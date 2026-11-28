@@ -25,9 +25,9 @@ function stubForge(login: string, comments: Comment[]): Forge {
 
 describe("writeMarked", () => {
 	it("starts with the marker line and carries one fenced yaml block", () => {
-		const body = writeMarked("receipt", "u1", { ok: true });
+		const body = writeMarked("stale", "u1", { ok: true });
 		const lines = body.split("\n");
-		expect(lines[0]).toBe("<!-- livespec:receipt:u1 -->");
+		expect(lines[0]).toBe("<!-- livespec:stale:u1 -->");
 		expect(body.match(/```yaml/g)).toHaveLength(1);
 		expect(body).toContain("```yaml\nok: true\n```");
 	});
@@ -50,11 +50,11 @@ describe("writeMarked", () => {
 		["newline in id", "u\n1"],
 		["empty id", ""],
 	])("rejects an id with %s", (_label, id) => {
-		expect(() => writeMarked("receipt", id, {})).toThrow(/id/);
+		expect(() => writeMarked("stale", id, {})).toThrow(/id/);
 	});
 
 	it("throws for data that cannot be serialized", () => {
-		expect(() => writeMarked("receipt", "u1", undefined)).toThrow(/serializ/);
+		expect(() => writeMarked("stale", "u1", undefined)).toThrow(/serializ/);
 	});
 });
 
@@ -88,15 +88,11 @@ describe("registerKind", () => {
 
 describe("core kinds", () => {
 	const CORE = [
-		"receipt",
 		"gate",
 		"amendment",
-		"counter",
-		"decision",
 		"question",
 		"stale",
 		"incomplete",
-		"finding-summary",
 		"stuck",
 	];
 
@@ -106,12 +102,29 @@ describe("core kinds", () => {
 	});
 });
 
+describe("ledger kinds", () => {
+	const LEDGER = ["decision", "dispatch", "finding-summary", "receipt", "unit-start", "counter"];
+
+	it.each(LEDGER)("Ledger kind refused: %s cannot be written or registered", (kind) => {
+		expect(() => writeMarked(kind, "u1", {})).toThrow(/live in the ledger/);
+		expect(() => registerKind(kind)).toThrow(/live in the ledger/);
+	});
+
+	it("Old receipt comment: own ledger-kind comments are dropped with one warning per kind", async () => {
+		const body = (id: string) => `<!-- livespec:receipt:${id} -->\n\`\`\`yaml\nok: true\n\`\`\``;
+		const comments = [comment("c1", "naicoi", body("u1")), comment("c2", "naicoi", body("u2")), comment("c3", "naicoi", writeMarked("gate", "g1", {}))];
+		const result = await readMarkedComments(stubForge("naicoi", comments), 7);
+		expect(result.comments.map((c) => c.kind)).toEqual(["gate"]);
+		expect(result.warnings).toEqual(["ignored 2 receipt comments: receipt records live in the ledger"]);
+	});
+});
+
 describe("readMarkedComments", () => {
 	it("returns the current account's marked comments with parsed data", async () => {
-		const own = comment("c1", "naicoi", writeMarked("receipt", "u1", { n: 1 }));
+		const own = comment("c1", "naicoi", writeMarked("stale", "u1", { n: 1 }));
 		const result = await readMarkedComments(stubForge("naicoi", [own]), 7);
 		expect(result.comments).toEqual([
-			{ commentId: "c1", kind: "receipt", id: "u1", author: "naicoi", data: { n: 1 } },
+			{ ref: "c1", source: "forge", kind: "stale", id: "u1", author: "naicoi", data: { n: 1 }, createdAt: "2026-11-14T10:00:00Z" },
 		]);
 		expect(result.warnings).toEqual([]);
 	});
@@ -134,12 +147,12 @@ describe("readMarkedComments", () => {
 
 describe("assertOwnMarkedComment", () => {
 	it("accepts a marked comment written by the current account", async () => {
-		const own = comment("c1", "naicoi", writeMarked("receipt", "u1", {}));
+		const own = comment("c1", "naicoi", writeMarked("stale", "u1", {}));
 		await expect(assertOwnMarkedComment(stubForge("naicoi", []), own)).resolves.toBeUndefined();
 	});
 
 	it("refuses a comment written by another account with ForgeError", async () => {
-		const foreign = comment("c2", "mallory", writeMarked("receipt", "u1", {}));
+		const foreign = comment("c2", "mallory", writeMarked("stale", "u1", {}));
 		const error = await assertOwnMarkedComment(stubForge("naicoi", []), foreign).catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(ForgeError);
 	});

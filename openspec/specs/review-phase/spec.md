@@ -80,7 +80,7 @@ The selected subjects SHALL be the `reviewer` entries of the `review` phase that
 - **THEN** the selected subjects are `change` and `persona:test-engineer`
 
 ### Requirement: Tags re-checked at review
-The start stage SHALL run the `tags` rule over the files of `git diff <Base>..HEAD` (as `Files`, with no title, `Covers` or `Done means` text) and record the tags no unit carries, possibly none, in one `decision` comment `tags.review` with source `rule`, posted every round (the latest wins). These tags SHALL count for reviewer selection. Unit bodies and unit decision records MUST NOT change.
+The start stage SHALL run the `tags` rule over the files of `git diff <Base>..HEAD` (as `Files`, with no title, `Covers` or `Done means` text) and record the tags no unit carries, possibly none, in one `decision` ledger entry `tags.review` with source `rule`, posted every round (the latest wins). These tags SHALL count for reviewer selection. Unit bodies and unit decision records MUST NOT change.
 
 #### Scenario: Auth file without a security tag
 - **WHEN** no unit has tag `security` and the change's diff modifies `src/auth/session.ts`
@@ -107,7 +107,7 @@ The location SHALL be the path and the new line (the old line for a removal, lin
 - **THEN** the round holds a `CRITICAL` `lowered-standard` finding at `test/old.test.ts:1`
 
 ### Requirement: Review round cap
-`review_rounds` SHALL be derived as the number of aggregate records newer than the latest stuck answer, with outcome `approved` or `approved_with_notes` and a chosen option, to a stuck report sent while the cap blocked; a `counter` comment `review_rounds` MUST be ignored. The cap SHALL block when `review_rounds` has reached `loops.review_rounds`, the latest round is routed, and its aggregate left a blocking finding routed `unit` or `in-change`, whatever HEAD is now. While it blocks, `spec_review` MUST NOT start a new round and the next step SHALL be `spec_stuck`.
+`review_rounds` SHALL be derived as the number of aggregate records newer than the latest stuck answer, with outcome `approved` or `approved_with_notes` and a chosen option, to a stuck report sent while the cap blocked; a `counter` entry `review_rounds` MUST be ignored. The cap SHALL block when `review_rounds` has reached `loops.review_rounds`, the latest round is routed, and its aggregate left a blocking finding routed `unit` or `in-change`, whatever HEAD is now. While it blocks, `spec_review` MUST NOT start a new round and the next step SHALL be `spec_stuck`.
 
 #### Scenario: Cap reached
 - **WHEN** `loops.review_rounds` is 3, the third round is routed, and its aggregate still has a blocking `unit` finding that unticked U2

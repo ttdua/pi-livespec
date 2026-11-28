@@ -1,6 +1,8 @@
 // Review records: the `review-run` marker kind, the aggregate and verifier `finding-summary` shapes, and their queries.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { canonicalKey } from "../ledger/alias.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { type AggregateFinding, current, type FindingSummaryData } from "../subagents/records.ts";
 import { isFindingData } from "../subagents/validate.ts";
 import type { Finding, ReviewSubject } from "../subagents/roles.ts";
@@ -47,7 +49,7 @@ export function reviewRunComment(data: ReviewRunData): string {
 
 export const aggregateId = (round: number): string => `finding-summary.change.review.${round}`;
 
-export function aggregateComment(data: { round: number; head: string; reviews: string[]; findings: AggregateFinding[] }): string {
+export function aggregateComment(data: { round: number; head: string; reviews: string[]; findings: AggregateFinding[] }): AppendInput {
 	const summary: FindingSummaryData = {
 		role: "reviewer", subject: "change", round: data.round, status: "DONE", advisory: false, head: data.head, packet: "", sources_used: [], required: [],
 		completed: true, agentSource: PARENT_SOURCE, findings: data.findings, aggregate: true, reviews: data.reviews,
@@ -55,7 +57,7 @@ export function aggregateComment(data: { round: number; head: string; reviews: s
 		requested: { thinking: "low" },
 		effective: {},
 	};
-	return writeMarked("finding-summary", aggregateId(data.round), summary);
+	return { kind: "finding-summary", id: aggregateId(data.round), data: summary };
 }
 
 /** Valid `review-run` records, the latest comment of each id only, in comment order. */
@@ -66,7 +68,7 @@ function runs(marked: MarkedComment[]): (ReviewRunData & { commentId: string })[
 		latest.delete(m.id);
 		latest.set(m.id, m);
 	}
-	return [...latest.values()].map((m) => ({ ...(m.data as ReviewRunData), commentId: m.commentId }));
+	return [...latest.values()].map((m) => ({ ...(m.data as ReviewRunData), commentId: m.ref }));
 }
 
 /** The most recently written round's `review-run` record. */
@@ -83,9 +85,9 @@ export function runAtHead(marked: MarkedComment[], head: string): ReviewRunData 
 }
 
 /** Valid, current aggregate records with their comment index, in comment order. */
-export function aggregates(marked: MarkedComment[]): { commentId: string; at: number; data: FindingSummaryData }[] {
+export function aggregates(marked: MarkedComment[]): { commentId: string; from?: string; at: number; data: FindingSummaryData }[] {
 	const kept = new Set(current(marked));
-	return marked.flatMap((m, at) => (kept.has(m) && m.kind === "finding-summary" && (m.data as FindingSummaryData).aggregate === true ? [{ commentId: m.commentId, at, data: m.data as FindingSummaryData }] : []));
+	return marked.flatMap((m, at) => (kept.has(m) && m.kind === "finding-summary" && (m.data as FindingSummaryData).aggregate === true ? [{ commentId: m.ref, ...(m.from === undefined ? {} : { from: m.from }), at, data: m.data as FindingSummaryData }] : []));
 }
 
 /** The aggregate record of `round`; its single findings are read through `aggregateFinding`. */
@@ -97,10 +99,10 @@ export function aggregateOf(marked: MarkedComment[], round: number): { commentId
 /** A run that decides the verdict: completed, or `BLOCKED` (fail closed). Any other incomplete run is dispatched again. */
 const decides = (d: FindingSummaryData): boolean => d.completed || d.status === "BLOCKED";
 
-/** The latest completed or `BLOCKED` verifier record of the aggregate finding `key` (`<aggregateCommentId>:<index>`). */
+/** The latest completed or `BLOCKED` verifier record of the aggregate finding `key` (`<aggregateRef>:<index>`). */
 export function verifierRecord(marked: MarkedComment[], key: string): FindingSummaryData | undefined {
 	return current(marked)
 		.map((m) => (m.kind === "finding-summary" ? (m.data as FindingSummaryData) : undefined))
-		.filter((d): d is FindingSummaryData => d !== undefined && d.role === "verifier" && d.verifies === key && decides(d))
+		.filter((d): d is FindingSummaryData => d !== undefined && d.role === "verifier" && d.verifies !== undefined && canonicalKey(marked, d.verifies) === canonicalKey(marked, key) && decides(d))
 		.at(-1);
 }

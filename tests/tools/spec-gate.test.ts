@@ -1,7 +1,9 @@
 import { BRIEFING, validBriefing, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { HUMAN_PLAN_FLOW } from "../helpers/flow.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { readFileSync } from "node:fs";
 import { pickById } from "../helpers/menu.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
@@ -88,15 +90,15 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 async function seedClassification(h: Gate): Promise<void> {
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
 }
 
 async function marked(h: Gate): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
 async function ofKind(h: Gate, kind: string): Promise<MarkedComment[]> {
@@ -253,7 +255,7 @@ describe("spec_gate", () => {
 		const h = await change("define", { config: FORGE_CHAIN, edit: longProposal });
 		await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		const request = (await ofKind(h, "request"))[0];
-		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
+		const text = await h.world.commentBodyOf(request?.ref ?? "?");
 		expect(text).toContain(`…\nFull text: ${issueUrl(h)}`);
 		expect(text).toContain(`Links:\n- ${issueUrl(h)}`);
 	});
@@ -265,7 +267,7 @@ describe("spec_gate", () => {
 		const out = await h.call("spec_gate", { target: "define", briefing });
 		expect(out.isError, textOf(out)).toBe(false);
 		const request = (await ofKind(h, "request"))[0];
-		const text = await h.world.commentBodyOf(request?.commentId ?? "?");
+		const text = await h.world.commentBodyOf(request?.ref ?? "?");
 		expect(text.match(/<!-- livespec:/g)).toHaveLength(1);
 		const lines = text.slice(0, text.indexOf("### How to answer")).split("\n");
 		expect(lines.filter((l) => /^[\s>*+\-]*\/livespec approve/.test(l))).toEqual([]);
@@ -420,7 +422,7 @@ describe("spec_gate", () => {
 		const stale = { reason: "Q3 answer changes rate-limit", phases: ["define", "plan", "build", "review", "ship", "close"], units: [], after_plan: true };
 		await seedMarked(h, writeMarked("stale", "Q3", stale));
 		const review = { role: "reviewer", subject: "spec", round: 1, status: "DONE", advisory: true, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: [] };
-		await seedMarked(h, writeMarked("finding-summary", "finding-summary.change.spec.1", review));
+		await appendSeed(h, { kind: "finding-summary", id: "finding-summary.change.spec.1", data: review });
 		const out = await h.call("spec_next");
 		expect(await phaseLabels(h)).toEqual(["livespec:phase/define"]);
 		expect(textOf(out)).toContain("Ready for the define gate.");
@@ -840,7 +842,7 @@ describe("self gate escalation", () => {
 
 	/** A completed advisory plan review at HEAD, inline as `subagent_record` writes it. */
 	async function seedPlanReview(h: Gate, findings: Record<string, unknown>[] = []): Promise<void> {
-		await seedMarked(h, findingSummaryComment({
+		await appendSeed(h, findingSummaryComment({
 			role: "reviewer", subject: "plan", round: 1, status: "DONE", advisory: true, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true,
 			agentSource: "inline", requested: { thinking: "low" }, effective: {}, findings: findings as never,
 		}));
@@ -878,7 +880,7 @@ describe("self gate escalation", () => {
 		expect(decision[0]?.data).toMatchObject({ outcome: "human", reason: "size-limits fails" });
 		const request = (await ofKind(h, "request"))[0];
 		expect(request?.data).toMatchObject({ subject: "gate:plan", options: [{ id: "waive" }], snapshot: { failingWaivable: ["size-limits"] } });
-		expect(await h.world.commentBodyOf(request?.commentId ?? "")).toContain("Escalated: size-limits fails");
+		expect(await h.world.commentBodyOf(request?.ref ?? "")).toContain("Escalated: size-limits fails");
 	});
 
 	test("Security unit asks the human", async () => {

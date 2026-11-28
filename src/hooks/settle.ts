@@ -85,8 +85,8 @@ async function writeIncomplete(forge: Forge, state: ChangeState, items: string[]
 		return;
 	}
 	// The edit needs the comment's current version, which MarkedComment does not carry.
-	const current = (await forge.listComments(n)).find((c) => c.id === existing.commentId);
-	if (!current) throw new Error(`incomplete comment ${existing.commentId} no longer exists on issue #${n}`);
+	const current = (await forge.listComments(n)).find((c) => c.id === existing.ref);
+	if (!current) throw new Error(`incomplete comment ${existing.ref} no longer exists on issue #${n}`);
 	const result = await forge.updateComment(current.id, body, current.version);
 	if (result.status === "conflict") throw new Error(`the incomplete comment on issue #${n} changed concurrently (${result.changed.join(", ")})`);
 }

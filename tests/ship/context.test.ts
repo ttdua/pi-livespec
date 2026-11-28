@@ -8,7 +8,7 @@ import type { MarkedComment } from "../../src/forge/markers.ts";
 import { type ShipContext, shipContext } from "../../src/ship/context.ts";
 import { durableDocsRule } from "../../src/ship/durable-docs.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
-import { parseMarked } from "../../src/forge/markers.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { stateFor } from "../helpers/change-state.ts";
 import { fixture, sh, upstreamCommit } from "./repo.ts";
@@ -25,7 +25,7 @@ describe("shipContext", () => {
 			return defaultGitExec(args, opts);
 		};
 		const session = new Session(f.work, createGit(f.work, exec), exec);
-		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 		const head = sh(f.work, "rev-parse", "HEAD");
 		const state = stateFor("ship", { git: { branch: "feature", head, dirty: false, specsChanged: true } }, `Base: ${base}\nBranch: feature\nCapabilities: new [], modified []\n\n## Durable docs\n`);
 		const a = await shipContext(session, state);
@@ -44,7 +44,7 @@ describe("shipContext", () => {
 			return defaultGitExec(args, opts);
 		};
 		const session = new Session(f.work, createGit(f.work, exec), exec);
-		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+		session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 		const at = (head: string) => stateFor("ship", { git: { branch: "feature", head, dirty: false, specsChanged: true } }, `Base: ${base}\nBranch: feature\n\n## Durable docs\n`);
 		await shipContext(session, at(base));
 		await writeIn(f.work, "a.ts", "a\n");
@@ -67,7 +67,7 @@ const approved = (headSha: string): GateResult => ({ outcome: "approved", supers
 
 async function shipSession(work: string): Promise<Session> {
 	const session = new Session(work, createGit(work));
-	session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main" } };
+	session.config = { ...session.config, project: { githubHosts: [], agentSkillsChannelSet: false, integrationBranch: "main", ledger: { retain: true } } };
 	return session;
 }
 
@@ -90,8 +90,8 @@ function shipState(work: string, base: string, at: At): ChangeState {
 	);
 }
 
-const shipRecord = (pushedHead: string, confirmed: string[]): MarkedComment => ({
-	commentId: `s-${pushedHead}`,
+const shipRecord = (pushedHead: string, confirmed: string[]): MarkedComment => ({ source: "forge", 
+	ref: `s-${pushedHead}`,
 	kind: "ship",
 	id: `ship.41.${pushedHead}`,
 	author: "bot",
@@ -203,9 +203,8 @@ describe("shipContext fails closed per fact", () => {
 describe("shipContext behavior records", () => {
 	const human = (outcome: string, extra: Partial<DecisionRecord> = {}): MarkedComment => {
 		const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome, reason: "chosen by alice", files: ["src/limit/cap.ts"], ...extra };
-		const m = parseMarked(decisionComment(r));
-		if (m === undefined) throw new Error("not marked");
-		return { ...m, commentId: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment;
+		const m = ledgerRecord(decisionComment(r));
+		return { ...m, source: "forge", ref: `c-${outcome}${Math.random()}`, author: "bot" } as MarkedComment; // a forge-era record: a ledger human record needs its forge answer (I3)
 	};
 
 	test("Newer changed record wins (records)", async () => {

@@ -4,6 +4,7 @@
 // lines, the `stale` comments, `change_iterations`, and the tool's own text. The cascade's git edge cases are
 // pinned in tests/interaction/spec-cascade.test.ts; here they only need the trigger.
 
+import { appendSeed } from "../helpers/ledger.ts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { runNextCommand } from "../../src/commands/next.ts";
 import { parseChange } from "../../src/core/change.ts";
@@ -351,9 +352,9 @@ async function approvedGate(h: CascadeHarness, phase: string): Promise<void> {
 }
 
 /** Kind and id of every own comment written after `before`, in order. */
-async function newComments(h: CascadeHarness, before: { commentId: string }[]): Promise<[string, string | undefined][]> {
-	const seen = new Set(before.map((m) => m.commentId));
-	return (await own(h)).filter((m) => !seen.has(m.commentId)).map((m) => [m.kind, m.id]);
+async function newComments(h: CascadeHarness, before: { ref: string }[]): Promise<[string, string | undefined][]> {
+	const seen = new Set(before.map((m) => m.ref));
+	return (await own(h)).filter((m) => !seen.has(m.ref)).map((m) => [m.kind, m.id]);
 }
 
 async function movePhase(h: CascadeHarness, from: string, to: string): Promise<void> {
@@ -505,8 +506,8 @@ describe("unit-planning re-approval", () => {
 async function seedClassification(h: CascadeHarness): Promise<void> {
 	for (const u of parseChange(await h.world.bodyOf(h.n)).units) {
 		const digest = unitDigest(u);
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-		await h.world.postComment(h.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
+		await appendSeed(h, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
 	}
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();

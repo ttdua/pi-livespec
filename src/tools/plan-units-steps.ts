@@ -13,6 +13,7 @@ import { decisionComment, type DecisionRecord } from "../decide/records.ts";
 import type { Git } from "../engine/git.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import type { CachedForge } from "../forge/cache.ts";
+import type { Ledger } from "../ledger/index.ts";
 import type { Issue } from "../forge/types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
 import { type ClassifiedUnits, classifyUnits } from "./classify-units.ts";
@@ -95,15 +96,15 @@ export async function mergeIntegration(git: Git, integration: string): Promise<{
 // --- step 5: post the decision records -----------------------------------------
 
 /**
- * One `decision` comment per unit and point, before the body write (records are keyed by unit digest).
- * A failure is a refusal: the merge commit stays, the body and Base are untouched, and a rerun posts again.
+ * One `decision` ledger entry per unit and point, before the body write (records are keyed by unit digest).
+ * A failure is a refusal: the merge commit stays, the body and Base are untouched, and a rerun appends again.
  */
-export async function postDecisionRecords(forge: CachedForge, n: number, records: DecisionRecord[]): Promise<string | undefined> {
+export async function postDecisionRecords(ledger: Ledger, n: number, records: DecisionRecord[], after?: string): Promise<string | undefined> {
 	try {
-		for (const r of records) await forge.createComment(n, decisionComment(r));
+		for (const r of records) await ledger.append(n, { ...decisionComment(r), ...(after === undefined ? {} : { after }) });
 		return undefined;
 	} catch (error) {
-		return `plan_units refused: posting the decision records to #${n} failed (${untrusted(messageOf(error))}). The units and Base were not written; the merge commit stays on the branch. Rerun plan_units to finish.`;
+		return `plan_units refused: appending the decision records to #${n} failed (${untrusted(messageOf(error))}). The units and Base were not written; the merge commit stays on the branch. Rerun plan_units to finish.`;
 	}
 }
 
