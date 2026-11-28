@@ -34,6 +34,8 @@ export type DispatchDeps = RecordDeps & {
 	signal?: AbortSignal;
 	/** How long to wait for an aborted child to settle before the forge write; defaults to `ABORT_SETTLE_MS`. */
 	abortSettleMs?: number;
+	/** Called right after a run's result is recorded; the tools wire it to the reviewer behavior conclusions, which `subagents/` cannot import. */
+	afterRecord?(run: RunFacts, result: SubagentResult): Promise<void>;
 	/** Called with the id of every child the dispatch spawns, right after the spawn. */
 	onLaunch?(agentId: string): void;
 };
@@ -190,7 +192,7 @@ function questionLaunch(facts: RunFacts): QuestionLaunch {
 }
 
 /** Records a decision that ends the dispatch, and turns it into the outcome. */
-export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: LaunchFacts, decision: Exclude<ResultDecision, { kind: "retry" } | { kind: "return" }>): Promise<DispatchOutcome> {
+export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, facts: LaunchFacts, decision: Exclude<ResultDecision, { kind: "retry" } | { kind: "return" } | { kind: "return-behavior" }>): Promise<DispatchOutcome> {
 	switch (decision.kind) {
 		case "question":
 			await deps.post(dispatchComment({ status: "QUESTION", role: run.role, ...(run.unit === undefined ? {} : { unit: run.unit }), ...(run.subject === undefined ? {} : { subject: run.subject }), ...(run.finding === undefined ? {} : { finding: run.finding }), agentId: run.agentId as string, attempt: run.attempt, question: decision.text, launch: questionLaunch(run) }));
@@ -204,15 +206,21 @@ export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, fac
 		}
 		case "more-context":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };
-		case "accept":
-			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts };
+		case "accept": {
+			const result = await recordResult(deps, run, cwd, decision.result);
+			await deps.afterRecord?.(run, result);
+			return { kind: "result", result, facts };
+		}
 	}
 }
 
 /** What the child is told when its result omits required sources. */
 const returnMessage = (missing: string[]): string => `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every required source.`;
 
-/** Interprets settled runs until one ends the dispatch: a retry resumes the child (one fallback child at most), a return resumes it naming the missing sources once. */
+const disputeMessage = (capabilities: string[]): string =>
+	`${capabilities.map((c) => `behavior ${c} changed needs a WARNING or CRITICAL finding at one of its files`).join("; ")}. Add the finding or change the entry, then submit your result again.`;
+
+/** Interprets settled runs until one ends the dispatch: a retry resumes the child (one fallback child at most), a return resumes it naming the missing sources or the unbacked behavior dispute once each. */
 async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory, trace: { respawn?: Respawn }): Promise<DispatchOutcome> {
 	let { run, record } = first;
 	let seen = history;
@@ -235,6 +243,14 @@ async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: {
 			seen = { ...seen, returns: seen.returns + 1 };
 			continue;
 		}
+		if (decision.kind === "return-behavior") {
+			const next = await resumeChild(deps, run.agentId, disputeMessage(decision.capabilities));
+			if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
+			if (typeof next === "string") return finish(deps, runFacts(request, run), request.packet.cwd, run.facts, { kind: "blocked", reason: next });
+			record = next;
+			seen = { ...seen, disputeReturns: seen.disputeReturns + 1 };
+			continue;
+		}
 		return finish(deps, runFacts(request, run), request.packet.cwd, run.facts, decision);
 	}
 }
@@ -253,7 +269,7 @@ export async function runDispatch(deps: DispatchDeps, request: DispatchRequest):
 	if ("kind" in agent) return agent;
 	const launched = await launch(deps, request, agent.source);
 	if (launched.kind === "stop") return launched.outcome;
-	return settle(deps, request, launched, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: false });
+	return settle(deps, request, launched, { needsContext: request.needsContext, retries: 0, returns: 0, disputeReturns: 0, respawned: false });
 }
 
 /** A run resumed by `subagent_answer`: its launch facts come from the `QUESTION` record. */

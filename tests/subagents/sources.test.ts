@@ -1,10 +1,15 @@
 // Tests of the context manifest per role and subject.
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { receiptComment } from "../../src/evidence/records.ts";
 import { buildPacket } from "../../src/subagents/packet.ts";
-import { writeIn } from "../helpers/repo.ts";
+import { commitAll, writeIn } from "../helpers/repo.ts";
+import { behaviorConclusionComment } from "../../src/docs/behavior-change.ts";
+import { registerDocReaders } from "../../src/docs/readers.ts";
+import type { Packet } from "../../src/subagents/source-types.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
@@ -399,5 +404,53 @@ describe("grouped records", () => {
 		expect(version(after)).not.toBe(version(before));
 		expect(second.packet.hash).not.toBe(first.packet.hash);
 		expect(required(after)).toEqual(required(before));
+	});
+});
+
+describe("behavior conclusions", () => {
+	const SPEC = readFileSync(new URL("../fixtures/rate-limit.spec.md", import.meta.url), "utf8");
+	const ID = "records:behavior-conclusions";
+
+	/** A world whose change touched `src/context.ts` (request-context) and, with `two`, `src/forge/read.ts` (forge-read, spec untracked). */
+	async function behaviorWorld(two = false): Promise<World> {
+		registerDocReaders();
+		const world = await makeWorld();
+		await writeIn(world.root, "src/context.ts", "export const ip = 1;\n");
+		if (two) await writeIn(world.root, "src/forge/read.ts", "export const r = 1;\n");
+		commitAll(world.root, "code");
+		if (two) await writeIn(world.root, "specs/forge-read/spec.md", SPEC.replace(/^paths: .*$/m, 'paths: ["src/forge/**"]').replace("# rate-limit", "# forge-read"));
+		const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: world.root, encoding: "utf8" }).trim();
+		Object.assign(world, { head });
+		return world;
+	}
+
+	test("Conclusions in the packet", async () => {
+		const world = await behaviorWorld();
+		world.post(BOT, behaviorConclusionComment({ capability: "request-context", files: ["src/context.ts"] }, { source: "agent", outcome: "unchanged", reason: "only a rename" }));
+		const found = (await sourcesOf(world, "reviewer", undefined, "change")).find((p) => p.source.id === ID);
+		expect(found?.source.required).toBe(true);
+		for (const word of ["request-context", "src/context.ts", "unchanged", "agent", "only a rename"]) expect(found?.source.text).toContain(word);
+		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: Packet };
+		expect(built.packet.behavior?.effective["request-context"]).toMatchObject({ outcome: "unchanged", source: "agent" });
+	});
+
+	test("Behavior conclusions required for change review", async () => {
+		const world = await behaviorWorld(true);
+		const change = ids(await sourcesOf(world, "reviewer", undefined, "change"));
+		expect(change.filter((id) => id === ID)).toHaveLength(1);
+		const found = (await sourcesOf(world, "reviewer", undefined, "change")).find((p) => p.source.id === ID);
+		expect(found?.source.text).toContain("forge-read: none");
+		expect(found?.source.text).toContain("request-context: none");
+		expect(ids(await sourcesOf(world, "reviewer", "U3", "unit"))).not.toContain(ID);
+		const unit = (await buildPacket(world.refreshed(), "reviewer", "U3", "unit")) as { ok: true; packet: Packet };
+		expect(unit.packet.behavior).toBeUndefined();
+	});
+
+	test("no source and no packet data without a behavior item", async () => {
+		registerDocReaders();
+		const world = await makeWorld();
+		expect(ids(await sourcesOf(world, "reviewer", undefined, "change"))).not.toContain(ID);
+		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: Packet };
+		expect(built.packet).not.toHaveProperty("behavior");
 	});
 });

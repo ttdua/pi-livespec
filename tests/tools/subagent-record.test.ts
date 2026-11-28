@@ -1,5 +1,12 @@
 // Tests of the inline path: `subagent_packet` and `subagent_record` leave the same records as a dispatched run.
 import { afterEach, describe, expect, test } from "vitest";
+import { behaviorConclusionComment, behaviorResults } from "../../src/docs/behavior-change.ts";
+import { changeBehaviorItems } from "../../src/docs/behavior-check.ts";
+import { registerDocReaders } from "../../src/docs/readers.ts";
+import { createGit } from "../../src/engine/git.ts";
+import { resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
+import { registerFindingRebut } from "../../src/tools/finding-rebut.ts";
+import { BOT_LOGIN } from "../forge/world.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
 import { readPacket } from "../../src/subagents/packet-store.ts";
@@ -186,5 +193,92 @@ describe("verifier", () => {
 		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ verdict: undefined }) });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("verdict is required");
+	});
+});
+
+describe("reviewer behavior conclusions", () => {
+	const CAP = "src/limits/cap.ts";
+	const ITEM = { capability: "rate-limit", files: [CAP] };
+	const dispute = { capability: "rate-limit", outcome: "changed", rationale: "cap now rejects at 99" };
+	const atCap = { ...FINDING, location: `${CAP}:12` };
+
+	afterEach(resetPacketSourcesForTests);
+
+	/** A change with `rate-limit` code touched after Base and no spec edit, so `rate-limit` is the one behavior item. */
+	async function behaviorHarness(conclusion?: { source: "agent" | "human"; outcome: "unchanged" | "changed" }) {
+		registerDocReaders();
+		const h = await subagentHarness({ units: [U1] });
+		await h.commit({ [CAP]: "export const cap = 99;\n" });
+		if (conclusion) await h.world.postComment(h.n, BOT_LOGIN, behaviorConclusionComment(ITEM, { ...conclusion, reason: "initial" }));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		return h;
+	}
+	type Behavior = Awaited<ReturnType<typeof behaviorHarness>>;
+
+	const review = async (h: Behavior, over: Record<string, unknown>) => {
+		const cited = footerIds(textOf(await h.call("subagent_packet", { role: "reviewer", subject: "change" })));
+		return h.call("subagent_record", { role: "reviewer", subject: "change", result: reviewResult({ sources_used: cited, ...over }) });
+	};
+	const reviewerRecords = async (h: Behavior) => (await h.ofKind("decision")).filter((m) => (m.data as { source?: string }).source === "reviewer");
+	const checkResults = async (h: Behavior) => behaviorResults(await changeBehaviorItems(h.root, createGit(h.root), h.head), await h.marked(), "review");
+
+	test("Reviewer disputes unchanged", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [dispute] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await reviewerRecords(h)).map((m) => m.data)).toMatchObject([{ point: "behavior-change", subject: "rate-limit", source: "reviewer", outcome: "changed", reason: "cap now rejects at 99" }]);
+		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");
+	});
+
+	test("an inline dispute without a finding is refused naming the capability, and writes nothing", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const before = (await h.marked()).length;
+		const out = await review(h, { findings: [], behavior: [dispute] });
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("behavior rate-limit changed needs a WARNING or CRITICAL finding");
+		expect(await h.marked()).toHaveLength(before);
+	});
+
+	test("Reviewer clears an agent change", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "changed" });
+		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");
+		const out = await review(h, { findings: [], behavior: [{ ...dispute, outcome: "unchanged", rationale: "constant only" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await reviewerRecords(h)).toHaveLength(1);
+		expect(await checkResults(h)).toEqual([]);
+	});
+
+	test("Reviewer confirms", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [], behavior: [{ ...dispute, outcome: "unchanged" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await reviewerRecords(h)).toEqual([]);
+	});
+
+	test("Entry for another capability", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [{ ...dispute, capability: "cache" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await reviewerRecords(h)).toEqual([]);
+	});
+
+	test("Reviewer cannot undo a human change", async () => {
+		const h = await behaviorHarness({ source: "human", outcome: "changed" });
+		const out = await review(h, { findings: [], behavior: [{ ...dispute, outcome: "unchanged", rationale: "constant only" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await reviewerRecords(h)).map((m) => m.data)).toMatchObject([{ source: "reviewer", outcome: "unchanged" }]);
+		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");
+	});
+
+	test("Rebuttal does not clear a dispute", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		registerFindingRebut(h.pi.api as never);
+		expect((await review(h, { findings: [atCap], behavior: [dispute] })).isError).toBeFalsy();
+		const summary = (await h.latest("finding-summary")) as { commentId: string };
+		const rebuttal = await h.call("finding_rebut", { comment: summary.commentId, index: 0, reason: "cap is per design", evidence: "design.md D3" });
+		expect(rebuttal.isError, textOf(rebuttal)).toBeFalsy();
+		await h.session.refresh();
+		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");
 	});
 });
