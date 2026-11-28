@@ -31,15 +31,23 @@ export async function readRef(exec: GitExec, root: string, ref: string): Promise
 	throw gitFailure(["rev-parse", ref], r.spawnError ?? r.stderr);
 }
 
-/** The local and remote-tracking tips of change `n`, read in one git call. */
+/** The commits the local and remote-tracking ledger refs point at, read in one git call; non-commits read as absent. */
 export async function readLedgerRefs(exec: GitExec, root: string, n: number): Promise<{ local: string | undefined; tracking: string | undefined }> {
 	const local = ledgerRef(n);
 	const tracking = trackingRef(n);
-	const args = ["for-each-ref", "--format=%(refname) %(objectname)", local, tracking];
+	const format = "--format=%(refname) %(objecttype) %(objectname) %(*objecttype) %(*objectname)";
+	const args = ["for-each-ref", format, local, tracking];
 	const r = await exec(args, { cwd: root });
 	if (r.code !== 0) throw gitFailure(args, r.spawnError ?? r.stderr);
-	// Patterns match path prefixes, so keep exact names only.
-	const tips = new Map(r.stdout.split("\n").map((line) => line.split(" ") as [string, string | undefined]));
+	const tips = new Map<string, string>();
+	for (const line of r.stdout.split("\n")) {
+		if (line === "") continue;
+		// Refnames hold no spaces; the starred fields are empty unless the ref is an annotated tag.
+		const [name = "", type, sha, peeledType, peeledSha] = line.split(" ");
+		const commit = type === "commit" ? sha : peeledType === "commit" ? peeledSha : undefined;
+		if (commit) tips.set(name, commit);
+	}
+	// Patterns match path prefixes, so only exact names are looked up.
 	return { local: tips.get(local), tracking: tips.get(tracking) };
 }
 

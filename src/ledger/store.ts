@@ -38,7 +38,7 @@ type TreeFile = { path: string; blob: string };
 
 const readCache = new Map<string, LedgerRead>();
 /** Tree listings by `repo\0commit`; a commit names an immutable tree. */
-const treeCache = new Map<string, TreeFile[]>();
+const treeCache = new Map<string, readonly TreeFile[]>();
 /** Blob contents by `repo\0sha`; a blob sha names immutable content. */
 const blobCache = new Map<string, string>();
 
@@ -113,7 +113,7 @@ async function readTreeUncached(exec: GitExec, root: string, commit: string, n: 
 	return { tip: commit, entries: dropRepeatedRefs(orderBySeq(parsed), warnings), warnings };
 }
 
-async function ledgerMetaProblem(exec: GitExec, root: string, files: TreeFile[], n: number): Promise<string | undefined> {
+async function ledgerMetaProblem(exec: GitExec, root: string, files: readonly TreeFile[], n: number): Promise<string | undefined> {
 	const meta = files.find((f) => f.path === LEDGER_META_FILE);
 	if (!meta) return `${LEDGER_META_FILE} is missing`;
 	let doc: unknown;
@@ -201,7 +201,7 @@ function nextSeq(entries: LedgerEntry[]): number {
 	return entries.reduce((max, e) => Math.max(max, e.seq), 0) + 1;
 }
 
-async function listTree(exec: GitExec, root: string, commit: string): Promise<TreeFile[]> {
+async function listTree(exec: GitExec, root: string, commit: string): Promise<readonly TreeFile[]> {
 	const key = `${root}\0${commit}`;
 	const known = treeCache.get(key);
 	if (known) return known;
@@ -211,7 +211,7 @@ async function listTree(exec: GitExec, root: string, commit: string): Promise<Tr
 	return files;
 }
 
-async function listTreeUncached(exec: GitExec, root: string, commit: string): Promise<TreeFile[]> {
+async function listTreeUncached(exec: GitExec, root: string, commit: string): Promise<readonly TreeFile[]> {
 	const out = await git(exec, root, ["ls-tree", "-r", "-z", "--full-tree", commit], undefined, false);
 	return out
 		.split("\0")
