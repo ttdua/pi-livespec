@@ -15,7 +15,9 @@ import type { MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { openRequestFor, readRequests } from "../interaction/requests.ts";
 
-export const BEHAVIOR_POINT = "behavior-change";
+import { BEHAVIOR_POINT } from "../decide/points.ts";
+
+export { BEHAVIOR_POINT };
 
 /** One capability whose code changed while its spec did not; `files` sorted. */
 export type BehaviorItem = { capability: string; files: string[] };

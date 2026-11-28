@@ -838,6 +838,11 @@ describe("human behavior override", () => {
 		const other = { ...answer, data: { ...data, answer: { ...data.answer, behaviorOverrides: [{ capability: "cache", outcome: "changed" }] } } };
 		expect(effectiveConclusion(withAgent([other, flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "unchanged", source: "agent" });
 		expect(latestConclusions(withAgent([other, flip as MarkedComment])).get("rate-limit")).toMatchObject({ source: "agent" });
+		// The answer lists the capability but was given by someone else, or at another time.
+		for (const diff of [{ by: "mallory" }, { at: "2000-01-01T00:00:00.000Z" }]) {
+			const mismatched = { ...answer, data: { ...data, answer: { ...data.answer, ...diff } } };
+			expect(effectiveConclusion(withAgent([mismatched, flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "unchanged", source: "agent" });
+		}
 		// With its own answer, the override wins.
 		expect(effectiveConclusion(withAgent([answer, flip as MarkedComment]), ITEM)).toMatchObject({ outcome: "changed", source: "human" });
 	});

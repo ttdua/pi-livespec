@@ -17,7 +17,7 @@ function gateAnswer(request: string, answer: Record<string, unknown>, verdict = 
 	return { ref: `c-${request}`, source, kind: "answer", id: request, author: "bot", data: { request: { subject: "gate:define" }, answer, verdict } };
 }
 
-const changes = (capabilities: string[]) => ({ outcome: "changes_requested", behaviorOverrides: capabilities.map((capability) => ({ capability, outcome: "changed" })) });
+const changes = (capabilities: string[]) => ({ by: BY.by, at: BY.at, outcome: "changes_requested", behaviorOverrides: capabilities.map((capability) => ({ capability, outcome: "changed" })) });
 
 describe("isBacked behavior overrides", () => {
 	test("an override backed by its gate answer counts", () => {
@@ -39,6 +39,12 @@ describe("isBacked behavior overrides", () => {
 		expect(isBacked([m, gateAnswer("gate-define.1", changes(["auth"]))], m, record)).toBe(false);
 		expect(isBacked([m, gateAnswer("gate-define.1", { outcome: "changes_requested" })], m, record)).toBe(false);
 		expect(isBacked([m, gateAnswer("gate-define.1", { ...changes(["rate-limit"]), outcome: "approved" })], m, record)).toBe(false);
+	});
+
+	test("an override whose answer has another by or at does not count", () => {
+		const { m, record } = override("gate-define.1");
+		expect(isBacked([m, gateAnswer("gate-define.1", { ...changes(["rate-limit"]), by: "mallory" })], m, record)).toBe(false);
+		expect(isBacked([m, gateAnswer("gate-define.1", { ...changes(["rate-limit"]), at: "2000-01-01T00:00:00Z" })], m, record)).toBe(false);
 	});
 
 	test("a legacy human answer to a behavior request is still backed by its choice", () => {

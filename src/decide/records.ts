@@ -7,6 +7,7 @@ import type { Signature } from "../evidence/signature.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { isBacked } from "./answered.ts";
+import { BEHAVIOR_POINT } from "./points.ts";
 
 export type DecisionRecord = {
 	point: string;
@@ -32,7 +33,6 @@ export type DecisionRecord = {
 
 const MAX_FACTS_YAML = 2000;
 /** The only point whose records agents and reviewers may write; other points reject those sources. */
-const AGENT_SOURCE_POINT = "behavior-change";
 const BLOCK_MARKER = /^<!-- livespec:decision:([A-Za-z0-9._-]+) -->$/;
 const FENCE_OPEN = "```yaml";
 const FENCE_CLOSE = /^```\s*$/;
@@ -61,10 +61,10 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	return true;
 }
 
-/** `rule` and `human` for any point; `agent` and `reviewer` only for `AGENT_SOURCE_POINT`. */
+/** `rule` and `human` for any point; `agent` and `reviewer` only for `BEHAVIOR_POINT`. */
 function isAllowedSource(v: Record<string, unknown>): boolean {
 	if (v.source === "rule" || v.source === "human") return true;
-	return v.point === AGENT_SOURCE_POINT && (v.source === "agent" || v.source === "reviewer");
+	return v.point === BEHAVIOR_POINT && (v.source === "agent" || v.source === "reviewer");
 }
 
 /** A decision record: required fields present (`outcome` may be any value, including falsy), optional fields well-typed. */

@@ -44,7 +44,9 @@
 | `behaviorConclusionComment` | new | `(item: BehaviorItem, c: { source: "agent" \| "reviewer" \| "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown } }) => string` | no |
 | `behaviorConclusionComment` (port) | modified (Task 8) | returns `AppendInput` (a ledger entry input), like `decisionComment` on main | no |
 | `isBacked` | modified (Task 8) | `(marked, m, record) => boolean` in `src/decide/answered.ts`; also accepts a ledger `human` `behavior-change` entry with `overridden_by` when its `request`'s own forge `answer` is valid, `changes_requested`, and lists the capability in `answer.behaviorOverrides` | no |
-| `applyBehaviorOverrides` | new | `(run: Run, answer: Answered, snapshot: GateSnapshot) => Promise<void>` | no |
+| `applyBehaviorOverrides` | new (Task 8 deviation) | `(run: Run, request: string, answer: Answered, snapshot: GateSnapshot) => Promise<void>`; `request` is the gate request id written into the entry | no |
+| `ConclusionInput.request` | new (Task 8 deviation) | optional `request?: string` on `ConclusionInput`; the gate request id a human override entry names for `isBacked` | no |
+| `resultCounts` rule | modified (Task 8 deviation) | `src/interaction/requests.ts`: a `decision` with `overridden_by` is an effect and never completes a request; other ledger `human` results count only beside the own forge `answer` | no |
 | `return-behavior` decision | new | `ResultDecision` gains `{ kind: "return-behavior"; capabilities: string[] }` | no |
 | `behaviorPacketData` / `registerPacketBehavior` | new | `behaviorPacketData(ctx: PacketContext) => Promise<Packet["behavior"]>` in `src/docs/behavior-source.ts`; `registerPacketBehavior(fn)` in `src/subagents/sources.ts`, a hook `buildPacket` calls so `subagents/` never imports `docs/` | no |
 | `ReviewFacts.behaviorItems` | new | optional `behaviorItems?: BehaviorItem[]` on `ReviewFacts` (`src/engine/gate-payload.ts`), set in `buildRequest` only for target `define` | no |
@@ -376,8 +378,6 @@ Scenarios of unchanged baseline text inside MODIFIED blocks keep their existing 
 - subagent-dispatch "Return contract" and subagent-packets "Context manifest" baselines: `tests/tools/subagent-dispatch.test.ts`, `tests/subagents/sources.test.ts`, `tests/subagents/packet.test.ts`.
 
 New or changed scenarios:
-- Behavior override command parsed → `tests/interaction/commands.test.ts` and `tests/interaction/forge.test.ts` (Task 5)
-- Behavior override with another value → `tests/interaction/commands.test.ts` (Task 5)
 - Behavior tab opened with one key → `tests/interaction/dialog/host.test.ts` (Task 5)
 - No unit tab without overridable units (updated WHEN) → `tests/interaction/dialog/host.test.ts` (Task 5)
 - Override sent with request changes → `tests/interaction/dialog/host.test.ts` (Task 5)
