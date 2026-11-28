@@ -50,6 +50,10 @@
 | `Packet.behavior` | new | `{ items: BehaviorItem[]; effective: Record<string, BehaviorConclusion \| null> } \| undefined`, set by `buildPacket` for `reviewer`/`change` when items exist | no |
 | `interpret` | modified | `interpret(record, packet, role, history)`; it reads `packet.behavior` for the dispute check, so the signature is unchanged | no |
 | `DispatchHistory.disputeReturns` | new | `number`; a separate counter from `returns` | no |
+| `DispatchDeps.afterRecord` / `prepareResult` | new (apply deviation) | optional hooks on `DispatchDeps`: `prepareResult(run, result)` normalises reviewer `behavior` once before `interpret`; `afterRecord(run, result)` posts reviewer records after `recordResult`. Reason: `subagents/` must not import `docs/` | no |
+| `interpret` | modified (apply deviation) | gains an optional `prepare?: (r: SubagentResult) => SubagentResult` argument, applied right after the schema check. Reason: final review F1 (normalise once, before the dispute check) | no |
+| `FindingSummaryData.behavior` | new (apply deviation) | optional cleaned `BehaviorConclusionInput[]` on reviewer `change` finding-summaries. Reason: final review F2, so lost reviewer records can be replayed idempotently | no (stored in `finding-summary` comments) |
+| `validDecisionEntries` | new (apply deviation) | `(marked) => { record: DecisionRecord; commentId: string }[]` in `src/decide/records.ts`. Reason: `BehaviorConclusion.commentId` | no |
 | `validateBehaviorParam` | new | `(raw: unknown) => { ok: true; entries: BehaviorConclusionInput[] } \| { ok: false; message: string }` | no |
 | `spec_gate` parameter `behavior` | new | `{ capability: string; outcome: "unchanged"\|"changed"; rationale: string }[]`, optional | public (tool API) |
 | `BehaviorOverride` | new | `{ capability: string; outcome: "changed" }` | no |
