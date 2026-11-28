@@ -168,6 +168,7 @@ function acceptedCommands(r: ApprovalRequest): string[] {
 	const lines = [...approve, "/livespec changes <notes>", "/livespec dismiss [notes]"];
 	if ((r.options ?? []).length > 0) lines.push("/livespec choose <option-id> [notes]");
 	if (r.overridable) lines.push("/livespec set U<n> difficulty <low|medium|high>", "/livespec set U<n> tags <a,b,…>");
+	if (r.overridableBehavior) lines.push("/livespec set behavior <capability> changed (applies only with /livespec changes)");
 	return lines;
 }
 

@@ -1,6 +1,7 @@
 // `subagent_record <role> [unit] [subject] <result>`: records an inline run exactly as a dispatched run is recorded.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { cleanReviewerBehavior, recordReviewerConclusions } from "../docs/behavior-review.ts";
 import { buildPacket, changeName } from "../subagents/packet.ts";
 import { writePacket } from "../subagents/packet-store.ts";
 import { checkSchema, resultSchema, type SubagentResult } from "../subagents/roles.ts";
@@ -8,7 +9,7 @@ import { INLINE_SOURCE, recordResult } from "../subagents/run-record.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { withStep } from "./request-flow.ts";
-import { interpret } from "../subagents/result.ts";
+import { disputeMessage, interpret } from "../subagents/result.ts";
 import { outcomeOptions, resultText } from "./subagent-outcome.ts";
 import { defaultSubagentDeps, dispatchRequest, findingOf, packetContext, recordDeps, type SubagentToolDeps } from "./subagent-request.ts";
 import { checkTarget, childRefusal, ignoreInapplicable, PARAMS_BY_ROLE, withWarnings, refusal, TARGET_PROPERTIES, type TargetParams, type ToolCtx } from "./subagent-target.ts";
@@ -50,14 +51,18 @@ async function runSubagentRecordBody(p: RecordParams, ctx: ToolCtx, deps: Subage
 	if (!built.ok) return refusal(TOOL, built.message);
 	await writePacket(pctx.root, changeName(pctx), built.packet);
 	const request = await dispatchRequest(w, state, target, built.packet, deps);
-	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
-	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: false });
-	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
 	const run = {
 		...target, attempt: request.attempt, round: request.round, packet: built.packet, agentSource: INLINE_SOURCE,
 		requested: { thinking: request.difficulty }, effective: {}, advisory: request.entry?.advisory === true, needsContext: request.needsContext,
 	};
-	const kept = await recordResult(recordDeps(w, state.issue.number), run, pctx.cwd, result);
+	// The dispatched rules, with no child to retry or resume: a missing required source is refused so the parent re-records.
+	const cleaned = cleanReviewerBehavior(run, result);
+	const decision = interpret({ id: "inline", status: "completed", structuredResult: result }, built.packet, target.role, { needsContext: request.needsContext, retries: 0, returns: 0, disputeReturns: 0, respawned: false }, () => cleaned);
+	if (decision.kind === "return-behavior") return refusal(TOOL, `${disputeMessage(decision.capabilities)}; add the finding or change the entry, then record again.`);
+	if (decision.kind === "return") return refusal(TOOL, `the result omits required sources from sources_used: ${decision.missing.join(", ")}; read them and record again.`);
+	const record = recordDeps(w, state.issue.number);
+	const kept = await recordResult(record, run, pctx.cwd, cleaned);
+	await recordReviewerConclusions(record.post, run, kept, built.packet);
 	const named = decision.kind === "more-context" ? decision.ids : undefined;
 	const text = resultText(target, kept, named, decision.kind === "stuck" && result.status === "NEEDS_CONTEXT", outcomeOptions(state, w.pack));
 	return toolResult(withStep(w.session, `Inline run: ${text}`), undefined);

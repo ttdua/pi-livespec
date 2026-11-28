@@ -166,6 +166,11 @@ describe("durableDocsRule behavior record", () => {
 		expect(r.confirm.some((c) => c.startsWith("rate-limit:"))).toBe(true);
 	});
 
+	test("Protected change of other files", () => {
+		const r = durableDocsRule(facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: ["src/limit/old.ts"], outcome: "changed" }] }));
+		expect(r.confirm.some((c) => c.startsWith("rate-limit:"))).toBe(true);
+	});
+
 	test("Superset record", () => {
 		const r = durableDocsRule(facts({ files: [CAP], specs: [RATE], rows: [ROW], behavior: [{ capability: "rate-limit", files: [CAP, WIN], outcome: "unchanged" }] }));
 		expect(r.confirm).toEqual([]);

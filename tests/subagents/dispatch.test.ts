@@ -3,7 +3,8 @@ import { afterEach, describe, expect, test } from "vitest";
 import { parseMarked } from "../../src/forge/markers.ts";
 import { type DispatchDeps, type DispatchRequest, runDispatch, settle } from "../../src/subagents/dispatch.ts";
 import { checkLaunch, raisedThinking, spawnOptions } from "../../src/subagents/launch.ts";
-import { interpret } from "../../src/subagents/result.ts";
+import { cleanReviewerBehavior, recordReviewerConclusions } from "../../src/docs/behavior-review.ts";
+import { behaviorDisputeMisses, interpret } from "../../src/subagents/result.ts";
 import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/run-record.ts";
 import { current, dispatchComment, findingSummaryComment, latestDispatch } from "../../src/subagents/records.ts";
 import { mark } from "./helpers.ts";
@@ -14,7 +15,7 @@ import { applied, done, fakeExecutor, unpublish } from "./fake-executor.ts";
 
 afterEach(unpublish);
 
-const h0Of = () => ({ needsContext: 0, retries: 0, returns: 0, respawned: false });
+const h0Of = () => ({ needsContext: 0, retries: 0, returns: 0, disputeReturns: 0, respawned: false });
 
 const packet = (over: Partial<Packet> = {}): Packet => ({
 	text: "PACKET", hash: "a".repeat(64), sources: [{ id: "answer:Q2", version: "v", required: true }, { id: "spec:x", version: "v", required: false }],
@@ -87,7 +88,7 @@ describe("launch options", () => {
 });
 
 describe("result interpretation", () => {
-	const h0 = { needsContext: 0, retries: 0, returns: 0, respawned: false };
+	const h0 = { needsContext: 0, retries: 0, returns: 0, disputeReturns: 0, respawned: false };
 	const rec = (structuredResult: unknown, over = {}) => ({ id: "a", status: "completed", structuredResult, ...over });
 
 	test("stuck and blocked reasons wrap child text as untrusted", () => {
@@ -571,5 +572,99 @@ describe("runDispatch", () => {
 		expect(posted.filter((p) => p.kind === "finding-summary")).toHaveLength(1);
 		expect(posted[0]?.data).toMatchObject({ unit: "U1", round: 1 });
 		expect((posted[0]?.data.findings as { location: string }[]).map((f) => f.location)).toEqual(["a.ts:1", "b.ts:2"]);
+	});
+});
+
+describe("reviewer behavior disputes", () => {
+	const behavior: NonNullable<Packet["behavior"]> = {
+		items: [{ capability: "rate-limit", files: ["src/limit/cap.ts"] }],
+		effective: { "rate-limit": { outcome: "unchanged", source: "agent", reason: "refactor", files: ["src/limit/cap.ts"], commentId: "c1" } },
+	};
+	const dispute = { capability: "rate-limit", outcome: "changed", rationale: "cap now rejects at 99" };
+	const finding = (location: string, severity = "WARNING") => ({ severity, kind: "defect", location, evidence: "e", fix: "f", scope: "unit" });
+	const review = (over: Record<string, unknown> = {}) => JSON.parse(JSON.stringify({ ...withSources(["answer:Q2"]), commits: undefined, findings: [], behavior: [dispute], ...over }));
+	const changeRequest = () => request({ role: "reviewer", unit: undefined, subject: "change", packet: packet({ behavior }) });
+	const behaviorDecisions = <T extends { kind: string }>(posted: T[]): T[] => posted.filter((p) => p.kind === "decision");
+
+	function wired(fake: ReturnType<typeof fakeExecutor>) {
+		const out = deps(fake);
+		out.d.prepareResult = cleanReviewerBehavior;
+		out.d.afterRecord = (run, result) => recordReviewerConclusions(out.d.post, run, result, run.packet);
+		return out;
+	}
+
+	test("a 300-code-point rationale with a comment opener is kept and stored neutralised", async () => {
+		const rationale = `<!--${"x".repeat(296)}`;
+		const fake = fakeExecutor({ records: [{ structuredResult: review({ findings: [finding("src/limit/cap.ts:12")], behavior: [{ ...dispute, rationale }] }) }] });
+		const { d, posted } = wired(fake);
+		await runDispatch(d, changeRequest());
+		const [decision] = behaviorDecisions(posted);
+		expect(decision?.data.reason).toBe(`<!-\u200b-${"x".repeat(296)}`);
+	});
+
+	test("a valid unchanged then a changed duplicate keeps the unchanged", async () => {
+		const unchanged = { ...dispute, outcome: "unchanged", rationale: "constant only" };
+		const fake = fakeExecutor({ records: [{ structuredResult: review({ behavior: [unchanged, dispute] }) }, { structuredResult: review({ behavior: [unchanged, dispute] }) }] });
+		const { d, posted } = wired(fake);
+		const out = await runDispatch(d, changeRequest());
+		expect(out.kind).toBe("result");
+		expect(fake.resumed).toEqual([]);
+		const summary = posted.find((p) => p.kind === "finding-summary");
+		expect(summary?.data.behavior).toEqual([unchanged]);
+		expect(summary?.data.notes).toContain("listed twice");
+	});
+
+	test("the finding-summary stores the cleaned behavior entries", async () => {
+		const fake = fakeExecutor({ records: [{ structuredResult: review({ findings: [finding("src/limit/cap.ts:12")], behavior: [dispute, { ...dispute, rationale: "second" }] }) }] });
+		const { d, posted } = wired(fake);
+		await runDispatch(d, changeRequest());
+		expect(posted.find((p) => p.kind === "finding-summary")?.data.behavior).toEqual([dispute]);
+	});
+
+	test("Dispute without a finding", async () => {
+		const fake = fakeExecutor({ records: [{ structuredResult: review() }, { structuredResult: review({ findings: [finding("src/limit/cap.ts:12")] }) }] });
+		const { d, posted } = wired(fake);
+		const out = await runDispatch(d, changeRequest());
+		expect(fake.resumed).toHaveLength(1);
+		expect(fake.resumed[0]?.prompt).toContain("behavior rate-limit changed needs a WARNING or CRITICAL finding at one of its files");
+		expect(out.kind).toBe("result");
+		expect(behaviorDecisions(posted)).toHaveLength(1);
+	});
+
+	test("Second miss drops the entry", async () => {
+		const fake = fakeExecutor({ records: [{ structuredResult: review() }, { structuredResult: review() }] });
+		const { d, posted } = wired(fake);
+		const out = await runDispatch(d, changeRequest());
+		expect(out.kind).toBe("result");
+		expect(behaviorDecisions(posted)).toEqual([]);
+		const summary = posted.find((p) => p.kind === "finding-summary");
+		expect(summary?.data.notes).toContain("rate-limit");
+	});
+
+	test("a missing-source return does not consume the dispute return", async () => {
+		const fake = fakeExecutor({ records: [{ structuredResult: review({ sources_used: [], findings: [finding("src/limit/cap.ts:12")] }) }, { structuredResult: review() }, { structuredResult: review({ findings: [finding("src/limit/cap.ts:12")] }) }] });
+		const { d, posted } = wired(fake);
+		const out = await runDispatch(d, changeRequest());
+		expect(fake.resumed).toHaveLength(2);
+		expect(fake.resumed[0]?.prompt).toContain("omits required sources");
+		expect(fake.resumed[1]?.prompt).toContain("behavior rate-limit");
+		expect(out.kind).toBe("result");
+		expect(behaviorDecisions(posted)).toHaveLength(1);
+	});
+
+	test("a BLOCKED result with a dispute is not returned", () => {
+		const blocked = review({ status: "BLOCKED", reason: "cannot run", evidence: "no tests" });
+		const h = { needsContext: 0, retries: 0, returns: 0, disputeReturns: 0, respawned: false };
+		expect(interpret({ id: "a", status: "completed", structuredResult: blocked }, packet({ behavior }), "reviewer", h).kind).toBe("accept");
+	});
+
+	test("behaviorDisputeMisses matches a location at a file, with a line suffix", () => {
+		const result = (f: ReturnType<typeof finding>[]) => review({ findings: f }) as never;
+		expect(behaviorDisputeMisses(result([finding("src/limit/cap.ts:12")]), behavior)).toEqual([]);
+		expect(behaviorDisputeMisses(result([finding("src/limit/cap.ts")]), behavior)).toEqual([]);
+		expect(behaviorDisputeMisses(result([finding("src/limit/cap.ts:12", "SUGGESTION")]), behavior)).toEqual(["rate-limit"]);
+		expect(behaviorDisputeMisses(result([finding("src/limit/cap.tsx:1")]), behavior)).toEqual(["rate-limit"]);
+		expect(behaviorDisputeMisses(review({ behavior: [{ ...dispute, capability: "cache" }] }), behavior)).toEqual([]);
+		expect(behaviorDisputeMisses(review({ behavior: [{ ...dispute, outcome: "unchanged" }] }), behavior)).toEqual([]);
 	});
 });

@@ -91,8 +91,14 @@ function summaryData(run: RunFacts, result: SubagentResult, head: string): Findi
 		round: run.round, status: result.status, advisory: run.advisory, head, packet: run.packet.hash,
 		sources_used: result.sources_used, required, completed: computeCompleted(result, required),
 		agentSource: run.agentSource, requested: run.requested, effective: run.effective, findings: result.findings ?? [],
-		...whyFields(result), ...contextRequestOf(run, result), ...verifierFields(run, result),
+		...whyFields(result), ...contextRequestOf(run, result), ...verifierFields(run, result), ...behaviorField(run, result),
 	};
+}
+
+/** The cleaned `behavior` entries of a non-advisory `change` reviewer run, kept so a lost reviewer record can be replayed. */
+function behaviorField(run: RunFacts, result: SubagentResult): Partial<FindingSummaryData> {
+	const isChangeReview = run.role === "reviewer" && run.subject === "change" && !run.advisory;
+	return isChangeReview && result.behavior !== undefined && result.behavior.length > 0 ? { behavior: result.behavior } : {};
 }
 
 /** The run's own `notes`, `reason` and `evidence`; empty ones are left out. */

@@ -15,7 +15,8 @@ import { runChecks } from "../engine/checks.ts";
 import { type Escalation, escalationInput, escalationOutcome } from "../engine/gate-escalation-facts.ts";
 import { lastForgeRef } from "../ledger/merge.ts";
 import { shipFor } from "../ship/context.ts";
-import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
+import { collectReviewFacts, gatePayload, type ReviewFacts } from "../engine/gate-payload.ts";
+import { changeBehaviorItems } from "../docs/behavior-check.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { type RequirementRecord, requirementRecord } from "../engine/requirement-diff.ts";
@@ -27,14 +28,17 @@ import { type GateCommentInput, gateComment } from "../interaction/complete-gate
 import { prepareRequest } from "../interaction/requests.ts";
 import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
-import { askBehaviorChanges } from "../docs/behavior-ask.ts";
+import { validateBehaviorParam } from "../docs/behavior-param.ts";
+import { recordBehaviorConclusions } from "../docs/behavior-record.ts";
+import { behaviorSnapshot, overridableBehaviorOf } from "../interaction/behavior-snapshot.ts";
+import type { BehaviorConclusionInput, BehaviorItem } from "../docs/behavior-change.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, afterLedgerWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest, withStep } from "./request-flow.ts";
 
-export type SpecGateParams = { target: string; briefing?: unknown };
+export type SpecGateParams = { target: string; briefing?: unknown; behavior?: unknown };
 
 const PLAN = "plan";
 const BEHAVIOR_CHECK = "behavior-change";
@@ -122,7 +126,7 @@ export function gateRequest(
 	pack: Pack,
 	target: string,
 	plan: GatePlan,
-	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing; requirements?: RequirementRecord },
+	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing; requirements?: RequirementRecord; behaviorItems?: BehaviorItem[] },
 ): ApprovalRequest {
 	const snapshot: GateSnapshot = {
 		target,
@@ -131,6 +135,8 @@ export function gateRequest(
 		...(input.drafts === undefined ? {} : { drafts: input.drafts }),
 		...(input.requirements === undefined ? {} : { requirements: input.requirements.requirements, requirement_scope: input.requirements.scope }),
 	};
+	const behavior = behaviorSnapshot(input.behaviorItems, state.marked);
+	if (behavior !== undefined) snapshot.behavior = behavior;
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
 	const briefing = input.briefing === undefined ? {} : { briefing: input.briefing };
@@ -138,6 +144,8 @@ export function gateRequest(
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: input.payload.links, files: input.payload.files, mode: "blocking", ...options, ...briefing };
 	if (target === PLAN) request.overridable = { units: state.change.units.map((u) => u.id), current: currentValues(state) };
+	const overridableBehavior = overridableBehaviorOf(behavior);
+	if (overridableBehavior !== undefined) request.overridableBehavior = overridableBehavior;
 	return request;
 }
 
@@ -165,12 +173,13 @@ type RequestExtras = { drafts?: unknown; summary?: string; briefing?: Briefing }
 async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, extras: RequestExtras = {}): Promise<ApprovalRequest> {
 	const facts = await collectReviewFacts(w.session.git, state.change.header.base);
 	const issue = await w.forge.getIssue(state.issue.number);
-	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
+	const behaviorItems = target === "define" ? await changeBehaviorItems(w.session.cwd, w.session.git, state.change.header.base) : undefined;
+	const withLink: ReviewFacts = { ...facts, ...(issue.url === undefined ? {} : { issueUrl: issue.url }), ...(behaviorItems === undefined ? {} : { behaviorItems }) };
 	const payload = gatePayload(state, w.pack, target, withLink);
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
 	// The scope comes from the body bound as `gate_digest`, not `state.change`, which may predate an edit.
 	const requirements = await planRecord(w, state, target, parseChange(issue.body));
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements });
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements, behaviorItems });
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, extras: RequestExtras): Promise<ToolResult<undefined>> {
@@ -207,7 +216,7 @@ export async function sendNamedGate(w: WriteContext, state: ChangeState, i: Name
 	return sendRequest(w, checked, request, i.ctx, { tool: i.tool, retry: `run ${i.tool} again` });
 }
 
-/** The phases whose gate asks the behavior question, when the phase lists the `behavior-change` check. */
+/** The phases whose gate records behavior conclusions, when the phase lists the `behavior-change` check. */
 const BEHAVIOR_TARGETS = new Set(["define", "review"]);
 
 function asksBehavior(pack: Pack, target: string): boolean {
@@ -215,21 +224,24 @@ function asksBehavior(pack: Pack, target: string): boolean {
 }
 
 /**
- * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals are evaluated with the
- * `behavior-change` results left out, and only when none applies the unanswered items are asked. After an
- * answer the state is re-read and `checked` is false, so the caller's full check run sees the new records.
+ * The one exception to "refuse, writing nothing" (phase-gates "Gate tool"): the refusals, the plan, the escalation and
+ * the recommendation are evaluated with the `behavior-change` results left out, and only when none refuses the agent's
+ * conclusions are recorded. After a post the state is re-read and `checked` is false, so the caller's full check run
+ * and refusals see the new records.
  */
 type BehaviorStep = { ok: true; state: ChangeState; checked: boolean } | { ok: false; message: string };
 
-async function behaviorStep(w: WriteContext, state: ChangeState, target: string, ctx: ApproverCtx): Promise<BehaviorStep> {
-	const checked = await withGateChecks(w, state, target);
+async function behaviorStep(w: WriteContext, state: ChangeState, g: GateInput, entries: BehaviorConclusionInput[]): Promise<BehaviorStep> {
+	const checked = await withGateChecks(w, state, g.target);
 	const others = { ...checked, checks: checked.checks.filter((c) => c.check !== BEHAVIOR_CHECK) };
-	const refusal = gateRefusal(others, w.pack, target);
+	const refusal = gateRefusal(others, w.pack, g.target);
 	if (refusal) return { ok: false, message: refusalText(others, refusal) };
-	const asked = await askBehaviorChanges(w, state, ctx);
-	if (!asked.ok) return asked;
-	// Nothing asked: the checks already ran on this state, `behavior-change` included.
-	if (!asked.asked) return { ok: true, state: checked, checked: true };
+	const passing = await passingPlan(w, others, g);
+	if (!passing.ok) return passing;
+	const recorded = await recordBehaviorConclusions(w, state, entries);
+	if (!recorded.ok) return recorded;
+	// Nothing posted: the checks already ran on this state, `behavior-change` included.
+	if (!recorded.posted) return { ok: true, state: checked, checked: true };
 	await afterForgeWrite(w.session, state.issue.number);
 	const fresh = requireChange(w.session);
 	return fresh.ok ? { ok: true, state: fresh.state, checked: false } : { ok: false, message: fresh.message };
@@ -289,6 +301,9 @@ async function decideEscalation(state: ChangeState, pack: Pack, target: string):
 export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
+	// Pure, so before the cascade: a malformed `behavior` refuses with nothing written.
+	const behavior = validateBehaviorParam(p.behavior);
+	if (!behavior.ok) return toolResult(behavior.message, undefined, true);
 	// Before the change is resolved, so a cascade that moved the phase back is what the gate sees (design D7).
 	await runSpecCascade(w.session);
 	const change = requireChange(w.session);
@@ -299,31 +314,44 @@ export async function runSpecGate(p: SpecGateParams, ctx: ApproverCtx): Promise<
 	if (byProposer) return toolResult(byProposer, undefined, true);
 	const briefed = briefingStep(target, w.pack, p.briefing);
 	if (!briefed.ok) return toolResult(briefed.message, undefined, true);
-	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, target, ctx) : { ok: true as const, state: change.state, checked: false };
+	const g: GateInput = { target, isPhase, briefed, rawBriefing: p.briefing };
+	const asked = asksBehavior(w.pack, target) ? await behaviorStep(w, change.state, g, behavior.entries) : { ok: true as const, state: change.state, checked: false };
 	if (!asked.ok) return toolResult(asked.message, undefined, true);
 	const state = asked.checked ? asked.state : await withGateChecks(w, asked.state, target);
 	const refusal = gateRefusal(state, w.pack, target);
 	if (refusal) return toolResult(refusalText(state, refusal), undefined, true);
-	const escalation = isPhase ? await decideEscalation(state, w.pack, target) : undefined;
-	return escalateOrPass(w, state, target, { escalation, briefed, rawBriefing: p.briefing }, ctx);
+	return escalateOrPass(w, state, g, ctx);
 }
 
+/** What `runSpecGate` knows of the call before the checks: the target and its briefing. */
+type GateInput = { target: string; isPhase: boolean; briefed: BriefingStep; rawBriefing: unknown };
+
+type Passing = { ok: true; plan: GatePlan; briefing: Briefing | undefined; escalation: Escalation | undefined } | { ok: false; message: string };
+
 /**
- * The gate after its checks pass: the rule's escalation (if any) decides the mode, a human gate needs a valid
- * briefing and a recommendation that is not approve over a check to waive, then the gate passes or asks.
+ * The gate's plan once its checks pass: the rule's escalation (if any) decides the mode, a human gate needs a valid
+ * briefing and a recommendation that is not approve over a check to waive. Writes nothing.
  */
-async function escalateOrPass(w: WriteContext, state: ChangeState, target: string, i: { escalation: Escalation | undefined; briefed: BriefingStep; rawBriefing: unknown }, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
-	const { escalation } = i;
-	const plan = planGate(state, w.pack, target, escalation?.outcome === "human");
-	if ("refused" in plan) return toolResult(plan.refused, undefined, true);
-	const briefing = escalation?.outcome === "human" ? escalatedBriefing(target, i.rawBriefing, escalation) : i.briefed;
-	if (!briefing.ok) return toolResult(briefing.message, undefined, true);
+async function passingPlan(w: WriteContext, state: ChangeState, g: GateInput): Promise<Passing> {
+	const escalation = g.isPhase ? await decideEscalation(state, w.pack, g.target) : undefined;
+	const plan = planGate(state, w.pack, g.target, escalation?.outcome === "human");
+	if ("refused" in plan) return { ok: false, message: plan.refused };
+	const briefing = escalation?.outcome === "human" ? escalatedBriefing(g.target, g.rawBriefing, escalation) : g.briefed;
+	if (!briefing.ok) return briefing;
 	const unrecommendable = plan.mode === "human" ? recommendationRefusal(briefing.briefing, plan) : undefined;
-	if (unrecommendable) return toolResult(unrecommendable, undefined, true);
+	if (unrecommendable) return { ok: false, message: unrecommendable };
+	return { ok: true, plan, briefing: briefing.briefing, escalation };
+}
+
+/** The gate after its checks pass: records the escalation, then passes the self gate or asks the human. */
+async function escalateOrPass(w: WriteContext, state: ChangeState, g: GateInput, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
+	const passing = await passingPlan(w, state, g);
+	if (!passing.ok) return toolResult(passing.message, undefined, true);
+	const { plan, escalation } = passing;
 	if (escalation !== undefined) await recordEscalation(w, state, escalation);
-	if (plan.mode === "self") return passSelf(w, state, target);
+	if (plan.mode === "self") return passSelf(w, state, g.target);
 	const summary = escalation === undefined ? {} : { summary: `Escalated: ${escalation.reason}` };
-	return askHuman(w, state, target, plan, ctx, { briefing: briefing.briefing, ...summary });
+	return askHuman(w, state, g.target, plan, ctx, { ...(passing.briefing === undefined ? {} : { briefing: passing.briefing }), ...summary });
 }
 
 /** Posts the `gate-escalation.<phase>` decision unless the latest one has the same facts (a rerun records nothing new). */
@@ -334,6 +362,20 @@ async function recordEscalation(w: WriteContext, state: ChangeState, e: Escalati
 	await w.ledger.append(state.issue.number, { ...record, after: lastForgeRef(state.marked) });
 	await afterLedgerWrite(w.session, state.issue.number);
 }
+
+export const BEHAVIOR_SCHEMA = {
+	type: "array",
+	description: "Your conclusion per capability whose code changed without its spec: unchanged or changed, with a one-line evidence rationale. Required at define and review when the change has such capabilities.",
+	items: {
+		type: "object",
+		properties: {
+			capability: { type: "string", description: "the capability id" },
+			outcome: { type: "string", enum: ["unchanged", "changed"] },
+			rationale: { type: "string", description: "one line of evidence, at most 300 characters" },
+		},
+		required: ["capability", "outcome", "rationale"],
+	},
+};
 
 export const BRIEFING_SCHEMA = {
 	type: "object",
@@ -356,9 +398,9 @@ export function registerSpecGate(pi: ExtensionAPI): void {
 		// Plain JSON-schema literal; cast avoids a typebox dependency. Only `target`: no outcome or choice parameter.
 		parameters: {
 			type: "object",
-			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" }, briefing: BRIEFING_SCHEMA },
+			properties: { target: { type: "string", description: "The current phase id, or a registered named gate" }, briefing: BRIEFING_SCHEMA, behavior: BEHAVIOR_SCHEMA },
 			required: ["target"],
 		} as never,
-		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target, briefing: (params as SpecGateParams).briefing }, ctx as ApproverCtx),
+		execute: (_id, params, _signal, _update, ctx) => runSpecGate({ target: (params as SpecGateParams).target, briefing: (params as SpecGateParams).briefing, behavior: (params as SpecGateParams).behavior }, ctx as ApproverCtx),
 	});
 }

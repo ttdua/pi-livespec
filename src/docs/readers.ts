@@ -7,8 +7,10 @@ import { parseDecision } from "../core/decision.ts";
 import { parseGlossary } from "../core/glossary.ts";
 import { joinLines } from "../core/lines.ts";
 import { declaredCapabilities, readText, sectionText, sha256 } from "../subagents/source-kit.ts";
-import { registerPacketSourceOnce } from "../subagents/sources.ts";
+import { registerPacketBehavior, registerPacketSourceOnce } from "../subagents/sources.ts";
 import type { PacketContext, PacketSource, SourceProvider, Target } from "../subagents/source-types.ts";
+
+import { behaviorPacketData, behaviorSourceProvider } from "./behavior-source.ts";
 
 const GLOSSARY_PATH = "specs/glossary.md";
 const DECISIONS_DIR = "specs/decisions";
@@ -66,4 +68,6 @@ export function registerDocReaders(): void {
 		registerPacketSourceOnce(role, glossaryReader);
 		registerPacketSourceOnce(role, decisionReader);
 	}
+	registerPacketSourceOnce("reviewer", behaviorSourceProvider);
+	registerPacketBehavior(behaviorPacketData);
 }

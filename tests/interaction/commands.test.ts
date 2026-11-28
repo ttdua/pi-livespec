@@ -115,3 +115,15 @@ describe("parseCommand", () => {
 		expect(parseCommand("")).toBeUndefined();
 	});
 });
+
+describe("behavior override command", () => {
+	test("Behavior override command parsed", () => {
+		expect(parseCommand("/livespec set behavior rate-limit changed")).toEqual({ verb: "set-behavior", capability: "rate-limit" });
+	});
+
+	test("Behavior override with another value", () => {
+		expect(parseCommand("/livespec set behavior rate-limit unchanged")).toEqual({ error: "set behavior accepts only changed" });
+		expect(parseCommand("/livespec set behavior rate-limit")).toEqual({ error: "set behavior accepts only changed" });
+		expect(parseCommand("/livespec set behavior")).toHaveProperty("error");
+	});
+});

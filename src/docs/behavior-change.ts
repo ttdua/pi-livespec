@@ -1,14 +1,13 @@
-// The `behavior-change` decision point (durable-doc-checks "Behavior change …", design D4): the facts built from
-// the change diff and the living specs' `paths`, the always-asking rule, the latest human record per capability,
-// and the check's results over the records. Pure: git and the work tree are read in `behavior-check.ts`; the check
-// never asks, `spec_gate` does (see `behavior-ask.ts`).
+// The `behavior-change` decision point (durable-doc-checks "Behavior conclusion rule, precedence and check"): the
+// facts built from the change diff and the living specs' `paths`, the never-asking rule, the effective conclusion
+// per item and per capability, and the check's results over the records. Pure: git and the work tree are read in
+// `behavior-check.ts`; the check never asks, `spec_gate` takes the agent's conclusions through its `behavior` parameter.
 
 import { createHash } from "node:crypto";
 import { isMap } from "yaml";
 import { matchGlob } from "../core/glob.ts";
 import type { Result } from "../core/result.ts";
-import { isBacked } from "../decide/answered.ts";
-import { type DecisionRecord, reusableAnswer, validDecisions } from "../decide/records.ts";
+import { type DecisionRecord, decisionComment, sameFacts, validDecisionEntries } from "../decide/records.ts";
 import type { RuleFn, RuleSchema } from "../decide/registry.ts";
 import { checkAllowedKeys } from "../decide/rules/schema-util.ts";
 import type { MarkedComment } from "../forge/markers.ts";
@@ -19,17 +18,15 @@ export const BEHAVIOR_POINT = "behavior-change";
 /** One capability whose code changed while its spec did not; `files` sorted. */
 export type BehaviorItem = { capability: string; files: string[] };
 
+export type BehaviorOutcome = "unchanged" | "changed";
+export type BehaviorConclusionInput = { capability: string; outcome: BehaviorOutcome; rationale: string };
+export type BehaviorConclusion = { outcome: BehaviorOutcome; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; commentId: string };
+
 type SpecPaths = { capability: string; paths: string[] };
+type Entry = { record: DecisionRecord; commentId: string };
 
 const SPECS_PATH = "specs/";
 const CODE = "behavior-change";
-
-export const BEHAVIOR_OPTIONS = [
-	{ id: "unchanged", label: "Behavior did not change", description: "A refactor: the spec stays as it is." },
-	{ id: "changed", label: "Behavior changed; the spec must be updated", description: "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated." },
-];
-
-const BEHAVIOR_RATIONALE = "Code under the capability's paths changed but its spec did not; most such edits are refactors.";
 
 const specFileOf = (capability: string): string => `${SPECS_PATH}${capability}/spec.md`;
 
@@ -48,29 +45,82 @@ export function behaviorDigest(files: string[]): string {
 	return createHash("sha256").update(files.join("\n")).digest("hex");
 }
 
-/** Per capability, the latest `behavior-change` record answered by a human that is not a proposal. */
-export function latestBehaviorRecords(marked: MarkedComment[]): Map<string, DecisionRecord> {
-	const latest = new Map<string, DecisionRecord>();
-	for (const m of marked) {
-		const r = m.kind === "decision" ? validDecisions([m])[0] : undefined;
-		if (r?.point === BEHAVIOR_POINT && r.source === "human" && r.proposal !== true && isBacked(marked, m, r)) latest.set(r.subject, r);
+/** Precedence rank: human `changed` 3, reviewer `changed` 2, every other conclusion 1. */
+function rank(r: DecisionRecord): number {
+	if (r.outcome !== "changed") return 1;
+	if (r.source === "human") return 3;
+	return r.source === "reviewer" ? 2 : 1;
+}
+
+const isConclusionOutcome = (v: unknown): v is BehaviorOutcome => v === "unchanged" || v === "changed";
+
+/** Valid `behavior-change` conclusions of `capability` (all when omitted), in comment order, proposals and rules left out. */
+function conclusionEntries(marked: MarkedComment[], capability?: string): Entry[] {
+	return validDecisionEntries(marked).filter(({ record: r }) => r.point === BEHAVIOR_POINT && (capability === undefined || r.subject === capability) && r.source !== "rule" && r.proposal !== true && isConclusionOutcome(r.outcome));
+}
+
+/** The winner of `entries`: each newer entry replaces the current one unless the current one ranks higher. */
+function fold(entries: Entry[]): Entry | undefined {
+	let winner: Entry | undefined;
+	for (const e of entries) {
+		if (winner === undefined || rank(e.record) >= rank(winner.record)) winner = e;
+	}
+	return winner;
+}
+
+const sharesFile = (files: string[] | undefined, item: BehaviorItem): boolean => (files ?? []).some((f) => item.files.includes(f));
+
+/** A record for the item's digest and facts, or a human or reviewer `changed` that shares one of its files. */
+function isCandidate(e: Entry, item: BehaviorItem): boolean {
+	const { record } = e;
+	if (record.digest === behaviorDigest(item.files) && sameFacts(record, item)) return true;
+	return rank(record) >= 2 && sharesFile(record.files, item);
+}
+
+function toConclusion(e: Entry): BehaviorConclusion {
+	const { record, commentId } = e;
+	return { outcome: record.outcome as BehaviorOutcome, source: record.source as BehaviorConclusion["source"], reason: record.reason, files: record.files ?? [], commentId };
+}
+
+/** The item's effective conclusion: the winner among its candidates, or undefined when none applies. */
+export function effectiveConclusion(marked: MarkedComment[], item: BehaviorItem): BehaviorConclusion | undefined {
+	const winner = fold(conclusionEntries(marked, item.capability).filter((e) => isCandidate(e, item)));
+	return winner === undefined ? undefined : toConclusion(winner);
+}
+
+/** Per capability, the winning conclusion over all its records, digests and files ignored. */
+export function latestConclusions(marked: MarkedComment[]): Map<string, BehaviorConclusion> {
+	const byCapability = new Map<string, Entry[]>();
+	for (const e of conclusionEntries(marked)) {
+		const entries = byCapability.get(e.record.subject) ?? [];
+		entries.push(e);
+		byCapability.set(e.record.subject, entries);
+	}
+	const latest = new Map<string, BehaviorConclusion>();
+	for (const [capability, entries] of byCapability) {
+		const winner = fold(entries);
+		if (winner !== undefined) latest.set(capability, toConclusion(winner));
 	}
 	return latest;
 }
 
-/** The rule always asks a human. */
-export const behaviorChangeRule: RuleFn = (facts) => {
-	const item = facts as BehaviorItem;
-	return { ask: { summary: behaviorSummary(item), options: BEHAVIOR_OPTIONS, recommended: "unchanged", rationale: BEHAVIOR_RATIONALE } };
-};
-
-function behaviorSummary(item: BehaviorItem): string {
-	return [
-		`Did the behavior of ${item.capability} change?`,
-		`The change edits code under its paths but not ${specFileOf(item.capability)}:`,
-		...item.files.map((f) => `- ${f}`),
-	].join("\n");
+/** The `decision` comment of a conclusion on `item`: digest and files of the item, facts as the item. */
+export function behaviorConclusionComment(item: BehaviorItem, c: { source: "agent" | "reviewer" | "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown } }): string {
+	return decisionComment({
+		point: BEHAVIOR_POINT,
+		subject: item.capability,
+		digest: behaviorDigest(item.files),
+		source: c.source,
+		outcome: c.outcome,
+		reason: c.reason,
+		facts: item,
+		files: item.files,
+		...(c.overridden_by === undefined ? {} : { overridden_by: c.overridden_by }),
+	});
 }
+
+/** The rule never asks: the conclusion comes from the agent's `behavior` parameter, so the outcome is null. */
+export const behaviorChangeRule: RuleFn = () => ({ outcome: null, reason: "concluded by the agent through spec_gate's behavior parameter" });
 
 export const behaviorChangeSchema: RuleSchema = {
 	validate(node, report) {
@@ -78,12 +128,18 @@ export const behaviorChangeSchema: RuleSchema = {
 	},
 };
 
-/** The record that answers `item` (same digest and facts), if any. */
-export function behaviorAnswer(marked: MarkedComment[], item: BehaviorItem): DecisionRecord | undefined {
-	return reusableAnswer(marked, BEHAVIOR_POINT, item.capability, behaviorDigest(item.files), item);
-}
-
 export const behaviorSubject = (capability: string): `decide:${string}` => `decide:${BEHAVIOR_POINT}.${capability}`;
+
+/** The refusal while a legacy `decide:behavior-change.<capability>` request is open for one of the items; undefined otherwise. */
+export function legacyRequestRefusal(items: BehaviorItem[], marked: MarkedComment[]): string | undefined {
+	const requests = readRequests(marked);
+	for (const item of items) {
+		const subject = behaviorSubject(item.capability);
+		const open = openRequestFor(requests, subject);
+		if (open !== undefined) return `spec_gate refused: request ${open} for ${subject} from before the behavior parameter is still open: answer or dismiss it first (/livespec choose or /livespec dismiss); nothing was written.`;
+	}
+	return undefined;
+}
 
 /** The check's results for the items: pure over the marked comments. */
 export function behaviorResults(items: BehaviorItem[], marked: MarkedComment[], phase: string | undefined): Result[] {
@@ -97,13 +153,13 @@ export function behaviorResults(items: BehaviorItem[], marked: MarkedComment[], 
 }
 
 function itemResult(item: BehaviorItem, marked: MarkedComment[], requests: ReturnType<typeof readRequests>, phase: string | undefined): Result | undefined {
-	const record = behaviorAnswer(marked, item);
+	const conclusion = effectiveConclusion(marked, item);
 	const file = specFileOf(item.capability);
-	if (record?.outcome === "changed") return error(file, `the behavior of ${item.capability} changed: update ${file}`);
-	if (record !== undefined) return undefined;
+	if (conclusion?.outcome === "changed") return error(file, `the behavior of ${item.capability} changed (${conclusion.source} conclusion): update ${file}`);
+	if (conclusion !== undefined) return undefined;
 	const open = openRequestFor(requests, behaviorSubject(item.capability));
-	if (open !== undefined) return error(file, `${behaviorSubject(item.capability)} (${open}) waits for the human's answer on whether the behavior of ${item.capability} changed`);
-	return error(file, `${item.capability} code changed (${item.files.join(", ")}) without ${file}: run spec_gate ${phase ?? "<phase>"}, which asks the human whether its behavior changed`);
+	const legacy = open === undefined ? "" : `; ${behaviorSubject(item.capability)} (${open}) is an open request from before this rule`;
+	return error(file, `${item.capability} code changed (${item.files.join(", ")}) without ${file}: run spec_gate ${phase ?? "<phase>"} with a behavior parameter to conclude whether its behavior changed${legacy}`);
 }
 
 const error = (file: string, message: string): Result => ({ code: CODE, severity: "error", file, message });

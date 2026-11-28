@@ -11,6 +11,9 @@ export type DialogState = {
 	scroll: number;
 	picked?: number;
 	unitsOpen: boolean;
+	behaviorOpen: boolean;
+	/** Capabilities the human marked `changed` on the Behavior tab. */
+	marked: ReadonlySet<string>;
 	notes: string;
 	answer: string;
 	overrides: Readonly<Record<string, { difficulty?: Difficulty; tags?: string[] }>>;
@@ -24,6 +27,8 @@ export type DialogAction =
 	| { type: "scroll"; delta: number }
 	| { type: "pick"; index?: number }
 	| { type: "openUnits" }
+	| { type: "openBehavior" }
+	| { type: "toggleBehavior" }
 	| { type: "nextTab" }
 	| { type: "previousTab" }
 	| { type: "openEditor"; editor: EditorName }
@@ -35,12 +40,16 @@ export type DialogAction =
 const LEVELS: Difficulty[] = ["low", "medium", "high"];
 
 export function initialState(_model: DialogModel): DialogState {
-	return { tab: 0, focus: 0, scroll: 0, notes: "", answer: "", unitsOpen: false, overrides: {} };
+	return { tab: 0, focus: 0, scroll: 0, notes: "", answer: "", unitsOpen: false, behaviorOpen: false, marked: new Set(), overrides: {} };
 }
 
-/** The tabs now shown: the units tab sits between decision and review once opened. */
-export const tabsOf = (model: DialogModel, state: DialogState): TabName[] =>
-	state.unitsOpen ? ["decision", "units", "review"] : model.tabs;
+/** The tabs now shown: the units and behavior tabs sit between decision and review once opened. */
+export const tabsOf = (model: DialogModel, state: DialogState): TabName[] => [
+	"decision",
+	...(state.unitsOpen ? (["units"] as const) : []),
+	...(state.behaviorOpen ? (["behavior"] as const) : []),
+	"review",
+];
 
 const tabOf = (model: DialogModel, state: DialogState) => tabsOf(model, state)[state.tab];
 
@@ -49,6 +58,7 @@ function rowCount(model: DialogModel, state: DialogState): number {
 	const tab = tabOf(model, state);
 	if (tab === "decision") return model.entries.length;
 	if (tab === "units") return model.units.length;
+	if (tab === "behavior") return model.behavior.length;
 	return 0;
 }
 
@@ -143,6 +153,22 @@ function openUnits(model: DialogModel, state: DialogState): DialogState {
 	return goTo({ ...state, unitsOpen: true }, 1);
 }
 
+/** Opens the behavior tab for the rest of the dialog; only from the decision tab and only when the request has behavior items. */
+function openBehavior(model: DialogModel, state: DialogState): DialogState {
+	if (!model.behaviorAvailable || tabOf(model, state) !== "decision") return state;
+	const opened = { ...state, behaviorOpen: true };
+	return goTo(opened, tabsOf(model, opened).indexOf("behavior"));
+}
+
+/** Marks or unmarks the focused capability `changed`; one already concluded `changed` has nothing to mark. */
+function toggleBehavior(model: DialogModel, state: DialogState): DialogState {
+	const item = model.behavior[state.focus];
+	if (tabOf(model, state) !== "behavior" || item === undefined || item.outcome === "changed") return state;
+	const marked = new Set(state.marked);
+	if (!marked.delete(item.capability)) marked.add(item.capability);
+	return { ...state, marked };
+}
+
 function cancel(state: DialogState): DialogState {
 	return state.editor === undefined ? { ...state, done: "cancelled" } : { ...state, editor: undefined };
 }
@@ -157,6 +183,10 @@ export function reduce(model: DialogModel, state: DialogState, action: DialogAct
 			return pick(model, state, action.index);
 		case "openUnits":
 			return openUnits(model, state);
+		case "openBehavior":
+			return openBehavior(model, state);
+		case "toggleBehavior":
+			return toggleBehavior(model, state);
 		case "nextTab":
 			return shiftTab(model, state, 1);
 		case "previousTab":

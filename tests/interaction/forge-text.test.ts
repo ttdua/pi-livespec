@@ -394,3 +394,26 @@ describe("every request kind carries a recommendation", () => {
 		if (rows.length > 0) expect(rows[0]).toContain("(recommended)");
 	});
 });
+
+describe("behavior override text", () => {
+	const items = [{ capability: "rate-limit", outcome: "unchanged" as const }];
+	const define = (over: Partial<ApprovalRequest> = {}) => ({ ...request({ subject: "gate:define", summary: "Define\n\nBehavior conclusions (please check):\n- rate-limit: unchanged (agent) — x; files: 1" }), ...over });
+
+	test("Behavior override command listed", () => {
+		const text = renderForgeRequest(define({ overridableBehavior: { items } }));
+		expect(text).toContain("/livespec set behavior <capability> changed");
+		expect(text).toMatch(/set behavior <capability> changed.*applies only with \/livespec changes/);
+		expect(parseCommand("/livespec set behavior rate-limit changed")).toEqual({ verb: "set-behavior", capability: "rate-limit" });
+	});
+
+	test("the override command is not listed without behavior items", () => {
+		expect(renderForgeRequest(define())).not.toContain("set behavior");
+	});
+
+	test("the Behavior conclusions section comes before the briefing", () => {
+		const text = renderForgeRequest(define({ overridableBehavior: { items } }));
+		const section = text.indexOf("Behavior conclusions (please check):");
+		expect(section).toBeGreaterThan(-1);
+		expect(section).toBeLessThan(text.indexOf("Agent recommendation"));
+	});
+});

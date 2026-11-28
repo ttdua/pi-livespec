@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
+import { registerDocReaders } from "../../src/docs/readers.ts";
+import { resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { aggregates, latestRun, type ReviewRunData } from "../../src/review/records.ts";
 import type { AggregateFinding } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
@@ -190,6 +192,43 @@ describe("spec_review end to end", () => {
 		await h.review();
 		const persona = h.fake.spawned.find((s) => s.options.metadata.subject === "persona:security-auditor");
 		expect(persona?.prompt).not.toContain("CHANGE-REVIEWER-SECRET");
+	});
+});
+
+describe("spec_review reviewer behavior records", () => {
+	const CACHE_SPEC = "---\npaths: [\"src/cache/**\"]\n---\n# cache\n\n## Purpose\nCache.\n\n## Requirements\n";
+	const CAP = "src/limits/cap.ts";
+	const STORE = "src/cache/store.ts";
+	const at = (location: string): Finding => ({ ...DEFECT, location: `${location}:1` });
+	const disputes = [{ capability: "rate-limit", outcome: "changed", rationale: "cap now rejects" }, { capability: "cache", outcome: "changed", rationale: "store evicts early" }];
+
+	afterEach(resetPacketSourcesForTests);
+
+	test("a reviewer record lost to a failed write is replayed once on the next call", async () => {
+		registerDocReaders();
+		const h = await reviewHarness({ scripts: { "specs/cache/spec.md": CACHE_SPEC }, diff: { [CAP]: "export const cap = 99;\n", [STORE]: "export {};\n", "src/u1.ts": "export {};\n" } });
+		h.reviews.set("change", [at(CAP), at(STORE)]);
+		const wait = h.fake.service.wait;
+		h.fake.service.wait = async (id: string, o?: unknown) => {
+			const record = await wait(id, o as never);
+			const meta = h.fake.spawned.find((s) => s.id === id)?.options.metadata ?? {};
+			return meta.subject === "change" ? { ...record, structuredResult: { ...(record.structuredResult as object), behavior: disputes } } : record;
+		};
+		const forge = h.world.forge;
+		const create = forge.createComment.bind(forge);
+		let reviewerPosts = 0;
+		forge.createComment = async (n: number, body: string) => {
+			if (body.includes("source: reviewer") && ++reviewerPosts === 2) throw new Error("forge write failed");
+			return create(n, body);
+		};
+		const first = await h.review();
+		expect(textOf(first)).toContain("forge write failed");
+		const reviewer = async () => (await h.ofKind("decision")).filter((m) => (m.data as { source?: string }).source === "reviewer").map((m) => (m.data as { subject: string }).subject);
+		expect(await reviewer()).toEqual(["rate-limit"]);
+		const again = await h.review();
+		expect(again.isError, textOf(again)).toBeFalsy();
+		expect((await reviewer()).sort()).toEqual(["cache", "rate-limit"]);
+		expect(h.fake.spawned.filter((s) => s.options.metadata.subject === "change")).toHaveLength(1);
 	});
 });
 

@@ -5,7 +5,7 @@ import { type MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { canonicalKey, canonicalRef } from "../ledger/alias.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
-import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
+import type { Finding, ReviewerBehavior, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
 
 export type Thinking = "low" | "medium" | "high";
@@ -84,6 +84,8 @@ export type FindingSummaryData = {
 	reason?: string;
 	notes?: string;
 	evidence?: string;
+	/** The cleaned `behavior` entries of a completed, non-advisory `change` reviewer run, so lost reviewer records can be replayed. */
+	behavior?: ReviewerBehavior[];
 	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the entry refs it merged. */
 	aggregate?: true;
 	reviews?: string[];

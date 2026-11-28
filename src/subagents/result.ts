@@ -8,20 +8,22 @@ import type { Packet } from "./source-types.ts";
 /** Retry and cap constants of the plan's Global Constraints. */
 export const MISSING_RESULT_RETRIES = 1;
 export const MISSING_SOURCE_RETURNS = 1;
+export const MISSING_DISPUTE_RETURNS = 1;
 export const NEEDS_CONTEXT_CAP = 2;
 export const MISSING_PREREQUISITE = "missing-prerequisite";
 
 /**
  * What came before this run. `needsContext` counts the unit's earlier `NEEDS_CONTEXT` dispatch records;
- * `retries` and `returns` count the steps already taken for the current dispatch.
+ * `retries`, `returns` and `disputeReturns` (returns for a behavior dispute without a finding) count the steps already taken for the current dispatch.
  */
-export type DispatchHistory = { needsContext: number; retries: number; returns: number; respawned: boolean };
+export type DispatchHistory = { needsContext: number; retries: number; returns: number; disputeReturns: number; respawned: boolean };
 
 export type ResultDecision =
 	| { kind: "accept"; result: SubagentResult }
 	/** `reason` is plain text; `shown` is the same with child text wrapped as untrusted, for the parent. */
 	| { kind: "retry"; reason: string; shown: string }
 	| { kind: "return"; missing: string[] }
+	| { kind: "return-behavior"; capabilities: string[] }
 	| { kind: "more-context"; ids: string[]; result: SubagentResult }
 	| { kind: "question"; text: string }
 	| { kind: "blocked"; reason: string }
@@ -71,6 +73,41 @@ export function isMissingPrerequisite(result: SubagentResult): boolean {
 	return result.status === "BLOCKED" && result.reason?.includes(MISSING_PREREQUISITE) === true;
 }
 
+const BLOCKING = ["WARNING", "CRITICAL"];
+
+/** A finding is at file `f` when its location is `f` or `f:<line>`. */
+const isAtFile = (location: string, f: string): boolean => location === f || location.startsWith(`${f}:`);
+
+/** The capabilities of a `changed` entry over a conclusion that is not `changed` that lack a blocking finding at one of their files. */
+export function behaviorDisputeMisses(result: SubagentResult, behavior: NonNullable<Packet["behavior"]>): string[] {
+	const blocking = (result.findings ?? []).filter((f) => BLOCKING.includes(f.severity));
+	return (result.behavior ?? []).flatMap((entry) => {
+		const item = behavior.items.find((i) => i.capability === entry.capability);
+		if (item === undefined || entry.outcome !== "changed" || behavior.effective[item.capability]?.outcome === "changed") return [];
+		return blocking.some((f) => item.files.some((file) => isAtFile(f.location, file))) ? [] : [item.capability];
+	});
+}
+
+/** The result with the entries of `capabilities` dropped and a line in `notes` naming them. */
+function withoutDisputes(result: SubagentResult, capabilities: string[]): SubagentResult {
+	const behavior = (result.behavior ?? []).filter((e) => !capabilities.includes(e.capability));
+	const note = `Dropped behavior ${capabilities.join(", ")}: changed needs a WARNING or CRITICAL finding at one of its files.`;
+	return { ...result, behavior, notes: result.notes === "" ? note : `${result.notes}\n${note}` };
+}
+
+/** What a child or the parent is told when `capabilities` lack a blocking finding. */
+export const disputeMessage = (capabilities: string[]): string =>
+	capabilities.map((c) => `behavior ${c} changed needs a WARNING or CRITICAL finding at one of its files`).join("; ");
+
+/** A dispute without a finding is returned once; after that the entries are dropped and the result stands. */
+function disputeDecision(result: SubagentResult, packet: Packet, history: DispatchHistory): ResultDecision | undefined {
+	if (result.status !== "DONE" && result.status !== "DONE_WITH_CONCERNS") return undefined;
+	const misses = packet.behavior === undefined ? [] : behaviorDisputeMisses(result, packet.behavior);
+	if (misses.length === 0) return undefined;
+	if (history.disputeReturns < MISSING_DISPUTE_RETURNS) return { kind: "return-behavior", capabilities: misses };
+	return statusDecision(withoutDisputes(result, misses), history);
+}
+
 function statusDecision(result: SubagentResult, history: DispatchHistory): ResultDecision {
 	if (result.status === "NEEDS_CONTEXT") {
 		if (history.needsContext >= NEEDS_CONTEXT_CAP) return { kind: "stuck", reason: `NEEDS_CONTEXT returned ${history.needsContext + 1} times: ${untrusted(result.reason ?? "")}`, result };
@@ -80,16 +117,22 @@ function statusDecision(result: SubagentResult, history: DispatchHistory): Resul
 	return { kind: "accept", result };
 }
 
-/** Decides what the parent does with a settled run; reads nothing but its arguments. */
-export function interpret(record: RecordLike, packet: Packet, role: Role, history: DispatchHistory): ResultDecision {
+/** Makes a schema-valid result safe to store; runs once per result, before any rule reads it. */
+export type PrepareResult = (result: SubagentResult) => SubagentResult;
+
+/**
+ * Decides what the parent does with a settled run; reads nothing but its arguments. `prepare` normalises the result
+ * right after the schema check, so the dispute check and every decision carrying a result see the normalised one.
+ */
+export function interpret(record: RecordLike, packet: Packet, role: Role, history: DispatchHistory, prepare: PrepareResult = (r) => r): ResultDecision {
 	if (record.pendingQuestion !== undefined) return { kind: "question", text: record.pendingQuestion };
 	const missing = missingReason(record, role);
 	if (missing !== undefined) return retryOrBlock(missing, history);
-	const result = record.structuredResult as SubagentResult;
+	const result = prepare(record.structuredResult as SubagentResult);
 	const omitted = result.status === "NEEDS_CONTEXT" ? [] : missingSources(result, packet);
 	if (omitted.length > 0) {
 		if (history.returns < MISSING_SOURCE_RETURNS) return { kind: "return", missing: omitted };
 		return { kind: "blocked", reason: `the result still omits required sources: ${omitted.join(", ")}` };
 	}
-	return statusDecision(result, history);
+	return disputeDecision(result, packet, history) ?? statusDecision(result, history);
 }

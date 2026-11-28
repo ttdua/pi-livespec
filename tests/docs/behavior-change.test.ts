@@ -1,5 +1,5 @@
-// The `behavior-change` facts, rule and check (durable-doc-checks "Behavior change facts", "Behavior change rule",
-// "Behavior change check").
+// The `behavior-change` facts, rule, precedence and check (durable-doc-checks "Behavior conclusion rule",
+// "Behavior conclusion precedence", "Behavior conclusion check").
 
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,8 +9,9 @@ import { parseChange } from "../../src/core/change.ts";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
 import "../../src/decide/builtin.ts";
+import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
 import { type DecisionAsk, decide } from "../../src/decide/seam.ts";
-import { behaviorDigest, behaviorFacts, behaviorResults, type BehaviorItem } from "../../src/docs/behavior-change.ts";
+import { type BehaviorItem, behaviorDigest, behaviorFacts, behaviorResults, effectiveConclusion } from "../../src/docs/behavior-change.ts";
 import { behaviorChangeCheck } from "../../src/docs/behavior-check.ts";
 import type { CheckContext } from "../../src/engine/registry.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
@@ -19,6 +20,7 @@ const SPECS = [{ capability: "rate-limit", paths: ["src/limit/**"] }];
 const CAP = "src/limit/cap.ts";
 const WINDOW = "src/limit/window.ts";
 const ITEM: BehaviorItem = { capability: "rate-limit", files: [CAP] };
+const GROWN: BehaviorItem = { capability: "rate-limit", files: [CAP, WINDOW] };
 
 function marked(body: string): MarkedComment {
 	const m = parseMarked(body);
@@ -77,54 +79,94 @@ describe("behavior facts", () => {
 });
 
 describe("behavior-change rule", () => {
-	test("Always asks", async () => {
+	test("Rule never asks", async () => {
 		const ask = vi.fn(async (_intent: DecisionAsk) => ({ status: "pending" as const, requestId: "r1" }));
-		await decide("behavior-change", ITEM, { config: { mode: "rule" }, subject: ITEM.capability, digest: behaviorDigest(ITEM.files), ask });
-		const intent = ask.mock.calls[0]?.[0];
-		expect(intent).toMatchObject({ point: "behavior-change", subject: "rate-limit", digest: behaviorDigest([CAP]), facts: ITEM });
-		expect(intent?.options.map((o) => o.id)).toEqual(["unchanged", "changed"]);
+		const decided = await decide("behavior-change", ITEM, { config: { mode: "rule" }, subject: ITEM.capability, digest: behaviorDigest(ITEM.files), ask });
+		expect(ask).not.toHaveBeenCalled();
+		expect(decided).toMatchObject({ status: "decided", outcome: null, source: "rule" });
 	});
 
 	test("Rule ask carries descriptions", async () => {
-		const ask = vi.fn(async (_intent: DecisionAsk) => ({ status: "pending" as const, requestId: "r1" }));
-		await decide("behavior-change", ITEM, { config: { mode: "rule" }, subject: ITEM.capability, ask });
-		const intent = ask.mock.calls[0]?.[0];
-		expect(intent?.options.map((o) => o.description)).toEqual(["A refactor: the spec stays as it is.", "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated."]);
-		expect(intent?.recommended).toBe("unchanged");
-		expect(intent?.rationale).toBe("Code under the capability's paths changed but its spec did not; most such edits are refactors.");
+		resetRulesForTests();
+		registerRule("pick", { validate() {} }, () => ({ ask: { summary: "Pick one for U1", options: [{ id: "x", label: "X", description: "Do x." }, { id: "y", label: "Y", description: "Do y." }], recommended: "x", rationale: "x is simplest." } }));
+		try {
+			const ask = vi.fn(async (_intent: DecisionAsk) => ({ status: "pending" as const, requestId: "r1" }));
+			await decide("pick", ITEM, { config: {}, subject: "U1", ask });
+			const intent = ask.mock.calls[0]?.[0];
+			expect(intent?.options.map((o) => o.description)).toEqual(["Do x.", "Do y."]);
+			expect(intent?.recommended).toBe("x");
+			expect(intent?.rationale).toBe("x is simplest.");
+		} finally {
+			resetRulesForTests();
+			registerBuiltinRules();
+		}
+	});
+});
+
+describe("behavior conclusion precedence", () => {
+	test("Agent cannot undo a human change", () => {
+		const marks = [record("changed"), record("unchanged", ITEM, { source: "agent", reason: "refactor only" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "human" });
+	});
+
+	test("Agent cannot undo a reviewer dispute", () => {
+		const marks = [record("unchanged", ITEM, { source: "agent" }), record("changed", ITEM, { source: "reviewer" }), record("unchanged", ITEM, { source: "agent" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "reviewer" });
+	});
+
+	test("Adding a file does not undo a human change", () => {
+		const marks = [record("changed"), record("unchanged", GROWN, { source: "agent" })];
+		expect(effectiveConclusion(marks, GROWN)).toMatchObject({ outcome: "changed", source: "human" });
+		const [r] = behaviorResults([GROWN], marks, "define");
+		expect(r?.message).toContain("specs/rate-limit/spec.md");
+	});
+
+	test("Later agent record wins over an earlier agent record", () => {
+		const marks = [record("unchanged", ITEM, { source: "agent" }), record("changed", ITEM, { source: "agent" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "agent" });
+	});
+
+	test("Old human answer still counts", () => {
+		const marks = [record("unchanged", ITEM, { request: "decide-behavior-change-rate-limit.abc" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "unchanged", source: "human" });
+	});
+
+	test("New file needs a new conclusion", () => {
+		expect(effectiveConclusion([record("unchanged", ITEM, { source: "agent" })], GROWN)).toBeUndefined();
+	});
+
+	test("Reviewer cannot undo a human change", () => {
+		const marks = [record("changed"), record("unchanged", ITEM, { source: "reviewer" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "human" });
 	});
 });
 
 describe("behavior-change check", () => {
-	test("Unanswered item names the gate", () => {
+	test("Unconcluded item names the parameter", () => {
 		const [r] = behaviorResults([ITEM], [], "define");
 		expect(r).toMatchObject({ code: "behavior-change", severity: "error" });
+		expect(r?.message).toContain("behavior");
 		expect(r?.message).toContain("spec_gate define");
 	});
 
-	test("open request is named as waiting", () => {
+	test("Legacy open request is named", () => {
 		const [r] = behaviorResults([ITEM], [openRequest("rate-limit")], "review");
 		expect(r?.message).toContain("decide:behavior-change.rate-limit");
-		expect(r?.message).not.toContain("spec_gate");
+		expect(r?.message).toContain("spec_gate review");
 	});
 
 	test("Behavior changed without a spec edit", () => {
 		const [r] = behaviorResults([ITEM], [record("changed")], "define");
 		expect(r?.severity).toBe("error");
 		expect(r?.message).toContain("specs/rate-limit/spec.md");
+		expect(r?.message).toContain("human");
 	});
 
 	test("unchanged record reports nothing", () => {
 		expect(behaviorResults([ITEM], [record("unchanged")], "define")).toEqual([]);
 	});
 
-	test("New file asks again", () => {
-		const now: BehaviorItem = { capability: "rate-limit", files: [CAP, WINDOW] };
-		const [r] = behaviorResults([now], [record("unchanged")], "define");
-		expect(r?.message).toContain("spec_gate define");
-	});
-
-	test("Spec updated after a changed answer", async () => {
+	test("Spec updated after a changed conclusion", async () => {
 		const root = await specRoot();
 		expect(await behaviorChangeCheck(checkCtx(root, [CAP, "specs/rate-limit/spec.md"], [record("changed")]))).toEqual([]);
 	});

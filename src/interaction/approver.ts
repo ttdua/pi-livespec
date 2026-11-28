@@ -53,6 +53,8 @@ export interface GateSnapshot {
 	requirements?: Record<string, string>;
 	/** Plan gate only: the capabilities `requirements` scanned. */
 	requirement_scope?: string[];
+	/** `gate:define` only: the behavior items shown at the gate with their effective outcome; the source of truth for overrides. */
+	behavior?: { capability: string; files: string[]; outcome: "unchanged" | "changed" | null }[];
 }
 
 export interface AmendSnapshot {
@@ -113,6 +115,8 @@ export interface ApprovalRequest {
 	options?: RequestOption[];
 	briefing?: Briefing;
 	mode: RequestMode;
+	/** `gate:define` with behavior items: derived from `GateSnapshot.behavior`. */
+	overridableBehavior?: { items: { capability: string; outcome: "unchanged" | "changed" | null }[] };
 	overridable?: { units: string[]; current?: Record<string, { difficulty?: Difficulty; tags: string[] }> };
 	question?: { id: string; class: QuestionClass };
 }
@@ -121,6 +125,12 @@ export interface Override {
 	unit: string;
 	difficulty?: Difficulty;
 	tags?: string[];
+}
+
+/** A human mark that a capability's behavior changed; valid only with `changes_requested`. */
+export interface BehaviorOverride {
+	capability: string;
+	outcome: "changed";
 }
 
 /** For questions, `answer` holds the answer text; an answered question is `approved`, a dismissed one `dismissed`. */
@@ -136,6 +146,7 @@ export interface Answered {
 	/** Read only: answers stored before the class choice was removed may carry it; new answers never do. */
 	questionClass?: QuestionClass;
 	overrides?: Override[];
+	behaviorOverrides?: BehaviorOverride[];
 	answerComment?: { id: string; author: string; updatedAt: string };
 }
 

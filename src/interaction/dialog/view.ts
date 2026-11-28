@@ -5,7 +5,7 @@
 
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type { Override } from "../approver.ts";
-import { type DialogEntry, type DialogModel, outcomeLabel, overridesOf, type TabName } from "./model.ts";
+import { type DialogEntry, type DialogModel, markedBehavior, outcomeLabel, overridesOf, type TabName } from "./model.ts";
 import { sanitize } from "./sanitize.ts";
 import { type DialogState, type EditorName, tabsOf } from "./state.ts";
 
@@ -17,7 +17,7 @@ export const MIN_WIDTH = 40;
 export const FULL_WIDTH = 60;
 
 const NARROW_LINE = "Too narrow — widen or press Esc";
-const TAB_TITLES: Record<TabName, string> = { decision: "Decision", units: "Adjust units", review: "Review" };
+const TAB_TITLES: Record<TabName, string> = { decision: "Decision", behavior: "Behavior", units: "Adjust units", review: "Review" };
 const EDITOR_TITLES: Record<EditorName, string> = { note: "Note:", answer: "Your answer:", tags: "Tags" };
 const FOCUS = "›";
 const PICKED = " ✓";
@@ -106,6 +106,18 @@ function unitsLayout(ctx: Ctx): Layout {
 	return { body: [], ...stack([], rows, state.focus), footer: [] };
 }
 
+// --- behavior ---------------------------------------------------------------------------------
+
+function behaviorLayout(ctx: Ctx): Layout {
+	const { model, state } = ctx;
+	const rows = model.behavior.map((item, i) => {
+		const marker = i === state.focus ? ctx.theme.accent(FOCUS) : " ";
+		const marked = state.marked.has(item.capability) && item.outcome !== "changed";
+		return wrapWithPrefix(`${marker} ${marked ? "[x]" : "[ ]"} `, `${oneLine(item.label)}  ${item.outcome ?? "none"}${marked ? " → changed" : ""}`, ctx.width, "      ");
+	});
+	return { body: [], ...stack([], rows, state.focus), footer: [] };
+}
+
 // --- review -----------------------------------------------------------------------------------
 
 const outcomeText = (ctx: Ctx): string => outcomeLabel(ctx.model, ctx.state) ?? "—";
@@ -123,6 +135,13 @@ function overrideLines(ctx: Ctx, entry: DialogEntry): string[] {
 	return [heading, ...overrides.flatMap((o) => wrapWithPrefix("  ", overrideText(o, labels.get(o.unit) ?? o.unit), ctx.width))];
 }
 
+function behaviorLines(ctx: Ctx, entry: DialogEntry): string[] {
+	const marked = markedBehavior(ctx.model, ctx.state);
+	if (marked.length === 0) return [];
+	const heading = entry.action.kind === "changes" ? "Behavior changed:" : "Behavior overrides discarded (only request changes sends them):";
+	return [heading, ...marked.flatMap((o) => wrapWithPrefix("  ", oneLine(ctx.model.behavior.find((i) => i.capability === o.capability)?.label ?? o.capability), ctx.width))];
+}
+
 function answerOf(ctx: Ctx, entry: DialogEntry): string {
 	if (entry.action.kind === "candidate") return oneLine(entry.label);
 	return ctx.state.answer.trim() === "" ? "—" : typed(ctx.state.answer.trim());
@@ -132,7 +151,7 @@ function reviewSummary(ctx: Ctx, entry: DialogEntry): string[] {
 	const { width } = ctx;
 	if (ctx.model.kind === "question") return wrapWithPrefix("Answer: ", answerOf(ctx, entry), width);
 	const choice = entry.action.kind === "option" ? wrapWithPrefix("Choice: ", oneLine(entry.label), width) : [];
-	return [`Outcome: ${outcomeText(ctx)}`, ...choice, ...noteLines(ctx), ...overrideLines(ctx, entry)];
+	return [`Outcome: ${outcomeText(ctx)}`, ...choice, ...noteLines(ctx), ...overrideLines(ctx, entry), ...behaviorLines(ctx, entry)];
 }
 
 function reviewLayout(ctx: Ctx): Layout {
@@ -153,9 +172,10 @@ function editorTitle(ctx: Ctx, editor: EditorName): string {
 function hintOf(ctx: Ctx, tab: TabName): string {
 	if (ctx.state.editor !== undefined) return "Enter save · Esc close editor";
 	const note = ctx.model.notes ? " · n note" : "";
-	const units = ctx.model.unitsAvailable && !ctx.state.unitsOpen ? " · u adjust units" : "";
+	const units = (ctx.model.unitsAvailable && !ctx.state.unitsOpen ? " · u adjust units" : "") + (ctx.model.behaviorAvailable && !ctx.state.behaviorOpen ? " · b behavior" : "");
 	if (tab === "decision") return `↑↓ move · 1-9 pick${note}${units} · Tab next tab · Enter select · Esc cancel`;
 	if (tab === "units") return "↑↓ move · ←→ difficulty · e tags · Tab next tab · Enter next · Esc cancel";
+	if (tab === "behavior") return "↑↓ move · Enter/Space mark changed · Tab next tab · Esc cancel";
 	if (ctx.model.kind === "question") return "Enter submit · Tab tabs · Esc cancel";
 	return `Enter submit${note} · Tab tabs · Esc cancel`;
 }
@@ -172,7 +192,7 @@ function footerLines(ctx: Ctx, tab: TabName, tabFooter: string[]): string[] {
 
 // --- composition ------------------------------------------------------------------------------
 
-const LAYOUTS: Record<TabName, (ctx: Ctx) => Layout> = { decision: decisionLayout, units: unitsLayout, review: reviewLayout };
+const LAYOUTS: Record<TabName, (ctx: Ctx) => Layout> = { decision: decisionLayout, behavior: behaviorLayout, units: unitsLayout, review: reviewLayout };
 
 /** What the screen holds besides the body: the header, the fixed rows and the footer. */
 type Frame = { header: string[]; fixed: string[]; footer: string[] };

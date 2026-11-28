@@ -70,3 +70,20 @@ describe("resultSchema", () => {
 		}
 	});
 });
+
+describe("reviewer behavior", () => {
+	const base = { status: "DONE", notes: "n", discoveries: [], sources_used: [], findings: [] };
+
+	test("Reviewer behavior accepted", () => {
+		const behavior = [{ capability: "rate-limit", outcome: "unchanged", rationale: "refactor" }];
+		expect(checkSchema(resultSchema("reviewer"), { ...base, behavior }).ok).toBe(true);
+		expect(checkSchema(resultSchema("reviewer"), base).ok).toBe(true);
+		expect(resultSchema("reviewer").required ?? []).not.toContain("behavior");
+	});
+
+	test("Bad behavior outcome", () => {
+		const checked = checkSchema(resultSchema("reviewer"), { ...base, behavior: [{ capability: "rate-limit", outcome: "maybe", rationale: "r" }] });
+		expect(checked.ok).toBe(false);
+		expect(!checked.ok && checked.errors.join("\n")).toContain("$.behavior[0].outcome");
+	});
+});

@@ -5,7 +5,6 @@
 // `source: human`); a forge request stays pending until a `/livespec choose`.
 
 import { reusableAnswer } from "../decide/records.ts";
-import { BEHAVIOR_POINT, type BehaviorItem } from "../docs/behavior-change.ts";
 import type { AskRecorded, DecisionAsk, DecideDeps } from "../decide/seam.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import type { ApprovalRequest, Briefing, DecideSnapshot, Subject } from "../interaction/approver.ts";
@@ -28,8 +27,6 @@ export function decisionRequest(state: ChangeState, intent: DecisionAsk, now: Da
 	const subject: Subject = `decide:${intent.point}.${intent.subject}`;
 	const snapshot: DecideSnapshot = { point: intent.point, subject: intent.subject, facts: intent.facts, ...(intent.digest === undefined ? {} : { digest: intent.digest }) };
 	if (proposal) snapshot.proposal = true;
-	const files = behaviorFilesOf(intent);
-	if (files !== undefined) snapshot.files = files;
 	const { summary, options } = intent;
 	const briefing = ruleBriefing(intent);
 	const record = prepareRequest({ kind: "stuck", subject, mode: "blocking", options, briefing, head: state.git.head, body: "", snapshot, summary, now });
@@ -43,13 +40,6 @@ function ruleBriefing(intent: DecisionAsk): Briefing {
 	const briefing = validateBriefing(raw, intent.options.map((o) => o.id), { author: "rule" });
 	if ("refused" in briefing) throw new Error(`decision \`${intent.point}\` ${briefing.refused}`);
 	return briefing;
-}
-
-/** The item's files of a `behavior-change` intent, kept beside the facts so they survive `facts_hash`. */
-function behaviorFilesOf(intent: DecisionAsk): string[] | undefined {
-	if (intent.point !== BEHAVIOR_POINT) return undefined;
-	const files = (intent.facts as Partial<BehaviorItem> | undefined)?.files;
-	return Array.isArray(files) ? [...files] : undefined;
 }
 
 /** A recorded human answer for the intent's unit digest and facts, as an `AskRecorded`; undefined when there is none to reuse. */

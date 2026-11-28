@@ -797,3 +797,59 @@ describe("named gate seam", () => {
 		expect((await refresh(f)).issue.labels).toContain("livespec:phase/plan");
 	});
 });
+
+describe("human behavior override", () => {
+	const behaviorSnapshot = () => ({ ...gateSnapshot("define"), behavior: [{ capability: "rate-limit", files: ["src/rate.ts"], outcome: "unchanged" as const }] });
+	const changes = (over: Partial<Answered> = {}) => answer({ outcome: "changes_requested", notes: "cap semantics changed", behaviorOverrides: [{ capability: "rate-limit", outcome: "changed" }], ...over });
+	const humanRecords = (marked: MarkedComment[]) => ofKind(marked, "decision", "behavior-change.rate-limit").filter((m) => (m.data as { source?: string }).source === "human");
+
+	test("Human flips a conclusion", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
+		await completeAnswer(await ctxOf(f), record, changes());
+		const marked = await markedOf(f);
+		const records = humanRecords(marked);
+		expect(records).toHaveLength(1);
+		expect(records[0]?.data).toMatchObject({ point: "behavior-change", outcome: "changed", reason: "set by alice at the gate", files: ["src/rate.ts"], overridden_by: { by: "alice", at: AT, from: "unchanged" } });
+		const kinds = marked.map((m) => m.kind);
+		const flip = marked.indexOf(records[0] as MarkedComment);
+		expect(kinds.indexOf("stale")).toBeGreaterThan(flip);
+		expect(kinds.lastIndexOf("gate")).toBeGreaterThan(kinds.indexOf("stale"));
+	});
+
+	test("Superseded answer records no override", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
+		await writeIn(f.root, "src/x.ts", "x\n");
+		commitAll(f.root, "later");
+		const out = await completeAnswer(await ctxOf(f), record, changes());
+		expect(out.status).toBe("superseded");
+		const marked = await markedOf(f);
+		expect((ofKind(marked, "gate").at(-1)?.data as { superseded?: boolean }).superseded).toBe(true);
+		expect(humanRecords(marked)).toEqual([]);
+	});
+
+	test("Override completed twice", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
+		const crashing = failingOnce(f.world.forge, commentOfKind("stale"));
+		await expect(completeAnswer(await ctxOf(f, crashing), record, changes())).rejects.toThrow("injected");
+		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
+		expect(humanRecords(await markedOf(f))).toHaveLength(1);
+	});
+
+	test("an override for a capability missing from the snapshot is skipped", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
+		await completeAnswer(await ctxOf(f), record, changes());
+		expect(humanRecords(await markedOf(f))).toEqual([]);
+	});
+
+	test("overrides on an answer that is not changes_requested supersede it and record nothing", async () => {
+		const f = await fixture("define");
+		const record = await prepare(f, "gate", "gate:define", behaviorSnapshot());
+		const out = await completeAnswer(await ctxOf(f), record, changes({ outcome: "approved" }));
+		expect(out.status).toBe("superseded");
+		expect(humanRecords(await markedOf(f))).toEqual([]);
+	});
+});

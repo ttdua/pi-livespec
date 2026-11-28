@@ -371,7 +371,7 @@ Các quy tắc quyết định comment của bạn có được tính không:
 
 **Trả lời:** approve khi spec nói đúng chính xác điều cần build. Nếu không, request changes với notes cụ thể, ví dụ `/livespec changes split "Per-IP cap" into burst and sustained limits; add a scenario for IPv6`.
 
-**Câu hỏi behavior-change.** Ở define gate và review gate, trước tiên livespec có thể hỏi, theo từng capability, liệu code thay đổi dưới `paths` của spec đó mà không sửa spec có làm đổi hành vi không. Chọn `unchanged` nếu đó là refactor; chọn `changed` thì gate sẽ từ chối cho đến khi spec được cập nhật.
+**Kết luận behavior.** Với mỗi capability có code thay đổi dưới `paths` mà không sửa spec, agent đưa ra kết luận tại `spec_gate define` hoặc `spec_gate review` về việc hành vi có đổi không, kèm lý do một dòng. Gate liệt kê chúng dưới "Behavior conclusions (please check)". Nếu `changed`, gate sẽ từ chối cho đến khi spec được cập nhật. Để không đồng ý, request changes và đánh dấu capability là changed: nhấn `b` (tab Behavior) trong dialog pi, hoặc gửi `/livespec set behavior <capability> changed` rồi `/livespec changes <notes>` trên forge.
 
 ### Plan gate: cách build này có đúng không?
 
@@ -424,7 +424,7 @@ Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capabilit
 ### Amendment, decision và các named gate khác
 
 - **Amendment (`amend:<n>`):** agent muốn sửa, thêm hoặc bỏ một unit đã khóa. Đọc unit cũ và mới; trả lời như plan gate.
-- **Decision (`decide:<point>.<subject>`):** một rule không tự quyết được (ví dụ `behavior-change`). Chọn một trong các option được liệt kê.
+- **Decision (`decide:<point>.<subject>`):** một rule không tự quyết được. Không rule built-in nào hỏi; rule của project hoặc pack có thể hỏi. Chọn một trong các option được liệt kê.
 - **`initiative` và `new-dependency`:** xem [Luồng 3](#luồng-3-initiative-gồm-nhiều-change) và [Luồng 4](#luồng-4-phát-hiện-dependency-giữa-lúc-build).
 
 ## Luồng 2: sửa lỗi nhỏ
