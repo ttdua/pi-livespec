@@ -67,7 +67,7 @@ When the subject is a unit, the ask SHALL carry the unit's current digest, and t
 
 ### Requirement: Decision records
 Every decision of a change SHALL be recorded as a `decision` ledger entry (see `ledger-store`) with id `<point>.<subject>` and these YAML fields:
-- `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`; `source` SHALL be `rule` or `human`, and for point `behavior-change` also `agent` or `reviewer`; a record of another point with source `agent` or `reviewer` MUST be invalid;
+- `point`, `subject`, the unit digest when the subject is a unit, `source`, `outcome` and `reason`; `source` SHALL be `rule` or `human`, and for point `behavior-change` also `agent`; a record of another point with source `agent` MUST be invalid;
 - `facts`, or `facts_hash` when the facts' YAML exceeds 2,000 characters;
 - for point `behavior-change`, `files`: the item's files, kept when `facts` becomes `facts_hash`;
 - `agent_additions`;

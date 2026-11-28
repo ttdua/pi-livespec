@@ -43,7 +43,7 @@ When the target phase lists the `behavior-change` check, `spec_gate define|revie
 - **THEN** no new `decision` entry is appended for `rate-limit`
 
 ### Requirement: Behavior conclusion rule
-The `behavior-change` decision point SHALL be registered with `registerRule`, configured as `decisions.behavior-change: { mode: rule }`, and MUST NOT ask: through `decide` it SHALL return outcome `null` with a reason naming the `behavior` parameter of `spec_gate`. A conclusion SHALL be a `decision` record with point `behavior-change`, subject the capability, source `agent`, `reviewer` or `human`, the outcome, the rationale as `reason`, the item as facts, its files as the top-level `files` field, and as digest the SHA-256 of the files joined by newlines.
+The `behavior-change` decision point SHALL be registered with `registerRule`, configured as `decisions.behavior-change: { mode: rule }`, and MUST NOT ask: through `decide` it SHALL return outcome `null` with a reason naming the `behavior` parameter of `spec_gate`. A conclusion SHALL be a `decision` ledger entry with point `behavior-change`, subject the capability, source `agent`, the outcome, the rationale as `reason`, the item as facts, its files as the top-level `files` field, and as digest the SHA-256 of the files joined by newlines. A human answer to a `decide:behavior-change` request sent before this rule SHALL still count as a conclusion with source `human`.
 
 #### Scenario: Rule never asks
 - **WHEN** `decide("behavior-change", { capability: "rate-limit", files: ["src/limit/cap.ts"] })` runs with an asker
@@ -54,23 +54,15 @@ The `behavior-change` decision point SHALL be registered with `registerRule`, co
 - **THEN** a `decision` ledger entry holds point `behavior-change`, subject `rate-limit`, source `agent`, outcome `unchanged`, reason `refactor only; scenarios green`, the files and the digest
 
 ### Requirement: Behavior conclusion precedence
-The effective conclusion of a behavior item SHALL come from its capability's valid `behavior-change` records with outcome `unchanged` or `changed` (human answers to older requests included). The candidates are those with the item's digest and facts, plus every human or reviewer `changed` record whose `files` share a file with the item. In record order, each newer candidate SHALL replace the current one unless the current one ranks higher: human `changed` 3, reviewer `changed` 2, others 1. At ship, a capability's latest conclusion SHALL use this order over all its records.
+The effective conclusion of a behavior item SHALL come from its capability's valid `behavior-change` records with outcome `unchanged` or `changed`: those with the item's digest and facts, plus every human `changed` record whose `files` share a file with the item. The latest candidate SHALL win, except that a human `changed` MUST NOT be replaced by an agent record. At ship, a capability's latest conclusion SHALL use this order over all its records.
+
+#### Scenario: Agent re-concludes after request changes
+- **WHEN** an agent `unchanged` record for `rate-limit` is followed by an agent `changed` record for the same digest
+- **THEN** the effective conclusion is `changed` with source `agent`
 
 #### Scenario: Agent cannot undo a human change
-- **WHEN** a human `changed` record for `rate-limit` is followed by an agent `unchanged` record for the same digest
-- **THEN** the effective conclusion is `changed` with source `human`
-
-#### Scenario: Agent cannot undo a reviewer dispute
-- **WHEN** an agent `unchanged` record is followed by a reviewer `changed` record and then an agent `unchanged` record, all for the same digest
-- **THEN** the effective conclusion is `changed` with source `reviewer`
-
-#### Scenario: Adding a file does not undo a human change
-- **WHEN** a human `changed` record lists `src/limit/cap.ts`, the diff now also changes `src/limit/window.ts`, and the agent concludes `rate-limit` `unchanged` for both files
+- **WHEN** a human `changed` answer for `rate-limit`, written before this rule, is followed by an agent `unchanged` record for the same files or a superset of them
 - **THEN** the effective conclusion is `changed` with source `human`, and the check still names `specs/rate-limit/spec.md`
-
-#### Scenario: Later agent record wins over an earlier agent record
-- **WHEN** an agent `unchanged` record is followed by an agent `changed` record for the same digest
-- **THEN** the effective conclusion is `changed` with source `agent`
 
 #### Scenario: Old human answer still counts
 - **WHEN** the only record is a human `unchanged` answer to a `decide:behavior-change.rate-limit` request written before this rule, for the item's digest and facts
@@ -81,7 +73,7 @@ The effective conclusion of a behavior item SHALL come from its capability's val
 - **THEN** the item has no effective conclusion, and `spec_gate` refuses until `behavior` concludes `rate-limit` again
 
 ### Requirement: Behavior conclusion check
-The `behavior-change` check SHALL report, per behavior item: an `error` naming the `behavior` parameter of `spec_gate <phase>` when the item has no effective conclusion, also naming any open `decide:behavior-change.<capability>` request sent before this rule; an `error` naming `specs/<capability>/spec.md` and the conclusion's source when the effective conclusion is `changed`; nothing when it is `unchanged`. The check SHALL NOT be waivable. The default pack SHALL list it in `define` and `review`.
+The `behavior-change` check SHALL report, per behavior item: an `error` naming the `behavior` parameter of `spec_gate <phase>` when the item has no effective conclusion, also naming any open `decide:behavior-change.<capability>` request sent before this rule; an `error` naming `specs/<capability>/spec.md` when the effective conclusion is `changed`; nothing when it is `unchanged`. The check SHALL NOT be waivable. The default pack SHALL list it in `define` and `review`.
 
 #### Scenario: Unconcluded item names the parameter
 - **WHEN** the change is in `define` with one behavior item for `rate-limit` and no record
@@ -96,65 +88,26 @@ The `behavior-change` check SHALL report, per behavior item: an `error` naming t
 - **THEN** the check reports nothing for `rate-limit`
 
 ### Requirement: Behavior conclusions in the reviewer packet
-The packet of a `reviewer` with subject `change` SHALL hold a required source `records:behavior-conclusions`, listing each behavior item with its files and its effective conclusion (outcome, source and reason), or `none` for an item with no effective conclusion. The source SHALL be left out when the change has no behavior item.
+The packet of a `reviewer` with subject `change` SHALL hold a required source `records:behavior-conclusions`, listing each behavior item with its files and its effective conclusion (outcome, source and reason), or `none` for an item with no effective conclusion. The source SHALL be left out when the change has no behavior item. The rubric of the `change` subject SHALL say that a conclusion the reviewer disputes is reported as a `WARNING` finding located at one of the item's files, so the dispute blocks review as review-findings "Blocking findings" defines.
 
 #### Scenario: Conclusions in the packet
 - **WHEN** a `change` reviewer packet is built with one behavior item for `rate-limit` concluded agent `unchanged`
 - **THEN** the packet lists `records:behavior-conclusions` as required, and its text names `rate-limit`, its files, `unchanged`, `agent` and the rationale
 
-### Requirement: Reviewer behavior conclusion
-A reviewer result MAY carry `behavior` entries shaped as in "Behavior conclusion parameter"; an entry for a capability that is not a behavior item SHALL be ignored. A `changed` entry over an effective conclusion that is not `changed` SHALL need a `WARNING` or `CRITICAL` finding at one of the item's files; without one the result SHALL be returned to the child once, naming the capability, and a second miss drops the entry, noted in the `finding-summary` notes. After the `finding-summary` of a completed, non-advisory `change` run, the parent SHALL post a `reviewer` record for each entry whose outcome differs from the effective one. Only a spec edit clears it; a rebuttal MUST NOT.
+#### Scenario: Rubric names the dispute
+- **WHEN** a `change` reviewer packet is built for a change with a behavior item
+- **THEN** its rubric says to report a disputed behavior conclusion as a `WARNING` finding at one of the item's files
 
-#### Scenario: Reviewer disputes unchanged
-- **WHEN** the effective conclusion of `rate-limit` is agent `unchanged`, and the completed `change` reviewer returns `behavior: [{ capability: rate-limit, outcome: changed, rationale: "cap now rejects at 99" }]` with a `WARNING` finding at `src/limit/cap.ts:12`
-- **THEN** a `decision` record with source `reviewer` and outcome `changed` is posted, the `behavior-change` check fails naming `specs/rate-limit/spec.md`, and the review gate refuses
+#### Scenario: Reviewer dispute blocks review
+- **WHEN** the effective conclusion of `rate-limit` is agent `unchanged`, and the completed `change` reviewer reports a `WARNING` finding at `src/limit/cap.ts:12` saying the cap now rejects at 99
+- **THEN** the finding blocks review until it is fixed or rebutted, and a rebuttal is listed in the next human gate payload
 
-#### Scenario: Dispute without a finding
-- **WHEN** the reviewer returns a `changed` entry for `rate-limit` over an agent `unchanged` and no `WARNING` or `CRITICAL` finding at a file of that item
-- **THEN** the result is returned to the child naming `rate-limit`, and no `decision` record is posted
+### Requirement: Disputing a conclusion at the gate
+The human SHALL dispute a behavior conclusion by requesting changes at the define gate with notes that name the capability; no other answer channel SHALL be added. On the next `spec_gate define`, the agent's new conclusion for that capability SHALL replace its earlier one ("Behavior conclusion precedence"), so a `changed` conclusion then requires the spec edit.
 
-#### Scenario: Rebuttal does not clear a dispute
-- **WHEN** a reviewer `changed` record exists for `rate-limit` and the parent rebuts the linked finding with `finding_rebut`
-- **THEN** the effective conclusion stays `changed` and the `behavior-change` check still names `specs/rate-limit/spec.md`
-
-#### Scenario: Reviewer clears an agent change
-- **WHEN** the effective conclusion of `rate-limit` is agent `changed` and the completed `change` reviewer returns `unchanged` for it with no finding
-- **THEN** a reviewer `unchanged` record is posted and the effective conclusion is `unchanged`
-
-#### Scenario: Second miss drops the entry
-- **WHEN** a returned reviewer submits again with the same `changed` entry for `rate-limit` and still no finding at its files
-- **THEN** no `decision` record is posted for `rate-limit`, and the `finding-summary` notes name the dropped entry
-
-#### Scenario: Reviewer cannot undo a human change
-- **WHEN** the effective conclusion of `rate-limit` is human `changed` and the reviewer returns `unchanged` for it
-- **THEN** a reviewer `unchanged` record is posted, the effective conclusion stays human `changed`, and the check still names `specs/rate-limit/spec.md`
-
-#### Scenario: Entry for another capability
-- **WHEN** the reviewer returns a `behavior` entry for `cache`, which is not a behavior item
-- **THEN** the entry is ignored and no `decision` record is posted for `cache`
-
-#### Scenario: Reviewer confirms
-- **WHEN** the reviewer returns `unchanged` for `rate-limit`, whose effective conclusion is agent `unchanged`
-- **THEN** no `decision` record is posted
-
-### Requirement: Human behavior override
-When a define gate answer with outcome `changes_requested` carries behavior overrides (approver-adapters "Behavior overrides") and is not superseded, completion SHALL append, as an effect before the `stale` and `gate` comments, a `human` `decision` ledger entry with outcome `changed` for each override of a current behavior item. The entry SHALL hold the item's facts, digest and files, the reason `set by <by> at the gate`, `overridden_by` with who, when and the previous effective outcome, and `request` naming the gate request. Completion SHALL skip an override already recorded for the same answer, and one whose capability is no longer a behavior item. Such an entry SHALL count only while the own forge `answer` comment of that gate request is valid, has outcome `changes_requested` and lists the capability in its behavior overrides (ledger-store: the ledger is never the source of a human decision).
-
-#### Scenario: Human flips a conclusion
-- **WHEN** the define gate shows `rate-limit` concluded agent `unchanged`, and the human requests changes with notes and a behavior override for `rate-limit`
-- **THEN** a human `changed` record for `rate-limit` is posted, the change stays in `define`, and the next `spec_gate define` refuses naming `specs/rate-limit/spec.md` until that spec is edited
-
-#### Scenario: Superseded answer records no override
-- **WHEN** the human requests changes with a behavior override for `rate-limit`, and HEAD moved after the request was sent
-- **THEN** the `gate` comment is `superseded` and no human `changed` record is posted
-
-#### Scenario: Override without its forge answer
-- **WHEN** a human `changed` ledger entry for `rate-limit` names a gate request whose own forge `answer` comment is missing, or does not list `rate-limit` in its behavior overrides
-- **THEN** the entry does not count, and the effective conclusion stays the agent's
-
-#### Scenario: Override completed twice
-- **WHEN** the completion of that answer runs again after a crash before the `stale` comment
-- **THEN** only one human `changed` record exists for that answer
+#### Scenario: Human requests changes naming a capability
+- **WHEN** the define gate shows `rate-limit` concluded agent `unchanged`, the human requests changes with notes `rate-limit behavior changed: cap now rejects at 99`, and the agent then runs `spec_gate define` with `behavior` concluding `rate-limit` `changed`
+- **THEN** the change stays in `define`, an agent `changed` entry is appended, and `spec_gate` refuses naming `specs/rate-limit/spec.md` until that spec is edited
 
 ## REMOVED Requirements
 

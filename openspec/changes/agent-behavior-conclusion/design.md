@@ -1,71 +1,76 @@
 ## Context
 
-Today a behavior item is resolved only by a human answer to a `decide:behavior-change.<capability>` rule ask, sent by `askBehaviorChanges` (`src/docs/behavior-ask.ts`) from `behaviorStep` in `src/tools/spec-gate.ts`. Three readers consume the human records:
-- the `behavior-change` check (`behaviorResults` via `behaviorAnswer` → `reusableAnswer`, which accepts only `source: human`);
-- the ship durable-docs facts (`latestBehaviorRecords` in `src/docs/behavior-change.ts`, used by `src/ship/context.ts`, again `source: human` only);
-- the asker's reuse (`src/tools/decide-ask.ts`).
+Issue #64 is a v0.1.0 defect, and the fix must not move the forge surface ahead of LS-12 (#58). The ledger (#59) is merged, and prose gates answered by reaction (#61) and the issue body as what & why (#62) come next. Anything this fix adds to forge comments, gate answers or the issue body would have to be carried or undone by those parts. So the fix adds:
+- ledger entries,
+- prose in the define gate request,
+- one parameter on `spec_gate`,
 
-The `review` phase gate is `self` in the default pack; `define` is `human`. Unit overrides are the existing pattern for a human adjusting a system-derived value at a gate: `Override` on `Answered` (`src/interaction/approver.ts`), the forge `set U<n> …` command (`commands.ts`, `forge-match.ts`), the dialog's opt-in units tab (`dialog/model.ts`, `state.ts`), and `applyOverrides` (`complete-overrides.ts`), run from `complete-gate.ts`.
+and nothing else on the forge.
+
+Before this change, a behavior item was resolved only by a human answer to a `decide:behavior-change.<capability>` rule ask, sent by `askBehaviorChanges` (`src/docs/behavior-ask.ts`) from `behaviorStep` in `src/tools/spec-gate.ts`. The check, ship (`latestBehaviorRecords`) and the asker's reuse each read those human records.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- One conclusion resolver shared by the check, the gate payload and ship.
-- Overrides reuse the unit-override plumbing instead of a parallel path.
-- Old records (`source: human`, outcome `unchanged`/`changed`) keep working.
+- No question to the human that the diff answers (Interaction contract item 1).
+- One conclusion resolver shared by the check, the gate payload, the reviewer packet and ship.
+- Human answers to old `decide:behavior-change` requests keep working.
 
 **Non-Goals:**
-- Verifying the rationale's truth in code. That is the reviewer's job.
-- Behaviour conclusions on the fix lane (`small-fix-lane` "Declared no behavior change" stays as is).
+- A structured human override. The human disputes through the existing request-changes answer, and how gates are answered is #61's job.
+- A structured reviewer verdict. The reviewer disputes through the existing blocking findings.
+- Verifying the rationale's truth in code.
+- Behaviour conclusions on the fix lane.
 
 ## Decisions
 
-**D1. One resolver: `effectiveConclusion(marked, item)`.** It is pure, in `src/docs/behavior-change.ts`. It reads the valid `behavior-change` decision records for `item.capability` (sources `agent`, `reviewer` or `human`, outcome `unchanged` or `changed`). The candidates are those whose digest equals `behaviorDigest(item.files)` and whose facts equal the item, plus every human or reviewer `changed` record whose `files` intersect the item's. Without the second set, touching one more file would change the digest and silently drop a human's `changed`. It returns the winner by precedence: the latest record, except that an agent record does not displace an earlier reviewer or human `changed`, and a reviewer record does not displace an earlier human `changed`. Rejected alternative: keep `reusableAnswer` and add source filters at each caller. That would duplicate precedence in three places.
-- Ship needs "covers the files" (a superset across diffs), not digest equality. So D1 exports a second function, `latestConclusions(marked)`: per capability, it returns the winning record by the same precedence over all digests. It replaces `latestBehaviorRecords`. The ship rule keeps its superset test.
+**D1. One resolver.** `effectiveConclusion(marked, item)` and `latestConclusions(marked)` are pure functions in `src/docs/behavior-change.ts`. They read valid `behavior-change` decision records whose outcome is `unchanged` or `changed`, with source `agent` or `human` (legacy answers). Human records only count when `isBacked`, as on main.
+- Candidates are the records with the item's digest and facts, plus human `changed` records whose `files` intersect the item's.
+- The latest candidate wins, except that an agent record never replaces a human `changed`.
+- `latestConclusions` applies the same order over all digests, for ship's superset test.
+- Rejected alternative: per-caller source filters. That would duplicate the precedence rule in four places.
 
-**D2. Rank is an ordering, not a lock.** Rank: human `changed` = 3, reviewer `changed` = 2, otherwise 1. A newer record wins unless the current winner has a higher rank. Two consequences follow:
-- A human `unchanged`, from an older record, can be replaced by a newer agent `changed`. Only `changed` is protected.
-- New files change the digest, so a fresh agent conclusion is needed for them. A protected `changed` survives through the file-intersection candidates of D1.
-- An old human dismissal (outcome `null`) is not a candidate, so it no longer hides an older `unchanged` at ship. This only affects data written before this change, and is accepted.
-- A pending pre-change `decide:behavior-change` request answered late is a human record: a late `changed` ranks 3; a late `unchanged` replaces an agent record of rank 1, like any newer rank-1 record. Accepted: it is still a human authority answer.
+**D2. Disputes go through the existing answers.**
+- **Human.** The human requests changes at the define gate with notes naming the capability. On the next call the agent concludes again, and the latest agent record wins over its earlier one. So `changed` then requires the spec edit.
+- **Reviewer.** The reviewer reports a `WARNING` finding at one of the item's files. review-findings "Blocking findings" then blocks review until the finding is fixed or rebutted, and a rebuttal is listed at the next human gate.
+- Why: every human answer stays a gate answer, which #61 will reshape, and every reviewer output stays a finding. This change adds no new authority path for #61 to migrate.
+- Rejected alternative: structured overrides, meaning `Answered.behaviorOverrides`, a dialog tab, a forge command and an extended `isBacked`. That would store machine state in forge YAML that #61 is removing.
+- Rejected alternative: a `behavior` field on reviewer results. That would grow the subagent contract for what a finding already expresses.
 
-**D3. `behavior` parameter on `spec_gate`.** Shape: `behavior?: { capability: string; outcome: "unchanged" | "changed"; rationale: string }[]`. The rationale is one line of at most 300 code points, has no blank line, and is neutralised as untrusted agent text (request-briefing "Agent text is untrusted"). It is validated in two steps:
-- Shape, together with `briefingStep`, before any check runs.
-- Coverage, after the refusals without `behavior-change`, only when the target phase lists the `behavior-change` check. Every current item MUST be listed and no other capability MAY be. The list is required whenever there is an item, so the agent restates its conclusion each time. An equal conclusion is not re-posted: same digest, outcome and rationale as the latest agent record. Rejected alternative: require it only for items without an effective conclusion. The agent would then have to compute which items those are, which is a derivable fact.
+**D3. `behavior` parameter on `spec_gate`.** The shape is `behavior?: { capability: string; outcome: "unchanged" | "changed"; rationale: string }[]`. The rationale is one line of at most 300 code points, and it is neutralised as agent text. Validation runs in two steps:
+- Shape, before any side effect (cascade, checks, writes).
+- Coverage, after the other refusals, and only when the target phase lists the check. Every current item must be listed, and no other capability. An equal conclusion is not appended again: same digest, outcome and reason as the latest agent record.
 
-Self gate `review` accepts the parameter too. For any other target its shape is still validated, which differs from a self gate's `briefing`: a malformed `behavior` is a caller bug and is cheap to reject, while it is otherwise ignored. Rejected alternative: a separate `behavior_conclude` tool. That adds a step the agent can forget, while the gate is where coverage is enforced anyway.
+Rejected alternative: a separate tool. It adds a step the agent can forget.
 
-**D4. Write ordering keeps "refuse, writing nothing".** `behaviorStep` keeps its shape. It runs the gate checks, computes refusals with `behavior-change` left out, refuses if any apply, and validates coverage (refusing names the missing or extra capability). Then it appends one `decision` ledger entry per conclusion that differs from the latest agent record for that digest, refreshes the state when anything was posted, and lets the caller re-run the full checks. A `changed` conclusion then fails `behavior-change` exactly as before. `behavior-ask.ts` is deleted, and `behaviorChangeRule` returns `{ outcome: null, reason }` for a direct `decide` call. The rule stays registered so `decisions.behavior-change: { mode: rule }` in existing packs still validates. Rejected alternative: unregister the point. That would break existing pack files.
+**D4. Write ordering keeps "refuse, writing nothing".** `behaviorStep` works in this order:
+1. Evaluate refusals without the `behavior-change` results, and the plan and recommendation refusals.
+2. Refuse while a legacy `decide:behavior-change` request is open for a current item. Otherwise #80 would mask it behind a new gate.
+3. Append agent entries.
+4. Refresh, then re-run the checks.
 
-**D5. Record shape.** `{ point: behavior-change, subject: <capability>, source: agent|reviewer|human, outcome, reason: <rationale>, facts: <item>, digest, files }`. `DecisionRecord.source` widens to `"rule" | "human" | "agent" | "reviewer"`. `validDecisions` accepts `agent` and `reviewer` only for point `behavior-change`; any other point with those sources is invalid, so other rules cannot be forged by agents. `reusableAnswer` keeps requiring `human`, so the decision seam reuse is unchanged.
+`behavior-ask.ts` is deleted. The rule stays registered and returns `{ outcome: null }`, so existing packs validate.
 
-**D6. Reviewer conclusions.** The reviewer result schema gains an optional `behavior` array with the same item shape as D3. The packet of the `change` subject gets a required source `records:behavior-conclusions`, listing the items and their effective conclusions, so the reviewer sees what to confirm. The same data rides on `Packet.behavior`, because the packet is the only state that reaches result interpretation and recording on every path (dispatch, answer and inline). Right after `recordResult` (in `dispatch.ts` `finish` and in `subagent_record`), a separate module appends, only for a completed non-advisory `change`-subject run, one `decision` ledger entry with `source: reviewer` per listed conclusion that differs from the effective one. A reviewer `changed` over an `unchanged` blocks through the `behavior-change` check (the effective outcome is now `changed`, with no spec edit). It also MUST come with a blocking finding, enforced in result validation: a reviewer `behavior` item with outcome `changed` that disagrees with the effective conclusion requires at least one `WARNING` or `CRITICAL` finding whose location is one of the item's files; otherwise the result is returned to the child. Rejected alternative: infer a dispute from findings text. That cannot be parsed reliably.
+**D5. Record shape.** A record is `{ point: behavior-change, subject, source: agent, outcome, reason, facts, digest, files }`, written as a ledger entry through `appendRecord`. `validDecisions` accepts `agent` only for point `behavior-change`, so an agent cannot forge any other decision. `BEHAVIOR_POINT` lives in the leaf module `src/decide/points.ts`.
 
-**D7. Human override = `BehaviorOverride` on `Answered`.** `Answered.behaviorOverrides?: { capability: string; outcome: "changed" }[]`. It is valid only with `changes_requested`, which is the reverse of unit overrides, accepted only with approval. The stored `GateSnapshot.behavior` holds the items (capability, files, current outcome), set only for `gate:define`. The forge reader and completion read only stored request data, which is why the items live there. The adapters get `overridableBehavior` derived from it.
-- Forge: no override. LS-12c (#61) moves forge gate answers to reactions and replies, so a new `/livespec` command would be removed right away. A forge reviewer who disagrees requests changes with notes, and the agent then concludes `changed`.
-- Dialog: a `b` key on the Decision tab opens a Behavior tab, mirroring `u`. The Review tab shows the overrides, and shows them as discarded when the pick is not request changes.
-- Completion: `complete-gate.ts` runs `applyBehaviorOverrides(run, request, answer, snapshot)` when the outcome is `changes_requested` and the record is not superseded, beside `writeStale` and before the `gate` comment. It is idempotent by `overridden_by: { by, at }` (the record also holds `from`, the previous effective outcome), and appends a ledger entry with `source: human`, outcome `changed`, the current item's facts, digest and files, reason `set by <by> at the gate`, and `request` = the gate request id. The `stale` comment follows as today. In `resultCounts` (`src/interaction/requests.ts`) a `decision` with `overridden_by` is an effect and never completes a request, so the request stays applying until its `gate` comment.
-- Authority (ADR 0008, "the ledger MUST NOT be read as the source of any human decision"): `isBacked` (`src/decide/answered.ts`) accepts such an entry only when the own forge `answer` comment of its `request` is valid, has outcome `changes_requested`, and lists the capability in `behaviorOverrides`. The answer comment is written before the effect, so a valid override is always backed. Rejected alternative: keep no human record and derive overrides from the gate answer on every read. That needs the gate answer in every resolver call, for the same guarantee.
+**D6. Reviewer packet.** The `change` reviewer packet gets the required source `records:behavior-conclusions`, one line per item. The provider lives in `src/docs/behavior-source.ts` and is registered from `docs/readers.ts`, so `subagents/` does not import `docs/`. The `change` rubric (`src/subagents/rubrics.ts`) adds one sentence telling the reviewer to report a disputed conclusion as a `WARNING` finding at one of the item's files. Nothing goes on `Packet`, and the result schema does not change.
 
-Rejected alternative: allow the override with approve. Approve then contradicts a refusing check, and the human would approve something the gate cannot pass.
+**D7. Gate payload section.** `registerGatePayload("define", …)` adds `Behavior conclusions (please check):` with one line per item: `- <capability>: <outcome> (<source>) — <rationale>; files: <n>`. It is livespec prose, placed with the facts before the briefing. The items reach the payload through the optional `ReviewFacts.behaviorItems`, which is set only for `define`.
 
-**D8. Gate payload section.** `registerGatePayload("define", …)` in `src/docs/register.ts` adds a section `Behavior conclusions (please check):`. Each item gets one line, `- <capability>: <outcome> (<source>) — <rationale>; files: <n>`. The rationale is neutralised. Livespec builds this section, so it sits in the facts, before the agent briefing. The ship durable-docs section loses the per-capability confirmation item whenever an `unchanged` conclusion covers the files.
+**D8. Ship.** `durable-docs` reads `latestConclusions`, so an `unchanged` conclusion that covers the files removes the confirmation item.
 
-**D9. Agent guidance.** pi-livespec is the runtime for the agent-skills workflow and does not change agent-skills content. The `spec_gate` parameter description and its refusal text guide the agent: the refusal names every missing capability and the expected shape.
-
-**D10. Ledger.** The change was rebased onto LS-12a (ledger-store, #79). Every record it writes is a ledger entry through `appendRecord`: agent, reviewer and human conclusions, and the cleaned reviewer `behavior` on the `finding-summary` entry. `BehaviorConclusion` carries the entry `ref`, not a comment id. Human authority stays on the forge, as D7 says.
+**D9. Agent guidance.** pi-livespec runs the agent-skills workflow and does not change its content. The `spec_gate` parameter description and the refusal text guide the agent. The refusal names every missing capability and the expected shape.
 
 ## Risks / Trade-offs
 
-- [The agent writes `unchanged` by reflex, the same failure moved from human to agent] → The rationale is required and shown to the human. The `change` reviewer gets the conclusions as a required source and can flip them with a blocking finding. That is a second, evidence-backed opinion, which the old flow never had.
-- [Breaking `spec_gate` for in-flight changes] → The refusal says exactly what to pass. Old human records still resolve items, so changes already answered need nothing new unless their files changed.
-- [Widening `source` could let agents forge other decisions] → D5 restricts `agent` and `reviewer` to point `behavior-change`.
-- [Reviewer-to-finding link validated by location only] → Accepted. The parent can still rebut the finding, but rebutting it does not delete the reviewer record; only a spec edit clears a reviewer `changed` (scenario "Rebuttal does not clear a dispute").
-- [A wrong reviewer `changed` forces a spec edit, and the human cannot override it back to `unchanged`] → Accepted for this change: the agreed override only flips to `changed`. A spec edit that only clarifies is cheap. Revisit if it hurts in practice.
+- [The agent writes `unchanged` by reflex] → The rationale is required and shown at the gate. The `change` reviewer sees every conclusion as a required source, and its rubric asks for a blocking finding when it disagrees.
+- [A dispute costs one extra round: request changes, then the agent concludes again] → Accepted. The cost is the same as any other spec correction, and it keeps the gate answer model untouched for #61.
+- [A reviewer dispute can be rebutted without a spec edit] → Accepted. Rebuttals are listed at the next human gate, as for every other finding.
+- [Breaking `spec_gate` for in-flight changes] → The refusal says exactly what to pass.
 
 ## Migration Plan
 
-No data migration. Stored `decide:behavior-change.*` requests that are still pending complete as before: their answer posts a human record, which D1 reads. Rollback is reverting the commit. Records with `agent`/`reviewer` sources are then ignored as invalid decisions, which re-opens the items as unanswered. Main ignores old comment-based human records (ADR 0008, no dual read), so only ledger-era answers count.
+No data migration. Answered legacy requests resolve their items as human conclusions, and an open one makes the gate refuse until it is answered or dismissed. Main ignores comment-based human records written before the ledger (ADR 0008, no dual read). Rollback is a revert. Agent records are then invalid decisions, and the items re-open as unanswered.
 
 ## Open Questions
 

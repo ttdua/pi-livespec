@@ -26,7 +26,7 @@ The check `durable-docs` of the `ship` phase SHALL report each error with severi
 - **THEN** the check reports the confirmation item for `rate-limit` naming both files
 
 #### Scenario: Newer changed record wins
-- **WHEN** the issue has an agent `unchanged` record for `rate-limit` listing `src/limit/cap.ts`, then a newer reviewer `changed` record for the same capability
+- **WHEN** the issue has an agent `unchanged` record for `rate-limit` listing `src/limit/cap.ts`, then a newer agent `changed` record for the same capability
 - **THEN** the check reports the confirmation item for `rate-limit`
 
 #### Scenario: Protected change of other files

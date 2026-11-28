@@ -367,6 +367,26 @@ The branch is squashed onto `origin/main` (57ab980, ledger-store #79) with text 
 
 ---
 
+## Task 9: Narrow the fix to the current gate model — implements 9
+
+**Covers:** 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7
+**Difficulty:** Hard
+**Blocked by:** Task 8
+
+User decision (2026-11-28): #64 is a v0.1.0 fix and must not reshape the forge ahead of LS-12 (#58). Remove the structured human override and the structured reviewer verdict. Disputes go through request changes and blocking findings (design D2). This task supersedes the Contracts rows for `BehaviorOverride`, `Answered.behaviorOverrides`, `GateSnapshot.behavior`, `ApprovalRequest.overridableBehavior`, `applyBehaviorOverrides`, `isBacked` (modified), `return-behavior`, `DispatchHistory.disputeReturns`, `Packet.behavior`, `behaviorPacketData`/`registerPacketBehavior`, `DispatchDeps.afterRecord`/`prepareResult`, `interpret` (`prepare`), `FindingSummaryData.behavior`, Reviewer result `behavior`, `ConclusionInput.request` and the `resultCounts` rule: none of them remain.
+
+**Files:** as listed in tasks.md 9.1–9.6, plus `src/subagents/rubrics.ts`, `src/docs/behavior-source.ts`, `src/docs/readers.ts`, `src/subagents/sources.ts` (back to main's), `src/subagents/packet.ts` (back to main's).
+
+- [ ] **Step 1:** `git checkout origin/main -- <files of 9.1>`; delete the three files; `bun run typecheck` and list the breakages in the remaining behavior modules.
+- [ ] **Step 2: Failing tests** for the four new scenarios (9.5).
+- [ ] **Step 3:** Precedence and source rules (9.2); packet source and rubric (9.3); spec_gate snapshot (9.4).
+- [ ] **Step 4:** Remove or port tests of removed scenarios; keep the other scenario names.
+- [ ] **Step 5:** Docs (9.6).
+- [ ] **Step 6: Verify** (9.7).
+- [ ] **Step 7: Commit** `refactor(durable-doc-checks): narrow behavior conclusions to the current gate model`.
+
+---
+
 ## Scenario → test
 
 Scenarios of unchanged baseline text inside MODIFIED blocks keep their existing tests (found by name under `tests/`). Re-run them, with no edits expected unless a fixture used the removed ask:
@@ -430,3 +450,8 @@ New or changed scenarios:
 - Behavior conclusions required for change review → `tests/subagents/sources.test.ts` (Task 6)
 - No override on the forge → `tests/interaction/forge.test.ts` (Task 8)
 - Override without its forge answer → `tests/interaction/complete.test.ts` (Task 8)
+- Agent re-concludes after request changes → `tests/docs/behavior-change.test.ts` (Task 9)
+- Rubric names the dispute → `tests/subagents/rubrics.test.ts` (Task 9)
+- Reviewer dispute blocks review → `tests/tools/spec-review.test.ts` or `tests/subagents/records.test.ts` (Task 9)
+- Human requests changes naming a capability → `tests/tools/spec-gate-behavior.test.ts` (Task 9)
+- Scenarios removed in Task 9 (reviewer verdict, human override, approver-adapters, subagent-dispatch) → none
