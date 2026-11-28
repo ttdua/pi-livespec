@@ -5,8 +5,8 @@
 > Overwritten on each apply iteration; iteration counter grows.
 
 **Change**: `agent-behavior-conclusion`
-**Iteration**: `2`
-**Applied at**: `2026-11-28 19:20`
+**Iteration**: `3`
+**Applied at**: `2026-11-28 21:30`
 **Executor**: `subagent-driven-development` (implementer: `superspec.implementer`; task and final reviewer: `superspec.task-reviewer`)
 
 ---
@@ -22,14 +22,14 @@
 
 ## Commits
 
-- **Range**: `57ab980..742b12d` on `behavior-change-rebase`, cut from `origin/main` (57ab980, ledger-store #79). Iteration 1 (`60e5431..3cbfb10` on `behavior-change`, PR #80) is squashed into `246efcf`. Pre-rebase history is kept in tag `behavior-change-pre-rebase`.
-- **Count**: `5`
+- **Range**: `57ab980..HEAD` on `behavior-change-rebase` (cut from `origin/main` 57ab980, ledger-store #79). Iteration 1 is squashed in `246efcf`; pre-rebase history in tag `behavior-change-pre-rebase`.
+- **Count**: `10`
 
 ---
 
 ## Tasks
 
-- **Completed**: `35 of 35`
+- **Completed**: `43 of 43`
 - **Remaining**: none.
 
 ---
@@ -51,6 +51,8 @@ All of these are internal; no public contract changed. Each one is also recorded
 - Iteration 2 (port onto LS-12a): records are ledger entries; `BehaviorConclusion.commentId` → `ref`; `validDecisionEntries` returns `{ record, ref }`; `behaviorConclusionComment` returns `AppendInput` and takes an optional `request`; `applyBehaviorOverrides(run, request, answer, snapshot)`; `isBacked` accepts a human override only beside its gate's forge `answer` (`changes_requested`, capability listed, same `by`/`at`); `resultCounts` never treats a `decision` with `overridden_by` as a request result; shared `src/decide/points.ts`.
 - Iteration 2, public contract (user decision): the forge command `/livespec set behavior` is removed; the forge grammar equals main's. In-session overrides stay.
 
+- Iteration 3 (narrowed, user decision 2026-11-28: #64 must not steer #58): removed the structured human override (`Answered.behaviorOverrides`, `GateSnapshot.behavior`, `ApprovalRequest.overridableBehavior`, dialog `b` tab, select step, `applyBehaviorOverrides`, extended `isBacked`, `resultCounts` rule) and the structured reviewer verdict (reviewer result `behavior`, `Packet.behavior`, `return-behavior`, `disputeReturns`, `afterRecord`/`prepareResult`, `FindingSummaryData.behavior`, replay, `source: reviewer`). These files are byte-identical to main again. Added the `change` rubric sentence and the "Disputed conclusion not restated" refusal. Agent records append through main's `appendRecord`.
+
 ## Lanes
 
 | Task | Lane branch | Lane range | Review | Merge commit |
@@ -63,20 +65,23 @@ All of these are internal; no public contract changed. Each one is also recorded
 | 6 | sequential | `d31ca1d..5cce646` | approved after fix round 1 | n/a |
 | 7 | sequential | `7add7fc..728464f` | controller-checked (docs only) | n/a |
 | 8 (port, iteration 2) | sequential | `793459a..742b12d` | whole-branch review: ready after fixes; fixes applied in `6f92317` (controller-checked) | n/a |
+| 9 (narrow, iteration 3) | sequential | `c93c8d1..299b8c6` | whole-branch review vs origin/main: ready to merge | n/a |
 | final review | sequential | `29ae0f6..b5de460` | ready to merge after fix wave | n/a |
 
 ---
 
-## Validation at HEAD `742b12d`
+## Validation at HEAD `299b8c6`
 
 - `bun run typecheck`: exit 0.
-- `bunx vitest run`: 269 files, 4386 passed; one run had one 30 s timeout (`spec-review` "three routed rounds" or e2e `subagent-build` "five units"); both pass alone (6.5 s, 10.1 s) and are load-dependent, as on main (6.2 s, 9.3 s).
+- `bunx vitest run --maxWorkers=4`: 268 files, 4350 tests, 0 failed (unbounded workers under load 100+ gave timeout-only failures that pass alone).
 - `openspec validate agent-behavior-conclusion`: exit 0.
+- `git diff --stat origin/main -- src`: 15 files, +378/−136.
 
 ## Known residuals (parked)
 
-- A lost reviewer record is not replayed when HEAD moves before the next `spec_review`. In that case the new round dispatches the `change` reviewer again.
-- When the stored packet is missing, the replay is skipped silently.
+- A dispute can be answered with a reworded rationale (exact match; design D2 accepts it).
+- `disputeRefusal` also runs at `review`, where its state cannot occur (harmless).
+- Main's `isBacked` comment still mentions reviewer records (main's text, untouched).
 
 ---
 
