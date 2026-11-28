@@ -10,7 +10,7 @@ export type DecisionRecord = {
 	point: string;
 	subject: string;
 	digest?: string;
-	source: "rule" | "human";
+	source: "rule" | "human" | "agent" | "reviewer";
 	outcome: unknown;
 	facts?: unknown;
 	facts_hash?: string;
@@ -29,6 +29,8 @@ export type DecisionRecord = {
 };
 
 const MAX_FACTS_YAML = 2000;
+/** The only point whose records agents and reviewers may write; other points reject those sources. */
+const AGENT_SOURCE_POINT = "behavior-change";
 const BLOCK_MARKER = /^<!-- livespec:decision:([A-Za-z0-9._-]+) -->$/;
 const FENCE_OPEN = "```yaml";
 const FENCE_CLOSE = /^```\s*$/;
@@ -57,10 +59,16 @@ function optionalFieldsValid(r: Record<string, unknown>): boolean {
 	return true;
 }
 
+/** `rule` and `human` for any point; `agent` and `reviewer` only for `AGENT_SOURCE_POINT`. */
+function isAllowedSource(v: Record<string, unknown>): boolean {
+	if (v.source === "rule" || v.source === "human") return true;
+	return v.point === AGENT_SOURCE_POINT && (v.source === "agent" || v.source === "reviewer");
+}
+
 /** A decision record: required fields present (`outcome` may be any value, including falsy), optional fields well-typed. */
 function isRecord(v: unknown): v is DecisionRecord {
 	if (!isObject(v)) return false;
-	const required = isString(v.point) && isString(v.subject) && (v.source === "rule" || v.source === "human") && isString(v.reason) && has(v, "outcome");
+	const required = isString(v.point) && isString(v.subject) && isAllowedSource(v) && isString(v.reason) && has(v, "outcome");
 	return required && optionalFieldsValid(v);
 }
 
@@ -81,9 +89,14 @@ export function decisionComment(r: DecisionRecord): string {
 	return writeMarked("decision", `${r.point}.${r.subject}`, compactFacts(r));
 }
 
+/** Every valid `decision` record with its comment id, in comment order; malformed data is skipped. */
+export function validDecisionEntries(marked: MarkedComment[]): { record: DecisionRecord; commentId: string }[] {
+	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [{ record: m.data, commentId: m.commentId }] : []));
+}
+
 /** Every valid `decision` record, in comment order; malformed data is skipped. */
 export function validDecisions(marked: MarkedComment[]): DecisionRecord[] {
-	return marked.flatMap((m) => (m.kind === "decision" && isRecord(m.data) ? [m.data] : []));
+	return validDecisionEntries(marked).map((e) => e.record);
 }
 
 /** The latest valid `decision` record per id, keyed in first-seen order. */

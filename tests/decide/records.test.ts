@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
-import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
+import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer, validDecisions } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
-import { behaviorDigest, latestBehaviorRecords } from "../../src/docs/behavior-change.ts";
+import { behaviorDigest, latestConclusions } from "../../src/docs/behavior-change.ts";
 
 const TAGS_U3: DecisionRecord = {
 	point: "tags",
@@ -194,6 +194,13 @@ describe("decision records", () => {
 		expect(reusableAnswer([marked("behavior-change.rate-limit", data)], "behavior-change", "rate-limit", behaviorDigest(files), item)).toMatchObject({ outcome: "unchanged" });
 	});
 
+	test("Agent source only for behavior-change", () => {
+		const agentComment = { point: "difficulty", subject: "U1", source: "agent", outcome: "high", reason: "r" };
+		expect(validDecisions([marked("difficulty.U1", agentComment)])).toEqual([]);
+		const agentBehavior = { point: "behavior-change", subject: "rate-limit", source: "agent", outcome: "unchanged", reason: "r" };
+		expect(validDecisions([marked("behavior-change.rate-limit", agentBehavior)])).toHaveLength(1);
+	});
+
 	test("files that are not a string list make the record invalid", () => {
 		const bad = { point: "behavior-change", subject: "x", source: "human", outcome: "unchanged", reason: "r", files: [1] };
 		expect(latestDecisions([marked("behavior-change.x", bad)]).size).toBe(0);
@@ -208,7 +215,7 @@ describe("decision records", () => {
 			marked("behavior-change.api", { ...base("api", "unchanged"), proposal: true }),
 			marked("tags.U1", TAGS_U3),
 		];
-		const latest = latestBehaviorRecords(all);
+		const latest = latestConclusions(all);
 		expect([...latest.keys()]).toEqual(["rate-limit"]);
 		expect(latest.get("rate-limit")?.outcome).toBe("changed");
 	});
@@ -217,7 +224,7 @@ describe("decision records", () => {
 		const valid: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: "d", source: "human", outcome: "unchanged", facts: { capability: "rate-limit", files: ["a.ts"] }, files: ["a.ts"], reason: "r" };
 		const noReason = { point: "behavior-change", subject: "rate-limit", source: "human", outcome: "changed" };
 		const badFiles = { ...valid, outcome: "changed", files: "a.ts" };
-		const latest = latestBehaviorRecords([marked("behavior-change.rate-limit", valid), marked("behavior-change.rate-limit", noReason), marked("behavior-change.rate-limit", badFiles)]);
-		expect(latest.get("rate-limit")).toEqual(valid);
+		const latest = latestConclusions([marked("behavior-change.rate-limit", valid), marked("behavior-change.rate-limit", noReason), marked("behavior-change.rate-limit", badFiles)]);
+		expect(latest.get("rate-limit")).toMatchObject({ outcome: "unchanged", source: "human", reason: "r", files: ["a.ts"] });
 	});
 });

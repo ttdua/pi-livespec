@@ -4,7 +4,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { latestBehaviorRecords } from "../docs/behavior-change.ts";
+import { latestConclusions } from "../docs/behavior-change.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { messageOf } from "../core/messages.ts";
 import { parseSpec } from "../core/spec.ts";
@@ -128,7 +128,7 @@ async function needsShipGate(git: Git, state: ShipInput, facts: DurableFacts): P
 
 /** The latest human `behavior-change` record per capability, as ship facts. */
 function behaviorFacts(marked: MarkedComment[]): DurableFacts["behavior"] {
-	return [...latestBehaviorRecords(marked)].map(([capability, r]) => ({ capability, files: r.files ?? [], outcome: typeof r.outcome === "string" ? r.outcome : null }));
+	return [...latestConclusions(marked)].map(([capability, c]) => ({ capability, files: c.files, outcome: c.outcome }));
 }
 
 /**
