@@ -7,6 +7,7 @@ import type { MarkedComment } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
 import type { Answered, Override } from "./approver.ts";
 import { type Command, parseCommand } from "./commands.ts";
+import { attachBehavior, BEHAVIOR_DISCARDED, type BehaviorStore, behaviorRefusal, collectBehavior } from "./forge-behavior.ts";
 import { allRequests, type Closer, closers, type PendingRequest } from "./requests.ts";
 import { failingWaivableOf, unwaivedApproval } from "./waive-rule.ts";
 
@@ -108,6 +109,8 @@ function targetOf(open: PendingRequest[], command: Command): Target {
 			return questionTarget(open, command.question);
 		case "set":
 			return setTarget(open);
+		case "set-behavior":
+			return decisionTarget(open);
 	}
 }
 
@@ -167,6 +170,7 @@ type Ctx = {
 	/** Request id → the command comment that answered it in this pass. */
 	answered: Map<string, string>;
 	overrides: Map<string, Map<string, Override>>;
+	behavior: BehaviorStore;
 	result: MatchResult;
 	/** Every warning of the pass, before the cap. */
 	warnings: string[];
@@ -238,7 +242,21 @@ function withOverrides(ctx: Ctx, request: PendingRequest, answer: Answered): Ans
 	return overrides && overrides.size > 0 ? { ...answer, overrides: [...overrides.values()] } : answer;
 }
 
+function recordSetBehavior(ctx: Ctx, comment: Comment, index: number, request: PendingRequest, capability: string): void {
+	const refusal = behaviorRefusal(request, capability);
+	if (refusal !== undefined) return warn(ctx, comment, index, refusal);
+	collectBehavior(ctx.behavior, request, capability);
+}
+
+/** The answer with its behavior overrides; overrides an outcome other than changes cannot carry are warned. */
+function withBehavior(ctx: Ctx, index: number, request: PendingRequest, answer: Answered): Answered {
+	const attached = attachBehavior(ctx.behavior, request, answer);
+	if (attached.discarded && index > ctx.warnAfter) ctx.warnings.push(BEHAVIOR_DISCARDED);
+	return attached.answer;
+}
+
 function apply(ctx: Ctx, comment: Comment, index: number, request: PendingRequest, command: Command): void {
+	if (command.verb === "set-behavior") return recordSetBehavior(ctx, comment, index, request, command.capability);
 	if (command.verb === "set") {
 		if (!overridable(request, command.unit)) return warn(ctx, comment, index, `${command.unit} is not in ${request.subject}, so it cannot be set`);
 		return recordSet(ctx, request, command);
@@ -246,7 +264,7 @@ function apply(ctx: Ctx, comment: Comment, index: number, request: PendingReques
 	const answer = decisionAnswer(request, command, comment);
 	if (typeof answer === "string") return warn(ctx, comment, index, answer);
 	ctx.answered.set(request.id, comment.id);
-	if (ctx.pendingIds.has(request.id)) ctx.result.matches.push({ request, answer: withOverrides(ctx, request, answer) });
+	if (ctx.pendingIds.has(request.id)) ctx.result.matches.push({ request, answer: withBehavior(ctx, index, request, withOverrides(ctx, request, answer)) });
 }
 
 /**
@@ -297,6 +315,7 @@ export function matchCommands(
 		consumed: consumedIds(placed),
 		answered: new Map(),
 		overrides: new Map(),
+		behavior: new Map(),
 		result: { matches: [], warnings: [] },
 		warnings: [],
 	};

@@ -11,7 +11,8 @@ export type Command =
 	| { verb: "choose"; option: string; notes: string }
 	| { verb: "answer"; question: string; text: string }
 	| { verb: "set"; unit: string; field: "difficulty"; value: Difficulty }
-	| { verb: "set"; unit: string; field: "tags"; value: string[] };
+	| { verb: "set"; unit: string; field: "tags"; value: string[] }
+	| { verb: "set-behavior"; capability: string };
 
 export type ParseError = { error: string };
 
@@ -63,7 +64,16 @@ function parseAnswer(rest: string): Command | ParseError {
 	return { verb: "answer", question, text: words.join(" ") };
 }
 
+function parseSetBehavior(rest: string): Command | ParseError {
+	const { token: capability, rest: value } = takeToken(rest);
+	if (!capability) return { error: "set behavior needs a capability" };
+	if (value !== "changed") return { error: "set behavior accepts only changed" };
+	return { verb: "set-behavior", capability };
+}
+
 function parseSet(rest: string): Command | ParseError {
+	const head = takeToken(rest);
+	if (head.token === "behavior") return parseSetBehavior(head.rest);
 	const { token: unit, rest: afterUnit } = takeToken(rest);
 	if (!UNIT_ID.test(unit)) return { error: `set needs a unit id like U1, got "${unit}"` };
 	const { token: field, rest: value } = takeToken(afterUnit);

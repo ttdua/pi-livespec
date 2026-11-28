@@ -422,3 +422,53 @@ describe("class commands", () => {
 		expect(out.matches[0]?.answer).not.toHaveProperty("questionClass");
 	});
 });
+
+describe("behavior overrides", () => {
+	const behavior = [{ capability: "rate-limit", files: ["src/rate.ts"], outcome: "unchanged" as const }];
+	const define = () => pending("gate:define", { snapshot: { target: "define", failingWaivable: [], behavior } });
+	const set = (id: string, capability = "rate-limit") => comment(id, "alice", `/livespec set behavior ${capability} changed`, LATER);
+
+	test("Forge override then changes", () => {
+		const gate = define();
+		const out = matchThread([gate], [set("9"), comment("10", "alice", "/livespec changes update the cap spec", LATER)], writers("alice"));
+		expect(out.matches).toHaveLength(1);
+		expect(out.matches[0]?.answer).toMatchObject({ outcome: "changes_requested", behaviorOverrides: [{ capability: "rate-limit", outcome: "changed" }] });
+		expect(out.warnings).toEqual([]);
+	});
+
+	test("the override alone leaves the request pending", () => {
+		const out = matchThread([define()], [set("9")], writers("alice"));
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([]);
+	});
+
+	test("Forge override then approve", () => {
+		const out = matchThread([define()], [set("9"), comment("10", "alice", "/livespec approve", LATER)], writers("alice"));
+		expect(out.matches[0]?.answer).toMatchObject({ outcome: "approved" });
+		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
+		expect(out.warnings).toEqual(["behavior overrides apply only with /livespec changes; ignored"]);
+	});
+
+	test("the discard warning waits for the approve", () => {
+		expect(matchThread([define()], [set("9")], writers("alice")).warnings).toEqual([]);
+	});
+
+	test("Unknown capability", () => {
+		const out = matchThread([define()], [set("9", "cache"), comment("10", "alice", "/livespec changes x", LATER)], writers("alice"));
+		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
+		expect(out.warnings).toEqual([expect.stringContaining("cache")]);
+	});
+
+	test("Override on another gate", () => {
+		const plan = pending("gate:plan", { snapshot: { target: "plan", failingWaivable: [], behavior } });
+		const out = matchThread([plan], [set("9"), comment("10", "alice", "/livespec changes x", LATER)], writers("alice"));
+		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
+		expect(out.warnings).toEqual([expect.stringContaining("behavior can be set only on the define gate")]);
+	});
+
+	test("set behavior after changes does not attach", () => {
+		const out = matchThread([define()], [comment("9", "alice", "/livespec changes x", LATER), set("10")], writers("alice"));
+		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
+		expect(out.warnings).toEqual([expect.stringContaining("was already answered by 9")]);
+	});
+});
