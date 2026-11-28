@@ -47,4 +47,11 @@ describe("aggregate and verifier records", () => {
 		expect(verifierRecord([partial], "c1:0")).toBeUndefined();
 		expect(verifierRecord([first], "c1:9")).toBeUndefined();
 	});
+
+	it("I4: a verifier record naming the `from` alias of the aggregate matches the canonical key", () => {
+		const migrated = { ...aggregate([agg()], 1), from: "777" };
+		const v = verifier("777:0", { round: 2, verdict: "refuted" });
+		expect(verifierRecord([migrated, v], `${migrated.ref}:0`)).toMatchObject({ verdict: "refuted" });
+		expect(verifierRecord([migrated, verifier(`${migrated.ref}:0`)], "777:0")).toBeDefined();
+	});
 });

@@ -1,11 +1,12 @@
 // `finding_rebut`: the parent rebuts a blocking finding of a review summary with a reason and evidence.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { canonicalRef } from "../ledger/alias.ts";
 import { matchesRef } from "../ledger/merge.ts";
 import { withEvidenceLock } from "../evidence/lock.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import { isChildSession, type ChildCheckContext } from "../subagents/child.ts";
-import { isBlocking, rebuttalComment, type RebuttalData } from "../subagents/records.ts";
+import { isBlocking, rebuttalComment, rebuttalItems, type RebuttalData } from "../subagents/records.ts";
 import type { Finding } from "../subagents/roles.ts";
 import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
@@ -39,8 +40,7 @@ function unrebuttable(finding: Finding): string | undefined {
 
 /** The latest rebuttal items already posted for the entry `ref`: a new rebuttal replaces the record, so it must carry them. */
 function earlierItems(marked: MarkedComment[], ref: string): RebuttalData["items"] {
-	const prior = marked.filter((m) => m.kind === "finding-summary" && (m.data as Partial<RebuttalData>).rebuts === ref).at(-1);
-	return (prior?.data as RebuttalData | undefined)?.items ?? [];
+	return [...(rebuttalItems(marked).get(canonicalRef(marked, ref))?.values() ?? [])];
 }
 
 export async function runFindingRebut(p: RebutParams, ctx?: ChildCheckContext): Promise<ToolResult<undefined>> {

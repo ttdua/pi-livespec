@@ -1,6 +1,7 @@
 // Review records: the `review-run` marker kind, the aggregate and verifier `finding-summary` shapes, and their queries.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { canonicalKey } from "../ledger/alias.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { type AggregateFinding, current, type FindingSummaryData } from "../subagents/records.ts";
 import { isFindingData } from "../subagents/validate.ts";
@@ -102,6 +103,6 @@ const decides = (d: FindingSummaryData): boolean => d.completed || d.status === 
 export function verifierRecord(marked: MarkedComment[], key: string): FindingSummaryData | undefined {
 	return current(marked)
 		.map((m) => (m.kind === "finding-summary" ? (m.data as FindingSummaryData) : undefined))
-		.filter((d): d is FindingSummaryData => d !== undefined && d.role === "verifier" && d.verifies === key && decides(d))
+		.filter((d): d is FindingSummaryData => d !== undefined && d.role === "verifier" && d.verifies !== undefined && canonicalKey(marked, d.verifies) === canonicalKey(marked, key) && decides(d))
 		.at(-1);
 }

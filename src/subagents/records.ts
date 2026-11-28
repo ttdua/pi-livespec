@@ -3,6 +3,7 @@
 import type { Question } from "../core/change.ts";
 import { type MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
+import { canonicalKey, canonicalRef } from "../ledger/alias.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
@@ -181,6 +182,8 @@ export function current(marked: MarkedComment[]): MarkedComment[] {
 	return marked.filter((m) => kept.has(m));
 }
 
+const isRebuttal = (d: unknown): d is RebuttalData => typeof (d as Partial<RebuttalData> | null)?.rebuts === "string" && isSummaryData(d);
+
 const isAggregate = (d: FindingSummaryData): boolean => d.aggregate === true;
 
 /** The aggregate `finding-summary` named by the key's ref (or the `from` id of a migrated copy), and the finding at the key's index. */
@@ -210,14 +213,26 @@ function summariesOf(marked: MarkedComment[]): Summary[] {
 	return found;
 }
 
-/** Rebuttals as `commentId:index` keys; a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
+/**
+ * Every rebuttal item by canonical summary ref and finding index, folded over all rebuttal records in list order
+ * (not only the latest per id: two clones may each rebut other indices of one summary); the latest item per index wins.
+ */
+export function rebuttalItems(marked: MarkedComment[]): Map<string, Map<number, RebuttalData["items"][number]>> {
+	const folded = new Map<string, Map<number, RebuttalData["items"][number]>>();
+	for (const m of marked) {
+		if (m.kind !== "finding-summary" || !isRebuttal(m.data)) continue;
+		const ref = canonicalRef(marked, m.data.rebuts);
+		const items = folded.get(ref) ?? new Map();
+		for (const item of m.data.items) items.set(item.index, item);
+		folded.set(ref, items);
+	}
+	return folded;
+}
+
+/** Rebuttals as `commentId:index` keys (canonical refs); a `missed-context` finding is never rebutted, so its key is dropped by the caller. */
 export function rebuttedKeys(marked: MarkedComment[]): Set<string> {
 	const keys = new Set<string>();
-	for (const m of current(marked)) {
-		const data = m.kind === "finding-summary" ? (m.data as Partial<RebuttalData>) : null;
-		if (!data || typeof data.rebuts !== "string" || !Array.isArray(data.items)) continue;
-		for (const item of data.items) keys.add(findingKey(data.rebuts, item.index));
-	}
+	for (const [ref, items] of rebuttalItems(marked)) for (const index of items.keys()) keys.add(findingKey(ref, index));
 	return keys;
 }
 

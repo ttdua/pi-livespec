@@ -26,6 +26,8 @@ import {
 	latestDispatch,
 	pendingQuestion,
 	rebuttalComment,
+	rebuttalItems,
+	rebuttedKeys,
 	unresolvedBlocking,
 	unshownSystemFindings,
 } from "../../src/subagents/records.ts";
@@ -85,6 +87,21 @@ describe("records", () => {
 		const r = summary({ findings: [finding()] });
 		const rebut = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 0, reason: "r", evidence: "e" }] }));
 		expect(unresolvedBlocking([r, rebut], "U1", new Set(), new Set())).toEqual([]);
+	});
+
+	it("I4: a rebuttal naming the `from` alias of a migrated summary resolves it", () => {
+		const r = { ...summary({ findings: [finding()] }), from: "501" };
+		const rebut = mark(rebuttalComment({ rebuts: "501", items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		expect(unresolvedBlocking([r, rebut], "U1", new Set(), new Set())).toEqual([]);
+		expect([...rebuttedKeys([r, rebut])]).toEqual([`${r.ref}:0`]);
+	});
+
+	it("I4: concurrent rebuttals of different indices of one summary both count", () => {
+		const r = summary({ findings: [finding(), finding({ location: "b.ts:2" })] });
+		const one = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 0, reason: "r", evidence: "e" }] }));
+		const two = mark(rebuttalComment({ rebuts: r.ref, items: [{ index: 1, reason: "r", evidence: "e" }] }));
+		expect(unresolvedBlocking([r, one, two], "U1", new Set(), new Set())).toEqual([]);
+		expect([...rebuttalItems([r, one, two]).get(r.ref)!.keys()].sort()).toEqual([0, 1]);
 	});
 
 	it("missed-context not resolvable by rebuttal", () => {
