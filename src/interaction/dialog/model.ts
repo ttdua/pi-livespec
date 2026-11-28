@@ -1,4 +1,4 @@
-// The dialog model: what a request shows (tabs, entries, units) and, in `result.ts`, the flow result
+// The dialog model: what a request shows (entries, units, behavior) and, in `result.ts`, the flow result
 // a submitted state stands for. Pure. Agent text is sanitised here, so the view never sees raw text.
 
 import type { ApprovalRequest, Briefing, Difficulty, RequestOption } from "../approver.ts";
@@ -23,8 +23,6 @@ export type DialogEntry = { label: string; description?: string; recommended: bo
 
 export type DialogModel = {
 	kind: DialogKind;
-	/** Tabs shown before the units tab is opened; `tabsOf` (state.ts) adds it once opened. */
-	tabs: TabName[];
 	unitsAvailable: boolean;
 	behaviorAvailable: boolean;
 	facts: string;
@@ -118,7 +116,6 @@ export function buildModel(r: ApprovalRequest): DialogModel {
 	const briefing = briefingOf(r.briefing, labelled);
 	return {
 		kind,
-		tabs: ["decision", "review"],
 		unitsAvailable: r.overridable !== undefined,
 		behaviorAvailable: r.overridableBehavior !== undefined,
 		facts: sanitize(r.summary),

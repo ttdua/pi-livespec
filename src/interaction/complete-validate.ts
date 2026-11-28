@@ -55,6 +55,7 @@ async function headBoundReason(ctx: CompletionCtx, req: RequestRecord, issue: Is
 async function validateGate(ctx: CompletionCtx, req: RequestRecord, ans: Answered, issue: Issue): Promise<Verdict> {
 	const unwaived = unwaivedApproval(failingWaivableOf(req.snapshot), ans);
 	if (unwaived !== undefined) return superseded(unwaived);
+	if (ans.behaviorOverrides !== undefined && ans.outcome !== "changes_requested") return superseded("behavior overrides apply only with changes requested");
 	const typed = snapshotOf(req);
 	if (typed.kind !== "gate") throw new Error(`${req.subject} is not a gate request`);
 	const target = typed.snapshot.target;
