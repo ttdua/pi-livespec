@@ -81,10 +81,10 @@ Blocked by: 6, 7, 8
 
 Blocked by: 9
 
-- [ ] 10.1 `sources-records.ts` cites ledger records as `ledger:<issue>/<ref>` with `entryVersion`; `records:decisions` names entries by that id
-- [ ] 10.2 `finding_rebut` parameter `ref` (lookup by `ref` or `from`, refusal message); verifier reference `<aggregateRef>:<index>` (`subagent-target.ts`, `build-loop.ts`, `review/status.ts`, `review/effects.ts`); question key `finding:<aggregateRef>:<index>`
-- [ ] 10.3 Freshness treats ledger records as own and compares `entryVersion`
-- [ ] 10.4 Tests: subagent-packets ledger scenarios, rebuttal scenarios, "Question raised once" (`tests/review/effects.test.ts`)
+- [x] 10.1 `sources-records.ts` cites ledger records as `ledger:<issue>/<ref>` with `entryVersion`; `records:decisions` names entries by that id
+- [x] 10.2 `finding_rebut` parameter `ref` (lookup by `ref` or `from`, refusal message); verifier reference `<aggregateRef>:<index>` (`subagent-target.ts`, `build-loop.ts`, `review/status.ts`, `review/effects.ts`); question key `finding:<aggregateRef>:<index>`
+- [x] 10.3 Freshness treats ledger records as own and compares `entryVersion`
+- [x] 10.4 Tests: subagent-packets ledger scenarios, rebuttal scenarios, "Question raised once" (`tests/review/effects.test.ts`)
 
 ## 11. Ship and close
 

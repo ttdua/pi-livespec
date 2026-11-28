@@ -37,7 +37,7 @@
 
 | Name | new / modified | Shape | public |
 |---|---|---|---|
-| `MarkedComment` (`src/forge/markers.ts`) | modified | `{ ref: string; source: "forge" \| "ledger"; kind: string; id: string; author: string; data: unknown; createdAt?: string; from?: string }` (`commentId` renamed `ref`; `createdAt` set for forge comments and entries (`at`); `from` copied from entries) | no |
+| `MarkedComment` (`src/forge/markers.ts`) | modified | `{ ref: string; source: "forge" \| "ledger"; kind: string; id: string; author: string; data: unknown; createdAt?: string; from?: string }` (`commentId` renamed `ref`; `createdAt` set for forge comments and entries (`at`); `from` and `after?` copied from entries — `after` added in Task 10 so packet sources can recompute `entryVersion`) | no |
 | `LEDGER_KINDS` (`src/core/record-kinds.ts`) | new | `readonly ["decision","dispatch","finding-summary","receipt","unit-start","counter"]`; `type LedgerKind = (typeof LEDGER_KINDS)[number]`; `isLedgerKind(k: string): k is LedgerKind` | no |
 | `LedgerEntry` (`src/ledger/entry.ts`) | new | `{ ref: string; kind: LedgerKind; id: string; seq: number; at: string; after?: string; from?: string; data: unknown }` | no |
 | Ledger tree format | new | `ledger.yaml` `{ schema: 1, issue: <n> }`; `decisions.jsonl`, `dispatch.jsonl`, `findings.jsonl` (one JSON entry per line); `units/<U>.yaml`, `change.yaml` (YAML sequence of entries); `fileFor(kind, data)`: `units/<data.unit>.yaml` for `unit-start`/`receipt`, `change.yaml` for `counter` | yes (read by auditors with `git show`) |
