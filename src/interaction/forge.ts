@@ -10,7 +10,6 @@ import { renderForgeRequest } from "./forge-text.ts";
 import { openRequestFor, readRequests, requestComment } from "./requests.ts";
 
 export {
-	type ClassChange,
 	type CommandMatch,
 	type MatchOptions,
 	type MatchResult,

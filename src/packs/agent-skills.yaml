@@ -24,6 +24,7 @@ decisions:
   split: { mode: rule }
   behavior-change: { mode: rule }
   drift-severity: { mode: rule }
+  gate-escalation: { mode: rule, phases: [plan], tags: [security, migration] }
 init:
   skills: [constraint-driven-development]   # used once by /livespec init
 phases:
@@ -52,7 +53,7 @@ phases:
     outputs: [issue#Units]
     redirects: ["No tasks/plan.md or tasks/todo.md; units live in the change issue"]
     checks: [units-format, done-maps-scenarios, unit-classification, verify-red-on-base, size-limits]
-    gate: human
+    gate: self
     subagents:
       - { role: scout, mode: auto, when: ["unfamiliar-code"] }
       - { role: reviewer, subject: plan, mode: always, advisory: true }

@@ -1,7 +1,7 @@
 // The dialog's UI state and its reducer. Pure: every action returns a new state, nothing is mutated.
 
 import type { Difficulty } from "../approver.ts";
-import type { DialogEntry, DialogModel } from "./model.ts";
+import type { DialogEntry, DialogModel, TabName } from "./model.ts";
 
 export type EditorName = "note" | "answer" | "tags";
 
@@ -10,6 +10,7 @@ export type DialogState = {
 	focus: number;
 	scroll: number;
 	picked?: number;
+	unitsOpen: boolean;
 	notes: string;
 	answer: string;
 	overrides: Readonly<Record<string, { difficulty?: Difficulty; tags?: string[] }>>;
@@ -22,6 +23,7 @@ export type DialogAction =
 	| { type: "move"; delta: 1 | -1 }
 	| { type: "scroll"; delta: number }
 	| { type: "pick"; index?: number }
+	| { type: "openUnits" }
 	| { type: "nextTab" }
 	| { type: "previousTab" }
 	| { type: "openEditor"; editor: EditorName }
@@ -33,10 +35,14 @@ export type DialogAction =
 const LEVELS: Difficulty[] = ["low", "medium", "high"];
 
 export function initialState(_model: DialogModel): DialogState {
-	return { tab: 0, focus: 0, scroll: 0, notes: "", answer: "", overrides: {} };
+	return { tab: 0, focus: 0, scroll: 0, notes: "", answer: "", unitsOpen: false, overrides: {} };
 }
 
-const tabOf = (model: DialogModel, state: DialogState) => model.tabs[state.tab];
+/** The tabs now shown: the units tab sits between decision and review once opened. */
+export const tabsOf = (model: DialogModel, state: DialogState): TabName[] =>
+	state.unitsOpen ? ["decision", "units", "review"] : model.tabs;
+
+const tabOf = (model: DialogModel, state: DialogState) => tabsOf(model, state)[state.tab];
 
 /** The rows the active tab can focus. */
 function rowCount(model: DialogModel, state: DialogState): number {
@@ -62,7 +68,8 @@ function move(model: DialogModel, state: DialogState, delta: 1 | -1): DialogStat
 }
 
 function shiftTab(model: DialogModel, state: DialogState, delta: 1 | -1): DialogState {
-	return goTo(state, (state.tab + delta + model.tabs.length) % model.tabs.length);
+	const count = tabsOf(model, state).length;
+	return goTo(state, (state.tab + delta + count) % count);
 }
 
 function pick(model: DialogModel, state: DialogState, index: number | undefined): DialogState {
@@ -79,9 +86,9 @@ function pick(model: DialogModel, state: DialogState, index: number | undefined)
 		case "changes":
 			return state.notes.trim() === "" ? { ...next, editor: "note" } : goTo(next, state.tab + 1);
 		case "own":
-			return state.answer.trim() === "" ? { ...next, editor: "answer" } : goTo(next, Math.min(state.tab + 1, model.tabs.length - 1));
+			return state.answer.trim() === "" ? { ...next, editor: "answer" } : goTo(next, Math.min(state.tab + 1, tabsOf(model, state).length - 1));
 		default:
-			return goTo(next, Math.min(state.tab + 1, model.tabs.length - 1));
+			return goTo(next, Math.min(state.tab + 1, tabsOf(model, state).length - 1));
 	}
 }
 
@@ -130,6 +137,12 @@ function submit(model: DialogModel, state: DialogState): DialogState {
 	return check.ok ? { ...state, done: "submitted", error: undefined } : { ...state, error: check.reason };
 }
 
+/** Opens the units tab for the rest of the dialog; only from the decision tab and only when the request has units. */
+function openUnits(model: DialogModel, state: DialogState): DialogState {
+	if (!model.unitsAvailable || tabOf(model, state) !== "decision") return state;
+	return goTo({ ...state, unitsOpen: true }, 1);
+}
+
 function cancel(state: DialogState): DialogState {
 	return state.editor === undefined ? { ...state, done: "cancelled" } : { ...state, editor: undefined };
 }
@@ -142,6 +155,8 @@ export function reduce(model: DialogModel, state: DialogState, action: DialogAct
 			return { ...state, scroll: Math.max(0, state.scroll + action.delta) };
 		case "pick":
 			return pick(model, state, action.index);
+		case "openUnits":
+			return openUnits(model, state);
 		case "nextTab":
 			return shiftTab(model, state, 1);
 		case "previousTab":

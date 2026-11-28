@@ -89,7 +89,8 @@ describe("behavior-change rule", () => {
 		await decide("behavior-change", ITEM, { config: { mode: "rule" }, subject: ITEM.capability, ask });
 		const intent = ask.mock.calls[0]?.[0];
 		expect(intent?.options.map((o) => o.description)).toEqual(["A refactor: the spec stays as it is.", "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated."]);
-		expect(intent?.recommended).toBeUndefined();
+		expect(intent?.recommended).toBe("unchanged");
+		expect(intent?.rationale).toBe("Code under the capability's paths changed but its spec did not; most such edits are refactors.");
 	});
 });
 

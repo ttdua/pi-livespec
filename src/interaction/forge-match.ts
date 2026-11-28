@@ -5,7 +5,7 @@
 
 import type { MarkedComment } from "../forge/markers.ts";
 import type { Comment } from "../forge/types.ts";
-import type { Answered, Override, QuestionClass } from "./approver.ts";
+import type { Answered, Override } from "./approver.ts";
 import { type Command, parseCommand } from "./commands.ts";
 import { allRequests, type Closer, closers, type PendingRequest } from "./requests.ts";
 import { failingWaivableOf, unwaivedApproval } from "./waive-rule.ts";
@@ -15,10 +15,7 @@ export type Permission = "none" | "read" | "write" | "admin";
 /** One pending request answered by a command comment. */
 export type CommandMatch = { request: PendingRequest; answer: Answered };
 
-/** A `/livespec class` command for a question with a pending request. */
-export type ClassChange = { question: string; class: QuestionClass; commentId: string };
-
-export type MatchResult = { matches: CommandMatch[]; classes: ClassChange[]; warnings: string[] };
+export type MatchResult = { matches: CommandMatch[]; warnings: string[] };
 
 export type MatchOptions = {
 	/**
@@ -26,8 +23,6 @@ export type MatchOptions = {
 	 * and the comment that closed it, so targets are computed per command position.
 	 */
 	marked: MarkedComment[];
-	/** Ids of command comments whose `/livespec class` was applied and recorded; they are skipped silently. */
-	appliedClasses?: ReadonlySet<string>;
 };
 
 const WRITERS = new Set<Permission>(["write", "admin"]);
@@ -110,7 +105,6 @@ function targetOf(open: PendingRequest[], command: Command): Target {
 		case "dismiss":
 			return dismissTarget(open);
 		case "answer":
-		case "class":
 			return questionTarget(open, command.question);
 		case "set":
 			return setTarget(open);
@@ -153,11 +147,8 @@ function commandAnswer(request: PendingRequest, command: Command, comment: Comme
 			if (!options.some((o) => o.id === command.option)) return `option ${command.option} is not offered by ${request.subject}`;
 			return { ...answer, outcome: command.notes === "" ? "approved" : "approved_with_notes", notes: command.notes, choice: command.option };
 		}
-		case "answer": {
-			const a: Answered = { ...answer, outcome: "approved", notes: "", answer: command.text };
-			if (command.class !== undefined) a.questionClass = command.class;
-			return a;
-		}
+		case "answer":
+			return { ...answer, outcome: "approved", notes: "", answer: command.text };
 		default:
 			return `${command.verb} does not answer a request`;
 	}
@@ -173,8 +164,6 @@ type Ctx = {
 	perms: ReadonlyMap<string, Permission>;
 	/** Command comments recorded answers used; they are skipped silently. */
 	consumed: ReadonlySet<string>;
-	/** Command comments whose `/livespec class` was already applied. */
-	appliedClasses: ReadonlySet<string>;
 	/** Request id → the command comment that answered it in this pass. */
 	answered: Map<string, string>;
 	overrides: Map<string, Map<string, Override>>;
@@ -254,10 +243,6 @@ function apply(ctx: Ctx, comment: Comment, index: number, request: PendingReques
 		if (!overridable(request, command.unit)) return warn(ctx, comment, index, `${command.unit} is not in ${request.subject}, so it cannot be set`);
 		return recordSet(ctx, request, command);
 	}
-	if (command.verb === "class") {
-		ctx.result.classes.push({ question: command.question, class: command.class, commentId: comment.id });
-		return;
-	}
 	const answer = decisionAnswer(request, command, comment);
 	if (typeof answer === "string") return warn(ctx, comment, index, answer);
 	ctx.answered.set(request.id, comment.id);
@@ -272,10 +257,9 @@ function matchOne(ctx: Ctx, comment: Comment, index: number): void {
 	const parsed = parseCommand(comment.body);
 	if (parsed === undefined || ctx.consumed.has(comment.id)) return;
 	if ("error" in parsed) return warn(ctx, comment, index, `cannot be parsed (${parsed.error})`);
-	if (parsed.verb === "class" && ctx.appliedClasses.has(comment.id)) return;
 	const target = targetOf(openAt(ctx, comment, index), parsed);
 	if ("warning" in target) return warn(ctx, comment, index, beforeRequest(ctx, parsed, index) ?? target.warning);
-	const first = parsed.verb === "set" || parsed.verb === "class" ? undefined : answeredBy(ctx, target.request);
+	const first = parsed.verb === "set" ? undefined : answeredBy(ctx, target.request);
 	if (first !== undefined) return warn(ctx, comment, index, `${target.request.subject} was already answered by ${first}`);
 	if (!ctx.pendingIds.has(target.request.id)) return;
 	if (!WRITERS.has(ctx.perms.get(comment.author) ?? "none")) return warn(ctx, comment, index, "its author lacks write access");
@@ -293,8 +277,8 @@ function consumedIds(placed: Placed[]): Set<string> {
  *
  * Warnings: a command is warned for its target (unparsable, no or ambiguous target, created before its
  * request, already answered) before its author's permission is checked, so a target warning wins. A
- * command whose target is not pending any more (an applying or completed request, including any `set` or
- * `class`) is skipped silently. Only commands after the latest request closed before the earliest pending
+ * command whose target is not pending any more (an applying or completed request, including any `set`) is
+ * skipped silently. Only commands after the latest request closed before the earliest pending
  * one are warned (see `warnAfterOf`), and the list is capped at five lines plus "+k more".
  */
 export function matchCommands(
@@ -311,10 +295,9 @@ export function matchCommands(
 		pendingIds,
 		perms,
 		consumed: consumedIds(placed),
-		appliedClasses: opts.appliedClasses ?? new Set(),
 		answered: new Map(),
 		overrides: new Map(),
-		result: { matches: [], classes: [], warnings: [] },
+		result: { matches: [], warnings: [] },
 		warnings: [],
 	};
 	comments.forEach((comment, index) => matchOne(ctx, comment, index));

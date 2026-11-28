@@ -79,7 +79,7 @@ export function registerNewDependency(pi: ExtensionAPI): void {
 		name: NEW_DEPENDENCY_TOOL,
 		label: "Propose how to handle a discovered dependency",
 		description:
-			"When a unit needs work outside the change (an implementer returned BLOCKED missing-prerequisite), draft each option and send the new-dependency gate to the human: A (default) a prerequisite change and park this one, B new units, C a stub plus a follow-up change, D back to shape or drop, and split at a finished-unit boundary. Nothing is created before approval. This tool takes no answer.",
+			"When a unit needs work outside the change (an implementer returned BLOCKED missing-prerequisite), draft each option and send the new-dependency gate to the human: A a prerequisite change and park this one, B new units, C a stub plus a follow-up change, D back to shape or drop, and split at a finished-unit boundary. Nothing is created before approval. This tool takes no answer.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No outcome or choice parameter.
 		parameters: {
 			type: "object",
@@ -95,7 +95,7 @@ export function registerNewDependency(pi: ExtensionAPI): void {
 				briefing: BRIEFING_SCHEMA,
 				d: { type: "object", properties: { action: { type: "string", enum: ["shape", "drop"] }, reason: { type: "string" } }, required: ["action", "reason"] },
 			},
-			required: ["evidence", "a", "b", "c", "d"],
+			required: ["evidence", "a", "b", "c", "d", "briefing"],
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => runNewDependency(params, ctx as ToolCtx & ApproverCtx),
 	});

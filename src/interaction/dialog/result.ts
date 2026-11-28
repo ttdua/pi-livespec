@@ -1,7 +1,7 @@
 // Turns a submitted dialog state into the flow result, with the rules of the select flows
 // (`in-session.ts`): empty notes approve, notes approve with notes, `changes` drops overrides.
 
-import type { ApprovalRequest, Deferred, Outcome, Override } from "../approver.ts";
+import type { Deferred, Outcome, Override } from "../approver.ts";
 import { CANCELLED, type Cancelled, type Verdict } from "../flow-result.ts";
 import type { DialogEntry, DialogModel } from "./model.ts";
 import type { DialogState } from "./state.ts";
@@ -22,11 +22,9 @@ export function overridesOf(model: DialogModel, state: DialogState): Override[] 
 	return out;
 }
 
-function questionVerdict(entry: DialogEntry, state: DialogState, r: ApprovalRequest): Verdict {
+function questionVerdict(entry: DialogEntry, state: DialogState): Verdict {
 	const answer = entry.action.kind === "candidate" ? entry.action.label : state.answer.trim();
-	const verdict: Verdict = { outcome: "approved", notes: "", answer };
-	if (r.question) verdict.questionClass = r.question.class;
-	return verdict;
+	return { outcome: "approved", notes: "", answer };
 }
 
 /** The gate outcome of a picked entry: empty notes approve, notes approve with notes. */
@@ -54,13 +52,13 @@ function gateVerdict(model: DialogModel, entry: DialogEntry, state: DialogState)
 }
 
 /** The result of the picked entry; `CANCELLED` when nothing is picked or the entry dismisses. */
-export function toResult(model: DialogModel, state: DialogState, r: ApprovalRequest): Verdict | Deferred | Cancelled {
+export function toResult(model: DialogModel, state: DialogState): Verdict | Deferred | Cancelled {
 	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
 	if (entry === undefined) return CANCELLED;
 	const { action } = entry;
 	if (action.kind === "dismiss") return CANCELLED;
 	if (action.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
-	if (action.kind === "candidate" || action.kind === "own") return questionVerdict(entry, state, r);
+	if (action.kind === "candidate" || action.kind === "own") return questionVerdict(entry, state);
 	if (action.kind === "changes") return { outcome: "changes_requested", notes: state.notes.trim() };
 	if (model.kind === "choice" && action.kind === "option") return { outcome: "approved", notes: "", choice: action.id };
 	return gateVerdict(model, entry, state);

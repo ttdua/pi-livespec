@@ -4,15 +4,15 @@ import { type DecisionAsk, decide } from "../../src/decide/seam.ts";
 import { resetRegistryForTests } from "../../src/engine/registry.ts";
 
 const OPTIONS = [
-	{ id: "x", label: "Option X" },
-	{ id: "y", label: "Option Y" },
+	{ id: "x", label: "Option X", description: "Do x." },
+	{ id: "y", label: "Option Y", description: "Do y." },
 ];
 
 beforeEach(() => {
 	resetRegistryForTests();
 	resetRulesForTests();
 	registerBuiltinRules();
-	registerRule("pick", { validate() {} }, () => ({ ask: { summary: "Pick one", options: OPTIONS } }));
+	registerRule("pick", { validate() {} }, () => ({ ask: { summary: "Pick one", options: OPTIONS, recommended: "x", rationale: "x is simplest." } }));
 });
 
 describe("decide", () => {
@@ -36,7 +36,7 @@ describe("decide", () => {
 				return { status: "answered", outcome: "approved", choice: "y", by: "alice", at: "2026-01-01T00:00:00Z" };
 			},
 		});
-		expect(asked).toEqual([{ point: "pick", subject: "U2", facts, summary: "Pick one", options: OPTIONS }]);
+		expect(asked).toEqual([{ point: "pick", subject: "U2", facts, summary: "Pick one", options: OPTIONS, recommended: "x", rationale: "x is simplest." }]);
 		expect(r).toMatchObject({ status: "decided", outcome: "y", source: "human", facts });
 		if (r.status === "decided") expect(r.reason).toContain("alice");
 	});
@@ -119,13 +119,23 @@ describe("rule ask briefing", () => {
 		await expect(run("blank-rat")).rejects.toThrow(/decision `blank-rat` /);
 	});
 
-	test("a rule without a recommendation keeps a long summary", async () => {
-		registerRule("long-plain", { validate() {} }, () => ({ ask: { summary: "s".repeat(601), options: OPTIONS } }));
-		await expect(run("long-plain")).resolves.toEqual({ status: "pending", requestId: "r" });
+	test("rule ask without a recommendation", async () => {
+		registerRule("no-rec", { validate() {} }, () => ({ ask: { summary: "s", options: OPTIONS } }) as never);
+		await expect(run("no-rec")).rejects.toThrow(/recommended/);
+	});
+
+	test("rule ask without a rationale", async () => {
+		registerRule("no-rat", { validate() {} }, () => ({ ask: { summary: "s", options: OPTIONS, recommended: "x" } }) as never);
+		await expect(run("no-rat")).rejects.toThrow(/rationale/);
+	});
+
+	test("rule ask with an undescribed option throws", async () => {
+		registerRule("no-desc", { validate() {} }, () => ({ ask: { summary: "s", options: [{ id: "x", label: "X" }], recommended: "x", rationale: "why" } }) as never);
+		await expect(run("no-desc")).rejects.toThrow(/decision `no-desc` .*description/);
 	});
 
 	test("a rule option description over 200 code points throws", async () => {
-		registerRule("long-desc", { validate() {} }, () => ({ ask: { summary: "s", options: [{ id: "x", label: "X", description: "d".repeat(201) }] } }));
+		registerRule("long-desc", { validate() {} }, () => ({ ask: { summary: "s", options: [{ id: "x", label: "X", description: "d".repeat(201) }], recommended: "x", rationale: "why" } }));
 		await expect(run("long-desc")).rejects.toThrow(/decision `long-desc`/);
 	});
 

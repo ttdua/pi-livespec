@@ -59,10 +59,10 @@ function prefillOf(model: DialogModel, state: DialogState, editor: EditorName): 
 }
 
 /** What a finished state resolves; `undefined` while the dialog is still open. */
-function outcomeOf(model: DialogModel, state: DialogState, r: ApprovalRequest): DialogOutcome | undefined {
+function outcomeOf(model: DialogModel, state: DialogState): DialogOutcome | undefined {
 	if (state.done === undefined) return undefined;
 	if (state.done === "cancelled") return { kind: "cancelled" };
-	const result = toResult(model, state, r);
+	const result = toResult(model, state);
 	return result === CANCELLED ? { kind: "cancelled" } : { kind: "result", result };
 }
 
@@ -76,7 +76,6 @@ class DialogHost implements Component, Focusable {
 	private readonly theme: DialogTheme;
 
 	constructor(
-		private readonly r: ApprovalRequest,
 		private readonly model: DialogModel,
 		private readonly tui: TUI,
 		private readonly piTheme: Theme,
@@ -138,7 +137,7 @@ class DialogHost implements Component, Focusable {
 		this.state = next;
 		if (opened && next.editor !== undefined) this.fieldOf().set(prefillOf(this.model, next, next.editor));
 		this.syncFieldFocus();
-		const outcome = outcomeOf(this.model, next, this.r);
+		const outcome = outcomeOf(this.model, next);
 		if (outcome === undefined) return;
 		this.finished = true;
 		this.done(outcome);
@@ -159,5 +158,5 @@ class DialogHost implements Component, Focusable {
 /** The `ctx.ui.custom` factory for `r`; `makeField` replaces the `Editor` (tests). */
 export function createDialog(r: ApprovalRequest, makeField: (tui: TUI, theme: Theme) => TextField = editorField): DialogFactory<DialogOutcome> {
 	const model = buildModel(r);
-	return (tui, theme, keybindings, done) => new DialogHost(r, model, tui, theme, keybindings, done, makeField);
+	return (tui, theme, keybindings, done) => new DialogHost(model, tui, theme, keybindings, done, makeField);
 }

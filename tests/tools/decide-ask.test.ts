@@ -24,15 +24,16 @@ import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "./helpers.ts
 const FORGE_CHAIN = "integrationBranch: main\ninteraction: { adapter: [forge] }\n";
 const SESSION_CHAIN = "integrationBranch: main\ninteraction: { adapter: [in-session] }\n";
 const OPTIONS = [
-	{ id: "x", label: "Option X" },
-	{ id: "y", label: "Option Y" },
+	{ id: "x", label: "Option X", description: "Do x." },
+	{ id: "y", label: "Option Y", description: "Do y." },
 ];
+const REC = { recommended: "x", rationale: "x is simplest." };
 const FACTS = { files: ["src/a.ts"] };
 
 beforeEach(() => {
 	resetRulesForTests();
 	registerBuiltinRules();
-	registerRule("pick", { validate() {} }, () => ({ ask: { summary: "Pick one for U1", options: OPTIONS } }));
+	registerRule("pick", { validate() {} }, () => ({ ask: { summary: "Pick one for U1", options: OPTIONS, ...REC } }));
 });
 
 afterEach(async () => {
@@ -78,7 +79,7 @@ describe("decision asker", () => {
 		const h = await change({ config: SESSION_CHAIN, ui });
 		const r = await decidePick(h);
 		expect(r).toMatchObject({ status: "decided", outcome: "y", source: "human", facts: FACTS });
-		expect(h.ctx.ui.select).toHaveBeenCalledWith("Pick one for U1", expect.arrayContaining(["Option X", "Option Y"]));
+		expect(h.ctx.ui.select).toHaveBeenCalledWith(expect.stringContaining("Pick one for U1"), ["Option X — Do x. (Recommended)", "Option Y — Do y."]);
 		const [record] = await ofKind(h, "decision");
 		expect(record).toMatchObject({ id: "pick.U1", data: { point: "pick", subject: "U1", source: "human", outcome: "y", facts: FACTS } });
 		const [answer] = await ofKind(h, "answer");
@@ -111,7 +112,7 @@ describe("decision asker", () => {
 	});
 
 	test("Decide request kind", async () => {
-		registerRule("difficulty", { validate() {} }, () => ({ ask: { summary: "Which difficulty for U1?", options: OPTIONS } }));
+		registerRule("difficulty", { validate() {} }, () => ({ ask: { summary: "Which difficulty for U1?", options: OPTIONS, ...REC } }));
 		const h = await change({ config: FORGE_CHAIN });
 		const w = await prepareWrite();
 		if (!w.ok) throw new Error(w.message);
@@ -136,7 +137,7 @@ describe("decision asker", () => {
 		if (!w.ok) throw new Error(w.message);
 		const stale = requireChange(w.session);
 		if (!stale.ok) throw new Error(stale.message);
-		const existing = decisionRequest(stale.state, { point: "pick", subject: "U1", facts: FACTS, summary: "Pick one for U1", options: OPTIONS }, new Date(0));
+		const existing = decisionRequest(stale.state, { point: "pick", subject: "U1", facts: FACTS, summary: "Pick one for U1", options: OPTIONS, ...REC }, new Date(0));
 		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", existing.id, { ...existing.record, id: undefined }));
 		const r = await decide("pick", FACTS, { config: { mode: "rule" }, subject: "U1", ask: createDecisionAsker(w, stale.state, h.ctx) });
 		expect(r).toEqual({ status: "pending", requestId: existing.id });
@@ -152,8 +153,6 @@ describe("decision asker", () => {
 		if (!c.ok) throw new Error(c.message);
 		const intent = { point: "pick", subject: "U1", facts: FACTS, summary: "Pick one", options: OPTIONS, recommended: "x", rationale: "because" };
 		expect(decisionRequest(c.state, intent, new Date(0)).briefing).toEqual({ summary: "Pick one", recommended: "x", rationale: "because", author: "rule" });
-		const { recommended: _r, rationale: _t, ...plain } = intent;
-		expect(decisionRequest(c.state, plain, new Date(0)).briefing).toBeUndefined();
 	});
 
 	test("a dismissed in-session dialog is recorded and does not decide", async () => {
@@ -262,7 +261,7 @@ describe("unit digest reuse", () => {
 
 describe("built-in callers use the asker", () => {
 	test("plan_units refuses before any write when a rule asks on the forge", async () => {
-		registerRule("tags", tagsSchema, () => ({ ask: { summary: "Which tags?", options: OPTIONS } }));
+		registerRule("tags", tagsSchema, () => ({ ask: { summary: "Which tags?", options: OPTIONS, ...REC } }));
 		const body = (head: string) => setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", head), "Branch", CHANGE_BRANCH);
 		const h = await change({ config: FORGE_CHAIN, body, phase: "plan" });
 		h.git("config", `branch.${CHANGE_BRANCH}.livespecBase`, h.head);

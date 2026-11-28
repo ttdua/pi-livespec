@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { validBriefing } from "../helpers/briefing.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { type Answered, isSubject, type RequestRecord } from "../../src/interaction/approver.ts";
 import {
@@ -124,12 +125,63 @@ describe("subjects and typed snapshots", () => {
 	});
 });
 
+const FAILING = { target: "plan", failingWaivable: ["size-limits"] };
+const base = { mode: "blocking" as const, head: "f".repeat(40), body: "b", summary: "x", now: NOW };
+const described = [{ id: "A", label: "Retry", description: "Retry the unit." }, { id: "B", label: "Re-plan", description: "Re-plan the unit." }];
+
 describe("briefing on the record", () => {
 	test("prepareRequest stores the briefing", () => {
-		const briefing = { summary: "s", author: "agent" as const };
-		const r = prepareRequest({ kind: "gate", subject: "gate:plan", mode: "blocking", head: "f".repeat(40), body: "b", snapshot: RECORD.snapshot, summary: "x", now: NOW, briefing });
+		const briefing = { ...validBriefing("approve"), author: "agent" as const };
+		const r = prepareRequest({ ...base, kind: "gate", subject: "gate:plan", snapshot: RECORD.snapshot, briefing });
 		expect(r.briefing).toEqual(briefing);
-		expect(prepareRequest({ kind: "gate", subject: "gate:plan", mode: "blocking", head: "f".repeat(40), body: "b", snapshot: RECORD.snapshot, summary: "x", now: NOW })).not.toHaveProperty("briefing");
 	});
 
+	test("reads a stored request without briefing", () => {
+		const state = readRequests(comments(requestComment(ID, RECORD, "plain")));
+		expect(state.pending.map((p) => p.id)).toEqual([ID]);
+		expect(state.pending[0]?.data.briefing).toBeUndefined();
+	});
+});
+
+describe("interaction contract", () => {
+	const gate = { ...base, kind: "gate" as const, subject: "gate:plan" as const, snapshot: RECORD.snapshot };
+	const stuck = { ...base, kind: "stuck" as const, subject: "stuck:S1" as const, snapshot: { id: "S1" } };
+	const author = { author: "agent" as const };
+
+	test("prepareRequest throws without recommended", () => {
+		const briefing = { summary: "s", ...author };
+		expect(() => prepareRequest({ ...stuck, options: described, briefing })).toThrow(/recommended/);
+		expect(() => prepareRequest({ ...stuck, options: described })).toThrow(/recommended/);
+	});
+
+	test("prepareRequest throws without rationale", () => {
+		expect(() => prepareRequest({ ...stuck, options: described, briefing: { summary: "s", recommended: "A", ...author } })).toThrow(/rationale/);
+	});
+
+	test("prepareRequest throws on an undescribed option", () => {
+		const options = [{ id: "accept", label: "Accept" }];
+		expect(() => prepareRequest({ ...gate, options, briefing: { ...validBriefing("accept"), ...author } })).toThrow(/option accept/);
+	});
+
+	test("prepareRequest throws on a recommendation that is not offered", () => {
+		expect(() => prepareRequest({ ...stuck, options: described, briefing: { ...validBriefing("C"), ...author } })).toThrow(/not an offered choice/);
+	});
+
+	test("prepareRequest accepts a gate whose built-ins are undescribed", () => {
+		expect(() => prepareRequest({ ...gate, briefing: { ...validBriefing("approve"), ...author } })).not.toThrow();
+	});
+
+	test("waive recommended on a gate with a failing check passes", () => {
+		const options = [{ id: "waive", label: "Waive size-limits" }];
+		expect(() => prepareRequest({ ...gate, snapshot: FAILING, options, briefing: { ...validBriefing("waive"), ...author } })).not.toThrow();
+	});
+
+	test("approve recommended while a check fails throws", () => {
+		const options = [{ id: "waive", label: "Waive size-limits" }];
+		expect(() => prepareRequest({ ...gate, snapshot: FAILING, options, briefing: { ...validBriefing("approve"), ...author } })).toThrow(/approve/);
+	});
+
+	test("the error names the subject and the field", () => {
+		expect(() => prepareRequest({ ...gate, briefing: { summary: "s", ...author } })).toThrow("request gate:plan: briefing.recommended is required");
+	});
 });

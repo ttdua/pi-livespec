@@ -11,12 +11,13 @@ import { durableDocsRuleFn, durableDocsSchema } from "../ship/durable-docs.ts";
 import { laneRuleFn, laneSchema } from "../fix/lane.ts";
 import { splitRuleFn, splitSchema } from "../initiatives/split-rule.ts";
 import { tagsRule, tagsSchema } from "./rules/tags.ts";
+import { GATE_ESCALATION_POINT, gateEscalationRule, gateEscalationSchema } from "./rules/gate-escalation.ts";
 import { BEHAVIOR_POINT, behaviorChangeRule, behaviorChangeSchema } from "../docs/behavior-change.ts";
 import { DRIFT_SEVERITY_POINT, driftSeverityRule, driftSeveritySchema } from "../audit/severity.ts";
 
 export type RuleResult =
 	| { outcome: unknown; reason: string; data?: { agentAdditions?: string[] } }
-	| { ask: { summary: string; options: { id: string; label: string; description?: string }[]; recommended?: string; rationale?: string } };
+	| { ask: { summary: string; options: { id: string; label: string; description: string }[]; recommended: string; rationale: string } };
 
 export type RuleSchema = {
 	validate(node: Node | null, report: (n: Node, msg: string) => void): void;
@@ -98,6 +99,7 @@ export function registerBuiltinRules(): void {
 	registerRule("split", splitSchema, splitRuleFn);
 	registerRule(BEHAVIOR_POINT, behaviorChangeSchema, behaviorChangeRule);
 	registerRule(DRIFT_SEVERITY_POINT, driftSeveritySchema, driftSeverityRule);
+	registerRule(GATE_ESCALATION_POINT, gateEscalationSchema, gateEscalationRule);
 	registerSubagentsSchema();
 }
 

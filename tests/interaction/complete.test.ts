@@ -32,6 +32,7 @@ import type { AmendSnapshot, Answered, ApprovalRequest, RequestKind, RequestReco
 import { type CompletionCtx, completeAnswer, finishApplying } from "../../src/interaction/complete.ts";
 import { createForgeApprover } from "../../src/interaction/forge.ts";
 import { renderForgeRequest } from "../../src/interaction/forge-text.ts";
+import { contractFields } from "../helpers/briefing.ts";
 import { answerComment, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { untrusted } from "../../src/hooks/phase-card.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
@@ -96,7 +97,7 @@ async function refresh(f: Fixture): Promise<ChangeState> {
 
 async function prepare(f: Fixture, kind: RequestKind, subject: Subject, snapshot: RequestSnapshot, options?: { id: string; label: string }[]): Promise<RequestRecord> {
 	const body = await f.world.bodyOf(f.n);
-	return prepareRequest({ kind, subject, mode: "blocking", ...(options ? { options } : {}), head: f.head, body, snapshot, summary: `Review ${subject}`, now: new Date(AT) });
+	return prepareRequest({ kind, subject, mode: "blocking", ...contractFields(kind, subject, snapshot, options), head: f.head, body, snapshot, summary: `Review ${subject}`, now: new Date(AT) });
 }
 
 function envelope(record: RequestRecord): ApprovalRequest {
@@ -389,6 +390,21 @@ describe("completion engine", () => {
 		expect(state.change.questions.find((q) => q.id === "Q1")?.checked).toBe(true);
 	});
 
+	test("complete question reads class from the line", async () => {
+		const f = await fixture("define", q1Open);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For" }));
+		expect(ofKind((await stateOf(f)).state.marked, "question")[0]?.data).toMatchObject({ class: "blocking", answer: "X-Forwarded-For" });
+		expect(await f.world.bodyOf(f.n)).toContain("- [x] Q1 (blocking): ");
+	});
+
+	test("an old answer that stored a questionClass still completes with it", async () => {
+		const f = await fixture("define", q1Open);
+		const record = await prepare(f, "question", "question:Q1", { id: "Q1", text: "header?" });
+		await completeAnswer(await ctxOf(f), record, answer({ answer: "X-Forwarded-For", questionClass: "non-blocking" }));
+		expect(ofKind((await stateOf(f)).state.marked, "question")[0]?.data).toMatchObject({ class: "non-blocking" });
+	});
+
 	test("A stored snapshot that still carries requirements completes", async () => {
 		const f = await fixture("define", q1Open);
 		const legacy = { id: "Q1", text: "header?", requirements: [REQUIREMENT] } as unknown as RequestSnapshot;
@@ -559,7 +575,7 @@ describe("completion engine", () => {
 
 	test("a newly recorded superseded answer marks its reason as already wrapped", async () => {
 		const f = await fixture("define");
-		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] });
+		const record = await prepare(f, "gate", "gate:define", { target: "define", failingWaivable: ["size-limits"] }, [{ id: "waive", label: "Waive size-limits" }]);
 		await completeAnswer(await ctxOf(f), record, answer());
 		const [recorded] = ofKind(await markedOf(f), "answer", record.id);
 		expect(recorded?.data).toMatchObject({ verdict: "superseded", reason_wrapped: true });
@@ -577,8 +593,7 @@ describe("completion engine", () => {
 
 	test("a request stored without a briefing reads, renders and completes", async () => {
 		const f = await fixture("define");
-		const record = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
-		expect(record.briefing).toBeUndefined();
+		const { briefing: _briefing, ...record } = await prepare(f, "gate", "gate:define", gateSnapshot("define"));
 		// A request stored before this change: yaml without `briefing`, old plain text.
 		await f.world.postComment(f.n, BOT_LOGIN, requestComment(record.id, record, "**livespec asks for gate:define** (blocking):"));
 		const [stored] = readRequests(await markedOf(f)).pending;

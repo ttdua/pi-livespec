@@ -10,6 +10,13 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 - `finding_rebut`: the first argument is now a ledger entry ref, not a comment id. The verifier `finding` reference is `<aggregateRef>:<index>`. Packet source ids for these records are `ledger:<issue>/<ref>`.
 - `/livespec answer --changes` is removed: the forge refuses it with a message that names the replacement. Edit the spec instead; livespec cascades requirement edits from the spec diff.
 - `unit_finish` refuses outside the per-unit phase (`build`).
+- `/livespec class` and `/livespec answer --class` are removed: the question class is no longer a human choice. Use **answer later** in session to make a question non-blocking.
+- The plan gate is `self` by default and asks the human only when `gate-escalation` escalates it.
+- `spec_question` requires `candidates` (2–4), `recommended` and `rationale`, and refuses `class`.
+- `unit_amend`, `initiative_propose` and `new_dependency` require a `briefing` with `recommended` and `rationale`, as do human and escalated `spec_gate` calls.
+- Rules that ask must describe their options and name `recommended` and `rationale`; this affects custom `registerRule` rules.
+- The in-session Adjust units tab opens with `u`.
+- The forge "How to answer" table lists the recommended row first; every request now carries a recommendation (interaction contract).
 
 ### Added
 

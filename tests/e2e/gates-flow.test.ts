@@ -1,7 +1,7 @@
 // End-to-end gate flow over a memory forge: every human decision of LS-05
 // goes through the real tools, the approver chain and forge polling.
 
-import { BRIEFING } from "../helpers/briefing.ts";
+import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { pickById, pickByLabel } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -15,7 +15,10 @@ import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
 import type { SelectFn } from "../hooks/fake-pi.ts";
 import { allDone, CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { replaceSection } from "../../src/core/sections.ts";
-import { writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { appendSeed } from "../helpers/ledger.ts";
+import { findingSummaryComment } from "../../src/subagents/records.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, type ToolHarness, toolHarness } from "../tools/helpers.ts";
@@ -85,6 +88,19 @@ async function writerSays(h: ToolHarness, n: number, text: string): Promise<void
 	expect(out.isError, textOf(out)).toBeFalsy();
 }
 
+/** The latest `gate-escalation.plan` decision record's data. */
+function escalation(marked: MarkedComment[]): unknown {
+	return marked.filter((m) => m.kind === "decision" && m.id === "gate-escalation.plan").at(-1)?.data;
+}
+
+/** A completed advisory plan review at HEAD, as `subagent_record` writes it for an inline run. */
+function planReview(head: string): AppendInput {
+	return findingSummaryComment({
+		role: "reviewer", subject: "plan", round: 1, status: "DONE", advisory: true, head, packet: "p", sources_used: [], required: [], completed: true,
+		agentSource: "inline", requested: { thinking: "low" }, effective: {}, findings: [],
+	});
+}
+
 describe("gates and decisions", () => {
 	test("full gate flow over a memory forge", async () => {
 		const h = await toolHarness({ branch: CHANGE_BRANCH, files: { ".pi/livespec/flow.yaml": FLOW }, ui: { hasUI: true, select: approveAll } });
@@ -113,11 +129,13 @@ describe("gates and decisions", () => {
 		const planned = await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] });
 		expect(planned.isError, textOf(planned)).toBe(false);
 
-		// 4. The plan gate over the forge, approved by a writer's command.
+		// 4. The self plan gate escalates (no advisory plan review at HEAD): over the forge, approved by a writer's command.
 		await useAdapters(h, "forge");
+		expect(card(h).step.dispatch).toMatchObject({ role: "reviewer", subject: "plan" });
 		const plan = await h.call("spec_gate", { target: "plan", briefing: BRIEFING });
 		expect(plan.isError, textOf(plan)).toBe(false);
 		expect(card(h).step.pending).toEqual([expect.objectContaining({ subject: "gate:plan", adapter: "forge" })]);
+		expect(escalation(card(h).state.marked)).toMatchObject({ outcome: "human", reason: "advisory plan review missing at HEAD" });
 		await writerSays(h, n, "/livespec approve");
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
 		expect(card(h).state.lock.locked).toBeDefined();
@@ -126,7 +144,7 @@ describe("gates and decisions", () => {
 		await h.world.editBodyBehindBack(n, (await h.world.bodyOf(n)).replace("Verify: `bun test r`", "Verify: `bun test readme`"));
 		await h.session.refresh();
 		expect(card(h).state.lock.frozen).toEqual(["U2"]);
-		const amend = await h.call("unit_amend", { unit: "U2", replacement: { ...unit("Readme note", "README.md", "r"), verify: "bun test readme" } });
+		const amend = await h.call("unit_amend", { briefing: { summary: "Tightens the readme verify.", recommended: "approve", rationale: "Only the verify command changes." }, unit: "U2", replacement: { ...unit("Readme note", "README.md", "r"), verify: "bun test readme" } });
 		expect(amend.isError, textOf(amend)).toBe(false);
 		await writerSays(h, n, "/livespec approve");
 		expect(card(h).state.lock.frozen).toEqual([]);
@@ -137,7 +155,7 @@ describe("gates and decisions", () => {
 		expect(parseChange(await h.world.bodyOf(n)).units.find((u) => u.id === "U1")?.done).toBe(true);
 
 		// 7. A plain answer: Q1 is answered and the change stays where it is.
-		const asked = await h.call("spec_question", { text: "Is the cap per IP or per token?" });
+		const asked = await h.call("spec_question", { text: "Is the cap per IP or per token?", candidates: [{ label: "per IP", description: "One cap per client IP." }, { label: "per token", description: "One cap per client token." }], recommended: "A", rationale: "The spec names client IPs." });
 		expect(asked.isError, textOf(asked)).toBe(false);
 		await writerSays(h, n, "/livespec answer Q1 per client token");
 		expect(parseChange(await h.world.bodyOf(n)).questions.find((q) => q.id === "Q1")?.checked).toBe(true);
@@ -164,6 +182,36 @@ describe("gates and decisions", () => {
 		expect(card(h).step.next).not.toContain("spec_stuck");
 		const reopened = await h.call("spec_gate", { target: "define", briefing: BRIEFING });
 		expect(reopened.isError, textOf(reopened)).toBe(false);
+	});
+
+	test("plan gate passes alone once the advisory review is clean", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH, ui: { hasUI: true, select: approveAll } });
+		h.git("config", "user.name", "t");
+		h.git("config", "user.email", "t@t");
+		h.git("config", `branch.${CHANGE_BRANCH}.livespecBase`, h.head);
+		await writeIn(h.root, "specs/rate-limit/spec.md", SPEC);
+		commitAll(h.root, "spec");
+		let body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", h.head), "Branch", CHANGE_BRANCH);
+		body = body.replace("Capabilities: new [], modified []", "Capabilities: new [rate-limit], modified []");
+		body = body.replace("Product impact: —", "Product impact: updated");
+		body = body.replace("## Proposal\n", "## Proposal\nLimit each client IP.\n");
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body, labels: ["livespec", "livespec:phase/define"] });
+		await h.session.refresh();
+		expect((await h.call("spec_gate", { target: "define", briefing: BRIEFING })).isError).toBe(false);
+		await h.call("spec_status");
+		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
+
+		await appendSeed({ root: h.root, n, world: h.world, session: h.session }, planReview(h.git("rev-parse", "HEAD")));
+		await h.call("spec_status");
+		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
+		const plan = await h.call("spec_gate", { target: "plan" });
+		expect(plan.isError, textOf(plan)).toBe(false);
+		expect(await phaseOf(h, n)).toEqual(["livespec:phase/build"]);
+		expect(escalation(card(h).state.marked)).toMatchObject({ outcome: "self", reason: "no trigger" });
+		expect(card(h).state.lock.locked).toBeDefined();
+		// A self pass: no request was sent, the gate result is not bound to one.
+		expect(card(h).state.lock.gates.plan).toMatchObject({ outcome: "approved", superseded: false });
+		expect(card(h).state.lock.gates.plan?.request).toBeUndefined();
 	});
 
 	test("Stale before the first lock", async () => {
@@ -244,7 +292,7 @@ describe("ship gate next step", () => {
 	test("Waived ship gate stays in ship", async () => {
 		registerCheck("size-limits", async () => [{ code: "size-limits", severity: "error", message: "U3 touches too many files" }], { waivable: true });
 		const { h, n } = await shipChange("extends: agent-skills\nphases:\n  - id: ship\n    checks: [durable-docs, size-limits]\n");
-		const out = await h.call("spec_gate", { target: "ship", briefing: BRIEFING });
+		const out = await h.call("spec_gate", { target: "ship", briefing: WAIVE_BRIEFING });
 		expect(out.isError, textOf(out)).toBe(false);
 		expect(await phaseOf(h, n)).toEqual(["livespec:phase/ship"]);
 		expect(card(h).state.lock.gates.ship?.waivers).toEqual(["size-limits"]);

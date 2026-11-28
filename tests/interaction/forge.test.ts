@@ -4,6 +4,7 @@ import type { Comment, Forge } from "../../src/forge/types.ts";
 import type { ApprovalRequest, RequestKind, RequestMode, RequestOption, RequestSnapshot, Subject } from "../../src/interaction/approver.ts";
 import { runChain } from "../../src/interaction/chain.ts";
 import { commandAuthors, createForgeApprover, DuplicateRequestError, matchCommands, type Permission, readPermissions } from "../../src/interaction/forge.ts";
+import { contractFields } from "../helpers/briefing.ts";
 import { answerComment, type PendingRequest, prepareRequest, readRequests, requestComment } from "../../src/interaction/requests.ts";
 import { emptyLedger } from "../helpers/ledger.ts";
 import { matchedAnswer } from "../helpers/matched-answer.ts";
@@ -18,18 +19,20 @@ type Spec = { kind?: RequestKind; subject: Subject; mode?: RequestMode; options?
 
 function approval(s: Spec): ApprovalRequest {
 	const kind = s.kind ?? "gate";
+	const snapshot = s.snapshot ?? { target: s.subject.slice(5), failingWaivable: [] };
+	const fields = contractFields(kind, s.subject, snapshot, s.options);
 	const record = prepareRequest({
 		kind,
 		subject: s.subject,
 		mode: s.mode ?? "blocking",
-		...(s.options ? { options: s.options } : {}),
+		...fields,
 		head: HEAD,
 		body: "body",
-		snapshot: s.snapshot ?? { target: s.subject.slice(5), failingWaivable: [] },
+		snapshot,
 		summary: `Review ${s.subject}`,
 		now: s.now ?? NOW,
 	});
-	return { id: record.id, kind, subject: s.subject, record, change: 1, phase: "define", summary: record.summary, links: [], files: [], mode: record.mode, ...(s.options ? { options: s.options } : {}) };
+	return { id: record.id, kind, subject: s.subject, record, change: 1, phase: "define", summary: record.summary, links: [], files: [], mode: record.mode, ...(fields.options ? { options: fields.options } : {}), briefing: fields.briefing };
 }
 
 async function setup() {
@@ -395,11 +398,28 @@ describe("forge adapter", () => {
 	});
 });
 
-describe("recorded class commands", () => {
-	test("a recorded class command stays silent after its author lost write access", () => {
+describe("class commands", () => {
+	test("a class command is warned as unparseable and answers nothing", () => {
 		const q = pending("question:Q2", {}, "question");
 		const thread = [posted(q, 0), comment("c1", "alice", "/livespec class Q2 non-blocking", LATER)];
-		const out = matchCommands([q], thread, new Map([["alice", "read" as Permission]]), { marked: filterMarked(thread, BOT_LOGIN).comments, appliedClasses: new Set(["c1"]) });
-		expect(out).toEqual({ matches: [], classes: [], warnings: [] });
+		const out = matchCommands([q], thread, new Map([["alice", "write" as Permission]]), { marked: filterMarked(thread, BOT_LOGIN).comments });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([expect.stringContaining('cannot be parsed (unknown command "class")')]);
+	});
+
+	test("an answer with --class answers nothing", () => {
+		const q = pending("question:Q2", {}, "question");
+		const thread = [posted(q, 0), comment("c1", "alice", "/livespec answer Q2 per-user --class blocking", LATER)];
+		const out = matchCommands([q], thread, new Map([["alice", "write" as Permission]]), { marked: filterMarked(thread, BOT_LOGIN).comments });
+		expect(out.matches).toEqual([]);
+		expect(out.warnings).toEqual([expect.stringContaining("--class was removed")]);
+	});
+
+	test("a forge answer carries no questionClass", () => {
+		const q = pending("question:Q2", {}, "question");
+		const thread = [posted(q, 0), comment("c1", "alice", "/livespec answer Q2 per-user", LATER)];
+		const out = matchCommands([q], thread, new Map([["alice", "write" as Permission]]), { marked: filterMarked(thread, BOT_LOGIN).comments });
+		expect(out.matches[0]?.answer).toMatchObject({ answer: "per-user" });
+		expect(out.matches[0]?.answer).not.toHaveProperty("questionClass");
 	});
 });

@@ -3,6 +3,7 @@ import { filterMarked, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { registerSpecValidate } from "../../src/tools/spec-validate.ts";
+import { validBriefing } from "../helpers/briefing.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 import { CHANGE_BRANCH, resumeBody } from "../hooks/helpers.ts";
 import { cleanupDirs, toolHarness } from "./helpers.ts";
@@ -13,6 +14,7 @@ afterEach(async () => {
 });
 
 const OPTIONS = [{ id: "A", label: "retry" }, { id: "B", label: "re-plan" }];
+const DESCRIBED = OPTIONS.map((o) => ({ ...o, description: `Take ${o.label}.` }));
 
 /** A build change with a pending stuck request that a writer answered; only a poll completes it. */
 async function answeredStuck() {
@@ -20,7 +22,7 @@ async function answeredStuck() {
 	registerSpecValidate(h.pi.api as never);
 	const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: ["livespec", "livespec:phase/build"] });
 	await h.world.postComment(n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options: OPTIONS, recommended: "A" }));
-	const r = prepareRequest({ kind: "stuck", subject: "stuck:S1", mode: "blocking", options: OPTIONS, head: h.head, body: "", snapshot: { id: "S1" }, summary: "stuck", now: new Date(Date.UTC(2026, 0, 1)) });
+	const r = prepareRequest({ kind: "stuck", subject: "stuck:S1", mode: "blocking", options: DESCRIBED, briefing: validBriefing("A"), head: h.head, body: "", snapshot: { id: "S1" }, summary: "stuck", now: new Date(Date.UTC(2026, 0, 1)) });
 	await h.world.postComment(n, BOT_LOGIN, requestComment(r.id, r, "plain"));
 	await h.world.setPermission("alice", "write");
 	await h.world.postComment(n, "alice", "/livespec choose B");

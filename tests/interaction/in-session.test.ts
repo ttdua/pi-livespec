@@ -151,8 +151,14 @@ describe("in-session approver", () => {
 		const result = await createInSessionApprover(ui, login).request(request);
 		expect(ui.calls.filter((c) => c.method === "select")).toHaveLength(1);
 		expect(ui.calls.filter((c) => c.method === "input")).toHaveLength(0);
-		expect(result).toMatchObject({ status: "answered", outcome: "approved", answer: "per-user limits", questionClass: "blocking", adapter: "in-session" });
+		expect(result).toMatchObject({ status: "answered", outcome: "approved", answer: "per-user limits", adapter: "in-session" });
 		expect(result).not.toHaveProperty("changesRequirement");
+	});
+
+	test("in-session question answer has no questionClass", async () => {
+		const request = { ...questionRequest(), options: [{ id: "A", label: "per-user limits" }, { id: "B", label: "per-IP limits" }] };
+		const result = await createInSessionApprover(scriptedUI(["per-user limits"]), login).request(request);
+		expect(result).not.toHaveProperty("questionClass");
 	});
 
 	test("an own answer is one input call after the entry select", async () => {
@@ -170,7 +176,7 @@ describe("in-session approver", () => {
 		expect(result).toMatchObject({ outcome: "dismissed" });
 	});
 
-	test("answer later returns deferred", async () => {
+	test("answer later defers as non-blocking", async () => {
 		const ui = scriptedUI(["answer later (non-blocking)"]);
 		const result = await createInSessionApprover(ui, login).request(questionRequest());
 		expect(result).toEqual({ status: "deferred", questionClass: "non-blocking" });
@@ -531,7 +537,7 @@ describe("in-session dialog path", () => {
 			{
 				name: "plan gate with overrides",
 				request: plan,
-				keys: ["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter],
+				keys: ["u", KEY.right, KEY.right, "\x1b[Z", "1", KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter],
 				select: ["approve", "Add notes", "ok", "Adjust Difficulty or Tags", "U1", "difficulty", "high", "done"],
 			},
 			{
@@ -554,7 +560,7 @@ describe("in-session dialog path", () => {
 		});
 
 		test("Same answer on both paths: plan gate approve, note ok, U1 high", async () => {
-			const viaDialog = withDialog(["1", KEY.right, KEY.right, KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter]);
+			const viaDialog = withDialog(["u", KEY.right, KEY.right, "\x1b[Z", "1", KEY.tab, "n", ...typed("ok"), KEY.enter, KEY.enter]);
 			const result = await createInSessionApprover(viaDialog.ui, login).request(plan());
 			expect(result).toMatchObject({ outcome: "approved_with_notes", notes: "ok", overrides: [{ unit: "U1", difficulty: "high" }] });
 		});

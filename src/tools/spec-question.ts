@@ -1,9 +1,11 @@
-// `spec_question` (design D12, D5): appends `- [ ] Q<n> (<class>): <text>` to
+// `spec_question` (design D12, D5): appends `- [ ] Q<n> (blocking): <text>` to
 // `## Questions` and sends it through the approver chain, or sends an open
-// question again with `reask`. A blocking question is a blocking request, a
-// non-blocking one is async. "Answer later" in session rewrites the question as
-// non-blocking before the next adapter gets an async request; with no adapter
-// left the question stays open. Completion lives in `complete-question.ts`.
+// question again with `reask`. The agent never picks the class: only livespec
+// code (finding routing, `origin: "routing"`) raises a non-blocking question.
+// A blocking question is a blocking request, a non-blocking one is async.
+// "Answer later" in session rewrites the question as non-blocking before the
+// next adapter gets an async request; with no adapter left it stays open.
+// Completion lives in `complete-question.ts`.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type Change, parseChange, type Question } from "../core/change.ts";
@@ -19,9 +21,12 @@ import { prepareWrite, requireChange, type ToolResult, toolResult, type WriteCon
 import { registerLivespecTool } from "./register.ts";
 import { sendRequest } from "./request-flow.ts";
 
-export type SpecQuestionParams = { text?: string; class?: QuestionClass; reask?: string; candidates?: { label: string; description: string }[]; recommended?: string; rationale?: string };
+export type SpecQuestionParams = { text?: string; reask?: string; candidates?: { label: string; description: string }[]; recommended?: string; rationale?: string };
 
-type Resolved = { id: string; text: string; class: QuestionClass; body: string; candidates?: CandidateRequest };
+/** Who raises the question: the agent through the tool (blocking), or livespec's finding routing (non-blocking). */
+export type QuestionOrigin = { origin?: "routing" };
+
+type Resolved = { id: string; text: string; class: QuestionClass; body: string; candidates: CandidateRequest };
 
 /** What to send: a new question to append, or an open question to ask again. */
 export type QuestionForm = { action: "ask"; text: string; class: QuestionClass } | { action: "reask"; id: string };
@@ -39,14 +44,16 @@ const RECLASSIFY_TRIES = 2;
 const DEFERRED_TEXT = (id: string) => `${id} is now non-blocking and stays open with no adapter left to ask; send it again later with spec_question { reask: "${id}" }.`;
 
 const refusal = (message: string): { refused: string } => ({ refused: `${TOOL} refused: ${message}` });
+const CLASS_REMOVED = "class was removed; questions are blocking until the human chooses answer later.";
 
 /** Thrown by the "answer later" hook when the body changed under the reclassification. */
 class ReclassifyConflict extends Error {}
 
 // --- pure planning -------------------------------------------------------------------
 
-/** Exactly one of `text` (one non-empty line, with an optional class) or `reask`. */
-export function questionForm(p: SpecQuestionParams): QuestionForm | { refused: string } {
+/** Exactly one of `text` (one non-empty line) or `reask`, with the required candidates; `class` is refused. */
+export function questionForm(p: SpecQuestionParams, o: QuestionOrigin = {}): QuestionForm | { refused: string } {
+	if (Object.hasOwn(p, "class")) return refusal(CLASS_REMOVED);
 	const text = typeof p.text === "string" ? p.text : undefined;
 	const reask = typeof p.reask === "string" && p.reask !== "" ? p.reask : undefined;
 	if ((text === undefined) === (reask === undefined)) return refusal("give either text (a new question) or reask (an open question id).");
@@ -55,8 +62,7 @@ export function questionForm(p: SpecQuestionParams): QuestionForm | { refused: s
 	if (reask !== undefined) return { action: "reask", id: reask };
 	if (/[\r\n]/.test(text!)) return refusal("the question text must be one line.");
 	if (text!.trim() === "") return refusal("the question text is empty.");
-	const cls: QuestionClass = p.class === "non-blocking" ? "non-blocking" : "blocking";
-	return { action: "ask", text: text!.trim(), class: cls };
+	return { action: "ask", text: text!.trim(), class: o.origin === "routing" ? "non-blocking" : "blocking" };
 }
 
 
@@ -69,13 +75,13 @@ export function reaskTarget(change: Change, id: string): Question | { refused: s
 }
 
 /** The prepared question request; the mode follows the class. */
-export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass; candidates?: CandidateRequest }, input: { body: string; now: Date }): ApprovalRequest {
+export function questionRequest(state: ChangeState, q: { id: string; text: string; class: QuestionClass; candidates: CandidateRequest }, input: { body: string; now: Date }): ApprovalRequest {
 	const subject = questionSubject(q.id);
 	if (subject === undefined) throw new Error(`not a question id: ${q.id}`);
 	const mode = q.class === "blocking" ? "blocking" : "async";
 	const snapshot: QuestionSnapshot = { id: q.id, text: neutralise(q.text) };
 	const summary = `Question ${q.id} (${q.class}) on change #${state.issue.number}: ${neutralise(q.text)}`;
-	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now, ...(q.candidates ?? {}) });
+	const record = prepareRequest({ kind: "question", subject, mode, head: state.git.head, body: input.body, snapshot, summary, now: input.now, ...q.candidates });
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	return {
 		id: record.id,
@@ -88,7 +94,7 @@ export function questionRequest(state: ChangeState, q: { id: string; text: strin
 		links: [],
 		files: [],
 		mode,
-		...(q.candidates ?? {}),
+		...q.candidates,
 		question: { id: q.id, class: q.class },
 	};
 }
@@ -123,20 +129,21 @@ async function resolveQuestion(w: WriteContext, state: ChangeState, form: Questi
 	const n = state.issue.number;
 	if (form.action === "ask") {
 		const candidates = candidateRequest(p, form.text);
-		if (candidates && "refused" in candidates) return refusal(candidates.refused);
+		if ("refused" in candidates) return refusal(candidates.refused);
 		const appended = await appendToBody(w.forge, n, form);
-		return "refused" in appended ? appended : { id: appended.id, text: form.text, class: form.class, body: appended.body, ...(candidates ? { candidates } : {}) };
+		return "refused" in appended ? appended : { id: appended.id, text: form.text, class: form.class, body: appended.body, candidates };
 	}
 	const body = (await w.forge.getIssue(n)).body;
 	const q = reaskTarget(parseChange(body), form.id);
 	if ("refused" in q) return q;
 	const candidates = candidateRequest(p, q.text);
-	if (candidates && "refused" in candidates) return refusal(candidates.refused);
-	return { id: q.id, text: q.text, class: q.kind, body, ...(candidates ? { candidates } : {}) };
+	if ("refused" in candidates) return refusal(candidates.refused);
+	return { id: q.id, text: q.text, class: q.kind, body, candidates };
 }
 
-export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx): Promise<ToolResult<undefined>> {
-	const form = questionForm(p);
+/** `o.origin: "routing"` is livespec's own non-blocking question; it is not a tool parameter. */
+export async function runSpecQuestion(p: SpecQuestionParams, ctx: ApproverCtx, o: QuestionOrigin = {}): Promise<ToolResult<undefined>> {
+	const form = questionForm(p, o);
 	if ("refused" in form) return toolResult(form.refused, undefined, true);
 	const w = await prepareWrite();
 	if (!w.ok) return toolResult(w.message, undefined, true);
@@ -176,28 +183,30 @@ export function registerSpecQuestion(pi: ExtensionAPI): void {
 		name: "spec_question",
 		label: "Ask a livespec question",
 		description:
-			"Ask the human one question about the current livespec change. { text } appends `- [ ] Q<n> (<class>): <text>` to ## Questions (blocking by default; propose class non-blocking when the work can go on) and sends it through the approver chain. { reask: \"Q<n>\" } sends an open question again. The answer comes only from the human; this tool takes no answer.",
+			"Ask the human one question about the current livespec change. { text } appends `- [ ] Q<n> (blocking): <text>` to ## Questions and sends it through the approver chain; only the human can make it non-blocking (answer later). { reask: \"Q<n>\" } sends an open question again. Every call needs 2 to 4 candidates, recommended and rationale. The answer comes only from the human; this tool takes no answer.",
 		// Plain JSON-schema literal; cast avoids a typebox dependency. No answer parameter.
 		parameters: {
 			type: "object",
 			properties: {
 				text: { type: "string", description: "The question, on one line" },
-				class: { type: "string", enum: ["blocking", "non-blocking"], description: "Proposed class; blocking by default" },
 				reask: { type: "string", description: "An open question id (Q<n>) to send again" },
 				candidates: {
 					type: "array",
 					minItems: 2,
 					maxItems: 4,
-					description: "Optional candidate answers the human can pick; each label is one line without runs of spaces or words starting with --",
+					description: "Candidate answers the human can pick (the human may still write another); each label is one line without runs of spaces or words starting with --",
 					items: { type: "object", properties: { label: { type: "string" }, description: { type: "string", description: "At most 200 characters" } }, required: ["label", "description"] },
 				},
-				recommended: { type: "string", enum: ["A", "B", "C", "D"], description: "With candidates: the id (A, B, C, D by position) you recommend" },
-				rationale: { type: "string", description: "With recommended: why, at most 600 characters" },
+				recommended: { type: "string", enum: ["A", "B", "C", "D"], description: "The id (A, B, C, D by candidate position) you recommend" },
+				rationale: { type: "string", description: "Why you recommend it, at most 600 characters" },
 			},
+			required: ["candidates", "recommended", "rationale"],
 		} as never,
 		execute: (_id, params, _signal, _update, ctx) => {
-			const q = params as SpecQuestionParams;
-			return runSpecQuestion({ text: q.text, class: q.class, reask: q.reask, candidates: q.candidates, recommended: q.recommended, rationale: q.rationale } as SpecQuestionParams, ctx as ApproverCtx);
+			const q = params as SpecQuestionParams & { class?: unknown };
+			// `class` is no schema field, so a passed one is checked on the raw params and refused.
+			const raw = Object.hasOwn(q, "class") ? { class: q.class } : {};
+			return runSpecQuestion({ text: q.text, reask: q.reask, candidates: q.candidates, recommended: q.recommended, rationale: q.rationale, ...raw } as SpecQuestionParams, ctx as ApproverCtx);
 		},
 	});
 }

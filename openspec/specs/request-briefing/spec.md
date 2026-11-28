@@ -7,13 +7,13 @@ Defines the briefing that every human request can carry: the agent's or a rule's
 ## Requirements
 
 ### Requirement: Briefing shape
-A request SHALL be able to carry a briefing with:
+Every request SHALL carry a briefing (approver-adapters "Interaction contract"), with:
 - `summary`: required, at most 600 characters, with no blank line;
 - `watch`: zero to five points to check, each one line of at most 200 characters;
-- `recommended`: the id of one offered choice, optional;
-- `rationale`: at most 600 characters with no blank line, required when `recommended` is set and not allowed without it.
+- `recommended`: the id of one offered choice, required;
+- `rationale`: at most 600 characters with no blank line, required.
 
-The offered choices of a gate or amendment request SHALL be its built-in actions (`approve`, `changes`, `dismiss`, and `waive` when offered) plus its options; for other requests they SHALL be the request's options. An option SHALL be able to carry a `description`, one line of at most 200 characters. Lengths SHALL be counted in Unicode code points.
+The offered choices of a gate or amendment request SHALL be its built-in actions (`approve`, `changes`, `dismiss`, and `waive` when offered) plus its options; for other requests they SHALL be the request's options. Every option SHALL carry a `description`, one line of at most 200 characters. A stored request MAY lack the briefing or option descriptions. Lengths SHALL be counted in Unicode code points.
 
 #### Scenario: Recommended choice not offered
 - **WHEN** `spec_stuck` runs with options A and B and `recommended: C`
@@ -26,6 +26,10 @@ The offered choices of a gate or amendment request SHALL be its built-in actions
 #### Scenario: Summary too long
 - **WHEN** a briefing `summary` has 601 characters
 - **THEN** the sending tool refuses and names `summary` and the 600-character limit
+
+#### Scenario: Recommendation missing
+- **WHEN** `unit_amend U1` runs with a valid replacement and a briefing with only a `summary`
+- **THEN** the tool refuses, names `recommended`, and sends no request
 
 ### Requirement: Briefing validation and storage
 A briefing or option text that breaks "Briefing shape" MUST be refused by the tool that sends the request, naming the field and the rule, before the tool runs checks, asks a rule or writes anything. The briefing SHALL be stored in the request record, so the `answer` comment that copies the request shows the briefing the human saw. Reading a stored request SHALL tolerate a missing briefing and missing option descriptions.
@@ -81,7 +85,7 @@ The plain text below the yaml of a forge `request` comment SHALL contain, in thi
 2. the facts: the request summary, then the files and links;
 3. a checks table when the request lists failing waivable checks;
 4. the briefing, when there is one;
-5. a "How to answer" table with one row per offered choice, giving its description and the exact command to post, the recommended one marked; for a question, a candidate's command is `/livespec answer Q<n> <label>`, and one more row always gives the free-text form `/livespec answer Q<n> <text>`;
+5. a "How to answer" table with one row per offered choice, giving its description and the exact command to post, the recommended one first and marked; for a question, a candidate's command is `/livespec answer Q<n> <label>`, and one more row always gives the free-text form `/livespec answer Q<n> <text>`;
 6. the full list of accepted commands inside a collapsed `<details>` block.
 
 Livespec-written text SHALL be English. The parser SHALL keep ignoring this text, and the command grammar MUST NOT change.
@@ -97,6 +101,10 @@ Livespec-written text SHALL be English. The parser SHALL keep ignoring this text
 #### Scenario: Prefilled answer parses back
 - **WHEN** a writer posts the prefilled command of candidate `per-user limits` for Q2
 - **THEN** Q2 is answered exactly `per-user limits`
+
+#### Scenario: Recommended row first
+- **WHEN** a stuck request with options A and B, B recommended, is rendered for the forge
+- **THEN** the first row of the "How to answer" table is B, marked recommended
 
 ### Requirement: In-session presentation
 The in-session adapter SHALL show the facts first and then the briefing. In the in-session dialog (approver-adapters "In-session dialog") they SHALL be their own sections above the entries, the briefing under its author heading; in the `select` fallback they SHALL be in the title of the first `select`. Each entry SHALL read `<label> — <description>` when the choice has a description (in the dialog the description MAY be drawn on the line below the label, and is left out where approver-adapters "Dialog layout and text safety" hides descriptions on a narrow terminal), the recommended entry SHALL be listed first and end with ` (Recommended)`, and no entry SHALL show a raw `[<id>]` suffix. The adapter MUST keep mapping the picked entry back through its own table and MUST NOT infer identity from the label text.

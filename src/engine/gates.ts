@@ -11,7 +11,7 @@ import type { Pack, Phase } from "./pack-types.ts";
 import { isWaivable } from "./registry.ts";
 import type { ChangeState, CheckResult } from "./state-types.ts";
 
-export type GateOption = { id: string; label: string };
+export type GateOption = { id: string; label: string; description: string };
 /** `proposer` names the tool that sends the gate's request with its drafts; `spec_gate` refuses such a gate. */
 export type NamedGate = { checks: string[]; options?: GateOption[]; proposer?: string };
 /**

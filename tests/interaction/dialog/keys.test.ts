@@ -81,7 +81,7 @@ describe("keyToAction without an editor", () => {
 	test("n and e also work Kitty CSI-u encoded", () => {
 		const m = plan();
 		expect(key(KEY.kittyN, m)).toEqual({ type: "openEditor", editor: "note" });
-		expect(key(KEY.kittyE, m, at(m, { tab: 1 }))).toEqual({ type: "openEditor", editor: "tags" });
+		expect(key(KEY.kittyE, m, at(m, { unitsOpen: true, tab: 1 }))).toEqual({ type: "openEditor", editor: "tags" });
 	});
 
 	test("Tab and Shift+Tab switch tabs", () => {
@@ -92,8 +92,16 @@ describe("keyToAction without an editor", () => {
 	test("Enter picks on decision, submits on review, moves on from units", () => {
 		const m = plan();
 		expect(key(KEY.enter, m)).toEqual({ type: "pick" });
-		expect(key(KEY.enter, m, at(m, { tab: 1 }))).toEqual({ type: "nextTab" });
-		expect(key(KEY.enter, m, at(m, { tab: 2 }))).toEqual({ type: "submit" });
+		expect(key(KEY.enter, m, at(m, { unitsOpen: true, tab: 1 }))).toEqual({ type: "nextTab" });
+		expect(key(KEY.enter, m, at(m, { unitsOpen: true, tab: 2 }))).toEqual({ type: "submit" });
+	});
+
+	test("u opens the units tab on Decision only, not with an editor open or already opened", () => {
+		const m = plan();
+		expect(key("u", m)).toEqual({ type: "openUnits" });
+		expect(key("u", gate())).toBeUndefined();
+		expect(key("u", m, at(m, { unitsOpen: true, tab: 2 }))).toBeUndefined();
+		expect(key("u", m, at(m, { editor: "note" }))).toBeUndefined();
 	});
 
 	test("Esc cancels", () => {
@@ -107,14 +115,14 @@ describe("keyToAction without an editor", () => {
 
 	test("left and right cycle difficulty on the units tab only", () => {
 		const m = plan();
-		expect(key(KEY.right, m, at(m, { tab: 1 }))).toEqual({ type: "cycleDifficulty", delta: 1 });
-		expect(key(KEY.left, m, at(m, { tab: 1 }))).toEqual({ type: "cycleDifficulty", delta: -1 });
+		expect(key(KEY.right, m, at(m, { unitsOpen: true, tab: 1 }))).toEqual({ type: "cycleDifficulty", delta: 1 });
+		expect(key(KEY.left, m, at(m, { unitsOpen: true, tab: 1 }))).toEqual({ type: "cycleDifficulty", delta: -1 });
 		expect(key(KEY.right, m)).toBeUndefined();
 	});
 
 	test("e opens the tags editor on the units tab only", () => {
 		const m = plan();
-		expect(key("e", m, at(m, { tab: 1 }))).toEqual({ type: "openEditor", editor: "tags" });
+		expect(key("e", m, at(m, { unitsOpen: true, tab: 1 }))).toEqual({ type: "openEditor", editor: "tags" });
 		expect(key("e", m)).toBeUndefined();
 	});
 

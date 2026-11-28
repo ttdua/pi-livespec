@@ -18,14 +18,11 @@ function requestIndex(comments: Comment[], id: string): number {
 	});
 }
 
-/**
- * Authors of `/livespec ` comments after the earliest pending request, each once, in order. Comments in
- * `skip` (recorded `class` commands, which the matcher skips) are left out.
- */
-export function commandAuthors(comments: Comment[], pending: PendingRequest[], skip: ReadonlySet<string> = new Set()): string[] {
+/** Authors of `/livespec ` comments after the earliest pending request, each once, in order. */
+export function commandAuthors(comments: Comment[], pending: PendingRequest[]): string[] {
 	const found = pending.map((p) => requestIndex(comments, p.id)).filter((i) => i !== -1);
 	const from = found.length === pending.length && found.length > 0 ? Math.min(...found) : -1;
-	return [...new Set(comments.filter((c, i) => i > from && c.body.startsWith(PREFIX) && !skip.has(c.id)).map((c) => c.author))];
+	return [...new Set(comments.filter((c, i) => i > from && c.body.startsWith(PREFIX)).map((c) => c.author))];
 }
 
 export type Permissions = { perms: Map<string, Permission>; warnings: string[] };

@@ -28,6 +28,8 @@ export const BEHAVIOR_OPTIONS = [
 	{ id: "changed", label: "Behavior changed; the spec must be updated", description: "Behavior changed: the gate refuses until specs/<capability>/spec.md is updated." },
 ];
 
+const BEHAVIOR_RATIONALE = "Code under the capability's paths changed but its spec did not; most such edits are refactors.";
+
 const specFileOf = (capability: string): string => `${SPECS_PATH}${capability}/spec.md`;
 
 /** Per living spec whose `paths` match a changed non-`specs/` file, unless its `spec.md` is in the diff. */
@@ -57,7 +59,7 @@ export function latestBehaviorRecords(marked: MarkedComment[]): Map<string, Deci
 /** The rule always asks a human. */
 export const behaviorChangeRule: RuleFn = (facts) => {
 	const item = facts as BehaviorItem;
-	return { ask: { summary: behaviorSummary(item), options: BEHAVIOR_OPTIONS } };
+	return { ask: { summary: behaviorSummary(item), options: BEHAVIOR_OPTIONS, recommended: "unchanged", rationale: BEHAVIOR_RATIONALE } };
 };
 
 function behaviorSummary(item: BehaviorItem): string {
