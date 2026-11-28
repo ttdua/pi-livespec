@@ -12,7 +12,7 @@ This is an overview. The detailed behavior of each part is defined by its spec i
 │              · phase advance · loop counters · comments cache · git reads         │
 │              · gates (registerGate, refusals) · locks, frozen, stale · iterations │
 │ decide/      decide() seam · registerRule · rules: tags, difficulty · decision    │
-│              records (issue comment, PR-body block) · override records            │
+│              records (ledger entries, PR-body block) · override records           │
 │ forge/       Forge interface · GitHub adapter (gh) · Gitea adapter (REST)         │
 │              · cache with version · comment markers · read-only mode              │
 │ interaction/ Approver contract · adapters: in-session (dialogs), forge (request   │
@@ -163,7 +163,7 @@ define ──gate──► plan ──gate──► build ──► review ─�
 
 ## Gates and decisions
 
-Every human decision (a phase or named gate, a unit amendment, a question, a stuck report, a rule that asks) follows one lifecycle, and its whole state lives on the change issue as own marked comments. No tool takes an outcome, choice, answer, `Difficulty` or `Tags` parameter, so the agent can only ask, never answer.
+Every human decision (a phase or named gate, a unit amendment, a question, a stuck report, a rule that asks) follows one lifecycle, and its whole state lives in own marked comments on the change issue and, for `decision` results, in the ledger. No tool takes an outcome, choice, answer, `Difficulty` or `Tags` parameter, so the agent can only ask, never answer.
 
 **Request → answer → result.**
 
@@ -197,7 +197,7 @@ Every human decision (a phase or named gate, a unit amendment, a question, a stu
 
 **Cascade and `change_iterations`.** The requirement cascade is derived from the spec diff, not from an answer, and runs only after the plan lock (an approved plan gate); before it, a spec edit is part of the change. `runSpecCascade` runs only on the change's branch (its `Branch` header): after a switch to another branch it writes nothing. It reads HEAD once per run and computes every digest and the merge-base at that sha. It compares `requirementDigests` of `specs/<capability>/spec.md` at HEAD with the baseline: the digests the plan gate request recorded (`requirements`, `requirement_scope`), overlaid with the acknowledged digests of earlier spec-cascade `stale` comments (`changedIds`; whitespace-only edits do not count). Each content change cascades once, a revert cascades too, and a removal cascades once. A changed id writes a `stale` comment (`spec.<hash>`, listing `define` and every later phase, the units whose `Covers` names it, and the new digests), then one body write unticks the done units, then a move back to define. An id the integration branch changed after the lock, and whose text HEAD now has, is excluded; the reference is `merge-base(HEAD, origin/<integration branch>)`, falling back to `Base`, and an id absent there is never excluded. The exclusion does not apply to an id an earlier cascade of the change already named, so a revert of the change's own edit cascades. A plan lock approved before this release has no digests: its baseline is computed from the lock commit, and when that commit is gone a `baseline.<sha>` stale is posted, and the change moves back to `define` only when it is past it. The fail-closed state is sticky: after that record nothing is compared, even when the commit becomes reachable again, until a new plan gate is approved. Two requirements of one capability that normalize to the same id fail the run: it records the error and writes nothing. The triggers are session start, `/livespec next`, before `spec_gate` and before `unit_finish`; `unit_finish` refuses outside a `per: unit` phase. The `stale` comment sets `after_plan` only when the cascade moves the change back from past define after an approved plan gate; it is recorded with the `stale` comment, before the phase move. `change_iterations` is derived, never stored: it is the number of own `stale` comments with `after_plan: true`, so a retried completion cannot count twice. When it reaches `loops.change_iterations`, the next step asks for `spec_stuck` and every gate refuses, until a stuck answer is dated after the latest increment. A `dismissed` stuck answer does not lift the cap; only a choice does.
 
-**Decisions.** `decide(point, facts)` runs the registered rule (`tags`, `difficulty`), which returns an outcome or asks the human. For the `ask` branch, `createDecisionAsker` (`src/tools/decide-ask.ts`) sends a blocking `decide:<point>.<subject>` request through the configured approver chain: an in-session choice is completed at once as a `source: human` record, and a forge request stays pending until `/livespec choose` completes it; an open request for the subject is reported pending instead of asking again. `plan_units` and `unit_amend` stay rule-only: they pass no asker, so a rule that asks refuses the tool before any write. Wiring the asker into them, and reusing a human answer on rerun, waits for the first built-in rule that asks. Every outcome is posted as a `decision` record keyed by point and subject with the unit digest; the `unit-classification` check compares the body with the latest record, so a tag removed from the body is caught. The agent can only add tags through `extra_tags`, which the record lists as `agent_additions`.
+**Decisions.** `decide(point, facts)` runs the registered rule (`tags`, `difficulty`), which returns an outcome or asks the human. For the `ask` branch, `createDecisionAsker` (`src/tools/decide-ask.ts`) sends a blocking `decide:<point>.<subject>` request through the configured approver chain: an in-session choice is completed at once as a `source: human` record, and a forge request stays pending until `/livespec choose` completes it; an open request for the subject is reported pending instead of asking again. `plan_units` and `unit_amend` stay rule-only: they pass no asker, so a rule that asks refuses the tool before any write. Wiring the asker into them, and reusing a human answer on rerun, waits for the first built-in rule that asks. Every outcome is recorded as a `decision` ledger entry keyed by point and subject with the unit digest; the `unit-classification` check compares the body with the latest record, so a tag removed from the body is caught. The agent can only add tags through `extra_tags`, which the record lists as `agent_additions`.
 
 **Known gaps.**
 
@@ -308,7 +308,7 @@ The subagent, lane, `finding_rebut` and `forge_read` tools refuse in a child, an
 
 The `review` phase runs a fan-out of reviewers over the whole change, verifies and routes their findings, and returns defective units to `build`. The code lives in `src/review/`, the tool is `spec_review` (`src/tools/spec-review.ts`).
 
-**Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and the `review-run` is an own marked comment on the change issue and the findings and decisions are ledger entries:
+**Stages and records.** One `spec_review` call advances a round through fixed stages and returns when it is routed, blocked or a stage limit is hit; calling it again resumes. Each stage reads the state the previous one wrote, and the `review-run` is an own marked comment on the change issue; the findings and decisions are ledger entries:
 
 1. `start`: refuses a dirty tree, a missing `Base`, an open blocking question or an unanswered stuck report. It runs every unit's `Verify` at `HEAD` and posts a `review-run` (round, `head`, selected subjects, tags, verify results, parent findings, `routed: false`). A `HEAD` that differs from the open round's restarts it as a new round.
 2. `review`: launches the missing reviewers in parallel (`subagent_packet`/`subagent_record` inline without an executor). A reviewer's packet holds no other reviewer's output.
@@ -334,7 +334,7 @@ A routed round is final: a second call posts nothing. Retried stages are idempot
 
 A deleted test file stays in the change through the diff. Reviewer-supplied scope is ignored in an aggregate; the route is always recomputed.
 
-**Rebuild marker.** A `unit` finding posts `rebuild.<unit>.<round>` and unticks the unit in the issue body, so the change returns to `build`. `unit_start` on a unit with an open marker accepts a green `Verify` (verdict `rebuild`; a red one still starts red). `unit_finish` posts a new receipt and ticks the unit again; a receipt older than the marker does not count as a tick to reconcile. The marker is derived from comments in `src/evidence`, never from session memory.
+**Rebuild marker.** A `unit` finding posts `rebuild.<unit>.<round>` and unticks the unit in the issue body, so the change returns to `build`. `unit_start` on a unit with an open marker accepts a green `Verify` (verdict `rebuild`; a red one still starts red). `unit_finish` records a new receipt and ticks the unit again; a receipt older than the marker does not count as a tick to reconcile. The marker is derived from comments in `src/evidence`, never from session memory.
 
 **Cap.** `loops.review_rounds` is derived from the `review-run` records newer than the latest lifting stuck answer. It blocks when the count reached the cap, the latest round is routed and its aggregate left a blocking `unit` or `in-change` finding; the next step is then `spec_stuck`, and a chosen answer restarts the budget. A last round that ends clean before the cap never blocks.
 
@@ -497,7 +497,7 @@ The forge account is chosen **per clone**, never globally. The choice lives in t
 
 ## Principles
 
-- **The parent owns the evidence.** The main session runs `Verify` and posts receipts. Subagents only implement and commit ([ADR 0003](decisions/0003-parent-owned-evidence.md)).
+- **The parent owns the evidence.** The main session runs `Verify` and records receipts. Subagents only implement and commit ([ADR 0003](decisions/0003-parent-owned-evidence.md)).
 - **Only plugin tools write to the forge or push.** A `tool_call` guard blocks direct forge writes and direct pushes; livespec tools push only after checking the state ([ADR 0004](decisions/0004-guards-inside-pi.md)).
 - **Decisions are made by rules.** Code builds every decision from facts and records it. The agent never self-assesses a decision point ([ADR 0006](decisions/0006-rule-based-decisions.md)).
 - **Forge content is data, not instructions.** Text written by humans on issues and pull requests is wrapped as untrusted. Only comments that carry a marker and were written by the plugin's account, and entries of the ledger, count as state.

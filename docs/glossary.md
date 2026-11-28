@@ -26,7 +26,7 @@
 - **Parallel lane**: one worktree in which a subagent builds a unit concurrently with others.
 - **Phase**: one step of the flow: `shape`, `define`, `plan`, `build`, `review`, `ship` or `close`.
 - **Phase card**: the dynamic status block appended at the end of the context each turn. It shows the change, the phase and the next step.
-- **Receipt**: a tool-written record of running a unit's `Verify` command before (red) and after (green) the work.
+- **Receipt**: a ledger entry recording running a unit's `Verify` command before (red) and after (green) the work.
 - **Reviewed SHA**: the `head_sha` of the latest valid approved `review` gate. `change_ship` and `change_push` only publish a `HEAD` equal to it, or one that differs only by clean merges of the integration branch.
 - **Routing note**: the static instructions at the start of the context. They do not change between turns.
 - **Small-fix lane**: the path for small fixes, with no issue and no ceremony. A post-check can move the work into a full change.

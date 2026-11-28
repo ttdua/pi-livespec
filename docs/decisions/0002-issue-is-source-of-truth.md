@@ -9,7 +9,7 @@ Work in progress needs to survive sessions and compaction, and the team should s
 ## Decision
 
 - A change is a forge issue. Its body holds ownership lines, capabilities, proposal, design, questions, units and the durable docs table.
-- Tool-written comments with machine-readable markers hold receipts, gate decisions, amendments, counters and decision records.
+- Tool-written comments with machine-readable markers hold receipts, gate decisions, amendments, counters and decision records. [0008](0008-machine-ledger.md) moves receipts, counters, decision records and dispatch and finding records to a git ledger; the other comments stay.
 - Each change has one branch and ships as exactly one pull request that references the issue. A human merges; a tool then closes the issue with a summary.
 - Large work is an initiative: a tracking issue that lists change issues and their dependencies.
 - GitHub and Gitea are supported first, behind a `Forge` interface.
