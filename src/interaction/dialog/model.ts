@@ -8,7 +8,7 @@ import { failingWaivableOf } from "../waive-rule.ts";
 import { sanitize } from "./sanitize.ts";
 
 export type DialogKind = "gate" | "question" | "choice";
-export type TabName = "decision" | "units" | "review";
+export type TabName = "decision" | "behavior" | "units" | "review";
 
 export type DialogEntryAction =
 	| { kind: "approve" }
@@ -26,15 +26,18 @@ export type DialogModel = {
 	/** Tabs shown before the units tab is opened; `tabsOf` (state.ts) adds it once opened. */
 	tabs: TabName[];
 	unitsAvailable: boolean;
+	behaviorAvailable: boolean;
 	facts: string;
 	status: { symbol: "✓" | "!" | "✗"; text: string }[];
 	briefing?: { heading: string; lines: string[] };
 	entries: DialogEntry[];
 	units: { unit: string; label: string; difficulty?: Difficulty; tags: string[] }[];
+	/** `capability` stays the raw id (it is the override key); only `label` is sanitised. */
+	behavior: { capability: string; label: string; outcome: "unchanged" | "changed" | null }[];
 	notes: boolean;
 };
 
-export { outcomeLabel, overridesOf, toResult } from "./result.ts";
+export { markedBehavior, outcomeLabel, overridesOf, toResult } from "./result.ts";
 
 /** Same classification as the select flows: questions, stuck reports and `decide:` asks, else a gate. */
 function kindOf(r: ApprovalRequest): DialogKind {
@@ -103,6 +106,10 @@ function unitsOf(r: ApprovalRequest): DialogModel["units"] {
 	return units.map((unit) => ({ unit, label: sanitize(unit), ...currentOf(current, unit) }));
 }
 
+function behaviorOf(r: ApprovalRequest): DialogModel["behavior"] {
+	return (r.overridableBehavior?.items ?? []).map((i) => ({ capability: i.capability, label: sanitize(i.capability), outcome: i.outcome }));
+}
+
 /** The tabs, entries and units a request shows; entry order matches the select flows. */
 export function buildModel(r: ApprovalRequest): DialogModel {
 	const kind = kindOf(r);
@@ -113,11 +120,13 @@ export function buildModel(r: ApprovalRequest): DialogModel {
 		kind,
 		tabs: ["decision", "review"],
 		unitsAvailable: r.overridable !== undefined,
+		behaviorAvailable: r.overridableBehavior !== undefined,
 		facts: sanitize(r.summary),
 		status: statusOf(r),
 		...(briefing === undefined ? {} : { briefing }),
 		entries: entriesOf(r, kind, choices),
 		units: unitsOf(r),
+		behavior: behaviorOf(r),
 		notes: kind === "gate",
 	};
 }
