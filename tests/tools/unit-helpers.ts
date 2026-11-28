@@ -11,8 +11,9 @@ import { afterEach } from "vitest";
 import { parseChange, type Unit } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { isLedgerKind } from "../../src/core/record-kinds.ts";
-import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, filterMarked, writeMarked } from "../../src/forge/markers.ts";
 import { lastForgeRef } from "../../src/ledger/merge.ts";
+import { appendEntry } from "../../src/ledger/store.ts";
 import { readOwnRecords } from "../../src/ledger/records.ts";
 import type { Forge, Issue, Version, WriteResult } from "../../src/forge/types.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -141,8 +142,9 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 	const marked = async () => (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 	const seedRecord = async (kind: string, id: string, data: unknown) => {
 		if (!isLedgerKind(kind)) return void (await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data)));
-		const after = lastForgeRef(await marked());
-		await h.session.ledger.append(h.n, { kind, id, data, ...(after === undefined ? {} : { after }) });
+		const after = lastForgeRef(filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments);
+		// Local write only: no fetch and no background sync per entry; a test needing origin calls `ledger.sync` itself.
+		await appendEntry(h.session.exec, h.root, h.n, { kind, id, data, ...(after === undefined ? {} : { after }) });
 	};
 	return {
 		...h,
