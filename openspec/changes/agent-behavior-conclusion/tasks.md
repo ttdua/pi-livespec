@@ -48,11 +48,11 @@ Blocked by: 1, 2, 3
 
 Blocked by: 1
 
-- [ ] 6.1 Add the optional `behavior` array to the reviewer result schema in `src/subagents/roles.ts` (subagent-dispatch "Return contract")
-- [ ] 6.2 Add the required source `records:behavior-conclusions` for `change` reviewer packets through a provider in `src/docs/behavior-source.ts` registered from `src/docs/readers.ts`, left out without items; carry the items and effective conclusions on `Packet.behavior` (subagent-packets "Context manifest"; durable-doc-checks "Behavior conclusions in the reviewer packet")
-- [ ] 6.3 Result validation: a `changed` dispute without a blocking finding at the item's files returns once (separate counter), then drops with a note (`src/subagents/result.ts`, `dispatch.ts`)
-- [ ] 6.4 After the `finding-summary` of a completed non-advisory `change` run, post `reviewer` records for entries whose outcome differs, ignoring unknown capabilities (`src/docs/behavior-review.ts`, called from `dispatch.ts` `finish` and `tools/subagent-record.ts`)
-- [ ] 6.5 Tests under `tests/subagents/` for the schema, packet, return-once and records
+- [x] 6.1 Add the optional `behavior` array to the reviewer result schema in `src/subagents/roles.ts` (subagent-dispatch "Return contract")
+- [x] 6.2 Add the required source `records:behavior-conclusions` for `change` reviewer packets through a provider in `src/docs/behavior-source.ts` registered from `src/docs/readers.ts`, left out without items; carry the items and effective conclusions on `Packet.behavior` (subagent-packets "Context manifest"; durable-doc-checks "Behavior conclusions in the reviewer packet")
+- [x] 6.3 Result validation: a `changed` dispute without a blocking finding at the item's files returns once (separate counter), then drops with a note (`src/subagents/result.ts`, `dispatch.ts`)
+- [x] 6.4 After the `finding-summary` of a completed non-advisory `change` run, post `reviewer` records for entries whose outcome differs, ignoring unknown capabilities (`src/docs/behavior-review.ts`, called from `dispatch.ts` `finish` and `tools/subagent-record.ts`)
+- [x] 6.5 Tests under `tests/subagents/` for the schema, packet, return-once and records
 
 ## 7. Docs and final verification
 
