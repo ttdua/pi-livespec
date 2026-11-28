@@ -91,10 +91,8 @@ describe("hash", () => {
 
 	test("comment edited changes hash", async () => {
 		const world = await makeWorld();
-		const posted = world.post(BOT, dispatchComment({
-			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
-			status: "DONE", commits: [], notes: "n", discoveries: ["one"], sources_used: [],
-		}));
+		// Ledger entries are never edited; a forge comment (here the plan gate notes) is, and its version follows.
+		const posted = world.post(BOT, writeMarked("gate", "gate.plan.1", { phase: "plan", notes: "one" }));
 		const before = await build(world, "implementer", "U3");
 		const comment = world.comments.get(7)?.find((c) => c.id === posted.id);
 		if (!comment) throw new Error("comment missing");
@@ -181,7 +179,7 @@ describe("optional sources", () => {
 
 	// `fit` spills in reverse manifest order and decisions come after dispatch answers, so decisions spill first.
 	test("a change packet marks one group inline and one spilled as optional", async () => {
-		const answered = (w: World) => w.post(BOT, dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-1", answer: "short" } as Parameters<typeof dispatchComment>[0]));
+		const answered = (w: World) => w.record(dispatchComment({ status: "ANSWERED", role: "implementer", unit: "U3", agentId: "agent-1", answer: "short" } as Parameters<typeof dispatchComment>[0]));
 		const first = await makeWorld();
 		answered(first);
 		const baseline = await build(first, "reviewer", undefined, "change");

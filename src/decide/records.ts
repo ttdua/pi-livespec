@@ -82,7 +82,7 @@ export function decisionComment(r: DecisionRecord): AppendInput {
 	return { kind: "decision", id: `${r.point}.${r.subject}`, data: compactFacts(r) };
 }
 
-/** The input as a marked comment body; temporary until ledger-store Task 8, for writers not yet moved to the ledger. */
+/** The input as a marked comment body; temporary until ledger-store Task 8, for the interaction writers. */
 export function decisionBody(input: AppendInput): string {
 	return writeMarked(input.kind, input.id, input.data);
 }

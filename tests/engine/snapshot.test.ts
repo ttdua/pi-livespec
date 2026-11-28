@@ -260,7 +260,7 @@ describe("readChangeSnapshot", () => {
 		test("Derived review rounds", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: ["livespec", "livespec:phase/review"] });
 			await world.postComment(n, BOT_LOGIN, writeMarked("counter", "review_rounds", { value: 9 }));
-			for (const round of [1, 2]) await world.postComment(n, BOT_LOGIN, aggregateComment({ round, head: base, reviews: [], findings: [] }));
+			for (const round of [1, 2]) await createLedger(defaultGitExec, root).append(n, aggregateComment({ round, head: base, reviews: [], findings: [] }));
 			expect((await readChangeSnapshot(deps(), n)).counters.review_rounds).toBe(2);
 		});
 

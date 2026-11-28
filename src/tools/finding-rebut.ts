@@ -6,8 +6,9 @@ import type { MarkedComment } from "../forge/markers.ts";
 import { isChildSession, type ChildCheckContext } from "../subagents/child.ts";
 import { isBlocking, rebuttalComment, type RebuttalData } from "../subagents/records.ts";
 import type { Finding } from "../subagents/roles.ts";
-import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import { prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
+import { appendRecord } from "./subagent-request.ts";
 
 const TOOL = "finding_rebut";
 
@@ -57,8 +58,7 @@ async function postRebuttal(p: RebutParams): Promise<ToolResult<undefined>> {
 	const why = unrebuttable(finding);
 	if (why !== undefined) return refuse(why);
 	const items = [...earlierItems(state.marked, p.comment).filter((i) => i.index !== p.index), { index: p.index, reason: p.reason, evidence: p.evidence }];
-	await w.forge.createComment(state.issue.number, rebuttalComment({ rebuts: p.comment, items }));
-	await afterForgeWrite(w.session, state.issue.number);
+	await appendRecord(w, state.issue.number, rebuttalComment({ rebuts: p.comment, items }));
 	return toolResult(`Rebutted finding ${p.index} of ${p.comment}; it no longer blocks unit_finish, and the next human gate lists the rebuttal.`, undefined);
 }
 

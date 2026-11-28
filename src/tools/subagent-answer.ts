@@ -86,7 +86,7 @@ async function answerRun(e: AnswerEnv, p: AnswerParams, q: Question, packet: Pac
 	const t = targetOf(q);
 	const request = await dispatchRequest(w, state, t, packet, e.deps);
 	const d = { ...dispatchDeps(e.pi, w, state.issue.number, e.service, warn(e.ctx)), onLaunch: (id: string) => update(key, id), ...(signal === undefined ? {} : { signal }) };
-	await d.post(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
+	await d.record(dispatchComment({ status: "ANSWERED", role: q.role, ...(q.unit === undefined ? {} : { unit: q.unit }), agentId: p.id, ...(q.attempt === undefined ? {} : { attempt: q.attempt }), answer: p.answer }));
 	const record = await resumeChild(d, p.id, p.answer);
 	if (isCancelled(signal)) return toolResult(withStep(w.session, outcomeText(t, cancelledOutcome(p.id))), undefined, true);
 	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded on the forge, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);

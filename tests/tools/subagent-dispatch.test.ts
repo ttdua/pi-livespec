@@ -86,6 +86,8 @@ describe("subagent-dispatch tools", () => {
 		expect(h.fake.spawned).toHaveLength(1);
 		const record = await h.latest("dispatch");
 		expect(record?.data).toMatchObject({ role: "implementer", unit: "U1", agentId: "agent-1", status: "DONE", attempt: 1 });
+		expect(record?.source).toBe("ledger");
+		expect(await h.commentsOf("dispatch")).toEqual([]);
 	});
 
 	test("legacy service key launches", async () => {
@@ -274,6 +276,7 @@ describe("subagent-dispatch tools", () => {
 		await h.call("subagent_dispatch", { role: "implementer", unit: "U1" });
 		const record = await h.latest("dispatch");
 		expect(record?.data).toMatchObject({ discoveries: ["the cache client retries twice"] });
+		expect(record?.source).toBe("ledger");
 		const out = await h.call("subagent_packet", { role: "implementer", unit: "U2" });
 		expect(textOf(out)).toContain("the cache client retries twice");
 		expect(textOf(out)).toContain(`comment:${record?.ref}`);

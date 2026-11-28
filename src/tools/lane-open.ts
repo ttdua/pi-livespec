@@ -6,7 +6,9 @@ import { laneOpenRefusal } from "../evidence/refusals.ts";
 import { openLane } from "../subagents/lane-ops.ts";
 import { laneChange, laneRefusal } from "../subagents/lanes.ts";
 import { afterForgeWrite, prepareWrite, requireChange, type ToolResult, toolResult } from "./guard.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { registerLivespecTool } from "./register.ts";
+import { appendRecord } from "./subagent-request.ts";
 import { withStep } from "./request-flow.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 import { UNIT_PARAMETERS } from "./unit-tool.ts";
@@ -27,7 +29,7 @@ export function runLaneOpen(unit: string, ctx: ToolCtx): Promise<ToolResult<unde
 		const why = laneOpenRefusal(state, w.pack, unit) ?? laneRefusal(state, unit, w.session.config.user.lanes);
 		if (why !== undefined) return refuse(why);
 		const issue = state.issue.number;
-		const ops = { git: w.session.git, root: w.session.cwd, post: (body: string) => w.forge.createComment(issue, body).then(() => undefined) };
+		const ops = { git: w.session.git, root: w.session.cwd, post: (body: string) => w.forge.createComment(issue, body).then(() => undefined), record: (input: AppendInput) => appendRecord(w, issue, input) };
 		const opened = await openLane(ops, laneChange(state), unit);
 		if (!opened.ok) return refuse(opened.message);
 		await afterForgeWrite(w.session, issue);

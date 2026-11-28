@@ -33,6 +33,8 @@ describe("review-findings", () => {
 		expect(await unresolved(h)).toEqual([]);
 		const [posted] = (await h.ofKind("finding-summary")).slice(-1);
 		expect(posted?.data).toMatchObject({ rebuts: id, items: [{ index: 0, reason: "the cap is per design", evidence: "design.md D3" }] });
+		expect(posted?.source).toBe("ledger");
+		expect(await h.commentsOf("finding-summary")).toEqual([]);
 	});
 
 	test("a second rebuttal keeps the first", async () => {

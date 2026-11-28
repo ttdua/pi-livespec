@@ -1,5 +1,8 @@
 // Tests of the dispatch and finding-summary records and the queries over them.
 import { describe, expect, it } from "vitest";
+import type { LedgerKind } from "../../src/core/record-kinds.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { isDispatchData } from "../../src/subagents/validate.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import {
@@ -29,7 +32,8 @@ import { needsContextCount, nextAttempt, nextRound } from "../../src/subagents/r
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
-function mark(body: string): MarkedComment {
+function mark(body: string | AppendInput): MarkedComment {
+	if (typeof body !== "string") return ledgerRecord(body as AppendInput & { kind: LedgerKind });
 	const p = parseMarked(body);
 	if (!p) throw new Error("not marked");
 	return { source: "forge", ref: `c${++counter}`, kind: p.kind, id: p.id, author: "me", data: p.data };
@@ -49,12 +53,12 @@ function summary(over: Partial<FindingSummaryData> = {}): MarkedComment {
 
 describe("records", () => {
 	it("dispatch marker kind registered", () => {
-		const body = dispatchComment({
+		const input = dispatchComment({
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE", commits: ["a"], notes: "n", discoveries: ["d"], sources_used: [],
 		});
-		expect(parseMarked(body)?.kind).toBe("dispatch");
-		expect(latestDispatch([mark(body)], "U1")?.discoveries).toEqual(["d"]);
+		expect(input.kind).toBe("dispatch");
+		expect(latestDispatch([mark(input)], "U1")?.discoveries).toEqual(["d"]);
 	});
 
 	it("blocked round resolves nothing", () => {

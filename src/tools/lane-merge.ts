@@ -16,6 +16,7 @@ import { nextRound } from "../subagents/run-record.ts";
 import type { LaneRecord } from "../subagents/state.ts";
 import { afterForgeWrite, type ToolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
+import { appendRecord } from "./subagent-request.ts";
 import { childRefusal, type ToolCtx } from "./subagent-target.ts";
 import { failed } from "./unit-finish.ts";
 import { lockedEvidenceCall, type Precheck, refusedRun, type UnitCall, unitResult, UNIT_PARAMETERS, verifyBlocked } from "./unit-tool.ts";
@@ -68,7 +69,7 @@ async function merge(c: UnitCall): Promise<ToolResult<undefined>> {
 	const { w, state, env, unit: u } = c;
 	const lane = state.subagents.lanes[u.id] as LaneRecord;
 	const issue = state.issue.number;
-	const ops: LaneOps = { git: env.git, root: env.root, post: (body) => w.forge.createComment(issue, body).then(() => undefined) };
+	const ops: LaneOps = { git: env.git, root: env.root, post: (body) => w.forge.createComment(issue, body).then(() => undefined), record: (input) => appendRecord(w, issue, input) };
 	if (!existsSync(lane.path)) return closeGone(c, ops, lane);
 	const start = state.evidence.started[u.id] as StartRecord;
 	const blocked = env.run.guard(start.verify);

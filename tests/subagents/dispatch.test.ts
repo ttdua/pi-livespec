@@ -31,9 +31,8 @@ function deps(fake: ReturnType<typeof fakeExecutor>) {
 	const d: DispatchDeps = {
 		service: fake.service,
 		events: fake.events,
-		post: async (body) => {
-			const m = parseMarked(body);
-			if (m) posted.push({ kind: m.kind, data: m.data as Record<string, unknown> });
+		record: async (input) => {
+			posted.push({ kind: input.kind, data: input.data as Record<string, unknown> });
 		},
 		headOf: async () => "h".repeat(40),
 		reachable: async (_cwd, commits) => commits.filter((c) => c !== "unreachable"),

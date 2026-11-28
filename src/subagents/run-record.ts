@@ -1,6 +1,7 @@
-// The forge record of one settled run, dispatched or inline: a `dispatch` comment for writers and scouts, a `finding-summary` for reviewers and verifiers.
+// The ledger record of one settled run, dispatched or inline: a `dispatch` entry for writers and scouts, a `finding-summary` for reviewers and verifiers.
 
 import type { MarkedComment } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { computeCompleted, current, isLaunchMismatch, NON_RUN_STATUSES, type DispatchData, dispatchComment, findingSummaryComment, type FindingSummaryData, type Thinking } from "./records.ts";
 import type { ReviewSubject, Role, SubagentResult } from "./roles.ts";
 import type { Packet } from "./source-types.ts";
@@ -78,7 +79,7 @@ function dispatchData(run: RunFacts, result: SubagentResult): DispatchData {
 }
 
 /** The parent's record of a post-launch mismatch, for every role: a `dispatch` comment, never a review round. */
-export function mismatchComment(run: RunFacts, notes: string, evidence: string): string {
+export function mismatchComment(run: RunFacts, notes: string, evidence: string): AppendInput {
 	const result = { ...blockedResult(LAUNCH_MISMATCH), notes, evidence };
 	return dispatchComment({ ...dispatchData(run, result), launchMismatch: true });
 }
@@ -105,8 +106,8 @@ function verifierFields(run: RunFacts, result: SubagentResult): Partial<FindingS
 	return { ...optional("verifies", run.finding), ...optional("verdict", result.verdict) };
 }
 
-/** The comment body that records `result`; `head` is the reviewed commit of a review run. */
-export function runRecordComment(run: RunFacts, result: SubagentResult, head: string): string {
+/** The ledger entry input that records `result`; `head` is the reviewed commit of a review run. */
+export function runRecordComment(run: RunFacts, result: SubagentResult, head: string): AppendInput {
 	return isReviewRole(run.role) ? findingSummaryComment(summaryData(run, result, head)) : dispatchComment(dispatchData(run, result));
 }
 
@@ -115,17 +116,17 @@ export function blockedResult(reason: string): SubagentResult {
 	return { status: "BLOCKED", notes: reason, discoveries: [], sources_used: [], reason, evidence: "recorded by the parent", commits: [], findings: [] };
 }
 
-/** The side effects of recording a run: one own comment, and git reads in the run's cwd. */
+/** The side effects of recording a run: one ledger entry, and git reads in the run's cwd. */
 export type RecordDeps = {
-	/** Posts one own comment on the change issue. */
-	post(body: string): Promise<void>;
+	/** Appends one entry to the change's ledger. */
+	record(input: AppendInput): Promise<void>;
 	/** HEAD of `cwd`: the reviewed commit of a review run. */
 	headOf(cwd: string): Promise<string>;
 	/** The claimed commits reachable from HEAD of `cwd`; the others are not evidence. */
 	reachable(cwd: string, commits: string[]): Promise<string[]>;
 };
 
-/** Posts the record of `result`; claimed commits not reachable from HEAD of `cwd` are dropped and named in the notes. */
+/** Records the result of `result`; claimed commits not reachable from HEAD of `cwd` are dropped and named in the notes. */
 export async function recordResult(deps: RecordDeps, run: RunFacts, cwd: string, result: SubagentResult): Promise<SubagentResult> {
 	const claimed = result.commits ?? [];
 	const commits = await deps.reachable(cwd, claimed);
@@ -133,6 +134,6 @@ export async function recordResult(deps: RecordDeps, run: RunFacts, cwd: string,
 	const notes = dropped.length === 0 ? result.notes : `${result.notes}\nNot reachable from HEAD, not counted: ${dropped.join(", ")}`;
 	const kept: SubagentResult = { ...result, notes, ...(result.commits === undefined ? {} : { commits }) };
 	const head = isReviewRole(run.role) ? await deps.headOf(cwd) : "";
-	await deps.post(runRecordComment(run, kept, head));
+	await deps.record(runRecordComment(run, kept, head));
 	return kept;
 }

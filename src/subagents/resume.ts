@@ -52,7 +52,7 @@ export async function retryRun(deps: DispatchDeps, request: DispatchRequest, run
 	const unsettled = again.lost === true ? await unsettledFallback(deps, again.run.agentId) : undefined;
 	if (unsettled !== undefined) return { kind: "stop", outcome: unsettled };
 	const failure = `${reason}; ${resumed}`;
-	await deps.post(dispatchComment({
+	await deps.record(dispatchComment({
 		status: "RETRY", role: request.role, ...(request.unit === undefined ? {} : { unit: request.unit }), ...(request.subject === undefined ? {} : { subject: request.subject }),
 		...(request.finding === undefined ? {} : { finding: request.finding }), agentId: run.agentId, newAgentId: again.run.agentId, attempt: request.attempt, reason: failure,
 	}));

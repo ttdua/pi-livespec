@@ -62,6 +62,13 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 	const first = await h.call("spec_review", {});
 	expect(first.isError, textOf(first)).toBeFalsy();
 	const marked = await h.marked();
+	// Dispatch, review and routing records are ledger entries; `review-run` stays a comment.
+	for (const kind of ["dispatch", "finding-summary", "decision"]) expect(await h.commentsOf(kind), kind).toEqual([]);
+	const reviewers = (await h.inLedger("finding-summary")).filter((m) => (m.data as { aggregate?: boolean; role?: string }).aggregate !== true && (m.data as { role?: string }).role === "reviewer");
+	const aggregate = (await h.inLedger("finding-summary")).find((m) => (m.data as { aggregate?: boolean }).aggregate === true);
+	expect((aggregate?.data as { reviews: string[] }).reviews).toEqual(reviewers.map((m) => m.ref));
+	expect((await h.inLedger("decision")).map((m) => m.id)).toEqual(expect.arrayContaining(["tags.review", "finding-scope.review-1"]));
+	expect((await h.ofKind("review-run"))[0]?.source).toBe("forge");
 	expect(marked.some((m) => m.kind === "rebuild" && m.id === "rebuild.U2.1")).toBe(true);
 	expect((await h.units()).map((u) => [u.id, u.done])).toEqual([["U1", true], ["U2", false]]);
 

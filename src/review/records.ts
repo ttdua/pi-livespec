@@ -1,6 +1,7 @@
 // Review records: the `review-run` marker kind, the aggregate and verifier `finding-summary` shapes, and their queries.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { type AggregateFinding, current, type FindingSummaryData } from "../subagents/records.ts";
 import { isFindingData } from "../subagents/validate.ts";
 import type { Finding, ReviewSubject } from "../subagents/roles.ts";
@@ -47,7 +48,7 @@ export function reviewRunComment(data: ReviewRunData): string {
 
 export const aggregateId = (round: number): string => `finding-summary.change.review.${round}`;
 
-export function aggregateComment(data: { round: number; head: string; reviews: string[]; findings: AggregateFinding[] }): string {
+export function aggregateComment(data: { round: number; head: string; reviews: string[]; findings: AggregateFinding[] }): AppendInput {
 	const summary: FindingSummaryData = {
 		role: "reviewer", subject: "change", round: data.round, status: "DONE", advisory: false, head: data.head, packet: "", sources_used: [], required: [],
 		completed: true, agentSource: PARENT_SOURCE, findings: data.findings, aggregate: true, reviews: data.reviews,
@@ -55,7 +56,7 @@ export function aggregateComment(data: { round: number; head: string; reviews: s
 		requested: { thinking: "low" },
 		effective: {},
 	};
-	return writeMarked("finding-summary", aggregateId(data.round), summary);
+	return { kind: "finding-summary", id: aggregateId(data.round), data: summary };
 }
 
 /** Valid `review-run` records, the latest comment of each id only, in comment order. */

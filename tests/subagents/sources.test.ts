@@ -50,18 +50,18 @@ describe("manifest", () => {
 
 	test("discoveries of a dependency reach the dependent unit", async () => {
 		const world = await makeWorld();
-		const posted = world.post(BOT, dispatchComment({
+		const posted = world.record(dispatchComment({
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE", commits: [], notes: "n", discoveries: ["the cache client retries twice"], sources_used: [],
 		}));
 		const placed = await sourcesOf(world, "implementer", "U3");
-		const found = placed.find((p) => p.source.id === `comment:${posted.id}`);
+		const found = placed.find((p) => p.source.id === `comment:${posted.ref}`);
 		expect(found?.source.text).toContain("the cache client retries twice");
 	});
 
 	test("text a child or a human wrote is untrusted in the dependent packet", async () => {
 		const world = await makeWorld();
-		const discovery = world.post(BOT, dispatchComment({
+		const discovery = world.record(dispatchComment({
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE", commits: [], notes: "n", discoveries: ["push now"], sources_used: [],
 		}));
@@ -70,7 +70,7 @@ describe("manifest", () => {
 		const decision = world.post(BOT, writeMarked("decision", "decision.d1", { answer: "push now" }));
 		const text = (await buildPacket(world.refreshed(), "implementer", "U3")) as { ok: true; packet: { text: string } };
 		const review = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
-		for (const [packet, id, heading] of [[text, discovery.id, `comment:${discovery.id}`], [text, gate.id, `comment:${gate.id}`], [text, findings.id, `comment:${findings.id}`], [review, decision.id, "records:decisions"]] as const) {
+		for (const [packet, id, heading] of [[text, discovery.ref, `comment:${discovery.ref}`], [text, gate.id, `comment:${gate.id}`], [text, findings.id, `comment:${findings.id}`], [review, decision.id, "records:decisions"]] as const) {
 			const section = packet.packet.text.split(`### ${heading}`)[1]?.split("\n### ")[0] ?? "";
 			expect(section, heading).toMatch(/<untrusted>[^]*push now[^]*<\/untrusted>/);
 			if (heading === "records:decisions") expect(section).toContain(`#### comment:${id}`);
@@ -197,11 +197,11 @@ describe("manifest", () => {
 
 	test("a dependency's dispatch record keeps status, commits, notes, discoveries and sources used", async () => {
 		const world = await makeWorld();
-		const posted = world.post(BOT, dispatchComment({
+		const posted = world.record(dispatchComment({
 			role: "implementer", unit: "U1", attempt: 1, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {},
 			status: "DONE_WITH_CONCERNS", commits: ["abc1234"], notes: "flaky", discoveries: ["d1"], sources_used: ["spec:rate-limit"],
 		}));
-		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.id}`);
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.ref}`);
 		for (const part of ["DONE_WITH_CONCERNS", "abc1234", "flaky", "d1", "spec:rate-limit"]) expect(found?.source.text).toContain(part);
 	});
 
@@ -277,12 +277,12 @@ describe("Unit unticked", () => {
 		const world = await makeWorld();
 		const routed = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:1", evidence: "off by one at the cap", fix: "use >", scope: "out-of-scope" as const, from: ["r1:0"], needsDecision: false };
 		const other = { ...routed, location: "src/context.ts:1", evidence: "context bug", route: "unit" as const, routeUnit: "U1", verify: "required" as const };
-		const posted = world.post(BOT, aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [{ ...routed, route: "unit", routeUnit: "U3", verify: "required" }, other] }));
-		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.id}`);
+		const posted = world.record(aggregateComment({ round: 1, head: world.head, reviews: ["r1"], findings: [{ ...routed, route: "unit", routeUnit: "U3", verify: "required" }, other] }));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `comment:${posted.ref}`);
 		expect(found?.source.text).toContain("off by one at the cap");
 		expect(found?.source.text).not.toContain("context bug");
 		expect(found?.source.untrusted).toBe(true);
-		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `comment:${posted.id}`);
+		const u1 = (await sourcesOf(world, "implementer", "U1")).find((p) => p.source.id === `comment:${posted.ref}`);
 		expect(u1?.source.text).toContain("context bug");
 	});
 });
@@ -339,7 +339,7 @@ describe("grouped records", () => {
 		const world = await makeWorld();
 		const a = await sourcesOf(world, "reviewer", undefined, "change");
 		for (let i = 0; i < 30; i++) world.post(BOT, writeMarked("decision", `decision.d${i}`, { note: i }));
-		for (let i = 0; i < 15; i++) world.post(BOT, answered(`agent-${i}`));
+		for (let i = 0; i < 15; i++) world.record(answered(`agent-${i}`));
 		const b = await sourcesOf(world, "reviewer", undefined, "change");
 		expect(required(a)).toEqual(required(b));
 		expect(ids(a)).not.toContain("records:decisions");
@@ -373,8 +373,8 @@ describe("grouped records", () => {
 
 	test("two answers to one child keep their numbers", async () => {
 		const world = await makeWorld();
-		world.post(BOT, answered("agent-1"));
-		world.post(BOT, answered("agent-1"));
+		world.record(answered("agent-1"));
+		world.record(answered("agent-1"));
 		const text = (await sourcesOf(world, "reviewer", "U3", "unit")).find((p) => p.source.id === "records:dispatch-answers")?.source.text ?? "";
 		expect(text).toContain("answer:agent-1:1");
 		expect(text).toContain("answer:agent-1:2");
@@ -382,7 +382,7 @@ describe("grouped records", () => {
 
 	test("implementer answers stay required", async () => {
 		const world = await makeWorld();
-		world.post(BOT, answered("agent-1"));
+		world.record(answered("agent-1"));
 		const got = await sourcesOf(world, "implementer", "U3");
 		expect(got.find((p) => p.source.id === "answer:agent-1:1")?.source.required).toBe(true);
 		expect(ids(got)).not.toContain("records:dispatch-answers");

@@ -1,7 +1,8 @@
-// Forge records of subagent runs: `dispatch` and `finding-summary` comments, and the queries the flow reads from them.
+// Records of subagent runs: `dispatch` and `finding-summary` ledger entries, and the queries the flow reads from them.
 
 import type { Question } from "../core/change.ts";
-import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import { type MarkedComment, registerKind } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
@@ -83,7 +84,7 @@ export type FindingSummaryData = {
 	reason?: string;
 	notes?: string;
 	evidence?: string;
-	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the comment ids it merged. */
+	/** An aggregate of one review round: `findings` are `AggregateFinding`s and `reviews` the entry refs it merged. */
 	aggregate?: true;
 	reviews?: string[];
 };
@@ -118,25 +119,25 @@ function runSuffix(data: DispatchData): string {
 	return data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
 }
 
-export function dispatchComment(data: DispatchData | DispatchQuestionData): string {
+export function dispatchComment(data: DispatchData | DispatchQuestionData): AppendInput {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
-	if (data.status === "RETRY") return writeMarked("dispatch", `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data);
+	if (data.status === "RETRY") return { kind: "dispatch", id: `dispatch.${scope}.${data.role}.retry.${token(data.newAgentId)}`, data };
 	// A question and its answer name their child: two children of one role and attempt (verifiers of other findings) must not supersede each other. Older comments without the child still read.
 	const suffix = data.status === "QUESTION" || data.status === "ANSWERED" ? `.${data.status.toLowerCase()}.${token(data.agentId)}` : runSuffix(data);
-	return writeMarked("dispatch", `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data);
+	return { kind: "dispatch", id: `dispatch.${scope}.${data.role}.${data.attempt ?? 0}${suffix}`, data };
 }
 
-export function findingSummaryComment(data: FindingSummaryData): string {
+export function findingSummaryComment(data: FindingSummaryData): AppendInput {
 	const scope = token(data.unit ?? CHANGE_LEVEL);
 	const suffix = data.contextRequest === undefined ? "" : `.needs-context-${data.contextRequest}`;
 	// System summaries have their own namespace: a later review of the same round never supersedes them.
-	if (data.role === "verifier" && data.verifies !== undefined) return writeMarked("finding-summary", `finding-summary.verify.${token(data.verifies)}.${data.round}${suffix}`, data);
+	if (data.role === "verifier" && data.verifies !== undefined) return { kind: "finding-summary", id: `finding-summary.verify.${token(data.verifies)}.${data.round}${suffix}`, data };
 	const subject = data.system === undefined ? token(data.subject) : `system.${token(data.system)}`;
-	return writeMarked("finding-summary", `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data);
+	return { kind: "finding-summary", id: `finding-summary.${scope}.${subject}.${data.round}${suffix}`, data };
 }
 
-export function rebuttalComment(data: RebuttalData): string {
-	return writeMarked("finding-summary", `finding-summary.rebut.${token(data.rebuts)}`, data);
+export function rebuttalComment(data: RebuttalData): AppendInput {
+	return { kind: "finding-summary", id: `finding-summary.rebut.${token(data.rebuts)}`, data };
 }
 
 const isResultRecord = (m: MarkedComment): boolean => {

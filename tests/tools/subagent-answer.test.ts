@@ -36,6 +36,8 @@ describe("questions from a child", () => {
 		expect(h.fake.resumed).toEqual([{ id: "agent-1", prompt: "the project one" }]);
 		const kinds = (await h.ofKind("dispatch")).map((m) => (m.data as { status: string }).status);
 		expect(kinds).toEqual(["QUESTION", "ANSWERED", "DONE"]);
+		expect((await h.inLedger("dispatch")).map((m) => (m.data as { status: string }).status)).toEqual(kinds);
+		expect(await h.commentsOf("dispatch")).toEqual([]);
 		expect((await h.latest("dispatch"))?.data).toMatchObject({ agentId: "agent-1", sources_used: expect.arrayContaining(["answer:agent-1:1"]) });
 	});
 

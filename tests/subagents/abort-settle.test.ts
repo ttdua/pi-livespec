@@ -27,9 +27,8 @@ function abortableChild(settleMs: number | undefined, abortSettleMs?: number, si
 	const posted: { settledAtForgeWrite: boolean; evidence: string }[] = [];
 	const d: DispatchDeps = {
 		service: fake.service, events: fake.events,
-		post: async (body) => {
-			const m = parseMarked(body);
-			if (m) posted.push({ settledAtForgeWrite: settled, evidence: String((m.data as Record<string, unknown>).evidence) });
+		record: async (input) => {
+			posted.push({ settledAtForgeWrite: settled, evidence: String((input.data as Record<string, unknown>).evidence) });
 		},
 		headOf: async () => "h".repeat(40),
 		reachable: async (_cwd, commits) => commits,

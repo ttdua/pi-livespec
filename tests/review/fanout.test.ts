@@ -17,8 +17,8 @@ function deps(fake: ReturnType<typeof fakeExecutor>, signal?: AbortSignal) {
 	const posted: string[] = [];
 	const d: DispatchDeps = {
 		service: fake.service, events: fake.events, onOverride: () => undefined,
-		post: async (body) => {
-			posted.push(parseMarked(body)?.id ?? body);
+		record: async (input) => {
+			posted.push(input.id);
 		},
 		headOf: async () => "h".repeat(40),
 		reachable: async (_cwd, commits) => commits,

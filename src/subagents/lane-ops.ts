@@ -5,12 +5,13 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createGit, type Git } from "../engine/git.ts";
 import { defaultGitExec } from "../engine/git-exec.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import { type FindingSummaryData, findingSummaryComment } from "./records.ts";
 import { LANES_DIR, laneBranch, lanePath } from "./lanes.ts";
 import { type LaneOutcome, type LaneRecord, laneComment } from "./state.ts";
 
-/** Git of the change worktree, its root, and a poster for own comments on the change issue. */
-export type LaneOps = { git: Git; root: string; post(body: string): Promise<void> };
+/** Git of the change worktree, its root, a poster for `lane` comments on the change issue, and an appender for ledger entries. */
+export type LaneOps = { git: Git; root: string; post(body: string): Promise<void>; record(input: AppendInput): Promise<void> };
 
 /** `aborted`: the `Verify` run was cancelled, so the merge is undone and the lane stays open. */
 export type MergeOutcome = "merged" | "violation" | "conflict" | "red" | "aborted";
@@ -104,7 +105,7 @@ export async function mergeLane(ops: LaneOps, lane: LaneRecord, checks: MergeChe
 	const head = await ops.git.revParse(lane.branch);
 	const outside = await filesViolation(ops.git, lane, checks.files);
 	if (outside.length > 0) {
-		await ops.post(findingSummaryComment(violationSummary(lane, outside, checks.round, head)));
+		await ops.record(findingSummaryComment(violationSummary(lane, outside, checks.round, head)));
 		await closeLane(ops, lane, { outcome: "violation" });
 		return "violation";
 	}

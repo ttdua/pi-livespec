@@ -190,6 +190,8 @@ describe("parallel-lanes tools", () => {
 		expect(h.git("rev-parse", "HEAD")).toBe(head);
 		const summary = (await kinds(h, "finding-summary")).at(-1) as { findings: { kind: string; location: string }[] };
 		expect(summary.findings).toEqual([expect.objectContaining({ kind: "files-violation", location: "src/other.ts:1" })]);
+		expect((await h.inLedger("finding-summary")).at(-1)?.data).toMatchObject({ system: "files-violation" });
+		expect(await h.commentsOf("finding-summary")).toEqual([]);
 		expect(existsSync(h.lanePath("U2"))).toBe(false);
 		expect(cardState(h).state.subagents.lanes).toEqual({});
 		expect(cardState(h).step.dispatch).toEqual({ role: "implementer", unit: "U2", inline: false });

@@ -1,12 +1,17 @@
 // Builders of marked `dispatch` and `finding-summary` comments for tests of the build loop, gate payload and card.
 
+import type { LedgerKind } from "../../src/core/record-kinds.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { dispatchComment, type FindingSummaryData, findingSummaryComment, rebuttalComment } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 
 let counter = 0;
 
-export function mark(body: string): MarkedComment {
+/** A marked comment from a forge body, or a ledger record from the input of a ledger kind. */
+export function mark(body: string | AppendInput): MarkedComment {
+	if (typeof body !== "string") return ledgerRecord(body as AppendInput & { kind: LedgerKind });
 	const parsed = parseMarked(body);
 	if (!parsed) throw new Error("not a marked comment");
 	return { source: "forge", ref: `c${++counter}`, kind: parsed.kind, id: parsed.id, author: "me", data: parsed.data };

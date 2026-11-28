@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { ForgeError } from "../../src/forge/errors.ts";
 import { type GitExec, defaultGitExec } from "../../src/engine/git-exec.ts";
 import { type AppendInput, LedgerError, entryVersion } from "../../src/ledger/entry.ts";
 import { createLedger } from "../../src/ledger/index.ts";
@@ -12,6 +13,18 @@ const N = 59;
 const LOCAL = `refs/livespec/${N}`;
 const TRACKING = `refs/livespec-origin/${N}`;
 const exec = defaultGitExec;
+
+/** A forge stub whose every call is unreachable; `calls` counts them. */
+function unreachableForge(): { listComments(n: number): Promise<never>; calls: number } {
+	const forge = {
+		calls: 0,
+		listComments: async (_n: number): Promise<never> => {
+			forge.calls++;
+			throw new ForgeError({ code: "unreachable", operation: "listComments", message: "connection refused" });
+		},
+	};
+	return forge;
+}
 
 function decision(id: string): AppendInput {
 	return { kind: "decision", id, data: { answer: id } };
@@ -150,6 +163,24 @@ describe("ledger sync", () => {
 		expect(result.status === "pending" && result.reason).toBeTruthy();
 		expect(await ledger.pending(N)).toBe(true);
 		expect(refAt(remote, LOCAL)).not.toBe(refAt(a, LOCAL));
+	});
+
+	it("Forge down", async () => {
+		const { a } = await twoClones();
+		const forge = unreachableForge();
+		await expect(forge.listComments(N)).rejects.toMatchObject({ code: "unreachable" });
+		const entry = await createLedger(exec, a).append(N, { kind: "dispatch", id: "dispatch.change.scout.1", data: { status: "DONE" } });
+		expect((await readLedger(exec, a, N)).entries.map((e) => e.ref)).toEqual([entry.ref]);
+		expect(forge.calls).toBe(1);
+	});
+
+	it("Ledger append in read-only mode", async () => {
+		const { a } = await twoClones();
+		const forge = unreachableForge();
+		// Read-only mode is entered by an unreachable forge call; the ledger never goes through the forge.
+		await expect(forge.listComments(N)).rejects.toBeInstanceOf(ForgeError);
+		const entry = await createLedger(exec, a).append(N, { kind: "finding-summary", id: "finding-summary.change.review.1", data: { aggregate: true } });
+		expect((await readLedger(exec, a, N)).entries.map((e) => e.ref)).toEqual([entry.ref]);
 	});
 
 	it("Pending entries pushed later", async () => {

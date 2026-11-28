@@ -31,6 +31,8 @@ describe("inline fallback", () => {
 		const recorded = await h.call("subagent_record", { role: "implementer", unit: "U1", result: done({ commits: [], sources_used: footerIds(textOf(packet)) }) });
 		expect(recorded.isError, textOf(recorded)).toBeFalsy();
 		expect((await h.latest("dispatch"))?.data).toMatchObject({ role: "implementer", unit: "U1", status: "DONE", agentSource: "inline", attempt: 1 });
+		expect(await h.inLedger("dispatch")).toHaveLength(1);
+		expect(await h.commentsOf("dispatch")).toEqual([]);
 		await h.commit({ "src/u1.ts": "export const x = 1;\n" });
 		expect(cardState(h).step.next).toContain("subagent_record reviewer U1 unit");
 		const brief = textOf(await h.call("subagent_packet", { role: "reviewer", unit: "U1", subject: "unit" }));
@@ -66,6 +68,8 @@ describe("inline fallback", () => {
 		const summary = await h.latest("finding-summary");
 		expect(summary?.data).toMatchObject({ role: "reviewer", subject: "unit", unit: "U1", round: 1, status: "DONE", findings: [FINDING], head: h.git("rev-parse", "HEAD"), agentSource: "inline" });
 		expect(summary?.data).not.toHaveProperty("agentId");
+		expect((await h.inLedger("finding-summary")).map((m) => m.ref)).toEqual([summary?.ref]);
+		expect(await h.commentsOf("finding-summary")).toEqual([]);
 	});
 
 	test("a reviewer recording without optional sources is accepted", async () => {
