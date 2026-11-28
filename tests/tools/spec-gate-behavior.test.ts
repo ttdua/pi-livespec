@@ -1,6 +1,6 @@
-// `spec_gate define|review` asks the `behavior-change` question (durable-doc-checks "Behavior change question at
-// the gate", phase-gates "Gate tool"): only when no other refusal applies, one capability at a time, and the
-// re-run check refuses a `changed` answer in the same call.
+// `spec_gate define|review` records the agent's `behavior` conclusions (durable-doc-checks "Behavior conclusion at
+// the gate", phase-gates "Gate tool"): only when no other refusal applies and the list covers every item, and the
+// re-run check refuses a `changed` conclusion in the same call. No dialog or `decide:` request is involved.
 
 import { BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
-import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
+import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { resetGatesForTests } from "../../src/engine/gates.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
@@ -208,11 +208,15 @@ describe("spec_gate behavior conclusions", () => {
 		expect((await ofKind(h, "gate"))[0]?.data).toMatchObject({ phase: "define", outcome: "approved" });
 	});
 
-	test("a legacy open request is not asked again", async () => {
+	test("a legacy open request gets no new request", async () => {
 		const h = await change("define", { config: FORGE_CHAIN });
-		const out = await gate(h, [{ capability: "rate-limit", outcome: "changed", rationale: "x" }]);
-		expect(out.isError).toBe(true);
-		expect(await behaviorRequests(h)).toEqual([]);
+		const legacy = "decide:behavior-change.rate-limit";
+		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("request", "decide-behavior-change.rate-limit.r1", { subject: legacy, kind: "stuck", mode: "blocking", snapshot: {} }));
+		await h.session.comments?.invalidate(h.n);
+		await h.session.refresh();
+		const out = await gate(h, [unchanged("rate-limit")]);
+		expect(out.isError).toBe(false);
+		expect(await behaviorRequests(h)).toEqual([legacy]);
 	});
 
 	test("read-only forge refuses before writing", async () => {

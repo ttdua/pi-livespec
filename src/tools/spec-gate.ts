@@ -208,7 +208,7 @@ export async function sendNamedGate(w: WriteContext, state: ChangeState, i: Name
 	return sendRequest(w, checked, request, i.ctx, { tool: i.tool, retry: `run ${i.tool} again` });
 }
 
-/** The phases whose gate asks the behavior question, when the phase lists the `behavior-change` check. */
+/** The phases whose gate records behavior conclusions, when the phase lists the `behavior-change` check. */
 const BEHAVIOR_TARGETS = new Set(["define", "review"]);
 
 function asksBehavior(pack: Pack, target: string): boolean {
