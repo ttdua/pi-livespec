@@ -14,7 +14,8 @@ import { decisionComment, latestDecisions, sameFacts } from "../decide/records.t
 import { runChecks } from "../engine/checks.ts";
 import { type Escalation, escalationInput, escalationOutcome } from "../engine/gate-escalation-facts.ts";
 import { shipFor } from "../ship/context.ts";
-import { collectReviewFacts, gatePayload } from "../engine/gate-payload.ts";
+import { collectReviewFacts, gatePayload, type ReviewFacts } from "../engine/gate-payload.ts";
+import { changeBehaviorItems } from "../docs/behavior-check.ts";
 import { failingWaivable, gateRefusal, namedGate, resolveGateTarget } from "../engine/gates.ts";
 import type { Pack } from "../engine/pack-types.ts";
 import { type RequirementRecord, requirementRecord } from "../engine/requirement-diff.ts";
@@ -166,7 +167,8 @@ type RequestExtras = { drafts?: unknown; summary?: string; briefing?: Briefing }
 async function buildRequest(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, extras: RequestExtras = {}): Promise<ApprovalRequest> {
 	const facts = await collectReviewFacts(w.session.git, state.change.header.base);
 	const issue = await w.forge.getIssue(state.issue.number);
-	const withLink = issue.url === undefined ? facts : { ...facts, issueUrl: issue.url };
+	const behaviorItems = target === "define" ? await changeBehaviorItems(w.session.cwd, w.session.git, state.change.header.base) : undefined;
+	const withLink: ReviewFacts = { ...facts, ...(issue.url === undefined ? {} : { issueUrl: issue.url }), ...(behaviorItems === undefined ? {} : { behaviorItems }) };
 	const payload = gatePayload(state, w.pack, target, withLink);
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
 	// The scope comes from the body bound as `gate_digest`, not `state.change`, which may predate an edit.
