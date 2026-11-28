@@ -299,6 +299,34 @@ describe("invalid ledger content", () => {
 		expect(read.warnings[0]).toContain("conflicting");
 	});
 
+	it("I2: an oversized blob is skipped with a warning and marks the read unreadable", async () => {
+		const root = await repoWithCommit();
+		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);
+		const bad = await commitFiles(root, base, { "dispatch.jsonl": "x".repeat(9 * 1024 * 1024) });
+		const read = await readTree(exec, root, bad, 59);
+		expect(read.entries.map((e) => e.ref)).toEqual(["findings.U1~00000001"]);
+		expect(read.warnings.join("\n")).toMatch(/dispatch\.jsonl.*over the/);
+		expect(read.unreadable).toHaveLength(1);
+	});
+
+	it("I2: a payload that is not an object, or whose items/findings are not arrays, is skipped", async () => {
+		const root = await repoWithCommit();
+		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);
+		const good = git(root, ["show", `${base}:findings.jsonl`]);
+		const lines = [null, "text", { items: 3 }, { findings: {} }].map((data, i) => JSON.stringify(entry({ ref: `findings.U1~0000000${i + 2}`, kind: "finding-summary", id: "findings.U1", seq: i + 2, data })));
+		const bad = await commitFiles(root, base, { "findings.jsonl": `${good}\n${lines.join("\n")}\n` });
+		const read = await readTree(exec, root, bad, 59);
+		expect(read.entries.map((e) => e.ref)).toEqual(["findings.U1~00000001"]);
+		expect(read.warnings).toHaveLength(4);
+	});
+
+	it("I2: a file that is no YAML sequence marks the read unreadable", async () => {
+		const root = await repoWithCommit();
+		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);
+		const bad = await commitFiles(root, base, { "change.yaml": "a: 1\n" });
+		expect((await readTree(exec, root, bad, 59)).unreadable).toHaveLength(1);
+	});
+
 	it("appends after hostile content without throwing", async () => {
 		const root = await repoWithCommit();
 		const base = await commitEntries(exec, root, 59, undefined, [summary("findings.U1~00000001", 1)]);

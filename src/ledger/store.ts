@@ -28,7 +28,10 @@ export { ledgerRef } from "./refs.ts";
 
 const CAS_RETRIES = 5;
 const READ_CACHE_LIMIT = 64;
-const BLOB_CACHE_LIMIT = 256;
+/** Blobs above this size are skipped with a warning; the git runner buffer is larger, so one blob never fails the whole read. */
+const MAX_BLOB_BYTES = 8 * 1024 * 1024;
+/** The blob cache holds at most this many bytes of text. */
+const BLOB_CACHE_BYTES = 32 * 1024 * 1024;
 const LIVESPEC_IDENTITY: Record<string, string> = {
 	GIT_AUTHOR_NAME: "livespec",
 	GIT_AUTHOR_EMAIL: "livespec@localhost",
@@ -42,6 +45,7 @@ const readCache = new Map<string, LedgerRead>();
 const treeCache = new Map<string, readonly TreeFile[]>();
 /** Blob contents by `repo\0sha`; a blob sha names immutable content. */
 const blobCache = new Map<string, string>();
+let blobCacheBytes = 0;
 
 /** The validated entries of the ledger tree at `commit`; never throws on hostile content. */
 export async function readTree(exec: GitExec, root: string, commit: string, n: number): Promise<LedgerRead> {
@@ -105,15 +109,19 @@ function readTip(exec: GitExec, root: string, n: number): Promise<string | undef
 async function readTreeUncached(exec: GitExec, root: string, commit: string, n: number): Promise<LedgerRead> {
 	const files = await listTree(exec, root, commit);
 	const metaProblem = await ledgerMetaProblem(exec, root, files, n);
-	if (metaProblem) return { tip: commit, entries: [], warnings: [`ledger of #${n} read as empty: ${metaProblem}`] };
+	if (metaProblem) return { tip: commit, entries: [], warnings: [`ledger of #${n} read as empty: ${metaProblem}`], unreadable: [metaProblem] };
 	const warnings: string[] = [];
+	const unreadable: string[] = [];
 	const perFile: LedgerEntry[][] = [];
 	for (const file of files.filter((f) => isEntryFile(f.path))) {
-		const result = parseFile(file.path, await catBlob(exec, root, file.blob));
+		const text = await readBlobOrSkip(exec, root, file, warnings, unreadable);
+		if (text === undefined) continue;
+		const result = parseFile(file.path, text);
 		perFile.push(result.entries);
 		warnings.push(...result.warnings);
+		if (result.skippedFile) unreadable.push(`${file.path} could not be read as entries`);
 	}
-	return { tip: commit, entries: orderAcrossFiles(dropRepeatedRefs(perFile.flat(), warnings), perFile), warnings };
+	return { tip: commit, entries: orderAcrossFiles(dropRepeatedRefs(perFile.flat(), warnings), perFile), warnings, ...(unreadable.length === 0 ? {} : { unreadable }) };
 }
 
 async function ledgerMetaProblem(exec: GitExec, root: string, files: readonly TreeFile[], n: number): Promise<string | undefined> {
@@ -240,14 +248,43 @@ async function listTreeUncached(exec: GitExec, root: string, commit: string): Pr
 		});
 }
 
+/** The text of an entry file, or undefined (with a warning and an `unreadable` note) when its blob is too large to read. */
+async function readBlobOrSkip(exec: GitExec, root: string, file: TreeFile, warnings: string[], unreadable: string[]): Promise<string | undefined> {
+	try {
+		return await catBlob(exec, root, file.blob);
+	} catch (error) {
+		if (!(error instanceof BlobTooLarge)) throw error;
+		warnings.push(`${file.path}: skipped file: ${error.message}`);
+		unreadable.push(`${file.path} is larger than ${MAX_BLOB_BYTES} bytes`);
+		return undefined;
+	}
+}
+
+class BlobTooLarge extends LedgerError {
+	constructor(size: number) {
+		super("git", `${size} bytes is over the ${MAX_BLOB_BYTES} byte limit`);
+	}
+}
+
 async function catBlob(exec: GitExec, root: string, blob: string): Promise<string> {
 	const key = `${root}\0${blob}`;
 	const known = blobCache.get(key);
 	if (known !== undefined) return known;
+	const size = Number(await git(exec, root, ["cat-file", "-s", blob]));
+	if (!Number.isFinite(size) || size > MAX_BLOB_BYTES) throw new BlobTooLarge(size);
 	const text = await git(exec, root, ["cat-file", "blob", blob], undefined, false);
-	if (blobCache.size >= BLOB_CACHE_LIMIT) blobCache.delete(blobCache.keys().next().value as string);
-	blobCache.set(key, text);
+	cacheBlob(key, text);
 	return text;
+}
+
+function cacheBlob(key: string, text: string): void {
+	blobCacheBytes += text.length;
+	blobCache.set(key, text);
+	for (const [oldest, value] of blobCache) {
+		if (blobCacheBytes <= BLOB_CACHE_BYTES) break;
+		blobCache.delete(oldest);
+		blobCacheBytes -= value.length;
+	}
 }
 
 async function git(exec: GitExec, root: string, args: string[], env?: Record<string, string>, trim = true): Promise<string> {

@@ -18,7 +18,8 @@ export type LedgerEntry = {
 
 export type AppendInput = { kind: LedgerKind; id: string; data: unknown; after?: string };
 
-export type LedgerRead = { tip?: string; entries: LedgerEntry[]; warnings: string[] };
+/** `unreadable` names content that could not be read at all (an oversized blob, a file that is no sequence, a bad `ledger.yaml`): entries may be missing, so a replay or a write that depends on completeness must refuse. */
+export type LedgerRead = { tip?: string; entries: LedgerEntry[]; warnings: string[]; unreadable?: string[] };
 
 export type LedgerErrorCode = "kind" | "cas" | "unknown-offline" | "git";
 
@@ -115,7 +116,7 @@ function yamlSequenceLength(text: string): number | undefined {
 }
 
 /** The entries of one ledger file in file order, with one warning per entry skipped. */
-export function parseFile(path: string, text: string): { entries: LedgerEntry[]; warnings: string[] } {
+export function parseFile(path: string, text: string): { entries: LedgerEntry[]; warnings: string[]; skippedFile: boolean } {
 	const items = isJsonl(path) ? parseJsonl(path, text) : parseYamlSequence(path, text);
 	const entries: LedgerEntry[] = [];
 	const warnings = [...items.warnings];
@@ -124,7 +125,7 @@ export function parseFile(path: string, text: string): { entries: LedgerEntry[];
 		if (problem) warnings.push(`${where}: skipped entry: ${problem}`);
 		else entries.push(value as LedgerEntry);
 	}
-	return { entries, warnings };
+	return { entries, warnings, skippedFile: items.skippedFile === true };
 }
 
 /** True when `path` names a file that may hold entries. */
@@ -132,7 +133,7 @@ export function isEntryFile(path: string): boolean {
 	return Object.values(JSONL_FILES).includes(path) || path === "change.yaml" || /^units\/[^/]+\.yaml$/.test(path);
 }
 
-type ParsedItems = { values: { value: unknown; where: string }[]; warnings: string[] };
+type ParsedItems = { values: { value: unknown; where: string }[]; warnings: string[]; skippedFile?: true };
 
 function parseJsonl(path: string, text: string): ParsedItems {
 	const result: ParsedItems = { values: [], warnings: [] };
@@ -153,10 +154,10 @@ function parseYamlSequence(path: string, text: string): ParsedItems {
 	try {
 		doc = parse(text);
 	} catch {
-		return { values: [], warnings: [`${path}: skipped file: not valid YAML`] };
+		return { values: [], warnings: [`${path}: skipped file: not valid YAML`], skippedFile: true };
 	}
 	if (doc === null || doc === undefined) return { values: [], warnings: [] };
-	if (!Array.isArray(doc)) return { values: [], warnings: [`${path}: skipped file: not a YAML sequence`] };
+	if (!Array.isArray(doc)) return { values: [], warnings: [`${path}: skipped file: not a YAML sequence`], skippedFile: true };
 	return { values: doc.map((value, index) => ({ value, where: `${path}[${index}]` })), warnings: [] };
 }
 
@@ -172,6 +173,14 @@ function entryProblem(value: unknown): string | undefined {
 	if (value.from !== undefined && typeof value.from !== "string") return "invalid `from`";
 	// `undefined` data is dropped by both encoders, so the entry would read back without `data`.
 	if (!Object.hasOwn(value, "data") || value.data === undefined) return "missing `data`";
+	return dataProblem(value.data);
+}
+
+/** Every payload is an object; `items` and `findings`, when present, are arrays (consumers dereference them). */
+function dataProblem(data: unknown): string | undefined {
+	if (!isObject(data)) return "`data` is not an object";
+	if (data.items !== undefined && !Array.isArray(data.items)) return "`data.items` is not an array";
+	if (data.findings !== undefined && !Array.isArray(data.findings)) return "`data.findings` is not an array";
 	return undefined;
 }
 

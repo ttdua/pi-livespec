@@ -355,6 +355,34 @@ describe("ensureFetched single flight", () => {
 	});
 });
 
+describe("replay over unreadable content", () => {
+	it("I2: a diverged sync refuses to replay a side it could not read", async () => {
+		const { a, b } = await twoClones();
+		const ledgerA = createLedger(exec, a);
+		await ledgerA.append(N, decision("D1"));
+		await ledgerA.background();
+		await createLedger(exec, b).ensureFetched(N);
+		await appendEntry(exec, b, N, decision("D2"));
+		await appendEntry(exec, a, N, decision("D3"));
+		expect(await ledgerA.sync(N)).toEqual({ status: "synced" });
+		// Corrupt b's change.yaml: b's side is no longer completely readable.
+		const tip = git(b, ["rev-parse", LOCAL]);
+		const tree = git(b, ["ls-tree", "-r", tip]);
+		expect(tree).toContain("decisions.jsonl");
+		const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: b, input: "a: 1\n", encoding: "utf8" }).trim();
+		const idx = join(b, ".git", "tmp-index");
+		const env = { ...process.env, GIT_INDEX_FILE: idx };
+		execFileSync("git", ["read-tree", tip], { cwd: b, env });
+		execFileSync("git", ["update-index", "--add", "--cacheinfo", `100644,${blob},change.yaml`], { cwd: b, env });
+		const newTree = execFileSync("git", ["write-tree"], { cwd: b, env, encoding: "utf8" }).trim();
+		const commit = git(b, ["commit-tree", newTree, "-p", tip, "-m", "hostile"]);
+		git(b, ["update-ref", LOCAL, commit]);
+		const result = await createLedger(exec, b).sync(N);
+		expect(result).toMatchObject({ status: "error", message: expect.stringContaining("refusing to replay") });
+		expect(refAt(b, LOCAL)).toBe(commit);
+	});
+});
+
 describe("ledger remove", () => {
 	it("deletes the remote, local and tracking refs", async () => {
 		const { remote, a } = await twoClones();

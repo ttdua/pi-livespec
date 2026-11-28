@@ -3,6 +3,7 @@
 
 import type { GitExec } from "../engine/git-exec.ts";
 import { GitError } from "../engine/git.ts";
+import { LedgerError } from "./entry.ts";
 import { ledgerDelete, ledgerFetch, ledgerPush } from "../guard/push.ts";
 import { advanceRef, backoff, deleteRef, deleteRefIf, hasOrigin, isAncestor, ledgerRef, readLedgerRefs, readRef, swapRef, trackingRef } from "./refs.ts";
 import { planReplay } from "./replay.ts";
@@ -161,7 +162,11 @@ async function integrate(exec: GitExec, root: string, n: number, remoteTip: stri
 /** The commit the local ref should move to: the remote tip itself, or a replay of local-only entries onto it. */
 async function integratedTip(exec: GitExec, root: string, n: number, local: string | undefined, remoteTip: string): Promise<string> {
 	if (local === undefined || (await isAncestor(exec, root, local, remoteTip))) return remoteTip;
-	const replayed = planReplay(await readTree(exec, root, local, n), await readTree(exec, root, remoteTip, n));
+	const [localRead, remoteRead] = [await readTree(exec, root, local, n), await readTree(exec, root, remoteTip, n)];
+	// A replay re-appends what it read: a side it could not read completely would silently lose entries.
+	const unreadable = [...(localRead.unreadable ?? []), ...(remoteRead.unreadable ?? [])];
+	if (unreadable.length > 0) throw new LedgerError("git", `refusing to replay the diverged ledger of #${n}: ${unreadable.join("; ")}`);
+	const replayed = planReplay(localRead, remoteRead);
 	return replayed.length === 0 ? remoteTip : commitEntries(exec, root, n, remoteTip, replayed);
 }
 
