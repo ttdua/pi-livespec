@@ -74,8 +74,8 @@ Blocked by: 7
 
 Blocked by: 6, 7, 8
 
-- [ ] 9.1 `src/forge/markers.ts`: the six kinds leave `CORE_KINDS`, `registerKind`/`writeMarked` refuse them, `filterMarked` drops own comments of those kinds with one warning per kind; remove module-load `registerKind` calls for `unit-start` and `dispatch`
-- [ ] 9.2 `tests/forge/markers.test.ts` (example kind `stale`, ledger kind refused, old receipt comment); forge contract and adapter tests use forge kinds as examples (`tests/forge/contract.ts`, `github.test.ts`, `gitea.test.ts`); remaining seeds of ledger kinds via `writeMarked` move to `h.seed`/`ledgerRecord` (`tests/tools/change-sync.test.ts`, `forge-read.test.ts`, `spec-gate.test.ts`, `decide-ask.test.ts`, `tests/review/round.test.ts`, `tests/subagents/helpers.ts`, `tests/engine/comments-cache.test.ts`, `tests/engine/counters.test.ts`, `tests/subagents/sources.test.ts`, `tests/subagents/packet.test.ts`); e2e flows assert no comment of the six kinds and the ledger holds them
+- [x] 9.1 `src/forge/markers.ts`: the six kinds leave `CORE_KINDS`, `registerKind`/`writeMarked` refuse them, `filterMarked` drops own comments of those kinds with one warning per kind; remove module-load `registerKind` calls for `unit-start` and `dispatch`
+- [x] 9.2 `tests/forge/markers.test.ts` (example kind `stale`, ledger kind refused, old receipt comment); forge contract and adapter tests use forge kinds as examples (`tests/forge/contract.ts`, `github.test.ts`, `gitea.test.ts`); remaining seeds of ledger kinds via `writeMarked` move to `h.seed`/`ledgerRecord` (`tests/tools/change-sync.test.ts`, `forge-read.test.ts`, `spec-gate.test.ts`, `decide-ask.test.ts`, `tests/review/round.test.ts`, `tests/subagents/helpers.ts`, `tests/engine/comments-cache.test.ts`, `tests/engine/counters.test.ts`, `tests/subagents/sources.test.ts`, `tests/subagents/packet.test.ts`); e2e flows assert no comment of the six kinds and the ledger holds them
 
 ## 10. Public references and packet sources
 
