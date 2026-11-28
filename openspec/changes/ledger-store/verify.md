@@ -80,7 +80,7 @@ openspec validate ledger-store --strict   → exit 1, 0 ERROR, 8 WARNING
 | forge-markers / Comment marker format | MODIFIED | Pass | `src/forge/markers.ts:10-20` (example kind only) |
 | init-and-doctor / Config files | MODIFIED | Pass | `src/config.ts:24-29,55,200-203` |
 | parallel-lanes / Lane worktree | MODIFIED | Pass | wording only; `src/subagents/lane-ops.ts:14` |
-| phase-gates / (gate-escalation decision) | MODIFIED | Pass | `src/tools/spec-gate.ts:334` (ledger append, `source: rule`) |
+| phase-gates / Self gate escalation | MODIFIED | Pass | `src/tools/spec-gate.ts:334` (ledger append, `source: rule`) |
 | review-findings / Finding summary comment | MODIFIED | Pass | `src/subagents/records.ts:130` |
 | review-findings / Rebuttal | MODIFIED | Pass | `src/tools/finding-rebut.ts:17-23`, `src/subagents/records.ts:139`, `src/ledger/alias.ts` |
 | review-phase / Tags re-checked at review | MODIFIED | Pass | `src/review/stages.ts` (tags.review decision append) |
