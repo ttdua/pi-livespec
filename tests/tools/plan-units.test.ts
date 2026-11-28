@@ -504,9 +504,9 @@ describe("plan_units asks classification", () => {
 			["difficulty.U1", "human"],
 			["tags.U1", "rule"],
 		]);
-		// The human answer is still a forge comment (Task 7); the rule record is a ledger entry.
-		expect(records.find((m) => m.id === "tags.U1")?.source).toBe("ledger");
-		expect((await commentDecisions(h)).map((m) => m.id)).toEqual(["difficulty.U1"]);
+		// Both the rule record and the human answer are ledger entries.
+		expect(records.map((m) => m.source)).toEqual(["ledger", "ledger"]);
+		expect(await commentDecisions(h)).toEqual([]);
 		const digest = unitDigest(parseChange(await issueBody(h)).units[0]!);
 		expect((await humanDecision(h, "difficulty.U1"))?.data).toMatchObject({ digest });
 		const { state } = h.session.card.kind === "change" ? h.session.card : { state: undefined };

@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
 import { parseDocument, stringify } from "yaml";
 import { beforeEach, describe, expect, test } from "vitest";
-import { decisionBody, decisionComment } from "../../src/decide/records.ts";
+import { decisionComment } from "../../src/decide/records.ts";
+import { ledgerRecord } from "../helpers/ledger.ts";
 import { registerBuiltinRules, resetRulesForTests, ruleFor } from "../../src/decide/registry.ts";
 import { type Decided, decide } from "../../src/decide/seam.ts";
 import { PROGRESS_OUTPUT_BYTES, type ProgressFacts, previousSignature, progressRecord } from "../../src/evidence/progress-rule.ts";
@@ -67,15 +68,14 @@ describe("progress rule", () => {
 		const first = await run({ attempt: 1, cap: 3, signature: failA });
 		const record = progressRecord(recordInput(failA, "x".repeat(PROGRESS_OUTPUT_BYTES), first));
 		expect(stringify(record.facts).length).toBeGreaterThan(2000);
-		const parsed = parseMarked(decisionBody(decisionComment(record)));
-		if (!parsed) throw new Error("unparsable");
+		const parsed = ledgerRecord(decisionComment(record), { ref: "c1" });
 		expect(parsed.id).toBe("progress.U1");
 		const data = parsed.data as Record<string, unknown>;
 		expect(data.facts).toBeUndefined();
 		expect(data.facts_hash).toMatch(/^[0-9a-f]{64}$/);
 		expect(data.signature).toEqual(failA);
 		expect(data.attempt).toBe(1);
-		const marked: MarkedComment[] = [{ source: "forge", ref: "c1", author: "bot", ...parsed }];
+		const marked: MarkedComment[] = [parsed];
 		const previous = previousSignature(marked, "U1", -1);
 		expect(previous).toEqual(failA);
 		expect((await run({ attempt: 2, cap: 3, signature: { ...failA }, previous })).outcome).toBe("stop");

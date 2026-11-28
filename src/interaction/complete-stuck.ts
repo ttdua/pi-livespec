@@ -12,5 +12,5 @@ export const applyStuck: ApplyFn = async (_run, record) => {
 	if (typed.kind !== "stuck") throw new Error(`${request.subject} is not a stuck request`);
 	const id = typed.snapshot.id;
 	const data = { request: request.id, outcome: answer.outcome, choice: answer.choice ?? "", notes: answer.notes, by: answer.by, at: answer.at, adapter: answer.adapter };
-	return writeMarked("stuck", `${id}-answer`, data);
+	return { comment: writeMarked("stuck", `${id}-answer`, data) };
 };

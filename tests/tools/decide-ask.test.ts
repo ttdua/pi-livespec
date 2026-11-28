@@ -9,6 +9,7 @@ import { setHeaderLine } from "../../src/core/sections.ts";
 import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
 import { tagsSchema } from "../../src/decide/rules/tags.ts";
 import { decide } from "../../src/decide/seam.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { CHANGE_BODY_TEMPLATE } from "../../src/tools/change-new.ts";
@@ -59,8 +60,14 @@ async function decidePick(h: Change, o: { facts?: unknown; digest?: string; prop
 	return decide("pick", o.facts ?? FACTS, { config: { mode: "rule" }, subject: "U1", digest: o.digest, ask: createDecisionAsker(w, c.state, h.ctx, { proposal: o.proposal }) });
 }
 
+/** Own forge comments merged with the ledger entries. */
 async function marked(h: Change): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
+}
+
+/** Forge comments only: a decision result is never one. */
+async function forgeKinds(h: Change): Promise<string[]> {
+	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments.map((m) => m.kind);
 }
 const ofKind = async (h: Change, kind: string) => (await marked(h)).filter((m) => m.kind === kind);
 
@@ -76,6 +83,8 @@ describe("decision asker", () => {
 		const [answer] = await ofKind(h, "answer");
 		expect((record?.data as { request: string }).request).toBe(answer?.id);
 		expect(h.session.card.kind === "change" && h.session.card.state.requests).toEqual({ pending: [], applying: [] });
+		expect(record?.source).toBe("ledger");
+		expect(await forgeKinds(h)).not.toContain("decision");
 	});
 
 	test("forge answer to a pending decide request completes the record", async () => {
@@ -92,7 +101,12 @@ describe("decision asker", () => {
 		const status = await h.call("spec_status");
 		expect(status.isError, textOf(status)).toBeFalsy();
 		const [record] = await ofKind(h, "decision");
-		expect(record).toMatchObject({ id: "pick.U1", data: { source: "human", outcome: "y", request: request?.id } });
+		expect(record).toMatchObject({ id: "pick.U1", source: "ledger", data: { source: "human", outcome: "y", request: request?.id } });
+		expect(await forgeKinds(h)).not.toContain("decision");
+		const before = (await marked(h)).length;
+		await h.call("spec_status");
+		expect((await marked(h)).length).toBe(before);
+		expect(h.session.card.kind === "change" && h.session.card.state.requests).toEqual({ pending: [], applying: [] });
 	});
 
 	test("Decide request kind", async () => {

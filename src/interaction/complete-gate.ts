@@ -103,5 +103,5 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 		if (snapshot.requirements !== undefined) input.requirements = snapshot.requirements;
 		if (snapshot.requirement_scope !== undefined) input.requirementScope = snapshot.requirement_scope;
 	}
-	return gateComment(request.id, input);
+	return { comment: gateComment(request.id, input) };
 };

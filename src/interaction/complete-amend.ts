@@ -4,12 +4,12 @@
 
 import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
-import { currentDecision, decisionBody, decisionComment, type DecisionRecord } from "../decide/records.ts";
+import { currentDecision, decisionComment, type DecisionRecord } from "../decide/records.ts";
 import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import { amendedBody } from "./amend-body.ts";
 import { snapshotOf } from "./requests.ts";
-import { type ApplyFn, editBody, postComment, readIssue, type Run } from "./complete-effects.ts";
+import { type ApplyFn, appendRecord, editBody, readIssue, type Run } from "./complete-effects.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 
 /** Same point, subject, digest, outcome and source: posting `r` again would change nothing. */
@@ -35,7 +35,7 @@ function postedByThisAnswer(run: Run, requestId: string, r: DecisionRecord): boo
  */
 async function postRecords(run: Run, requestId: string, records: DecisionRecord[]): Promise<void> {
 	for (const { request: _request, proposal: _proposal, ...r } of records) {
-		if (!isCurrent(run, r) && !postedByThisAnswer(run, requestId, r)) await postComment(run, decisionBody(decisionComment(r)));
+		if (!isCurrent(run, r) && !postedByThisAnswer(run, requestId, r)) await appendRecord(run, decisionComment(r));
 	}
 }
 
@@ -61,5 +61,5 @@ export const applyAmend: ApplyFn = async (run, record) => {
 	if (digest !== undefined) data.new = digest;
 	Object.assign(data, { outcome: answer.outcome, by: answer.by, at: answer.at, adapter: answer.adapter });
 	if (record.verdict === "superseded") data.superseded = true;
-	return writeMarked("amendment", request.id, data);
+	return { comment: writeMarked("amendment", request.id, data) };
 };

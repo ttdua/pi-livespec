@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { parse, stringify } from "yaml";
 import type { Signature } from "../evidence/signature.ts";
-import { type MarkedComment, writeMarked } from "../forge/markers.ts";
+import type { MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 
 export type DecisionRecord = {
@@ -80,11 +80,6 @@ function compactFacts(r: DecisionRecord): DecisionRecord {
 /** The `decision` ledger entry input, id `<point>.<subject>`. */
 export function decisionComment(r: DecisionRecord): AppendInput {
 	return { kind: "decision", id: `${r.point}.${r.subject}`, data: compactFacts(r) };
-}
-
-/** The input as a marked comment body; temporary until ledger-store Task 8, for the interaction writers. */
-export function decisionBody(input: AppendInput): string {
-	return writeMarked(input.kind, input.id, input.data);
 }
 
 /** Every valid `decision` record, in comment order; malformed data is skipped. */

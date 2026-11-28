@@ -8,7 +8,7 @@ import { untrusted } from "../hooks/phase-card.ts";
 import type { Answered, RequestRecord } from "./approver.ts";
 import { applyAmend } from "./complete-amend.ts";
 import { applyDecide } from "./complete-decide.ts";
-import { type ApplyFn, type CompletionCtx, postComment, type Run, startRun } from "./complete-effects.ts";
+import { type ApplyFn, type CompletionCtx, postComment, type Run, startRun, writeResult } from "./complete-effects.ts";
 import { applyGate } from "./complete-gate.ts";
 import { applyQuestion } from "./complete-question.ts";
 import { applyStuck } from "./complete-stuck.ts";
@@ -89,7 +89,7 @@ export async function recordAnswer(run: Run, req: RequestRecord, ans: Answered):
 /** Runs the effects of a recorded answer, then writes its result comment last. */
 export async function applyAnswer(run: Run, record: AnswerData): Promise<Completion> {
 	const result = await applyFor(record.request.subject)(run, record);
-	await postComment(run, result);
+	await writeResult(run, result);
 	return summary(record);
 }
 

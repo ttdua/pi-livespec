@@ -98,6 +98,9 @@ describe("spec_gate behavior-change question", () => {
 		expect(out.isError).toBe(false);
 		const [decision] = await behaviorDecisions(h);
 		expect(decision?.data).toMatchObject({ point: "behavior-change", subject: "rate-limit", source: "human", outcome: "unchanged", files: [CAP], digest: behaviorDigest([CAP]) });
+		// Answer recorded: the decision is a ledger entry, never a forge comment.
+		expect(decision?.source).toBe("ledger");
+		expect(filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments.map((m) => m.kind)).not.toContain("decision");
 		const gate = (await ofKind(h, "gate"))[0];
 		expect(gate?.data).toMatchObject({ phase: "define", outcome: "approved" });
 		// The behavior question came before the gate dialog.

@@ -9,7 +9,9 @@ import type { ChangeState, PhaseState } from "../engine/state-types.ts";
 import { phaseFromLabels } from "../engine/snapshot.ts";
 import { type MarkedComment, parseMarked } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 import type { Ledger } from "../ledger/index.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
 import type { ShipContext, ShipInput } from "../ship/context.ts";
 import type { AnswerData } from "./requests.ts";
 
@@ -31,8 +33,10 @@ export type CompletionCtx = {
 /** One completion run: the context plus the own marked comments, kept current as the run writes. */
 export type Run = { ctx: CompletionCtx; marked: MarkedComment[] };
 
-/** What an apply module returns: the result comment body, written last by the dispatcher. */
-export type ApplyFn = (run: Run, record: AnswerData) => Promise<string>;
+/** The result of an apply module, written last by the dispatcher: a forge comment body or a ledger entry. */
+export type ResultRecord = { comment: string } | { entry: AppendInput };
+
+export type ApplyFn = (run: Run, record: AnswerData) => Promise<ResultRecord>;
 
 export function startRun(ctx: CompletionCtx): Run {
 	return { ctx, marked: [...ctx.marked] };
@@ -43,6 +47,18 @@ export async function postComment(run: Run, body: string): Promise<void> {
 	const comment = await run.ctx.forge.createComment(run.ctx.issue, body);
 	const parsed = parseMarked(comment.body);
 	if (parsed) run.marked.push({ ref: comment.id, source: "forge", author: comment.author, createdAt: comment.createdAt, ...parsed });
+}
+
+/** Appends `input` to the ledger after the last forge record and remembers the merged record. */
+export async function appendRecord(run: Run, input: AppendInput): Promise<void> {
+	const after = lastForgeRef(run.marked);
+	const entry = await run.ctx.ledger.append(run.ctx.issue, { ...input, ...(after === undefined ? {} : { after }) });
+	run.marked.push({ ref: entry.ref, source: "ledger", kind: entry.kind, id: entry.id, author: "", data: entry.data, createdAt: entry.at, ...(entry.from === undefined ? {} : { from: entry.from }) });
+}
+
+/** Writes an apply module's result: the comment is posted, the entry appended. */
+export function writeResult(run: Run, result: ResultRecord): Promise<void> {
+	return "comment" in result ? postComment(run, result.comment) : appendRecord(run, result.entry);
 }
 
 /** True when an own marked comment of `kind` with `id` exists (and, when given, carries `request`). */

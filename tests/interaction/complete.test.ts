@@ -17,7 +17,7 @@ import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import { createGit } from "../../src/engine/git.ts";
-import { createLedger } from "../../src/ledger/index.ts";
+import { createLedger, type Ledger } from "../../src/ledger/index.ts";
 import { deriveLocks, validApproval } from "../../src/engine/locks.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { nextStep } from "../../src/engine/next-step.ts";
@@ -74,8 +74,8 @@ async function markedOf(f: Fixture): Promise<MarkedComment[]> {
 	return (await readOwnRecords(f.world.forge, createLedger(defaultGitExec, f.root), f.n, { login: BOT_LOGIN })).records;
 }
 
-async function ctxOf(f: Fixture, forge: Forge = f.world.forge): Promise<CompletionCtx> {
-	return { forge, ledger: createLedger(defaultGitExec, f.root), git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
+async function ctxOf(f: Fixture, forge: Forge = f.world.forge, ledger: Ledger = createLedger(defaultGitExec, f.root)): Promise<CompletionCtx> {
+	return { forge, ledger, git: f.git, pack: f.pack, issue: f.n, marked: await markedOf(f), root: f.root, agentSkills: AGENT_SKILLS, now: () => new Date(AT) };
 }
 
 const comments = { list: async (forge: Forge, issue: { number: number }) => ({ comments: await forge.listComments(issue.number), stale: false }) } as unknown as CommentsCache;
@@ -138,7 +138,7 @@ async function seedLock(f: Fixture): Promise<void> {
 }
 
 /** A forge wrapper that throws once on the first call `failsOn` matches. */
-function failingOnce(inner: Forge, failsOn: (op: string, args: unknown[]) => boolean): Forge {
+function failingOnce<T extends object>(inner: T, failsOn: (op: string, args: unknown[]) => boolean): T {
 	let failed = false;
 	return new Proxy(inner, {
 		get(target, prop, receiver) {
@@ -448,8 +448,8 @@ describe("completion engine", () => {
 		const f = await fixture("plan");
 		await seedClassification(f);
 		const record = await prepare(f, "gate", "gate:plan", gateSnapshot("plan"));
-		const crashing = failingOnce(f.world.forge, commentOfKind("decision"));
-		await expect(completeAnswer(await ctxOf(f, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
+		const crashing = failingOnce(createLedger(defaultGitExec, f.root), (op) => op === "append");
+		await expect(completeAnswer(await ctxOf(f, f.world.forge, crashing), record, answer({ overrides: [{ unit: "U3", difficulty: "high" }] }))).rejects.toThrow("injected");
 		expect(parseChange(await f.world.bodyOf(f.n)).units[1]?.difficulty).toBe("high");
 
 		expect((await finishApplying(await ctxOf(f))).errors).toEqual([]);
@@ -460,6 +460,22 @@ describe("completion engine", () => {
 		expect(ofKind(marked, "gate").filter((m) => (m.data as { request?: string }).request === record.id)).toHaveLength(1);
 		expect(readRequests(marked).applying).toEqual([]);
 		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+	});
+
+	test("Decision result in the ledger", async () => {
+		const f = await fixture("build");
+		const options = [{ id: "x", label: "X" }, { id: "y", label: "Y" }];
+		const record = await prepare(f, "stuck", "decide:pick.U1", { point: "pick", subject: "U1", facts: {}, digest: "d1" }, options);
+		await completeAnswer(await ctxOf(f), record, answer({ choice: "y" }));
+		const forgeKinds = filterMarked(await f.world.forge.listComments(f.n), BOT_LOGIN).comments.map((m) => m.kind);
+		expect(forgeKinds).not.toContain("decision");
+		const marked = await markedOf(f);
+		const [decision] = ofKind(marked, "decision", "pick.U1");
+		expect(decision).toMatchObject({ source: "ledger", data: { source: "human", outcome: "y", request: record.id } });
+		expect(readRequests(marked)).toEqual({ pending: [], applying: [] });
+		// Completed by the entry alone: finishing again appends nothing.
+		expect(await finishApplying(await ctxOf(f))).toEqual({ finished: [], errors: [] });
+		expect(ofKind(await markedOf(f), "decision", "pick.U1")).toHaveLength(1);
 	});
 
 	test("changes requested resumes after a crash before the gate result", async () => {
