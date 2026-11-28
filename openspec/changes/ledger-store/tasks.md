@@ -99,5 +99,5 @@ Blocked by: 4, 9
 
 Blocked by: 10, 11
 
-- [ ] 12.1 ADR `docs/decisions/0008-machine-ledger.md` refining 0002 and 0007; index and 0002 status line
-- [ ] 12.2 `docs/architecture.md`, `docs/glossary.md`, README.md and README.vi.md (`ledger.retain`), CHANGELOG Unreleased with breaking notes
+- [x] 12.1 ADR `docs/decisions/0008-machine-ledger.md` refining 0002 and 0007; index and 0002 status line
+- [x] 12.2 `docs/architecture.md`, `docs/glossary.md`, README.md and README.vi.md (`ledger.retain`), CHANGELOG Unreleased with breaking notes
