@@ -7,8 +7,8 @@ Defines how livespec brings gates, questions, stuck reports and decision asks to
 ## Requirements
 
 ### Requirement: Approver contract
-The system SHALL bring every human decision (gate, question, stuck report, amendment and rule `ask`) to a human through an `Approver` with `request(r)`. Answers that arrive later SHALL be collected by polling (see "Polling pending requests"), not through the adapter. A request MUST carry kind (`gate`, `question` or `stuck`), change, phase, summary, links, files, optional options and mode (`blocking` or `async`). An option MAY carry a description, and a request MAY carry a briefing, as request-briefing "Briefing shape" defines. The summary SHALL hold livespec's payload, which MAY include the subject text an agent gave as data (a question's text, a stuck report), and SHALL never hold the briefing. The kind SHALL follow the subject: `gate:` and `amend:` use `gate`, `question:` uses `question`, and `stuck:` and `decide:` use `stuck`. The answer is `answered`, `pending`, or, for the in-session adapter only, `deferred`:
-- `answered` carries outcome (`approved`, `approved_with_notes`, `changes_requested` or `dismissed`), optional choice, notes, by, at, the adapter name, for questions the optional class, and for plan and amendment gates the optional Difficulty and Tags `overrides` per unit. A question answer SHALL NOT carry a changed requirement; requirement changes are derived from the spec diff (see questions-and-stuck "Spec-diff requirement cascade").
+The system SHALL bring every human decision (gate, question, stuck report, amendment and rule `ask`) to a human through an `Approver` with `request(r)`. Answers that arrive later SHALL be collected by polling (see "Polling pending requests"), not through the adapter. A request MUST carry kind (`gate`, `question` or `stuck`), change, phase, summary, links, files, optional options and mode (`blocking` or `async`). Every option SHALL carry a description, and every request SHALL carry a briefing with `recommended` and `rationale`, as request-briefing "Briefing shape" and "Interaction contract" define; a stored request MAY lack them. The summary SHALL hold livespec's payload, which MAY include the subject text an agent gave as data (a question's text, a stuck report), and SHALL never hold the briefing. The kind SHALL follow the subject: `gate:` and `amend:` use `gate`, `question:` uses `question`, and `stuck:` and `decide:` use `stuck`. The answer is `answered`, `pending`, or, for the in-session adapter only, `deferred`:
+- `answered` carries outcome (`approved`, `approved_with_notes`, `changes_requested` or `dismissed`), optional choice, notes, by, at, the adapter name, and for plan and amendment gates the optional Difficulty and Tags `overrides` per unit. A question answer SHALL NOT carry a changed requirement; requirement changes are derived from the spec diff (see questions-and-stuck "Spec-diff requirement cascade").
 - `pending` carries the request id.
 - `deferred` means the human chose "answer later".
 
@@ -39,7 +39,7 @@ An answer MUST come only from the human through the adapter. No tool parameter, 
 - **THEN** the request and its stored snapshot name no requirement, and the forge request text does not mention `--changes`
 
 ### Requirement: In-session adapter
-The in-session adapter SHALL be available only when `ctx.hasUI` is true. When the session can draw custom UI (`ctx.mode` is `tui` and `ctx.ui.custom` is available), it SHALL ask the human through one dialog per request drawn with `ctx.ui.custom`, as "In-session dialog" defines. Otherwise, and whenever that dialog resolves `undefined`, it SHALL ask through `ctx.ui.select` and `ctx.ui.input`; the dialog itself never resolves `undefined`, a cancel in it resolves an explicit cancel. Both paths are called by livespec code, and the adapter MUST use only the values they return. For every answer the human submits, both paths SHALL produce the same outcome, choice, notes, answer and class, and the same overrides for every value the human changed. Where the dialog blocks submitting an empty required text (a request-changes note, a typed answer), the `select` fallback SHALL treat that empty text as `dismissed`. Every yes/no question MUST be an explicit choice between labelled entries, never `ctx.ui.confirm`, because `ctx.ui.confirm` returns the same value for "no" and for a cancelled dialog. A cancelled dialog MUST be treated as `dismissed`. For a question, the human MAY choose "answer later": the question SHALL become non-blocking and the request SHALL move on, as `async`, to the next adapter in the chain; when no adapter is left, the question stays open. It SHALL present the request as request-briefing "In-session presentation" defines. For a question with candidate answers, the human SHALL be offered each candidate, writing an own answer, and answering later; a picked candidate's label SHALL be the answer. Answering a question SHALL take one step: neither path SHALL ask whether the answer changes a requirement, and neither SHALL list requirements. The adapter MUST NOT use `ask_user_question` from `rpiv-ask-user-question` or any other tool or event that another extension can answer. The answer's `by` SHALL be the current forge login, and its adapter `in-session`.
+The in-session adapter SHALL be available only when `ctx.hasUI` is true. When the session can draw custom UI (`ctx.mode` is `tui` and `ctx.ui.custom` is available), it SHALL ask the human through one dialog per request drawn with `ctx.ui.custom`, as "In-session dialog" defines. Otherwise, and whenever that dialog resolves `undefined`, it SHALL ask through `ctx.ui.select` and `ctx.ui.input`; the dialog itself never resolves `undefined`, a cancel in it resolves an explicit cancel. Both paths are called by livespec code, and the adapter MUST use only the values they return. For every answer the human submits, both paths SHALL produce the same outcome, choice, notes and answer, and the same overrides for every value the human changed. Where the dialog blocks submitting an empty required text (a request-changes note, a typed answer), the `select` fallback SHALL treat that empty text as `dismissed`. Every yes/no question MUST be an explicit choice between labelled entries, never `ctx.ui.confirm`, because `ctx.ui.confirm` returns the same value for "no" and for a cancelled dialog. A cancelled dialog MUST be treated as `dismissed`. For a question, the human MAY choose "answer later", the only way a human makes a question non-blocking: the question SHALL become non-blocking and the request SHALL move on, as `async`, to the next adapter in the chain; when no adapter is left, the question stays open. It SHALL present the request as request-briefing "In-session presentation" defines. For a question with candidate answers, the human SHALL be offered each candidate, writing an own answer, and answering later; a picked candidate's label SHALL be the answer. Answering a question SHALL take one step: neither path SHALL ask whether the answer changes a requirement, and neither SHALL list requirements. The adapter MUST NOT use `ask_user_question` from `rpiv-ask-user-question` or any other tool or event that another extension can answer. The answer's `by` SHALL be the current forge login, and its adapter `in-session`.
 
 #### Scenario: Approve in the TUI
 - **WHEN** `spec_gate define` runs with `hasUI` true and the human selects approve without notes
@@ -98,8 +98,7 @@ The forge adapter SHALL read answers only from plain comments whose first line s
 - `changes <notes>`
 - `dismiss [notes]`
 - `choose <option-id> [notes]`
-- `answer Q<n> <text> [--class blocking|non-blocking]`
-- `class Q<n> blocking|non-blocking`
+- `answer Q<n> <text>`
 - `set U<n> difficulty <low|medium|high>`
 - `set U<n> tags <a,b,…>`
 
@@ -107,7 +106,7 @@ An `answer` command that contains the removed `--changes` flag MUST NOT answer t
 
 An answer SHALL count only when `getPermission(author)` returns `write` or `admin`. A comment from an author without that permission, created before the request, that cannot be parsed, or that is ambiguous among pending requests MUST be ignored and reported as a card warning naming the reason. A comment whose author is the plugin's own login SHALL be accepted like any other.
 
-A `class` command SHALL take effect once. When a poll handles it, the plugin SHALL rewrite the question's class if it differs, then record the command with an own marked comment of kind `class`, id the command comment's id and data `{ question, class }`; it SHALL record the command the same way when the class already matches. Later polls, in any session, MUST NOT apply a recorded command again. When the body write fails or conflicts, nothing is recorded and the next poll retries. When the body write succeeds but recording fails, the next poll MAY apply the command once more before recording it.
+The question class is not a human choice: `/livespec class` and the `--class` flag of `answer` MUST be reported as unparseable and ignored, and own `class` comments written before this rule MUST be ignored.
 
 #### Scenario: Approve by a writer
 - **WHEN** a user with `write` permission comments `/livespec approve looks good` after a pending `gate:define` request
@@ -127,23 +126,23 @@ A `class` command SHALL take effect once. When a poll handles it, the plugin SHA
 
 #### Scenario: Answer with a class
 - **WHEN** a writer comments `/livespec answer Q2 use per-user limits --class non-blocking` on Q2's pending request
-- **THEN** Q2 is answered `use per-user limits` with class `non-blocking`
+- **THEN** Q2 stays open, its request stays pending, and the card warns that the comment could not be parsed
 
 #### Scenario: Class command applied once
-- **WHEN** a writer's `/livespec class Q2 non-blocking` was applied by a poll, someone then edits Q2's line back to `(blocking)` on the web, and Q2's request is still pending at the next poll
-- **THEN** Q2 stays `(blocking)` after the next poll
+- **WHEN** a writer comments `/livespec class Q2 non-blocking` while Q2 is `(blocking)` and its request is pending, and a poll runs
+- **THEN** Q2 stays `(blocking)`, no `class` comment is written, and the card warns that the comment could not be parsed
 
 #### Scenario: Class command recorded across sessions
-- **WHEN** a poll in one session applied and recorded `/livespec class Q2 non-blocking`, someone edits Q2's line to `(blocking)`, and a new session polls while Q2's request is pending
+- **WHEN** an own `class` comment written before this rule records `/livespec class Q2 non-blocking`, Q2 reads `(blocking)`, and a new session polls while Q2's request is pending
 - **THEN** Q2 stays `(blocking)`
 
 #### Scenario: Class command already matching
-- **WHEN** Q2 is `(non-blocking)`, a writer comments `/livespec class Q2 non-blocking`, a poll runs, and someone then edits Q2's line to `(blocking)` while its request is pending
-- **THEN** a `class` comment records the command and Q2 stays `(blocking)` after the next poll
+- **WHEN** Q2 is `(non-blocking)` and a writer comments `/livespec class Q2 blocking`
+- **THEN** Q2 stays `(non-blocking)` and no `class` comment is written
 
 #### Scenario: Class rewrite conflict retried
-- **WHEN** a poll handles `/livespec class Q2 non-blocking` and the body write reports a version conflict
-- **THEN** no `class` comment is written, and the next poll rewrites Q2 to `(non-blocking)` and records the command
+- **WHEN** a writer comments `/livespec class Q2 non-blocking` and the next poll runs
+- **THEN** the issue body is not written for Q2
 
 ### Requirement: Polling pending requests
 The system SHALL poll pending requests at `session_start` after the forge connects, when `/livespec next` runs, and before every livespec tool runs. A poll MUST skip when the forge is read-only or blocked, and MUST read comments fresh, bypassing the comments cache, only when the snapshot has a pending or applying request. The first valid answer SHALL complete the request, and later commands for that request MUST be ignored. A failed poll MUST be recorded and MUST NOT fail the tool or hook.
@@ -205,7 +204,7 @@ Doctor SHALL report the configured chain, where it comes from (project, user or 
 - **THEN** it reports `ok` with chain `[in-session]`, source `default`, and in-session as the adapter in use
 
 ### Requirement: In-session dialog
-The dialog SHALL show one request on tabs: Decision, Adjust units (only with overridable units), Review. Decision SHALL show the entries as request-briefing "In-session presentation" defines; the first nine MAY be picked by number. Every answer SHALL pass the Review tab and SHALL be sent only when the human submits it there. The Review tab SHALL show what will be sent: outcome, option, notes, overrides, and for a question the answer.
+The dialog SHALL show one request on tabs: Decision and Review. With overridable units, the Decision tab SHALL show a key hint, and pressing `u` there, at any width and with no editor open, SHALL add the Adjust units tab between Decision and Review and switch to it; the tab is not shown before. The `select` fallback keeps its "Keep classification" step. Decision SHALL show the entries as request-briefing "In-session presentation" defines; the first nine MAY be picked by number. Every answer SHALL pass the Review tab and SHALL be sent only when the human submits it there. The Review tab SHALL show what will be sent: outcome, option, notes, overrides, and for a question the answer.
 
 #### Scenario: Approve through Review
 - **WHEN** a define gate is shown in the dialog, and the human picks approve and submits on the Review tab
@@ -218,6 +217,14 @@ The dialog SHALL show one request on tabs: Decision, Adjust units (only with ove
 #### Scenario: No unit tab without overridable units
 - **WHEN** a define gate is shown in the dialog
 - **THEN** the dialog has the Decision and Review tabs only
+
+#### Scenario: Units tab hidden by default
+- **WHEN** a plan gate with units U1 and U2 is shown in the dialog
+- **THEN** the dialog has the Decision and Review tabs only, and the Decision tab shows the `u` key hint
+
+#### Scenario: Units tab opened with one key
+- **WHEN** a plan gate with units U1 and U2 is shown in the dialog and the human presses `u` on the Decision tab
+- **THEN** the Adjust units tab is shown and selected, between Decision and Review
 
 ### Requirement: Dialog exits without Review
 Two picks SHALL end the dialog without the Review tab: "dismiss", which is `dismissed`, and, for a question, "answer later", which is `deferred`. `Esc` SHALL cancel the request, which is `dismissed`; while any text editor in the dialog is open (a note, a typed answer or tags), `Esc` SHALL only close that editor.
@@ -246,11 +253,11 @@ On gate, amendment and proposer requests the dialog SHALL let the human write no
 - **THEN** the note editor opens, and with the note still empty the answer cannot be submitted
 
 ### Requirement: Dialog unit overrides
-The Adjust units tab SHALL list each overridable unit with its current Difficulty (`low`, `medium` or `high`) and Tags, as the request carries them, and the human MAY change either. An override SHALL hold only the fields whose value differs from the current one. Overrides SHALL be sent only with `approved`, `approved_with_notes` or an option choice; with request changes the Review tab SHALL show them as discarded and the answer SHALL carry none.
+The Adjust units tab, once opened (see "In-session dialog"), SHALL list each overridable unit with its current Difficulty (`low`, `medium` or `high`) and Tags, as the request carries them, and the human MAY change either. An override SHALL hold only the fields whose value differs from the current one. Overrides SHALL be sent only with `approved`, `approved_with_notes` or an option choice; with request changes the Review tab SHALL show them as discarded and the answer SHALL carry none.
 
 #### Scenario: Unit overrides on their own tab
-- **WHEN** a plan gate with units U1 (`low`) and U2 (`medium`) is shown in the dialog, and the human sets U1 to `high`, picks approve and submits
-- **THEN** the dialog has an Adjust units tab and the answer carries the override `{ unit: U1, difficulty: high }` only
+- **WHEN** a plan gate with units U1 (`low`) and U2 (`medium`) is shown in the dialog, and the human presses `u`, sets U1 to `high`, picks approve and submits
+- **THEN** the answer carries the override `{ unit: U1, difficulty: high }` only
 
 #### Scenario: Value set back to the current one
 - **WHEN** a plan gate with U1 (`low`) is shown in the dialog, and the human cycles U1 to `high` and back to `low`, picks approve and submits
@@ -276,7 +283,7 @@ For a question, the Decision tab SHALL offer the candidates, if any, then "write
 - **THEN** the answer is not submitted
 
 #### Scenario: Question without candidates
-- **WHEN** a question with no candidates is shown in the dialog
+- **WHEN** a question stored before candidates were required, with no candidates, is shown in the dialog
 - **THEN** the Decision tab offers only "write my own answer" and "answer later"
 
 ### Requirement: Dialog choices
@@ -308,3 +315,40 @@ The dialog MUST keep the entries visible: when the facts and the briefing do not
 #### Scenario: Terminal control characters in agent text
 - **WHEN** a gate briefing summary contains `\x1b[2J` and an OSC sequence
 - **THEN** the drawn dialog contains neither escape sequence
+
+### Requirement: Interaction contract
+Every approver request (gate, amendment, question, stuck report, rule ask) SHALL:
+1. ask only an authority decision or what the system does not know; a fact git, the specs, the diff or the ledger can give MUST NOT be asked;
+2. state each choice's consequence as its description;
+3. carry a briefing with `recommended` and `rationale`, the recommended choice first;
+4. be answerable in one pick submitted once; notes and unit overrides MUST NOT be required.
+
+#### Scenario: Approve in one action
+- **WHEN** a plan gate with overridable units is shown in the dialog and the human picks the recommended `approve` and submits, without opening the units tab or writing a note
+- **THEN** the outcome is `approved` with no overrides
+
+#### Scenario: Every request kind carries a recommendation
+- **WHEN** a gate, an amendment, a question, a stuck report and a rule ask are each sent through the forge adapter
+- **THEN** each `request` comment holds a briefing with `recommended` and `rationale`, and its "How to answer" table lists the recommended choice first
+
+### Requirement: Contract scope and review
+Item 1 of "Interaction contract" SHALL be enforced by review, items 2 to 4 by the request builder and the adapters. Account selection (forge-accounts "Ask once") does not go through the approver and is not covered. The rubric of every reviewer subject, persona subjects included, SHALL name "Interaction contract", so a new or changed request that breaks it is a review finding.
+
+#### Scenario: Reviewer rubric cites the contract
+- **WHEN** a `reviewer` packet is built for any subject, `persona:<name>` included
+- **THEN** its rubric names approver-adapters "Interaction contract"
+
+### Requirement: Contract enforced at construction
+The request builder MUST throw, before anything is written or asked, when a request lacks a briefing, `recommended` or `rationale`, recommends a choice it does not offer, or offers an option without a description; built-in gate actions and `waive` count as described. A tool SHALL refuse the missing field by name first. Stored requests SHALL still be read, shown and answered.
+
+#### Scenario: Request without a recommendation refused at construction
+- **WHEN** a test builds a stuck request with options A and B and a briefing without `recommended`
+- **THEN** the builder throws naming `recommended`, and no comment is written
+
+#### Scenario: Undescribed option refused at construction
+- **WHEN** a test builds a gate request whose named-gate option `accept` has no description
+- **THEN** the builder throws naming option `accept`
+
+#### Scenario: Stored request without a briefing still answered
+- **WHEN** a pending forge request written before this requirement has no briefing and a writer comments `/livespec approve`
+- **THEN** it completes as before

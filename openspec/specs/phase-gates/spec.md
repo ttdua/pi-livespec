@@ -8,10 +8,10 @@ Defines `spec_gate` and `registerGate`: per-phase self and human gates, the revi
 
 ### Requirement: Gate tool
 `spec_gate <target>` SHALL accept the current phase id or a gate registered with `registerGate(name, { checks, options })`. It SHALL run that phase's or gate's checks, including its gate-only checks, before it evaluates the refusals below, then:
-- for a `self` gate, pass when every check passes;
+- for a `self` gate, pass when every check passes, unless "Self gate escalation" sends it to the human;
 - for a `human` gate, send a request through the approver chain, with the briefing the agent passed as the `briefing` parameter.
 
-For a target whose gate is `human`, the `briefing` parameter SHALL be required, and `spec_gate` SHALL validate its shape (request-briefing "Briefing validation and storage") before it runs any check, asks any question or evaluates the refusals below. Its `recommended` choice, when set, MUST be one the request offers; `approve` MUST NOT be recommended while a waivable check fails, which SHALL be refused after the checks run. For a `self` gate the parameter SHALL be ignored, valid or not. A proposer tool MAY pass a briefing with its request; it is optional there. Scenarios in any spec that run `spec_gate` on a human gate SHALL be read as passing a valid briefing unless they say otherwise.
+For a target whose gate is `human`, the `briefing` parameter SHALL be required, and `spec_gate` SHALL validate its shape (request-briefing "Briefing validation and storage") before it runs any check, asks any question or evaluates the refusals below. Its `recommended` choice, when set, MUST be one the request offers; `approve` MUST NOT be recommended while a waivable check fails, which SHALL be refused after the checks run. For a `self` gate the parameter SHALL be ignored, valid or not, unless the gate escalates ("Self gate escalation"). A proposer tool SHALL require a briefing with `recommended` and `rationale` and SHALL refuse without one, naming `briefing`, before it writes or sends anything. Scenarios in any spec that run `spec_gate` on a human gate SHALL be read as passing a valid briefing unless they say otherwise.
 
 A named gate SHALL always be a `human` gate and MUST NOT move the phase, except through an effect it registers. Its `options` SHALL be offered to the human after the `waive` option, and the chosen option id SHALL be recorded as the gate comment's `choice`. Choosing a named gate's option MUST NOT waive a failing check.
 
@@ -108,7 +108,7 @@ For the `define` and `review` targets whose phase lists the `behavior-change` ch
 
 #### Scenario: Proposer briefing
 - **WHEN** `initiative_propose` runs with valid drafts and a briefing recommending `approve`
-- **THEN** the `initiative` request carries that briefing, and without a briefing it is sent with none
+- **THEN** the `initiative` request carries that briefing, and without a briefing the tool refuses, names `briefing`, and sends nothing
 
 ### Requirement: Gate review payload
 Every gate request SHALL carry the content the human reviews for that phase, in the dialog for in-session and in the request comment for forge:
@@ -127,7 +127,7 @@ Later specs SHALL be able to add payload for a phase through `registerGatePayloa
 - **THEN** the dialog text includes the `Capabilities` and `Product impact` lines and the changed spec files
 
 ### Requirement: Waivable checks
-`registerCheck(name, fn, { waivable: true })` SHALL mark a check as waivable. When only waivable checks fail at a human gate, the request MUST offer a `waive` option, and the human MAY waive them in the same answer. A plain approve MUST NOT pass a gate with a failing waivable check. Waived checks SHALL be listed in the gate comment's `waivers`. A check waived by the phase's valid gate result MUST NOT hold the next step: the approved gate then moves the change as "Gate outcomes" says, so it moves to the successor except at `ship`, unless a rule earlier in "Next step precedence" holds it. A `self` gate MUST NOT pass with a failing check, waivable or not.
+`registerCheck(name, fn, { waivable: true })` SHALL mark a check as waivable. When only waivable checks fail at a human gate, the request MUST offer a `waive` option, and the human MAY waive them in the same answer. A plain approve MUST NOT pass a gate with a failing waivable check. Waived checks SHALL be listed in the gate comment's `waivers`. A check waived by the phase's valid gate result MUST NOT hold the next step: the approved gate then moves the change as "Gate outcomes" says, so it moves to the successor except at `ship`, unless a rule earlier in "Next step precedence" holds it. A `self` gate MUST NOT pass with a failing check, waivable or not; when a waivable check fails at a phase that "Self gate escalation" covers, the gate SHALL escalate to the human instead of refusing.
 
 #### Scenario: Waive at the gate
 - **WHEN** a test registers waivable check `size-limits` for `plan`, it fails, and the human chooses `waive`
@@ -208,3 +208,45 @@ On `approved` or `approved_with_notes`, a phase gate SHALL move the change to th
 #### Scenario: Dismissed
 - **WHEN** the plan gate is dismissed
 - **THEN** the change stays in `plan` and the next step says to ask the human how to proceed
+
+### Requirement: Self gate escalation
+A `self` phase gate listed in the `gate-escalation` config's `phases` SHALL consult `decide("gate-escalation", facts)` after its checks and refusals; a `human` phase gate MUST NOT. On `human` without a valid `briefing` it MUST refuse naming `briefing`, writing nothing. Otherwise it SHALL record the `decision` `gate-escalation.<phase>` unless the latest has equal facts, then pass, or send a human gate, with `waive` when a waivable check fails, whose payload names the reason.
+
+#### Scenario: Plan without triggers passes alone
+- **WHEN** the change is in `plan`, every check passes, the plan reviewer's advisory review at HEAD has no `CRITICAL` finding, no unit is tagged `security` or `migration`, and `spec_gate plan` runs without a briefing
+- **THEN** a `gate-escalation.plan` decision with outcome `self` is posted, a `gate` comment with `by: livespec` records the locked digests, the change moves to `build`, and no request is sent
+
+#### Scenario: Waived size limit asks the human
+- **WHEN** the change is in `plan`, `size-limits` fails, and `spec_gate plan` runs with a briefing recommending `waive`
+- **THEN** a `gate-escalation.plan` decision with outcome `human` names `size-limits`, and a `gate:plan` request offering `waive` is sent
+
+#### Scenario: Security unit asks the human
+- **WHEN** the change is in `plan`, every check passes, U2 is tagged `security`, and `spec_gate plan` runs with a briefing recommending `approve`
+- **THEN** a `gate:plan` request is sent and its payload names U2's `security` tag as the reason
+
+#### Scenario: Critical advisory finding asks the human
+- **WHEN** the plan reviewer's advisory review at HEAD reports a `CRITICAL` finding and `spec_gate plan` runs with a briefing
+- **THEN** a `gate:plan` request is sent
+
+#### Scenario: Escalated gate without a briefing
+- **WHEN** U2 is tagged `migration` and `spec_gate plan` runs without a briefing
+- **THEN** the tool refuses, names `briefing`, sends no request, and posts no `gate-escalation` decision
+
+#### Scenario: Project keeps a human plan gate
+- **WHEN** `.pi/livespec/flow.yaml` sets phase `plan` to `gate: human` and no trigger holds
+- **THEN** `spec_gate plan` requires a briefing and sends a `gate:plan` request, and no `gate-escalation` decision is posted
+
+#### Scenario: Unlisted self gate unchanged
+- **WHEN** the change is in `shape` and `spec_gate shape` runs
+- **THEN** no `gate-escalation` decision is posted and the self gate passes as before
+
+### Requirement: Escalation in the next step
+Before a gate that "Self gate escalation" covers is requested, the next step SHALL forecast its outcome from the same facts, writing nothing; gate-only checks that have not run are left out. On `human` it SHALL say the gate will ask the human, name the reasons, and say to pass a briefing; it SHALL name a missing advisory review's dispatch first. On `self` it SHALL say the gate can pass unless a gate-only check fails.
+
+#### Scenario: Next step names the escalation
+- **WHEN** the change is in `plan`, every check passes and U1 is tagged `security`
+- **THEN** the next step says the plan gate will ask the human because U1 is tagged `security`, and to pass a briefing, and no comment is written
+
+#### Scenario: Failing waivable check names the escalation
+- **WHEN** the change is in `plan`, `size-limits` fails and every other check passes
+- **THEN** the next step says the plan gate will ask the human because `size-limits` fails, and that the human can waive it or it can be fixed first

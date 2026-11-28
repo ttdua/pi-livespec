@@ -78,7 +78,7 @@ From own marked comments it SHALL derive pending approver requests, gate results
 9. open blocking question;
 10. frozen or stale units, while a lock exists and the phase is at or after the phase that outputs `issue#Units`;
 11. missing phase output;
-12. failing check not waived by the phase's valid gate result;
+12. failing check not waived by the phase's valid gate result, except a waivable check at a phase whose gate phase-gates "Self gate escalation" covers and whose escalation forecast is `human`, which falls through to the gate step (rule 20) so it is reported as an escalation;
 13. in a `per: unit` phase, a blocked unit: send a stuck report with `spec_stuck`;
 14. in a `per: unit` phase, a started unit: finish it with `unit_finish`;
 15. in a `per: unit` phase, a receipted unit that is not ticked: run `unit_finish` again;
@@ -191,6 +191,10 @@ In the last phase of the flow, once no earlier rule applies, the sentence MUST s
 #### Scenario: Sync before the next unit
 - **WHEN** the change is in `build` with a ready unit, a sibling entry of its initiative is checked, and `origin/main` is not an ancestor of HEAD
 - **THEN** the next sentence names `change_sync`
+
+#### Scenario: Waivable check at an escalating self gate
+- **WHEN** the change is in `plan`, whose gate is `self` and covered by `gate-escalation`, and only `size-limits` fails
+- **THEN** the next step is the plan gate step naming `size-limits`, not a step to fix it
 
 ### Requirement: Successor phase
 The successor of a phase SHALL be the first phase, in pack order, whose `requires` include it. A phase with no successor is the last phase. A `gate: none` phase SHALL report its successor as the phase to advance to only when no earlier rule of the precedence applies; for a `per: unit` phase that means every unit is done.
