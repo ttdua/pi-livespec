@@ -99,6 +99,13 @@ describe("spec_gate behavior conclusions", () => {
 		expect(h.ctx.ui.select.mock.calls.map((c) => c[0]).filter((t) => t !== "Add notes?")).toHaveLength(1);
 	});
 
+	test("the request snapshot stores the behavior items with their outcome", async () => {
+		const h = await change("define", { code: [CAP], edit: allDone, config: FORGE_CHAIN });
+		await gate(h, [unchanged("rate-limit")]);
+		const request = (await ofKind(h, "request")).at(-1)?.data as { snapshot?: { behavior?: unknown } };
+		expect(request.snapshot?.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }]);
+	});
+
 	test("Missing conclusion", async () => {
 		const h = await change("define", { code: [CAP, FORGE_FILE] });
 		const before = (await marked(h)).length;
