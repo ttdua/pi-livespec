@@ -124,6 +124,8 @@ export class Session {
 	cascadeInFlight?: Promise<boolean>;
 	/** The pull request feedback poll in flight; concurrent callers share it, so feedback becomes one round per session. */
 	feedbackPollInFlight?: Promise<FeedbackPollResult>;
+	/** The session-start work run after the first card (approval poll, cascade, feedback poll); never rejects. */
+	startInFlight?: Promise<void>;
 	/** The change ledgers of this repository; remembers which were fetched in this session. */
 	readonly ledger: Ledger;
 	private first = true;
@@ -278,6 +280,8 @@ async function applyAdvance(session: Session): Promise<boolean> {
 	const forge = session.forge;
 	if (session.accountBlock !== undefined) return false;
 	if (card.kind !== "change" || card.step.advance === undefined || card.state.readOnly || !forge || !session.pack.ok) return false;
+	// An empty read of an unknown ledger is not "no records": advancing on it could skip work (M1).
+	if (card.state.fetchState === "unknown-offline") return false;
 	try {
 		const r = await advancePhase(forge, card.state.issue.number, card.step.advance, session.pack.pack, { merged: card.state.pr?.merged === true });
 		if (r.status === "refused") session.record("advance", r.reason);
@@ -566,13 +570,26 @@ async function startSession(pi: ExtensionAPI, d: SessionDeps, ctx: ExtensionCont
 	// The start card reads the local ledger; the session-start sync pushes pending entries in the background.
 	await session.reconnect({ fetch: false });
 	startLedgerSync(session);
-	await pollApprovals(session);
-	await runSpecCascade(session);
-	await pollFeedback(session);
 	await suggestAudits(session);
 	if (session.accountNotice) safeNotify(ctx, session.accountNotice, "info");
 	showResumeCard(pi, session);
+	session.startInFlight = runStartPolls(session);
 	kickOffUpgrade(session, content, ctx);
+}
+
+/**
+ * The session-start polls, not awaited by `session_start` so the first card never waits for the ledger fetch
+ * they run first (ledger-store "Ledger fetched before use"). Each poll records its own failures; anything
+ * else is recorded here, so the promise never rejects.
+ */
+async function runStartPolls(session: Session): Promise<void> {
+	try {
+		await pollApprovals(session);
+		await runSpecCascade(session);
+		await pollFeedback(session);
+	} catch (error) {
+		session.record("start", error);
+	}
 }
 
 /** Reads and advances the audit suggestions, then shows them on the card already built. Never throws. */

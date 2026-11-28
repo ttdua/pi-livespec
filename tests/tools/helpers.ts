@@ -84,7 +84,10 @@ const sessions: Session[] = [];
 
 /** Waits for the background ledger syncs of every harness session, then removes the temp dirs. */
 export async function cleanupDirs(): Promise<void> {
-	for (const session of sessions.splice(0)) await session.ledger.background();
+	for (const session of sessions.splice(0)) {
+		await session.startInFlight;
+		await session.ledger.background();
+	}
 	for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
 

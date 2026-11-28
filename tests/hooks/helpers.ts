@@ -140,7 +140,10 @@ export type Harness = {
 	gitExec: GitExec;
 	/** The deps of every `detect` call, in order. */
 	detectCalls: Partial<DetectDeps>[];
+	/** Fires `session_start`, then waits for its background work (approval poll, cascade, feedback poll). */
 	start(): Promise<unknown>;
+	/** Fires `session_start` and returns once the hook does; the background work may still run. */
+	startNoWait(): Promise<unknown>;
 	/** Fires `session_start` with a ctx for another directory (a second worktree). */
 	startIn(cwd: string): Promise<unknown>;
 	/** Runs a registered livespec tool. */
@@ -151,6 +154,7 @@ const homes: string[] = [];
 
 /** Waits for the current session's background ledger syncs, then removes the temp homes. */
 export async function cleanupHomes(): Promise<void> {
+	await getSession()?.startInFlight;
 	await getSession()?.ledger.background();
 	for (const dir of homes.splice(0)) await rm(dir, { recursive: true, force: true });
 }
@@ -257,7 +261,14 @@ export async function harness(o: HarnessOptions = {}): Promise<Harness> {
 		if (!t) throw new Error(`tool ${tool} is not registered`);
 		return (await t.execute("call-1", params, undefined, undefined, ctx)) as ToolOut;
 	};
-	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts, gitExec, detectCalls, start: () => startIn(root), startIn, call };
+	return { root, home, head, world, pi, ctx, content, gh: fake.store, accounts, gitExec, detectCalls, start: () => settledStart(startIn(root)), startNoWait: () => startIn(root), startIn: (cwd) => settledStart(startIn(cwd)), call };
+}
+
+/** Waits for the hook, then for the background work it started. */
+async function settledStart(fired: Promise<unknown>): Promise<unknown> {
+	const out = await fired;
+	await getSession()?.startInFlight;
+	return out;
 }
 
 export type PromptEvent = { type: "before_agent_start"; systemPromptOptions: { sections: Record<string, string> } };

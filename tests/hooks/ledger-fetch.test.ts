@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
 import { getSession, setSession } from "../../src/hooks/session-store.ts";
 import { createLedger } from "../../src/ledger/index.ts";
-import { BUILD_LABELS, CHANGE_BRANCH, cardText, cleanupHomes, deferred, harness, promptEvent, resumeBody } from "./helpers.ts";
+import { BUILD_LABELS, CHANGE_BRANCH, allDone, cardText, cleanupHomes, deferred, harness, promptEvent, resumeBody } from "./helpers.ts";
 import { cleanupDirs, toolHarness } from "../tools/helpers.ts";
 
 afterEach(async () => {
@@ -88,5 +88,15 @@ describe("prepareWrite", () => {
 		expect(out.isError).toBe(true);
 		expect(out.content[0]?.text).toContain(`the ledger of #${n} could not be fetched; reconnect and retry`);
 		expect((await h.world.forge.listComments(n)).length).toBe(before);
+		expect(ledgerFetches(h.gitCalls)).toBe(1);
+	});
+
+	test("an unknown ledger while offline refuses before an automatic advance", async () => {
+		const h = await toolHarness({ branch: CHANGE_BRANCH });
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body: allDone(resumeBody(h.head)), labels: BUILD_LABELS });
+		h.git("remote", "set-url", "origin", join(tmpdir(), "ls-missing-origin", String(process.pid)));
+		const out = await h.call("skill_note", { phase: "build", skill: "debugging-and-error-recovery", reason: "r" });
+		expect(out.content[0]?.text).toContain(`the ledger of #${n} could not be fetched; reconnect and retry`);
+		expect((await h.world.forge.getIssue(n)).labels).toEqual(BUILD_LABELS);
 	});
 });

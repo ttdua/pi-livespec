@@ -7,7 +7,7 @@ import { sectionText } from "../core/sections.ts";
 import { phaseLabel } from "../forge/labels.ts";
 import type { MarkedComment } from "../forge/markers.ts";
 import type { Forge, Issue } from "../forge/types.ts";
-import type { Ledger } from "../ledger/index.ts";
+import type { FetchState, Ledger } from "../ledger/index.ts";
 import { fetchWarnings, readOwnRecords } from "../ledger/records.ts";
 import { readPullRequest } from "../ship/pull-request.ts";
 import { readRequests } from "../interaction/requests.ts";
@@ -72,7 +72,7 @@ const attemptCounters = (attempts: Record<string, number>): Record<string, numbe
 
 type DerivedFacts = Pick<ChangeState, "counters" | "skillNotes" | "incomplete" | "marked" | "requests" | "lock" | "iterations" | "evidence" | "subagents" | "parkedCore">;
 
-type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[] };
+type CommentFacts = DerivedFacts & { stale: boolean; warnings: string[]; fetchState?: FetchState };
 
 const invalidWarnings = (marked: MarkedComment[]): string[] => [...invalidRecords(marked), ...invalidLanes(marked)];
 
@@ -114,13 +114,15 @@ function deriveSubagents(marked: MarkedComment[]): ChangeState["subagents"] {
 
 /** Own records from the cached comments and the local ledger, after the first fetch when `d.fetch`. */
 async function readCommentFacts(d: SnapshotDeps, issue: Issue, change: Change): Promise<CommentFacts> {
-	const fetched = d.fetch ? fetchWarnings(await d.ledger.ensureFetched(issue.number), issue.number) : [];
+	const fetchState = d.fetch ? await d.ledger.ensureFetched(issue.number) : undefined;
+	const fetched = fetchState === undefined ? [] : fetchWarnings(fetchState, issue.number);
 	const read = await d.comments.list(d.forge, issue);
 	const own = await readOwnRecords(d.forge, d.ledger, issue.number, { comments: read.comments });
 	return {
 		...deriveCommentFacts(own.records, change, { iterations: d.caps?.iterations, unitAttempts: d.caps?.unitAttempts, reviewRounds: d.caps?.reviewRounds, discoveredDeps: d.caps?.discoveredDeps }),
 		stale: read.stale || own.stale,
 		warnings: [...fetched, ...own.warnings, ...invalidWarnings(own.records)],
+		...(fetchState === undefined ? {} : { fetchState }),
 	};
 }
 
@@ -160,6 +162,7 @@ export async function readChangeSnapshot(d: SnapshotDeps, n: number): Promise<Om
 		...(pull.pr === undefined ? {} : { pr: pull.pr }),
 		stale: issue.stale === true || comments.stale,
 		readOnly: d.isReadOnly(),
+		...(comments.fetchState === undefined ? {} : { fetchState: comments.fetchState }),
 		warnings: [...comments.warnings, ...git.warnings, ...pull.warnings],
 		marked: comments.marked,
 		requests: comments.requests,

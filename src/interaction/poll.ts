@@ -103,7 +103,20 @@ async function answerPending(t: Target): Promise<string[]> {
 	return [...warnings, ...result.warnings];
 }
 
+/**
+ * Runs the first ledger fetch of the change before any read (ledger-store "Ledger fetched before use"):
+ * an answer completed by a ledger entry only on origin must not be applied again. False, recorded, when
+ * the ledger could not be fetched and no copy is known, so the poll skips this change.
+ */
+async function ledgerReady(t: Target): Promise<boolean> {
+	const n = t.state.issue.number;
+	if ((await t.session.ledger.ensureFetched(n)) !== "unknown-offline") return true;
+	t.session.record(STEP, `the ledger of #${n} could not be fetched and no copy of it is known; approvals are polled once it is fetched`);
+	return false;
+}
+
 async function pollChange(t: Target): Promise<void> {
+	if (!(await ledgerReady(t))) return;
 	await finishAll(t);
 	t.session.commandWarnings = await answerPending(t);
 	await t.session.comments?.invalidate(t.state.issue.number);

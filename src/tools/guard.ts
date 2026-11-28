@@ -116,7 +116,7 @@ export async function prepareWrite(): Promise<({ ok: true } & WriteContext) | Re
 	const pack = requireValidPack(s.session);
 	if (!pack.ok) return pack;
 	await s.session.refresh();
-	const ledger = await requireKnownLedger(s.session);
+	const ledger = requireKnownLedger(s.session);
 	if (!ledger.ok) return ledger;
 	// A fix card reads no forge, so one tracked read brings the read-only mode up to date before a fix
 	// write (fix_ship, change_new --from-fix); its failure only sets that mode, so it is ignored.
@@ -128,12 +128,13 @@ export async function prepareWrite(): Promise<({ ok: true } & WriteContext) | Re
 
 /**
  * Refuses when the current change's ledger could not be fetched and no copy is known: an empty read
- * would look like "no records" and fork the state. The refresh already fetched, so a success is remembered.
+ * would look like "no records" and fork the state. Reuses the fetch result of the refresh just run, so an
+ * offline write tries the fetch once.
  */
-async function requireKnownLedger(session: Session): Promise<{ ok: true } | Refusal> {
+function requireKnownLedger(session: Session): { ok: true } | Refusal {
 	if (session.card.kind !== "change") return { ok: true };
 	const n = session.card.state.issue.number;
-	if ((await session.ledger.ensureFetched(n)) !== "unknown-offline") return { ok: true };
+	if (session.card.state.fetchState !== "unknown-offline") return { ok: true };
 	return { ok: false, message: `the ledger of #${n} could not be fetched; reconnect and retry` };
 }
 

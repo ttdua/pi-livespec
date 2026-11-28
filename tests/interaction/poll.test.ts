@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { defaultGitExec, type GitExec } from "../../src/engine/git-exec.ts";
+import type { AppendInput } from "../../src/ledger/entry.ts";
+import { createLedger } from "../../src/ledger/index.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { createGit } from "../../src/engine/git.ts";
 import { Session } from "../../src/hooks/session.ts";
@@ -12,7 +18,7 @@ import type { RequestRecord, RequestSnapshot, Subject } from "../../src/interact
 import { pollApprovals } from "../../src/interaction/poll.ts";
 import { answerComment, prepareRequest, requestComment } from "../../src/interaction/requests.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
-import { CHANGE_BRANCH, cardText, cleanupHomes, harness, resumeBody } from "../hooks/helpers.ts";
+import { CHANGE_BRANCH, cardText, cleanupHomes, deferred, harness, resumeBody } from "../hooks/helpers.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { cleanupDirs, textOf, toolHarness } from "../tools/helpers.ts";
 import type { MemoryWorld } from "../forge/memory-forge.ts";
@@ -53,6 +59,34 @@ async function stuckPending(forge?: (world: MemoryWorld) => Forge) {
 	await h.world.setPermission("alice", "write");
 	await h.session.refresh();
 	return { ...h, n, r };
+}
+
+const LEDGER_NETWORK = new Set(["ls-remote", "fetch", "push"]);
+/** A ledger git call that talks to origin; local reads of `refs/livespec/*` are not. */
+const isLedgerNetwork = (args: string[]): boolean => LEDGER_NETWORK.has(args[0] ?? "") && args.some((a) => a.includes("refs/livespec/"));
+
+/** A clone of `origin` that appends `input` to change `n` and pushes it, as another machine would. */
+async function appendFromOtherClone(origin: string, n: number, input: AppendInput): Promise<void> {
+	const clone = join(await mkdtemp(join(tmpdir(), "ls-other-clone-")), "b");
+	execFileSync("git", ["clone", "-q", origin, clone]);
+	const other = createLedger(defaultGitExec, clone);
+	await other.append(n, input);
+	expect(await other.sync(n)).toEqual({ status: "synced" });
+	await other.background();
+}
+
+/** A fresh clone on a build change with a pending `decide:tags.U3` request and a writer's choice; the card read no ledger yet. */
+async function decidePending() {
+	const h = await toolHarness({ branch: CHANGE_BRANCH });
+	const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+	const r = request("stuck", "decide:tags.U3", { point: "tags", subject: "U3", facts: {} }, "", h.head, 1, STUCK_OPTIONS);
+	await postRequest(h.world, n, r);
+	await h.world.setPermission("alice", "write");
+	await h.world.postComment(n, "alice", "/livespec choose A");
+	await h.session.refresh({ fetch: false });
+	if (h.session.card.kind !== "change") throw new Error("no change card");
+	expect(h.session.card.state.requests.pending.map((p) => p.id)).toEqual([r.id]);
+	return { h, n, r };
 }
 
 describe("pollApprovals", () => {
@@ -214,6 +248,48 @@ describe("pollApprovals", () => {
 		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
 		if (h.session.card.kind !== "change") throw new Error("no change card");
 		expect(h.session.card.state.requests.pending).toEqual([]);
+	});
+
+	test("a decision only on origin is fetched before the first tool's poll", async () => {
+		const { h, n, r } = await decidePending();
+		await appendFromOtherClone(h.origin, n, { kind: "decision", id: "tags.U3", data: { point: "tags", subject: "U3", source: "human", outcome: "A", reason: "r", request: r.id } });
+
+		await h.call("spec_status");
+
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
+		if (h.session.card.kind !== "change") throw new Error("no change card");
+		expect(h.session.card.state.requests.pending).toEqual([]);
+	});
+
+	test("an unknown ledger while offline skips the poll and records it", async () => {
+		const { h, n } = await decidePending();
+		h.git("remote", "set-url", "origin", join(tmpdir(), "ls-missing-origin", String(process.pid)));
+
+		await pollApprovals(h.session);
+
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
+		expect(h.session.errors.join("\n")).toContain(`poll: the ledger of #${n} could not be fetched`);
+	});
+
+	test("session start shows the card before the ledger fetch, then the poll completes", async () => {
+		const hold = deferred<void>();
+		const holding = (real: GitExec): GitExec => (args, opts) => (isLedgerNetwork(args) ? hold.promise.then(() => real(args, opts)) : real(args, opts));
+		const h = await harness({ branch: CHANGE_BRANCH, sessionGit: holding });
+		const n = await h.world.seedIssue({ title: "per-ip-cap", body: resumeBody(h.head), labels: BUILD_LABELS });
+		await h.world.postComment(n, BOT_LOGIN, writeMarked("stuck", "S1", { where: "U3", tried: [], hypothesis: "h", options: STUCK_OPTIONS, recommended: "A" }));
+		const r = request("stuck", "stuck:S1", { id: "S1" }, "", h.head, 1, STUCK_OPTIONS);
+		await postRequest(h.world, n, r);
+		await h.world.setPermission("alice", "write");
+		await h.world.postComment(n, "alice", "/livespec choose A");
+
+		await h.startNoWait();
+
+		expect(h.pi.entries.some((e) => e.customType === "livespec-resume")).toBe(true);
+		expect(await cardText(h.pi, h.ctx)).toContain("per-ip-cap");
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer")).toHaveLength(0);
+		hold.resolve();
+		await getSession()?.startInFlight;
+		expect((await ownMarked(h.world, n)).filter((m) => m.kind === "answer").map((m) => m.id)).toEqual([r.id]);
 	});
 
 	test("ignored commands become card warnings", async () => {
