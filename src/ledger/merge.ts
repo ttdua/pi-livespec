@@ -49,5 +49,5 @@ function slotOf(comments: MarkedComment[], entry: LedgerEntry): number {
 
 /** The own record a ledger entry reads as once placed in the merged list (`source: "ledger"`, no forge author). */
 export function ledgerAsRecord(e: LedgerEntry): MarkedComment {
-	return { ref: e.ref, source: "ledger", kind: e.kind, id: e.id, author: "", data: e.data, createdAt: e.at, ...(e.from === undefined ? {} : { from: e.from }) };
+	return { ref: e.ref, source: "ledger", kind: e.kind, id: e.id, author: "", data: e.data, createdAt: e.at, ...(e.from === undefined ? {} : { from: e.from }), ...(e.after === undefined ? {} : { after: e.after }) };
 }

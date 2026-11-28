@@ -299,10 +299,17 @@ export function completedUnitRounds(marked: MarkedComment[], unit: string): numb
 
 const FINDING_REF = /finding:([^\s:]+:\d+)/g;
 
-/** Finding keys named as `finding:<commentId>:<index>` in the text of an answered question. */
-export function answeredFindingKeys(questions: Question[]): Set<string> {
+/** Finding keys named as `finding:<ref>:<index>` in the text of an answered question; with `marked`, a `from` alias maps to the canonical `<ref>:<index>`. */
+export function answeredFindingKeys(questions: Question[], marked: MarkedComment[] = []): Set<string> {
 	const keys = new Set<string>();
-	for (const q of questions) if (q.checked) for (const m of q.text.matchAll(FINDING_REF)) keys.add(m[1] as string);
+	for (const q of questions) {
+		if (!q.checked) continue;
+		for (const m of q.text.matchAll(FINDING_REF)) {
+			const key = m[1] as string;
+			const found = aggregateFinding(marked, key);
+			keys.add(found === undefined ? key : findingKey(found.commentId, found.index));
+		}
+	}
 	return keys;
 }
 

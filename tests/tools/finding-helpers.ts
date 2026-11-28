@@ -19,9 +19,9 @@ export async function seedSummary(h: UnitHarness, over: Partial<FindingSummaryDa
 }
 
 /** Appends a finding-summary entry that is a migrated copy of the forge comment `from`; returns its ref. */
-export async function seedMigratedSummary(h: UnitHarness, from: string, findings: Finding[]): Promise<string> {
+export async function seedMigratedSummary(h: UnitHarness, from: string, findings: Finding[], over: Record<string, unknown> = {}): Promise<string> {
 	const read = await readLedger(h.session.exec, h.root, h.n);
-	const data = { role: "reviewer", subject: "unit", unit: "U1", round: ++round, status: "DONE", advisory: false, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings };
+	const data = { role: "reviewer", subject: "unit", unit: "U1", round: ++round, status: "DONE", advisory: false, head: h.git("rev-parse", "HEAD"), packet: "p", sources_used: [], required: [], completed: true, agentSource: "s", requested: { thinking: "low" }, effective: {}, findings, ...over };
 	const entry = { ref: `finding-summary.U1.unit.migrated~0000000a`, kind: "finding-summary" as const, id: "finding-summary.U1.unit.migrated", seq: read.entries.length + 1, at: new Date().toISOString(), from, data };
 	const commit = await commitEntries(h.session.exec, h.root, h.n, read.tip, [entry]);
 	h.git("update-ref", `refs/livespec/${h.n}`, commit);

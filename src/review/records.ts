@@ -98,7 +98,7 @@ export function aggregateOf(marked: MarkedComment[], round: number): { commentId
 /** A run that decides the verdict: completed, or `BLOCKED` (fail closed). Any other incomplete run is dispatched again. */
 const decides = (d: FindingSummaryData): boolean => d.completed || d.status === "BLOCKED";
 
-/** The latest completed or `BLOCKED` verifier record of the aggregate finding `key` (`<aggregateCommentId>:<index>`). */
+/** The latest completed or `BLOCKED` verifier record of the aggregate finding `key` (`<aggregateRef>:<index>`). */
 export function verifierRecord(marked: MarkedComment[], key: string): FindingSummaryData | undefined {
 	return current(marked)
 		.map((m) => (m.kind === "finding-summary" ? (m.data as FindingSummaryData) : undefined))

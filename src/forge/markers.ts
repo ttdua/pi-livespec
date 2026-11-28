@@ -20,6 +20,8 @@ export interface MarkedComment {
 	createdAt?: string;
 	/** Ref of the forge record a ledger entry was copied from; declared only, not yet used. */
 	from?: string;
+	/** Ref of the forge record a ledger entry was appended after; kept so the entry version can be recomputed. */
+	after?: string;
 }
 
 export interface MarkedReadResult {

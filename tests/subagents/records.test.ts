@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { LedgerKind } from "../../src/core/record-kinds.ts";
 import type { AppendInput } from "../../src/ledger/entry.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
+import { agg, aggregate } from "../review/review-fixtures.ts";
+import { answeredFindingKeys } from "../../src/subagents/records.ts";
 import { isDispatchData } from "../../src/subagents/validate.ts";
 import { type MarkedComment, parseMarked, writeMarked } from "../../src/forge/markers.ts";
 import {
@@ -394,5 +396,13 @@ describe("retry records", () => {
 		const marked = [mark(dispatchComment(retry))];
 		expect(isFallbackChild(marked, "agent-2")).toBe(true);
 		expect(isFallbackChild(marked, "agent-1")).toBe(false);
+	});
+});
+
+describe("answeredFindingKeys aliases", () => {
+	it("a question naming the from id of a migrated aggregate matches the canonical key", () => {
+		const entry = { ...aggregate([agg()]), from: "501" };
+		const questions = [{ id: "Q1", checked: true, text: "Review finding:501:0 needs a decision" }] as never;
+		expect([...answeredFindingKeys(questions, [entry])]).toEqual([`${entry.ref}:0`]);
 	});
 });

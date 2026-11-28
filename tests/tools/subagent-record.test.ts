@@ -5,6 +5,7 @@ import { done, unpublish } from "../subagents/fake-executor.ts";
 import { readPacket } from "../../src/subagents/packet-store.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
 import { cardState } from "./unit-helpers.ts";
+import { seedMigratedSummary } from "./finding-helpers.ts";
 import { footerIds, subagentHarness, U1 } from "./subagent-helpers.ts";
 
 afterEach(async () => {
@@ -192,6 +193,17 @@ describe("verifier", () => {
 		expect(key).toMatch(/^finding-summary\.change\.review\.1~[0-9a-f]{8}:0$/);
 		const out = await h.call("subagent_record", { role: "verifier", finding: key, result: verdict({ sources_used: footerIds(textOf(await h.call("subagent_packet", { role: "verifier", finding: key }))) }) });
 		expect(out.isError, textOf(out)).toBeFalsy();
+	});
+
+	test("a from id lands on the canonical ref in verifies", async () => {
+		const h = await subagentHarness({ units: [U1] });
+		const ref = await seedMigratedSummary(h, "501", [{ severity: "WARNING", kind: "defect", location: "src/free.ts:4", evidence: "e", fix: "f", scope: "in-change", from: ["c0"], needsDecision: false, route: "in-change", verify: "required" } as never], { ...AGGREGATE, subject: "change", unit: undefined });
+		const packet = await h.call("subagent_packet", { role: "verifier", finding: "501:0" });
+		expect(packet.isError, textOf(packet)).toBeFalsy();
+		const out = await h.call("subagent_record", { role: "verifier", finding: "501:0", result: verdict({ sources_used: footerIds(textOf(packet)) }) });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const record = (await h.ofKind("finding-summary")).find((m) => m.id.startsWith("finding-summary.verify."));
+		expect(record?.data).toMatchObject({ verifies: `${ref}:0` });
 	});
 
 	test("a forge comment id is refused without a matching from", async () => {

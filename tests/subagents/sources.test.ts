@@ -1,4 +1,6 @@
 // Tests of the context manifest per role and subject.
+import { entryVersion, type LedgerEntry } from "../../src/ledger/entry.ts";
+import { ledgerAsRecord } from "../../src/ledger/merge.ts";
 import { ledgerRecord } from "../helpers/ledger.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -404,6 +406,17 @@ describe("grouped records", () => {
 });
 
 describe("ledger source ids", () => {
+	test("the version of an entry appended with `after` is its entryVersion", async () => {
+		const world = await makeWorld();
+		const entry: LedgerEntry = {
+			ref: "dispatch.U1.implementer.0~3fa2c1d0", kind: "dispatch", id: "dispatch.U1.implementer.0", seq: 4, at: "2026-01-01T00:00:00.000Z", after: "c3",
+			data: { role: "implementer", unit: "U1", attempt: 0, packet: "p", agentSource: "s", requested: { thinking: "low" }, effective: {}, status: "DONE", commits: [], notes: "n", discoveries: [], sources_used: [] },
+		};
+		world.entries.push(ledgerAsRecord(entry));
+		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === `ledger:7/${entry.ref}`);
+		expect(found?.source.version).toBe(entryVersion(entry));
+	});
+
 	test("Ledger source: id carries the issue and ref, and the version is stable", async () => {
 		const world = await makeWorld();
 		const posted = world.record(dispatchComment({

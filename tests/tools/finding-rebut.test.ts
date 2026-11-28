@@ -53,7 +53,7 @@ describe("review-findings", () => {
 		expect(await unresolved(h)).toEqual([]);
 	});
 
-	test("rebut missed-context refused", async () => {
+	test("Missed context", async () => {
 		const { h, rebut } = await harness();
 		const id = await seedSummary(h, { findings: [warning({ kind: "missed-context" })] });
 		const before = (await h.marked()).length;
@@ -66,7 +66,7 @@ describe("review-findings", () => {
 	test.each([
 		["reason", { reason: " ", evidence: "e" }],
 		["evidence", { reason: "r", evidence: "" }],
-	])("rebut without %s refused", async (_name, text) => {
+	])("Rebut without evidence: %s refused", async (_name, text) => {
 		const { h, rebut } = await harness();
 		const id = await seedSummary(h, { findings: [warning()] });
 		const before = (await h.marked()).length;
@@ -76,7 +76,7 @@ describe("review-findings", () => {
 	});
 
 	test.each([
-		["an unknown comment", () => "nope", 0],
+		["an unknown ref", () => "nope", 0],
 		["an index out of range", (id: string) => id, 5],
 	])("%s is refused", async (_name, pick, index) => {
 		const { h, rebut } = await harness();
@@ -94,24 +94,6 @@ describe("review-findings", () => {
 		const out = await rebut({ ref: id, index: 0, reason: "r", evidence: "e" });
 		expect(out.isError).toBe(true);
 		expect(textOf(out)).toContain("advisory");
-		expect(await h.marked()).toHaveLength(before);
-	});
-
-	test("Rebut without evidence", async () => {
-		const { h, rebut } = await harness();
-		const id = await seedSummary(h, { findings: [warning()] });
-		const before = (await h.marked()).length;
-		const out = await rebut({ ref: id, index: 0, reason: "r", evidence: " " });
-		expect(out.isError).toBe(true);
-		expect(await h.marked()).toHaveLength(before);
-	});
-
-	test("Missed context", async () => {
-		const { h, rebut } = await harness();
-		const id = await seedSummary(h, { findings: [warning({ kind: "missed-context" })] });
-		const before = (await h.marked()).length;
-		const out = await rebut({ ref: id, index: 0, reason: "r", evidence: "e" });
-		expect(out.isError).toBe(true);
 		expect(await h.marked()).toHaveLength(before);
 	});
 

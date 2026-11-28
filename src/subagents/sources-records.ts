@@ -30,8 +30,8 @@ const recordId = (cx: Cx, m: MarkedComment): string => (m.source === "ledger" ? 
 /** The version of a record source: the entry version of a ledger entry, else the comment's updated-at. */
 async function recordVersion(cx: Cx, m: MarkedComment): Promise<string> {
 	if (m.source !== "ledger" || !isLedgerKind(m.kind)) return commentVersion(cx, m);
-	// A record keeps no `seq` and `after`; the version of a given entry is the same on every read.
-	return entryVersion({ ref: m.ref, kind: m.kind, id: m.id, seq: 0, at: m.createdAt ?? "", ...(m.from === undefined ? {} : { from: m.from }), data: m.data });
+	// `seq` is left out of the version, so the version of a given entry is the same on every read.
+	return entryVersion({ ref: m.ref, kind: m.kind, id: m.id, seq: 0, at: m.createdAt ?? "", ...(m.after === undefined ? {} : { after: m.after }), ...(m.from === undefined ? {} : { from: m.from }), data: m.data });
 }
 
 /** Notes humans gave at the plan gate. */

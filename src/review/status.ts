@@ -22,9 +22,9 @@ function verdictOf(marked: MarkedComment[], key: string): "confirmed" | "refuted
 	return record.completed && record.verdict === "refuted" ? "refuted" : "confirmed";
 }
 
-/** The derived state of aggregate finding `index` of `aggregateCommentId`; `open` never blocks. */
-export function findingState(marked: MarkedComment[], aggregateCommentId: string, index: number, questions: Question[]): FindingState {
-	const key = findingKey(aggregateCommentId, index);
+/** The derived state of aggregate finding `index` of `aggregateRef`; `open` never blocks. */
+export function findingState(marked: MarkedComment[], aggregateRef: string, index: number, questions: Question[]): FindingState {
+	const key = findingKey(aggregateRef, index);
 	const finding = aggregateFinding(marked, key)?.finding;
 	if (finding === undefined) return "open";
 	// Only findings sent to the verifier can be disputed: a refutation of a parent or missed-context finding is ignored.
@@ -32,13 +32,13 @@ export function findingState(marked: MarkedComment[], aggregateCommentId: string
 	if (verdict === "refuted") return "disputed";
 	if (!isBlocking(finding) || NEVER_BLOCKS.has(finding.route)) return "open";
 	if (finding.kind !== "missed-context" && rebuttedKeys(marked).has(key)) return "rebutted";
-	if (finding.route === "question" && answeredFindingKeys(questions).has(key)) return "answered";
+	if (finding.route === "question" && answeredFindingKeys(questions, marked).has(key)) return "answered";
 	return verdict === undefined ? "unverified" : "blocking";
 }
 
 /** The aggregate's findings that block the review gate: `blocking` and `unverified` ones. */
-export function blockingFindings(marked: MarkedComment[], aggregateCommentId: string, questions: Question[]): { index: number; finding: AggregateFinding }[] {
-	const found = aggregates(marked).find((a) => a.commentId === aggregateCommentId || a.from === aggregateCommentId);
+export function blockingFindings(marked: MarkedComment[], aggregateRef: string, questions: Question[]): { index: number; finding: AggregateFinding }[] {
+	const found = aggregates(marked).find((a) => a.commentId === aggregateRef || a.from === aggregateRef);
 	if (found === undefined) return [];
 	return (found.data.findings as AggregateFinding[]).flatMap((finding, index) => {
 		const state = findingState(marked, found.commentId, index, questions);
