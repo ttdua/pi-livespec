@@ -32,12 +32,6 @@ export type Placed = { source: PacketSource; place: Placement };
 
 export type PacketSourceRef = { id: string; version: string; required: boolean; spill?: string };
 
-/** The behavior items of a `change` review and their effective conclusions (`null`: none); shaped like the docs types, which `subagents/` must not import. */
-export type PacketBehavior = {
-	items: { capability: string; files: string[] }[];
-	effective: Record<string, { outcome: "unchanged" | "changed"; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; ref: string } | null>;
-};
-
 export type Packet = {
 	text: string;
 	hash: string;
@@ -46,8 +40,6 @@ export type Packet = {
 	cwd: string;
 	/** Ids of the human comments that existed at build time, so freshness can tell new ones. */
 	seen: string[];
-	/** Set for `reviewer`/`change` packets when the change has behavior items; absent in older stored packets. */
-	behavior?: PacketBehavior;
 };
 
 export type PacketResult = { ok: true; packet: Packet } | { ok: false; message: string };

@@ -12,7 +12,6 @@
 import type {
 	ApprovalRequest,
 	Approver,
-	BehaviorOverride,
 	ApproverUI,
 	Deferred,
 	Difficulty,
@@ -112,36 +111,6 @@ async function askOverrideField(
 	return { tags: value.split(",").map((tag) => tag.trim()).filter((tag) => tag !== "") };
 }
 
-const KEEP_CONCLUSIONS = "Keep conclusions";
-
-/** The optional "Mark behavior changed" step: one capability per pick, until "Keep conclusions" ends it. */
-async function collectBehavior(ui: ApproverUI, r: ApprovalRequest): Promise<BehaviorOverride[] | Cancelled> {
-	const items = (r.overridableBehavior?.items ?? []).filter((i) => i.outcome !== "changed").map((i) => i.capability);
-	const marked: string[] = [];
-	for (;;) {
-		const left = items.filter((c) => !marked.includes(c));
-		if (left.length === 0) break;
-		const menu: MenuEntry<string | undefined>[] = [[KEEP_CONCLUSIONS, undefined], ...plainEntries(left)];
-		const picked = await choose(ui, "Mark behavior changed", menu);
-		if (picked === CANCELLED) return CANCELLED;
-		if (picked === undefined) break;
-		marked.push(picked);
-	}
-	return marked.map((capability) => ({ capability, outcome: "changed" as const }));
-}
-
-/** The request-changes verdict, with the behavior step when the request has overridable behavior. */
-async function changesVerdict(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | Cancelled> {
-	const notes = await ask(ui, "Requested changes");
-	if (notes === CANCELLED || notes === "") return CANCELLED;
-	const verdict: Verdict = { outcome: "changes_requested", notes };
-	if (r.overridableBehavior === undefined) return verdict;
-	const overrides = await collectBehavior(ui, r);
-	if (overrides === CANCELLED) return CANCELLED;
-	if (overrides.length > 0) verdict.behaviorOverrides = overrides;
-	return verdict;
-}
-
 type GateAction = { action: "approve" } | { action: "changes" } | { action: "dismiss" } | { action: "option"; id: string };
 
 /** The recommended choice's label, so the title can name what the briefing recommends. */
@@ -165,7 +134,10 @@ async function gateFlow(ui: ApproverUI, r: ApprovalRequest): Promise<Verdict | C
 	);
 	const selected = await choose<GateAction>(ui, titleWithBriefing(r, recommendedLabel(r, choices)), entries);
 	if (selected === CANCELLED || selected.action === "dismiss") return CANCELLED;
-	if (selected.action === "changes") return changesVerdict(ui, r);
+	if (selected.action === "changes") {
+		const notes = await ask(ui, "Requested changes");
+		return notes === CANCELLED || notes === "" ? CANCELLED : { outcome: "changes_requested", notes };
+	}
 	const notes = await optionalNotes(ui);
 	if (notes === CANCELLED) return CANCELLED;
 	const outcome: Outcome = notes === "" ? "approved" : "approved_with_notes";

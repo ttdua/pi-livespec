@@ -1,7 +1,7 @@
 // Turns a submitted dialog state into the flow result, with the rules of the select flows
 // (`in-session.ts`): empty notes approve, notes approve with notes, `changes` drops overrides.
 
-import type { BehaviorOverride, Deferred, Override } from "../approver.ts";
+import type { Deferred, Outcome, Override } from "../approver.ts";
 import { CANCELLED, type Cancelled, type Verdict } from "../flow-result.ts";
 import type { DialogEntry, DialogModel } from "./model.ts";
 import type { DialogState } from "./state.ts";
@@ -20,11 +20,6 @@ export function overridesOf(model: DialogModel, state: DialogState): Override[] 
 		if (override.difficulty !== undefined || override.tags !== undefined) out.push(override);
 	}
 	return out;
-}
-
-/** The capabilities marked `changed`, in `model.behavior` order. */
-export function markedBehavior(model: DialogModel, state: DialogState): BehaviorOverride[] {
-	return model.behavior.filter((i) => state.marked.has(i.capability) && i.outcome !== "changed").map((i) => ({ capability: i.capability, outcome: "changed" as const }));
 }
 
 function questionVerdict(entry: DialogEntry, state: DialogState): Verdict {
@@ -56,13 +51,6 @@ function gateVerdict(model: DialogModel, entry: DialogEntry, state: DialogState)
 	return verdict;
 }
 
-function changesVerdict(model: DialogModel, state: DialogState): Verdict {
-	const verdict: Verdict = { outcome: "changes_requested", notes: state.notes.trim() };
-	const behaviorOverrides = markedBehavior(model, state);
-	if (behaviorOverrides.length > 0) verdict.behaviorOverrides = behaviorOverrides;
-	return verdict;
-}
-
 /** The result of the picked entry; `CANCELLED` when nothing is picked or the entry dismisses. */
 export function toResult(model: DialogModel, state: DialogState): Verdict | Deferred | Cancelled {
 	const entry = state.picked === undefined ? undefined : model.entries[state.picked];
@@ -71,7 +59,7 @@ export function toResult(model: DialogModel, state: DialogState): Verdict | Defe
 	if (action.kind === "dismiss") return CANCELLED;
 	if (action.kind === "later") return { status: "deferred", questionClass: "non-blocking" };
 	if (action.kind === "candidate" || action.kind === "own") return questionVerdict(entry, state);
-	if (action.kind === "changes") return changesVerdict(model, state);
+	if (action.kind === "changes") return { outcome: "changes_requested", notes: state.notes.trim() };
 	if (model.kind === "choice" && action.kind === "option") return { outcome: "approved", notes: "", choice: action.id };
 	return gateVerdict(model, entry, state);
 }

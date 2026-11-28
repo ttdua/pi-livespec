@@ -12,7 +12,6 @@ import { buildPacket } from "../../src/subagents/packet.ts";
 import { commitAll, writeIn } from "../helpers/repo.ts";
 import { behaviorConclusionComment } from "../../src/docs/behavior-change.ts";
 import { registerDocReaders } from "../../src/docs/readers.ts";
-import type { Packet } from "../../src/subagents/source-types.ts";
 import { FIXTURE_BODY } from "../helpers/change-state.ts";
 import { writeMarked } from "../../src/forge/markers.ts";
 import { dispatchComment } from "../../src/subagents/records.ts";
@@ -479,12 +478,13 @@ describe("behavior conclusions", () => {
 
 	test("Conclusions in the packet", async () => {
 		const world = await behaviorWorld();
-		world.record(behaviorConclusionComment({ capability: "request-context", files: ["src/context.ts"] }, { source: "agent", outcome: "unchanged", reason: "only a rename" }));
+		world.record(behaviorConclusionComment({ capability: "request-context", files: ["src/context.ts"] }, { outcome: "unchanged", reason: "only a rename" }));
 		const found = (await sourcesOf(world, "reviewer", undefined, "change")).find((p) => p.source.id === ID);
 		expect(found?.source.required).toBe(true);
 		for (const word of ["request-context", "src/context.ts", "unchanged", "agent", "only a rename"]) expect(found?.source.text).toContain(word);
-		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: Packet };
-		expect(built.packet.behavior?.effective["request-context"]).toMatchObject({ outcome: "unchanged", source: "agent" });
+		// Rubric names the dispute: the change packet's rubric tells the reviewer how to dispute.
+		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: { text: string } };
+		expect(built.packet.text).toContain("A behavior conclusion you dispute is a `WARNING` finding located at one of the item's files.");
 	});
 
 	test("Behavior conclusions required for change review", async () => {
@@ -495,15 +495,11 @@ describe("behavior conclusions", () => {
 		expect(found?.source.text).toContain("forge-read: none");
 		expect(found?.source.text).toContain("request-context: none");
 		expect(ids(await sourcesOf(world, "reviewer", "U3", "unit"))).not.toContain(ID);
-		const unit = (await buildPacket(world.refreshed(), "reviewer", "U3", "unit")) as { ok: true; packet: Packet };
-		expect(unit.packet.behavior).toBeUndefined();
 	});
 
-	test("no source and no packet data without a behavior item", async () => {
+	test("no source without a behavior item", async () => {
 		registerDocReaders();
 		const world = await makeWorld();
 		expect(ids(await sourcesOf(world, "reviewer", undefined, "change"))).not.toContain(ID);
-		const built = (await buildPacket(world.refreshed(), "reviewer", undefined, "change")) as { ok: true; packet: Packet };
-		expect(built.packet).not.toHaveProperty("behavior");
 	});
 });

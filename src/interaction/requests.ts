@@ -149,12 +149,8 @@ function asAnswerData(m: MarkedComment): AnswerData | undefined {
 	return d as AnswerData;
 }
 
-/**
- * A human result written to the ledger completes its request only beside the own forge `answer` comment. An override
- * `decision` (with `overridden_by`) is a completion effect that names its request for backing, never the result.
- */
+/** A human result written to the ledger completes its request only beside the own forge `answer` comment. */
 function resultCounts(marked: MarkedComment[], m: MarkedComment, data: Record<string, unknown>): boolean {
-	if (m.kind === "decision" && data.overridden_by !== undefined) return false;
 	return m.source !== "ledger" || data.source !== "human" || hasForgeAnswer(marked, data.request as string);
 }
 

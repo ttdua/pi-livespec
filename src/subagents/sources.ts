@@ -3,7 +3,7 @@
 import { rubricFor } from "./rubrics.ts";
 import type { ReviewSubject, Role } from "./roles.ts";
 import { makeReads, placed, sha256, type Cx, type Provider, type Reads } from "./source-kit.ts";
-import type { Packet, PacketContext, Placed, SourceProvider, Target } from "./source-types.ts";
+import type { PacketContext, Placed, SourceProvider, Target } from "./source-types.ts";
 import { answeredQuestions, changeIssue, coveredRequirements, initiativeIssue } from "./sources-change.ts";
 import { closedWork, closingSummaries, pullRequestAndChecks, referencedIssues, reviewComments } from "./sources-forge.ts";
 import { codeDiff, constraints, declaredSpecs, findingAndCode, owningUnit, productExcerpt, specsDiff } from "./sources-git.ts";
@@ -21,23 +21,8 @@ export function registerPacketSourceOnce(role: Role, provider: SourceProvider): 
 	if (!(extra.get(role) ?? []).includes(provider)) registerPacketSource(role, provider);
 }
 
-/** Computes `Packet.behavior` for a `reviewer`/`change` packet; `docs/` registers it so `subagents/` never imports `docs/`. */
-export type PacketBehaviorFn = (ctx: PacketContext) => Promise<Packet["behavior"]>;
-
-let behaviorHook: PacketBehaviorFn | undefined;
-
-export function registerPacketBehavior(fn: PacketBehaviorFn): void {
-	behaviorHook = fn;
-}
-
-/** The packet's behavior data, for the target `reviewer`/`change` only. */
-export async function packetBehavior(ctx: PacketContext, target: Target): Promise<Packet["behavior"]> {
-	return target.role === "reviewer" && target.subject === "change" ? behaviorHook?.(ctx) : undefined;
-}
-
 export function resetPacketSourcesForTests(): void {
 	extra.clear();
-	behaviorHook = undefined;
 }
 
 const IMPLEMENTER: Provider[] = [

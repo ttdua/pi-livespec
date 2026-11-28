@@ -566,34 +566,3 @@ describe("in-session dialog path", () => {
 		});
 	});
 });
-
-describe("behavior override fallback", () => {
-	const define = () => gateRequest({ overridableBehavior: { items: [{ capability: "rate-limit", outcome: "unchanged" }, { capability: "forge-read", outcome: "changed" }] } });
-
-	test("Select fallback offers the override", async () => {
-		const ui = scriptedUI(["request changes", "cap semantics changed", "rate-limit"]);
-		const result = await createInSessionApprover(ui, login).request(define());
-		expect(ui.calls[2]).toMatchObject({ method: "select", title: "Mark behavior changed", options: ["Keep conclusions", "rate-limit"] });
-		expect(result).toMatchObject({ outcome: "changes_requested", notes: "cap semantics changed", behaviorOverrides: [{ capability: "rate-limit", outcome: "changed" }] });
-	});
-
-	test("skipping the override step sends no override", async () => {
-		const ui = scriptedUI(["request changes", "redo", "Keep conclusions"]);
-		const result = await createInSessionApprover(ui, login).request(define());
-		expect(result).toMatchObject({ outcome: "changes_requested", notes: "redo" });
-		expect(result).not.toHaveProperty("behaviorOverrides");
-	});
-
-	test("approving needs no override step", async () => {
-		const ui = scriptedUI(["approve", "No notes"]);
-		const result = await createInSessionApprover(ui, login).request(define());
-		expect(result).toMatchObject({ outcome: "approved" });
-		expect(ui.calls.some((c) => c.method === "select" && c.title === "Mark behavior changed")).toBe(false);
-	});
-
-	test("a cancelled override step is dismissed", async () => {
-		const ui = scriptedUI(["request changes", "redo", undefined]);
-		const result = await createInSessionApprover(ui, login).request(define());
-		expect(result).toMatchObject({ outcome: "dismissed" });
-	});
-});

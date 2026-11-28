@@ -21,9 +21,6 @@ export type Finding = {
 	scope: "unit" | "in-change" | "out-of-scope" | "needs-decision";
 };
 
-/** A reviewer's conclusion on one behavior item; the shape of durable-doc-checks "Behavior conclusion parameter". */
-export type ReviewerBehavior = { capability: string; outcome: "unchanged" | "changed"; rationale: string };
-
 export type ScoutVerdict = { key: string; verdict: "confirmed" | "refuted"; reason: string };
 
 export type SubagentResult = {
@@ -37,7 +34,6 @@ export type SubagentResult = {
 	findings?: Finding[];
 	verdict?: "confirmed" | "refuted";
 	verdicts?: ScoutVerdict[];
-	behavior?: ReviewerBehavior[];
 };
 
 /** The subset of JSON Schema the executor accepts. */
@@ -83,13 +79,6 @@ const VERDICT_SCHEMA: JsonSchema = {
 	additionalProperties: false,
 };
 
-const BEHAVIOR_SCHEMA: JsonSchema = {
-	type: "object",
-	properties: { capability: STRING, outcome: { type: "string", enum: ["unchanged", "changed"] }, rationale: STRING },
-	required: ["capability", "outcome", "rationale"],
-	additionalProperties: false,
-};
-
 const BASE_PROPERTIES: Record<string, JsonSchema> = {
 	status: { type: "string", enum: ["DONE", "DONE_WITH_CONCERNS", "BLOCKED", "NEEDS_CONTEXT"] },
 	notes: STRING,
@@ -110,7 +99,7 @@ export function resultSchema(role: Role): JsonSchema {
 		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA }, verdict }, [...BASE_REQUIRED, "findings", "verdict"]);
 	}
 	if (role === "reviewer") {
-		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA }, behavior: { type: "array", items: BEHAVIOR_SCHEMA } }, [...BASE_REQUIRED, "findings"]);
+		return object({ ...BASE_PROPERTIES, findings: { type: "array", items: FINDING_SCHEMA } }, [...BASE_REQUIRED, "findings"]);
 	}
 	return object({ ...BASE_PROPERTIES, verdicts: { type: "array", items: VERDICT_SCHEMA } }, BASE_REQUIRED);
 }

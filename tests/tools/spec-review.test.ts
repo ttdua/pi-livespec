@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
-import { registerDocReaders } from "../../src/docs/readers.ts";
-import { resetPacketSourcesForTests } from "../../src/subagents/sources.ts";
 import { aggregates, latestRun, type ReviewRunData } from "../../src/review/records.ts";
 import type { AggregateFinding } from "../../src/subagents/records.ts";
 import type { Finding } from "../../src/subagents/roles.ts";
 import { registerSpecReview, runSpecReview } from "../../src/tools/spec-review.ts";
+import { registerFindingRebut } from "../../src/tools/finding-rebut.ts";
+import { behaviorConclusionComment } from "../../src/docs/behavior-change.ts";
+import { subagentFindingsSection } from "../../src/subagents/payload.ts";
 import { asChild } from "../hooks/fake-pi.ts";
 import { done, unpublish } from "../subagents/fake-executor.ts";
 import { cleanupDirs, textOf } from "./helpers.ts";
@@ -195,40 +196,30 @@ describe("spec_review end to end", () => {
 	});
 });
 
-describe("spec_review reviewer behavior records", () => {
-	const CACHE_SPEC = "---\npaths: [\"src/cache/**\"]\n---\n# cache\n\n## Purpose\nCache.\n\n## Requirements\n";
+describe("behavior conclusion disputed by the reviewer", () => {
 	const CAP = "src/limits/cap.ts";
-	const STORE = "src/cache/store.ts";
-	const at = (location: string): Finding => ({ ...DEFECT, location: `${location}:1` });
-	const disputes = [{ capability: "rate-limit", outcome: "changed", rationale: "cap now rejects" }, { capability: "cache", outcome: "changed", rationale: "store evicts early" }];
+	const ITEM = { capability: "rate-limit", files: [CAP] };
+	const RATIONALE = "the cap constant only moved";
+	const behavior = [{ capability: "rate-limit", outcome: "unchanged", rationale: RATIONALE }];
 
-	afterEach(resetPacketSourcesForTests);
-
-	test("a reviewer record lost to a failed write is replayed once on the next call", async () => {
-		registerDocReaders();
-		const h = await reviewHarness({ scripts: { "specs/cache/spec.md": CACHE_SPEC }, diff: { [CAP]: "export const cap = 99;\n", [STORE]: "export {};\n", "src/u1.ts": "export {};\n" } });
-		h.reviews.set("change", [at(CAP), at(STORE)]);
-		const wait = h.fake.service.wait;
-		h.fake.service.wait = async (id: string, o?: unknown) => {
-			const record = await wait(id, o as never);
-			const meta = h.fake.spawned.find((s) => s.id === id)?.options.metadata ?? {};
-			return meta.subject === "change" ? { ...record, structuredResult: { ...(record.structuredResult as object), behavior: disputes } } : record;
-		};
-		const ledger = h.session.ledger;
-		const append = ledger.append.bind(ledger);
-		let reviewerAppends = 0;
-		ledger.append = async (n, input) => {
-			if ((input.data as { source?: string }).source === "reviewer" && ++reviewerAppends === 2) throw new Error("ledger write failed");
-			return append(n, input);
-		};
-		const first = await h.review();
-		expect(textOf(first)).toContain("ledger write failed");
-		const reviewer = async () => (await h.ofKind("decision")).filter((m) => (m.data as { source?: string }).source === "reviewer").map((m) => (m.data as { subject: string }).subject);
-		expect(await reviewer()).toEqual(["rate-limit"]);
-		const again = await h.review();
-		expect(again.isError, textOf(again)).toBeFalsy();
-		expect((await reviewer()).sort()).toEqual(["cache", "rate-limit"]);
-		expect(h.fake.spawned.filter((s) => s.options.metadata.subject === "change")).toHaveLength(1);
+	test("Reviewer dispute blocks review", async () => {
+		const h = await reviewHarness({ diff: { [CAP]: "export const cap = 99;\n", "src/limit.ts": "export const limit = 1;\n", "src/u1.ts": "export {};\n" } });
+		registerFindingRebut(h.pi.api as never);
+		const { data } = behaviorConclusionComment(ITEM, { outcome: "unchanged", reason: RATIONALE });
+		await h.seed("decision", "behavior-change.rate-limit", data);
+		h.reviews.set("change", [{ ...DEFECT, location: `${CAP}:12`, evidence: "the cap now rejects at 99", fix: "conclude rate-limit changed and update its spec" }]);
+		const out = await h.review();
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const blocked = await h.call("spec_gate", { target: "review", briefing: BRIEFING, behavior });
+		expect(blocked.isError).toBe(true);
+		expect(textOf(blocked)).toContain(`${CAP}:12`);
+		const aggregate = await h.latestAggregate();
+		const rebut = await h.call("finding_rebut", { ref: aggregate?.commentId, index: 0, reason: "99 is the old limit minus one, unchanged", evidence: "tests/limit.test.ts still green" });
+		expect(rebut.isError, textOf(rebut)).toBeFalsy();
+		// The rebuttal is listed in the next human gate payload.
+		expect(subagentFindingsSection(await h.marked()).lines.join("\n")).toContain("99 is the old limit minus one, unchanged");
+		const gate = await h.call("spec_gate", { target: "review", briefing: BRIEFING, behavior });
+		expect(gate.isError, textOf(gate)).toBeFalsy();
 	});
 });
 

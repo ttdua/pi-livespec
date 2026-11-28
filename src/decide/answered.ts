@@ -3,7 +3,6 @@
 
 import { ANSWER_KIND } from "../interaction/approver.ts";
 import type { MarkedComment } from "../forge/markers.ts";
-import { BEHAVIOR_POINT } from "./points.ts";
 import type { DecisionRecord } from "./records.ts";
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -22,26 +21,15 @@ export function hasForgeAnswer(marked: MarkedComment[], requestId: string): bool
 	return forgeAnswer(marked, requestId) !== undefined;
 }
 
-/** True when the gate answer requested changes and lists `capability` in its behavior overrides. */
-function overridesBehavior(answer: Record<string, unknown>, record: DecisionRecord): boolean {
-	const overrides = answer.behaviorOverrides;
-	const by = record.overridden_by;
-	if (by === undefined || answer.by !== by.by || answer.at !== by.at) return false;
-	return answer.outcome === "changes_requested" && Array.isArray(overrides) && overrides.some((o) => isObject(o) && o.capability === record.subject);
-}
-
 /**
  * True unless `m` is a ledger `decision` of a human (`source: human`): that one counts only when its request has an
- * own forge `answer` comment with the same outcome; a behavior override (`behavior-change` with `overridden_by`) counts
- * only when that answer requested changes and lists its capability with the same `by` and `at`. Forge comments and rule, agent and reviewer
- * records are unaffected.
+ * own forge `answer` comment with the same outcome. Forge comments and rule, agent and reviewer records are unaffected.
  */
 export function isBacked(marked: MarkedComment[], m: MarkedComment, record: DecisionRecord): boolean {
 	if (m.source !== "ledger" || record.source !== "human") return true;
 	if (record.request === undefined) return false;
 	const answer = forgeAnswer(marked, record.request);
 	if (answer === undefined) return false;
-	if (record.point === BEHAVIOR_POINT && record.overridden_by !== undefined) return overridesBehavior(answer, record);
 	const chosen = answer.outcome !== "dismissed" && typeof answer.choice === "string";
 	return record.outcome === (chosen ? answer.choice : null);
 }

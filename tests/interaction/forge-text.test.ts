@@ -395,12 +395,11 @@ describe("every request kind carries a recommendation", () => {
 	});
 });
 
-describe("behavior override text", () => {
-	const items = [{ capability: "rate-limit", outcome: "unchanged" as const }];
+describe("behavior conclusions text", () => {
 	const define = (over: Partial<ApprovalRequest> = {}) => ({ ...request({ subject: "gate:define", summary: "Define\n\nBehavior conclusions (please check):\n- rate-limit: unchanged (agent) — x; files: 1" }), ...over });
 
 	test("the Behavior conclusions section comes before the briefing", () => {
-		const text = renderForgeRequest(define({ overridableBehavior: { items } }));
+		const text = renderForgeRequest(define());
 		const section = text.indexOf("Behavior conclusions (please check):");
 		expect(section).toBeGreaterThan(-1);
 		expect(section).toBeLessThan(text.indexOf("Agent recommendation"));

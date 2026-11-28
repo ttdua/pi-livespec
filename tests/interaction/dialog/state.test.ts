@@ -29,7 +29,7 @@ function run(model: DialogModel, actions: DialogAction[], from: DialogState = in
 	return actions.reduce((s, a) => reduce(model, s, a), from);
 }
 
-const review = (m: DialogModel): DialogState => ({ ...initialState(m), tab: tabsOf(m, initialState(m)).length - 1 });
+const review = (m: DialogModel): DialogState => ({ ...initialState(m), tab: m.tabs.length - 1 });
 
 const deepFreeze = <T>(o: T): T => {
 	if (typeof o === "object" && o !== null) Object.values(o).forEach(deepFreeze);
@@ -124,7 +124,7 @@ describe("pick", () => {
 		const own = m.entries.findIndex((e) => e.action.kind === "own");
 		const s = run(m, [{ type: "pick", index: own }], { ...initialState(m), answer: "x" });
 		expect(s.editor).toBeUndefined();
-		expect(tabsOf(m, s)[s.tab]).toBe("review");
+		expect(m.tabs[s.tab]).toBe("review");
 	});
 
 	test("pick outside the decision tab does nothing", () => {
@@ -179,7 +179,7 @@ describe("submit and canSubmit", () => {
 		const m = buildModel(request({ options: [{ id: "waive", label: "Waive x" }], record: { ...request().record, snapshot: { target: "plan", failingWaivable: ["x"] } } }));
 		const waive = m.entries.findIndex((e) => e.action.kind === "option");
 		const s = run(m, [{ type: "pick", index: waive }]);
-		expect(tabsOf(m, s)[s.tab]).toBe("review");
+		expect(m.tabs[s.tab]).toBe("review");
 		expect(s.done).toBeUndefined();
 		expect(m.entries[s.picked as number]?.action).toEqual({ kind: "option", id: "waive" });
 	});

@@ -423,13 +423,3 @@ describe("class commands", () => {
 		expect(out.matches[0]?.answer).not.toHaveProperty("questionClass");
 	});
 });
-
-describe("behavior overrides", () => {
-	test("No override on the forge", () => {
-		const behavior = [{ capability: "rate-limit", files: ["src/rate.ts"], outcome: "unchanged" as const }];
-		const gate = pending("gate:define", { snapshot: { target: "define", failingWaivable: [], behavior } });
-		const out = matchThread([gate], [comment("9", "alice", "/livespec set behavior rate-limit changed", LATER)], writers("alice"));
-		expect(out.matches).toEqual([]);
-		expect(out.warnings).toEqual([expect.stringContaining("cannot be parsed")]);
-	});
-});

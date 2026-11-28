@@ -54,6 +54,7 @@ describe("buildModel", () => {
 	test("define gate: tabs and entries in gateChoices order with descriptions", () => {
 		const m = buildModel(request());
 		expect(m.kind).toBe("gate");
+		expect(m.tabs).toEqual(["decision", "review"]);
 		expect(m.entries.map((e) => e.action.kind)).toEqual(["approve", "changes", "dismiss"]);
 		expect(m.entries[0]).toMatchObject({ label: "approve", description: "Accept the spec; the change moves to plan.", recommended: false });
 		expect(m.notes).toBe(true);
@@ -75,6 +76,7 @@ describe("buildModel", () => {
 
 	test("plan gate with overridable offers units but hides the tab by default", () => {
 		const m = buildModel(request({ overridable: { units: ["U1", "U2"], current: { U1: { difficulty: "high", tags: ["security"] } } } }));
+		expect(m.tabs).toEqual(["decision", "review"]);
 		expect(m.unitsAvailable).toBe(true);
 		expect(m.units).toEqual([{ unit: "U1", label: "U1", difficulty: "high", tags: ["security"] }, { unit: "U2", label: "U2", tags: [] }]);
 	});

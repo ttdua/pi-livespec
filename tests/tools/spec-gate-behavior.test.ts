@@ -40,7 +40,7 @@ const RATIONALE = "cap is an internal constant";
 const unchanged = (capability: string, rationale = RATIONALE) => ({ capability, outcome: "unchanged", rationale });
 
 type Gate = ToolHarness & { n: number };
-type Opts = { config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string; flow?: string; baseFiles?: Record<string, string>; renames?: [string, string][] };
+type Opts = { ui?: FakeUI; config?: string; edit?: (b: string) => string; code?: string[]; authSpec?: string; flow?: string; baseFiles?: Record<string, string>; renames?: [string, string][] };
 const FLOW_WITHOUT_CHECK = "extends: agent-skills\nphases:\n  - id: define\n    checks: [spec-format, capabilities-match-diff]\n";
 
 beforeEach(() => {
@@ -62,6 +62,13 @@ function human(): FakeUI {
 	return { hasUI: true, select };
 }
 
+/** A scripted human whose next define answer is set by the test: approve, or request changes with `notes`. */
+function scriptedHuman(): { ui: FakeUI; answer: { pick: string; notes: string } } {
+	const answer = { pick: "approve", notes: "" };
+	const select: SelectFn = async (title, options) => (title === "Add notes?" ? "No notes" : pickById(options, answer.pick));
+	return { ui: { hasUI: true, select, input: async () => answer.notes }, answer };
+}
+
 /**
  * A define change: `rate-limit` and `auth` specs at Base; the change edits `specs/auth/spec.md` (declared modified)
  * and code under rate-limit's `paths`, so `rate-limit` is the one behavior item.
@@ -70,7 +77,7 @@ async function change(phase: string, o: Opts = {}): Promise<Gate> {
 	const h = await toolHarness({
 		branch: CHANGE_BRANCH,
 		config: o.config ?? "integrationBranch: main\n",
-		ui: human(),
+		ui: o.ui ?? human(),
 		files: { ".pi/livespec/flow.yaml": o.flow ?? FLOW, "specs/rate-limit/spec.md": RATE_SPEC, "specs/auth/spec.md": AUTH_SPEC, "specs/forge-read/spec.md": FORGE_SPEC, ...o.baseFiles },
 	});
 	const base = h.git("rev-parse", "HEAD");
@@ -104,11 +111,12 @@ describe("spec_gate behavior conclusions", () => {
 		expect(h.ctx.ui.select.mock.calls.map((c) => c[0]).filter((t) => t !== "Add notes?")).toHaveLength(1);
 	});
 
-	test("the request snapshot stores the behavior items with their outcome", async () => {
+	test("the request snapshot stores no behavior field", async () => {
 		const h = await change("define", { code: [CAP], edit: allDone, config: FORGE_CHAIN });
 		await gate(h, [unchanged("rate-limit")]);
-		const request = (await ofKind(h, "request")).at(-1)?.data as { snapshot?: { behavior?: unknown } };
-		expect(request.snapshot?.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }]);
+		const request = (await ofKind(h, "request")).at(-1)?.data as { snapshot?: object };
+		expect(request.snapshot).toBeDefined();
+		expect(request.snapshot).not.toHaveProperty("behavior");
 	});
 
 	test("Missing conclusion", async () => {
@@ -361,5 +369,69 @@ describe("spec_gate behavior conclusions", () => {
 			await gate(h, [unchanged("rate-limit", "see <!-- x -->")]);
 			expect(await behaviorDecisions(h)).toHaveLength(1);
 		});
+	});
+});
+
+describe("disputing a conclusion at the define gate", () => {
+	const NEW_RATIONALE = "the cap value moved to config; rejects at 100 as before";
+
+	/** A define change whose first gate, with `rate-limit` concluded unchanged, gets changes requested with `notes`. */
+	async function disputed(notes: string): Promise<{ h: Gate; answer: { pick: string; notes: string } }> {
+		const human = scriptedHuman();
+		const h = await change("define", { ui: human.ui, edit: allDone });
+		human.answer.pick = "request changes";
+		human.answer.notes = notes;
+		const first = await gate(h, [unchanged("rate-limit")]);
+		expect(first.isError, textOf(first)).toBe(false);
+		expect((await ofKind(h, "gate")).at(-1)?.data).toMatchObject({ phase: "define", outcome: "changes_requested", notes });
+		human.answer.pick = "approve";
+		human.answer.notes = "";
+		return { h, answer: human.answer };
+	}
+
+	const defineGates = async (h: Gate) => (await ofKind(h, "gate")).filter((m) => (m.data as { phase?: string }).phase === "define");
+
+	test("Human requests changes naming a capability", async () => {
+		const { h } = await disputed("rate-limit behavior changed: cap now rejects at 99");
+		const out = await gate(h, [{ capability: "rate-limit", outcome: "changed", rationale: "cap now rejects at 99" }]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("specs/rate-limit/spec.md");
+		expect((await behaviorDecisions(h)).at(-1)?.data).toMatchObject({ source: "agent", outcome: "changed", reason: "cap now rejects at 99" });
+		expect(await defineGates(h)).toHaveLength(1);
+		expect(h.session.card.kind === "change" && h.session.card.state.phase).toMatchObject({ kind: "ok", id: "define" });
+	});
+
+	test("Same unchanged after a dispute refused", async () => {
+		const { h } = await disputed("rate-limit behavior changed");
+		const before = (await marked(h)).length;
+		const out = await gate(h, [unchanged("rate-limit")]);
+		expect(out.isError).toBe(true);
+		expect(textOf(out)).toContain("rate-limit");
+		expect(textOf(out)).toContain("changed");
+		expect(textOf(out)).toContain("new rationale");
+		expect((await marked(h)).length).toBe(before);
+		expect(await behaviorRequests(h)).toEqual([]);
+	});
+
+	test("New rationale accepted", async () => {
+		const { h } = await disputed("rate-limit behavior changed");
+		const out = await gate(h, [unchanged("rate-limit", NEW_RATIONALE)]);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect((await behaviorDecisions(h)).at(-1)?.data).toMatchObject({ source: "agent", outcome: "unchanged", reason: NEW_RATIONALE });
+		expect(await defineGates(h)).toHaveLength(2);
+		const summaries = h.ctx.ui.select.mock.calls.map((c) => String(c[0])).filter((t) => t.includes("Gate define for"));
+		expect(summaries.at(-1)).toContain(`- rate-limit: unchanged (agent) — ${NEW_RATIONALE}; files: 1`);
+	});
+
+	test("Notes that do not name the capability", async () => {
+		const { h } = await disputed("tighten wording");
+		const out = await gate(h, [unchanged("rate-limit")]);
+		expect(out.isError, textOf(out)).toBe(false);
+		expect(await defineGates(h)).toHaveLength(2);
+	});
+
+	test("a capability named inside a longer word does not count", async () => {
+		const { h } = await disputed("see rate-limiter wording");
+		expect((await gate(h, [unchanged("rate-limit")])).isError).toBe(false);
 	});
 });

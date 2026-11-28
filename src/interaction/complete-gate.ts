@@ -9,14 +9,12 @@ import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import type { AdapterName, Answered, GateSnapshot, RequestRecord } from "./approver.ts";
 import { type ApplyFn, phasesAfter, postOnce, readIssue, type Run } from "./complete-effects.ts";
-import { applyBehaviorOverrides } from "./complete-behavior.ts";
 import { applyOverrides } from "./complete-overrides.ts";
 import { type AnswerData, snapshotOf } from "./requests.ts";
 import { staleComment } from "./stale.ts";
 import { WAIVE } from "./waive-rule.ts";
 
 const PLAN = "plan";
-const DEFINE = "define";
 
 /** The gate data of design D2's `gate` marker; `adapter` may be `livespec` for a self gate. */
 export type GateCommentInput = {
@@ -86,7 +84,6 @@ export const applyGate: ApplyFn = async (run, record: AnswerData) => {
 	const approvedPlan = validApproval({ outcome: answer.outcome, superseded }) && target === PLAN;
 	if (approvedPlan) await applyOverrides(run, answer);
 	if (validApproval({ outcome: answer.outcome, superseded })) await runEffects(run, record, target);
-	if (!superseded && answer.outcome === "changes_requested" && target === DEFINE) await applyBehaviorOverrides(run, request.id, answer, snapshot);
 	if (!superseded && answer.outcome === "changes_requested" && isPhase) await writeStale(run, request, target);
 	const input: GateCommentInput = {
 		request: request.id,

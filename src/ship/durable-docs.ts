@@ -14,7 +14,7 @@ export type DurableFacts = {
 	capabilities: { new: string[]; modified: string[] };
 	specs: { capability: string; paths: string[] }[];
 	rows: { file: string; status: string }[];
-	/** The latest `behavior-change` conclusion per capability, from any source (agent, reviewer or human). */
+	/** The latest `behavior-change` conclusion per capability, from an agent or a human. */
 	behavior: { capability: string; files: string[]; outcome: string | null }[];
 };
 

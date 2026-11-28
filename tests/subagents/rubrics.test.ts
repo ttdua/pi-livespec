@@ -12,6 +12,12 @@ describe("rubricFor", () => {
 		}
 	});
 
+	test("Rubric names the dispute", () => {
+		const dispute = "A behavior conclusion you dispute is a `WARNING` finding located at one of the item's files.";
+		expect(rubricFor("change")).toContain(dispute);
+		for (const subject of ["spec", "plan", "unit"] as ReviewSubject[]) expect(rubricFor(subject), subject).not.toContain(dispute);
+	});
+
 	test("the contract sentence closes every rubric", () => {
 		const sentence = 'A new or changed human request that breaks approver-adapters "Interaction contract" is a finding.';
 		for (const subject of ["spec", "plan", "unit", "change", "persona:security-auditor"] as ReviewSubject[]) {

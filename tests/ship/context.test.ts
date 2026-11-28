@@ -249,7 +249,7 @@ describe("shipContext behavior records", () => {
 		const base = sh(f.work, "rev-parse", "HEAD~1");
 		const marked = [
 			record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] }),
-			record("changed", { source: "reviewer", reason: "new limit", files: [CAP] }),
+			record("changed", { source: "agent", reason: "new limit", files: [CAP] }),
 		];
 		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
 		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "changed" }]);

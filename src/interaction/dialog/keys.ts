@@ -42,7 +42,6 @@ function decisionKey(data: string, kb: KeybindingsManager, model: DialogModel, s
 	const index = digitIndex(char);
 	if (index !== undefined) return index < model.entries.length ? { type: "pick", index } : undefined;
 	if (char === "u" && model.unitsAvailable && !state.unitsOpen) return { type: "openUnits" };
-	if (char === "b" && model.behaviorAvailable && !state.behaviorOpen) return { type: "openBehavior" };
 	return char === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
 }
 
@@ -53,11 +52,6 @@ function unitsKey(data: string, kb: KeybindingsManager): DialogAction | undefine
 	return printableOf(data) === "e" ? { type: "openEditor", editor: "tags" } : undefined;
 }
 
-function behaviorKey(data: string, kb: KeybindingsManager): DialogAction | undefined {
-	if (kb.matches(data, "tui.select.confirm") || printableOf(data) === " ") return { type: "toggleBehavior" };
-	return undefined;
-}
-
 function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel): DialogAction | undefined {
 	if (kb.matches(data, "tui.select.confirm")) return { type: "submit" };
 	return printableOf(data) === "n" && model.notes ? { type: "openEditor", editor: "note" } : undefined;
@@ -66,7 +60,6 @@ function reviewKey(data: string, kb: KeybindingsManager, model: DialogModel): Di
 const TAB_KEYS: Record<TabName, (data: string, kb: KeybindingsManager, model: DialogModel, state: DialogState) => DialogAction | undefined> = {
 	decision: decisionKey,
 	units: unitsKey,
-	behavior: behaviorKey,
 	review: reviewKey,
 };
 

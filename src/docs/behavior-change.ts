@@ -24,7 +24,7 @@ export type BehaviorItem = { capability: string; files: string[] };
 
 export type BehaviorOutcome = "unchanged" | "changed";
 export type BehaviorConclusionInput = { capability: string; outcome: BehaviorOutcome; rationale: string };
-export type BehaviorConclusion = { outcome: BehaviorOutcome; source: "agent" | "reviewer" | "human"; reason: string; files: string[]; ref: string };
+export type BehaviorConclusion = { outcome: BehaviorOutcome; source: "agent" | "human"; reason: string; files: string[]; ref: string };
 
 type SpecPaths = { capability: string; paths: string[] };
 type Entry = { record: DecisionRecord; ref: string };
@@ -49,17 +49,13 @@ export function behaviorDigest(files: string[]): string {
 	return createHash("sha256").update(files.join("\n")).digest("hex");
 }
 
-/** Precedence rank: human `changed` 3, reviewer `changed` 2, every other conclusion 1. */
-function rank(r: DecisionRecord): number {
-	if (r.outcome !== "changed") return 1;
-	if (r.source === "human") return 3;
-	return r.source === "reviewer" ? 2 : 1;
-}
+/** A human `changed` conclusion: no agent record replaces it. */
+const isHumanChange = (r: DecisionRecord): boolean => r.source === "human" && r.outcome === "changed";
 
 const isConclusionOutcome = (v: unknown): v is BehaviorOutcome => v === "unchanged" || v === "changed";
 
 const isConclusion = (r: DecisionRecord, capability: string | undefined): boolean =>
-	r.point === BEHAVIOR_POINT && (capability === undefined || r.subject === capability) && r.source !== "rule" && r.proposal !== true && isConclusionOutcome(r.outcome);
+	r.point === BEHAVIOR_POINT && (capability === undefined || r.subject === capability) && (r.source === "agent" || r.source === "human") && r.proposal !== true && isConclusionOutcome(r.outcome);
 
 /**
  * Valid `behavior-change` conclusions of `capability` (all when omitted), in merged order; proposals, rules and
@@ -72,22 +68,22 @@ function conclusionEntries(marked: MarkedComment[], capability?: string): Entry[
 	});
 }
 
-/** The winner of `entries`: each newer entry replaces the current one unless the current one ranks higher. */
+/** The winner of `entries`: the latest one, except that an agent record never replaces a human `changed`. */
 function fold(entries: Entry[]): Entry | undefined {
 	let winner: Entry | undefined;
 	for (const e of entries) {
-		if (winner === undefined || rank(e.record) >= rank(winner.record)) winner = e;
+		if (winner === undefined || !isHumanChange(winner.record) || e.record.source === "human") winner = e;
 	}
 	return winner;
 }
 
 const sharesFile = (files: string[] | undefined, item: BehaviorItem): boolean => (files ?? []).some((f) => item.files.includes(f));
 
-/** A record for the item's digest and facts, or a human or reviewer `changed` that shares one of its files. */
+/** A record for the item's digest and facts, or a human `changed` that shares one of its files. */
 function isCandidate(e: Entry, item: BehaviorItem): boolean {
 	const { record } = e;
 	if (record.digest === behaviorDigest(item.files) && sameFacts(record, item)) return true;
-	return rank(record) >= 2 && sharesFile(record.files, item);
+	return isHumanChange(record) && sharesFile(record.files, item);
 }
 
 function toConclusion(e: Entry): BehaviorConclusion {
@@ -117,22 +113,20 @@ export function latestConclusions(marked: MarkedComment[]): Map<string, Behavior
 	return latest;
 }
 
-/** A conclusion to record; a human override also names the gate request whose forge answer backs it. */
-export type ConclusionInput = { source: "agent" | "reviewer" | "human"; outcome: BehaviorOutcome; reason: string; overridden_by?: { by: string; at: string; from: unknown }; request?: string };
+/** An agent conclusion to record. */
+export type ConclusionInput = { outcome: BehaviorOutcome; reason: string };
 
-/** The `decision` ledger entry input of a conclusion on `item`: digest and files of the item, facts as the item. */
+/** The agent `decision` ledger entry input of a conclusion on `item`: digest and files of the item, facts as the item. */
 export function behaviorConclusionComment(item: BehaviorItem, c: ConclusionInput): AppendInput {
 	return decisionComment({
 		point: BEHAVIOR_POINT,
 		subject: item.capability,
 		digest: behaviorDigest(item.files),
-		source: c.source,
+		source: "agent",
 		outcome: c.outcome,
 		reason: c.reason,
 		facts: item,
 		files: item.files,
-		...(c.overridden_by === undefined ? {} : { overridden_by: c.overridden_by }),
-		...(c.request === undefined ? {} : { request: c.request }),
 	});
 }
 

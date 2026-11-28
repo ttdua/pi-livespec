@@ -34,6 +34,16 @@ function record(outcome: string, item: BehaviorItem = ITEM, extra: Partial<Decis
 	return { ...ledgerRecord(decisionComment(r), { ref: `c-${Math.random()}` }), source: "forge" };
 }
 
+let answers = 0;
+
+/** A legacy human answer as main stores it: a ledger decision naming its request, beside the own forge `answer` that backs it. */
+function backedHuman(outcome: string, item: BehaviorItem = ITEM): MarkedComment[] {
+	const request = `decide-behavior-change-rate-limit.${++answers}`;
+	const r: DecisionRecord = { point: "behavior-change", subject: item.capability, digest: behaviorDigest(item.files), source: "human", outcome, facts: item, files: item.files, reason: "chosen by alice", request };
+	const answer = marked(writeMarked("answer", request, { request: { subject: `decide:behavior-change.${item.capability}` }, answer: { outcome: "answered", choice: outcome }, verdict: "valid" }));
+	return [ledgerRecord(decisionComment(r)), answer];
+}
+
 function openRequest(capability: string): MarkedComment {
 	const subject = `decide:behavior-change.${capability}`;
 	return marked(writeMarked("request", "decide-behavior-change-rate-limit.abc", { kind: "stuck", subject, mode: "blocking", head_sha: "h", snapshot: {}, summary: "s" }));
@@ -104,14 +114,27 @@ describe("behavior-change rule", () => {
 });
 
 describe("behavior conclusion precedence", () => {
-	test("Agent cannot undo a human change", () => {
-		const marks = [record("changed"), record("unchanged", ITEM, { source: "agent", reason: "refactor only" })];
-		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "human" });
+	test("Agent re-concludes after request changes", () => {
+		const marks = [record("unchanged", ITEM, { source: "agent", reason: "refactor only" }), record("changed", ITEM, { source: "agent", reason: "cap now rejects at 99" })];
+		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "agent", reason: "cap now rejects at 99" });
 	});
 
-	test("Agent cannot undo a reviewer dispute", () => {
-		const marks = [record("unchanged", ITEM, { source: "agent" }), record("changed", ITEM, { source: "reviewer" }), record("unchanged", ITEM, { source: "agent" })];
-		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "reviewer" });
+	test("Agent cannot undo a human change", () => {
+		for (const later of [ITEM, GROWN]) {
+			const marks = [...backedHuman("changed"), record("unchanged", later, { source: "agent", reason: "refactor only" })];
+			expect(effectiveConclusion(marks, later)).toMatchObject({ outcome: "changed", source: "human" });
+			const [r] = behaviorResults([later], marks, "define");
+			expect(r?.message).toContain("specs/rate-limit/spec.md");
+		}
+	});
+
+	test("an unbacked ledger human change does not count", () => {
+		const [decision] = backedHuman("changed");
+		expect(effectiveConclusion([decision as MarkedComment], ITEM)).toBeUndefined();
+	});
+
+	test("a later human answer replaces an earlier human change", () => {
+		expect(effectiveConclusion([...backedHuman("changed"), ...backedHuman("unchanged")], ITEM)).toMatchObject({ outcome: "unchanged", source: "human" });
 	});
 
 	test("Adding a file does not undo a human change", () => {
@@ -127,7 +150,7 @@ describe("behavior conclusion precedence", () => {
 	});
 
 	test("Old human answer still counts", () => {
-		const marks = [record("unchanged", ITEM, { request: "decide-behavior-change-rate-limit.abc" })];
+		const marks = backedHuman("unchanged");
 		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "unchanged", source: "human" });
 	});
 
@@ -135,9 +158,8 @@ describe("behavior conclusion precedence", () => {
 		expect(effectiveConclusion([record("unchanged", ITEM, { source: "agent" })], GROWN)).toBeUndefined();
 	});
 
-	test("Reviewer cannot undo a human change", () => {
-		const marks = [record("changed"), record("unchanged", ITEM, { source: "reviewer" })];
-		expect(effectiveConclusion(marks, ITEM)).toMatchObject({ outcome: "changed", source: "human" });
+	test("a reviewer-source record is not a conclusion", () => {
+		expect(effectiveConclusion([record("changed", ITEM, { source: "reviewer" as never })], ITEM)).toBeUndefined();
 	});
 });
 

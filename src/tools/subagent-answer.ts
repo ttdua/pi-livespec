@@ -91,7 +91,7 @@ async function answerRun(e: AnswerEnv, p: AnswerParams, q: Question, packet: Pac
 	if (isCancelled(signal)) return toolResult(withStep(w.session, outcomeText(t, cancelledOutcome(p.id))), undefined, true);
 	if (typeof record === "string") return toolResult(withStep(w.session, `${TOOL} failed: ${record}. the answer is recorded, but the child did not resume: dispatch ${argsOf(t)} again.`), undefined, true);
 	const run = resumedRun(p.id, packet.cwd, q.launch, request.difficulty);
-	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0, disputeReturns: 0, respawned: isFallbackChild(state.marked, p.id) });
+	const outcome: DispatchOutcome = await settle(d, { ...request, attempt: q.attempt ?? request.attempt }, { run, record }, { needsContext: request.needsContext, retries: 0, returns: 0, respawned: isFallbackChild(state.marked, p.id) });
 	return toolResult(withStep(w.session, outcomeText(t, outcome, outcomeOptions(state, w.pack))), undefined, outcome.kind === "cancelled");
 }
 

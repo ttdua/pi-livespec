@@ -7,10 +7,10 @@ import { parseDecision } from "../core/decision.ts";
 import { parseGlossary } from "../core/glossary.ts";
 import { joinLines } from "../core/lines.ts";
 import { declaredCapabilities, readText, sectionText, sha256 } from "../subagents/source-kit.ts";
-import { registerPacketBehavior, registerPacketSourceOnce } from "../subagents/sources.ts";
+import { registerPacketSourceOnce } from "../subagents/sources.ts";
 import type { PacketContext, PacketSource, SourceProvider, Target } from "../subagents/source-types.ts";
 
-import { behaviorPacketData, behaviorSourceProvider } from "./behavior-source.ts";
+import { behaviorSourceProvider } from "./behavior-source.ts";
 
 const GLOSSARY_PATH = "specs/glossary.md";
 const DECISIONS_DIR = "specs/decisions";
@@ -18,7 +18,7 @@ const DECISIONS_DIR = "specs/decisions";
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Case-insensitive, on word boundaries where `-` is a word character. */
-const mentions = (text: string, term: string): boolean => new RegExp(`(?<![\\w-])${escapeRegExp(term)}(?![\\w-])`, "i").test(text);
+export const mentions = (text: string, term: string): boolean => new RegExp(`(?<![\\w-])${escapeRegExp(term)}(?![\\w-])`, "i").test(text);
 
 /** The unit's block for a unit-scoped target, the `## Units` section otherwise. */
 function scopeText(ctx: PacketContext, target: Target | undefined): string {
@@ -69,5 +69,4 @@ export function registerDocReaders(): void {
 		registerPacketSourceOnce(role, decisionReader);
 	}
 	registerPacketSourceOnce("reviewer", behaviorSourceProvider);
-	registerPacketBehavior(behaviorPacketData);
 }

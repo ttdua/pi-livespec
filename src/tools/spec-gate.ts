@@ -30,8 +30,7 @@ import { runSpecCascade } from "../interaction/spec-cascade.ts";
 import { agentSkillsOf } from "../interaction/session-ctx.ts";
 import { validateBehaviorParam } from "../docs/behavior-param.ts";
 import { recordBehaviorConclusions } from "../docs/behavior-record.ts";
-import { behaviorSnapshot, overridableBehaviorOf } from "../interaction/behavior-snapshot.ts";
-import type { BehaviorConclusionInput, BehaviorItem } from "../docs/behavior-change.ts";
+import type { BehaviorConclusionInput } from "../docs/behavior-change.ts";
 import { WAIVE } from "../interaction/waive-rule.ts";
 import type { ApproverCtx } from "./approver-for.ts";
 import { afterForgeWrite, afterLedgerWrite, prepareWrite, requireChange, type ToolResult, toolResult, type WriteContext } from "./guard.ts";
@@ -126,7 +125,7 @@ export function gateRequest(
 	pack: Pack,
 	target: string,
 	plan: GatePlan,
-	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing; requirements?: RequirementRecord; behaviorItems?: BehaviorItem[] },
+	input: { body: string; payload: ReturnType<typeof gatePayload>; now: Date; drafts?: unknown; briefing?: Briefing; requirements?: RequirementRecord },
 ): ApprovalRequest {
 	const snapshot: GateSnapshot = {
 		target,
@@ -135,8 +134,6 @@ export function gateRequest(
 		...(input.drafts === undefined ? {} : { drafts: input.drafts }),
 		...(input.requirements === undefined ? {} : { requirements: input.requirements.requirements, requirement_scope: input.requirements.scope }),
 	};
-	const behavior = behaviorSnapshot(input.behaviorItems, state.marked);
-	if (behavior !== undefined) snapshot.behavior = behavior;
 	const subject: Subject = `gate:${target}`;
 	const options = plan.options.length > 0 ? { options: plan.options } : {};
 	const briefing = input.briefing === undefined ? {} : { briefing: input.briefing };
@@ -144,8 +141,6 @@ export function gateRequest(
 	const phase = state.phase.kind === "ok" ? state.phase.id : "";
 	const request: ApprovalRequest = { id: record.id, kind: "gate", subject, record, change: state.issue.number, phase, summary: record.summary, links: input.payload.links, files: input.payload.files, mode: "blocking", ...options, ...briefing };
 	if (target === PLAN) request.overridable = { units: state.change.units.map((u) => u.id), current: currentValues(state) };
-	const overridableBehavior = overridableBehaviorOf(behavior);
-	if (overridableBehavior !== undefined) request.overridableBehavior = overridableBehavior;
 	return request;
 }
 
@@ -179,7 +174,7 @@ async function buildRequest(w: WriteContext, state: ChangeState, target: string,
 	const summary = extras.summary === undefined ? payload.summary : `${payload.summary}\n\n${extras.summary}`;
 	// The scope comes from the body bound as `gate_digest`, not `state.change`, which may predate an edit.
 	const requirements = await planRecord(w, state, target, parseChange(issue.body));
-	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements, behaviorItems });
+	return gateRequest(state, w.pack, target, plan, { body: issue.body, payload: { ...payload, summary }, now: new Date(), drafts: extras.drafts, briefing: extras.briefing, requirements });
 }
 
 async function askHuman(w: WriteContext, state: ChangeState, target: string, plan: GatePlan, ctx: ApproverCtx, extras: RequestExtras): Promise<ToolResult<undefined>> {

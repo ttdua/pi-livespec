@@ -30,9 +30,6 @@ export function isFindingData(v: unknown): boolean {
 	return (["severity", "kind", "scope"] as const).every((k) => oneOf(enums[k]?.enum ?? [])(v[k]));
 }
 
-const isBehaviorList = (v: unknown): boolean =>
-	Array.isArray(v) && v.every((e) => isObj(e) && isStr(e.capability) && oneOf(["unchanged", "changed"])(e.outcome) && isStr(e.rationale));
-
 const isRequested = (v: unknown): boolean => isObj(v) && isThinking(v.thinking);
 const isEffective = (v: unknown): boolean => isObj(v) && optional(v.model, isStr) && optional(v.thinking, isStr);
 
@@ -70,8 +67,7 @@ export function isSummaryData(d: unknown): boolean {
 		isStr(d.packet) && isStr(d.agentSource) && isRequested(d.requested) && isEffective(d.effective) &&
 		Array.isArray(d.findings) && d.findings.every(isFindingData) && optional(d.contextRequest, isNum) &&
 		optional(d.system, (v) => v === "files-violation") && optional(d.verifies, isStr) && optional(d.verdict, oneOf(["confirmed", "refuted"])) &&
-		optional(d.reason, isStr) && optional(d.notes, isStr) && optional(d.evidence, isStr) && optional(d.aggregate, (v) => v === true) && optional(d.reviews, isStrList) &&
-		optional(d.behavior, isBehaviorList)
+		optional(d.reason, isStr) && optional(d.notes, isStr) && optional(d.evidence, isStr) && optional(d.aggregate, (v) => v === true) && optional(d.reviews, isStrList)
 	);
 }
 
