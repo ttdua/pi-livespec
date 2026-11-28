@@ -31,6 +31,18 @@ export async function readRef(exec: GitExec, root: string, ref: string): Promise
 	throw gitFailure(["rev-parse", ref], r.spawnError ?? r.stderr);
 }
 
+/** The local and remote-tracking tips of change `n`, read in one git call. */
+export async function readLedgerRefs(exec: GitExec, root: string, n: number): Promise<{ local: string | undefined; tracking: string | undefined }> {
+	const local = ledgerRef(n);
+	const tracking = trackingRef(n);
+	const args = ["for-each-ref", "--format=%(refname) %(objectname)", local, tracking];
+	const r = await exec(args, { cwd: root });
+	if (r.code !== 0) throw gitFailure(args, r.spawnError ?? r.stderr);
+	// Patterns match path prefixes, so keep exact names only.
+	const tips = new Map(r.stdout.split("\n").map((line) => line.split(" ") as [string, string | undefined]));
+	return { local: tips.get(local), tracking: tips.get(tracking) };
+}
+
 /**
  * True when an `update-ref` of `ref` expecting `expected` failed because another writer moved the ref
  * or held its lock; the caller may retry. Any other failure is a real error.
@@ -69,8 +81,23 @@ export async function deleteRef(exec: GitExec, root: string, ref: string): Promi
 	if (r.code !== 0) throw gitFailure(args, r.spawnError ?? r.stderr);
 }
 
+/** Ancestry between immutable commits never changes, so answers are cached per repository and pair. */
+const ancestryCache = new Map<string, boolean>();
+const ANCESTRY_CACHE_LIMIT = 512;
+
 /** True when `ancestor` is `descendant` or one of its ancestors. */
 export async function isAncestor(exec: GitExec, root: string, ancestor: string, descendant: string): Promise<boolean> {
+	if (ancestor === descendant) return true;
+	const key = `${root}\0${ancestor}\0${descendant}`;
+	const known = ancestryCache.get(key);
+	if (known !== undefined) return known;
+	const answer = await askAncestor(exec, root, ancestor, descendant);
+	if (ancestryCache.size >= ANCESTRY_CACHE_LIMIT) ancestryCache.clear();
+	ancestryCache.set(key, answer);
+	return answer;
+}
+
+async function askAncestor(exec: GitExec, root: string, ancestor: string, descendant: string): Promise<boolean> {
 	const args = ["merge-base", "--is-ancestor", ancestor, descendant];
 	const r = await exec(args, { cwd: root });
 	if (r.code === 0) return true;

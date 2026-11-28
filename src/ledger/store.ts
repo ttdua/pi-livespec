@@ -27,6 +27,7 @@ export { ledgerRef } from "./refs.ts";
 
 const CAS_RETRIES = 5;
 const READ_CACHE_LIMIT = 64;
+const BLOB_CACHE_LIMIT = 256;
 const LIVESPEC_IDENTITY: Record<string, string> = {
 	GIT_AUTHOR_NAME: "livespec",
 	GIT_AUTHOR_EMAIL: "livespec@localhost",
@@ -36,6 +37,10 @@ const LIVESPEC_IDENTITY: Record<string, string> = {
 type TreeFile = { path: string; blob: string };
 
 const readCache = new Map<string, LedgerRead>();
+/** Tree listings by `repo\0commit`; a commit names an immutable tree. */
+const treeCache = new Map<string, TreeFile[]>();
+/** Blob contents by `repo\0sha`; a blob sha names immutable content. */
+const blobCache = new Map<string, string>();
 
 /** The validated entries of the ledger tree at `commit`; never throws on hostile content. */
 export async function readTree(exec: GitExec, root: string, commit: string, n: number): Promise<LedgerRead> {
@@ -197,6 +202,16 @@ function nextSeq(entries: LedgerEntry[]): number {
 }
 
 async function listTree(exec: GitExec, root: string, commit: string): Promise<TreeFile[]> {
+	const key = `${root}\0${commit}`;
+	const known = treeCache.get(key);
+	if (known) return known;
+	const files = await listTreeUncached(exec, root, commit);
+	if (treeCache.size >= READ_CACHE_LIMIT) treeCache.delete(treeCache.keys().next().value as string);
+	treeCache.set(key, files);
+	return files;
+}
+
+async function listTreeUncached(exec: GitExec, root: string, commit: string): Promise<TreeFile[]> {
 	const out = await git(exec, root, ["ls-tree", "-r", "-z", "--full-tree", commit], undefined, false);
 	return out
 		.split("\0")
@@ -207,8 +222,14 @@ async function listTree(exec: GitExec, root: string, commit: string): Promise<Tr
 		});
 }
 
-function catBlob(exec: GitExec, root: string, blob: string): Promise<string> {
-	return git(exec, root, ["cat-file", "blob", blob], undefined, false);
+async function catBlob(exec: GitExec, root: string, blob: string): Promise<string> {
+	const key = `${root}\0${blob}`;
+	const known = blobCache.get(key);
+	if (known !== undefined) return known;
+	const text = await git(exec, root, ["cat-file", "blob", blob], undefined, false);
+	if (blobCache.size >= BLOB_CACHE_LIMIT) blobCache.delete(blobCache.keys().next().value as string);
+	blobCache.set(key, text);
+	return text;
 }
 
 async function git(exec: GitExec, root: string, args: string[], env?: Record<string, string>, trim = true): Promise<string> {

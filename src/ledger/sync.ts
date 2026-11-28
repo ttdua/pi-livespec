@@ -4,7 +4,7 @@
 import type { GitExec } from "../engine/git-exec.ts";
 import { GitError } from "../engine/git.ts";
 import { ledgerDelete, ledgerFetch, ledgerPush } from "../guard/push.ts";
-import { advanceRef, backoff, deleteRef, hasOrigin, isAncestor, ledgerRef, readRef, swapRef, trackingRef } from "./refs.ts";
+import { advanceRef, backoff, deleteRef, hasOrigin, isAncestor, ledgerRef, readLedgerRefs, readRef, swapRef, trackingRef } from "./refs.ts";
 import { planReplay } from "./replay.ts";
 import { commitEntries, readTree } from "./store.ts";
 
@@ -53,14 +53,14 @@ export async function fetchLedger(exec: GitExec, root: string, n: number): Promi
 
 /** True when the clone holds a local or remote-tracking ledger of change `n`. */
 export async function hasKnownLedger(exec: GitExec, root: string, n: number): Promise<boolean> {
-	return (await readRef(exec, root, ledgerRef(n))) !== undefined || (await readRef(exec, root, trackingRef(n))) !== undefined;
+	const { local, tracking } = await readLedgerRefs(exec, root, n);
+	return local !== undefined || tracking !== undefined;
 }
 
 /** True when the local tip exists and is neither the tracking ref nor one of its ancestors; local refs only. */
 export async function isPending(exec: GitExec, root: string, n: number): Promise<boolean> {
-	const local = await readRef(exec, root, ledgerRef(n));
+	const { local, tracking } = await readLedgerRefs(exec, root, n);
 	if (local === undefined) return false;
-	const tracking = await readRef(exec, root, trackingRef(n));
 	if (tracking === undefined) return true;
 	return local !== tracking && !(await isAncestor(exec, root, local, tracking));
 }
