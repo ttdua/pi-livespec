@@ -90,10 +90,10 @@ Blocked by: 9
 
 Blocked by: 4, 9
 
-- [ ] 11.1 `change_ship` syncs after its refusal checks and refuses unless `synced`
-- [ ] 11.2 Config `ledger.retain` (project, boolean, default `true`, warning otherwise) and doctor's config listing
-- [ ] 11.3 `change_close` removes the ledger with `retain: false` after closing the issue; skips with no local ref; names a failed remote delete
-- [ ] 11.4 Tests: ship-phase and change-close ledger scenarios, init-and-doctor config scenarios
+- [x] 11.1 `change_ship` syncs after its refusal checks and refuses unless `synced`
+- [x] 11.2 Config `ledger.retain` (project, boolean, default `true`, warning otherwise) and doctor's config listing
+- [x] 11.3 `change_close` removes the ledger with `retain: false` after closing the issue; skips with no local ref; names a failed remote delete
+- [x] 11.4 Tests: ship-phase and change-close ledger scenarios, init-and-doctor config scenarios
 
 ## 12. Docs
 
