@@ -466,6 +466,16 @@ describe("behavior overrides", () => {
 		expect(out.warnings).toEqual([expect.stringContaining("behavior can be set only on the define gate")]);
 	});
 
+	test("set behavior needs write permission", () => {
+		const reader = comment("9", "bob", "/livespec set behavior rate-limit changed", LATER);
+		const perms = new Map<string, Permission>([["bob", "read"], ["alice", "write"]]);
+		const out = matchThread([define()], [reader, comment("10", "alice", "/livespec changes update the cap spec", LATER)], perms);
+		expect(out.matches).toHaveLength(1);
+		expect(out.matches[0]?.answer).toMatchObject({ outcome: "changes_requested" });
+		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
+		expect(out.warnings).toEqual([expect.stringContaining("lacks write access")]);
+	});
+
 	test("set behavior after changes does not attach", () => {
 		const out = matchThread([define()], [comment("9", "alice", "/livespec changes x", LATER), set("10")], writers("alice"));
 		expect(out.matches[0]?.answer).not.toHaveProperty("behaviorOverrides");
