@@ -424,7 +424,7 @@ Nếu đáp án làm đổi một requirement, hãy tự sửa `specs/<capabilit
 ### Amendment, decision và các named gate khác
 
 - **Amendment (`amend:<n>`):** agent muốn sửa, thêm hoặc bỏ một unit đã khóa. Đọc unit cũ và mới; trả lời như plan gate.
-- **Decision (`decide:<point>.<subject>`):** một rule không tự quyết được (ví dụ `behavior-change`). Chọn một trong các option được liệt kê.
+- **Decision (`decide:<point>.<subject>`):** một rule không tự quyết được. Không rule built-in nào hỏi; rule của project hoặc pack có thể hỏi. Chọn một trong các option được liệt kê.
 - **`initiative` và `new-dependency`:** xem [Luồng 3](#luồng-3-initiative-gồm-nhiều-change) và [Luồng 4](#luồng-4-phát-hiện-dependency-giữa-lúc-build).
 
 ## Luồng 2: sửa lỗi nhỏ

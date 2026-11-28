@@ -422,7 +422,7 @@ If the answer changes a requirement, edit its `specs/<capability>/spec.md` and c
 ### Amendment, decisions and other named gates
 
 - **Amendment (`amend:<n>`):** the agent wants to edit, add or drop a locked unit. Read the old and new unit; answer like the plan gate.
-- **Decision (`decide:<point>.<subject>`):** a rule could not decide (for example `behavior-change`). Choose one of the listed options.
+- **Decision (`decide:<point>.<subject>`):** a rule could not decide. No built-in rule asks; a project or pack rule may. Choose one of the listed options.
 - **`initiative` and `new-dependency`:** see Workflows [3](#workflow-3-an-initiative-of-several-changes) and [4](#workflow-4-a-dependency-found-mid-build).
 
 ## Workflow 2: a small fix

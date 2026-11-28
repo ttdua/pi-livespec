@@ -223,14 +223,26 @@ describe("shipContext behavior records", () => {
 	const bodyFor = (base: string) => `Base: ${base}\nBranch: feature\nPR: #41\nCapabilities: new [], modified []\n\n## Durable docs\n`;
 
 	test("Agent conclusion covers the files", async () => {
-		const f = await limitDiff();
-		const base = sh(f.work, "rev-parse", "HEAD~1");
-		const marked = [record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] })];
-		const body = `${bodyFor(base)}| specs/rate-limit/spec.md | not needed — refactor |\n`;
-		const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body }));
+		const f = await fixture();
+		await writeIn(f.work, "specs/rate-limit/spec.md", "---\npaths:\n  - src/limit/**\n---\n# rate-limit\n\n## Purpose\nx\n");
+		commitAll(f.work, "spec");
+		// The spec is at Base and on main: the ship diff starts at the merge base, so it holds only the code change.
+		sh(f.work, "push", "-q", "origin", "HEAD:main");
+		const base = sh(f.work, "rev-parse", "HEAD");
+		await writeIn(f.work, CAP, "a\n");
+		commitAll(f.work, "c3");
+		const agent = record("unchanged", { source: "agent", reason: "refactor only", files: [CAP] });
+		const confirms = async (marked: MarkedComment[]) => {
+			const out = await ctx(await shipSession(f.work), shipState(f.work, base, { marked, body: bodyFor(base) }));
+			return { out, rule: durableDocsRule(out.facts) };
+		};
+		const { out, rule } = await confirms([agent]);
 		expect(out.facts.behavior).toEqual([{ capability: "rate-limit", files: [CAP], outcome: "unchanged" }]);
-		expect(durableDocsRule(out.facts).confirm.filter((c) => c.startsWith("rate-limit:"))).toEqual([]);
+		expect(rule.errors).toEqual([]);
+		expect(rule.confirm.filter((c) => c.startsWith("rate-limit:"))).toEqual([]);
 		expect(confirmationSection({ ship: { durableFacts: out.facts } } as never) ?? "").not.toMatch(/^- rate-limit:/m);
+		const without = await confirms([]);
+		expect(without.rule.confirm.filter((c) => c.startsWith("rate-limit:"))).toEqual([`rate-limit: confirm its behavior did not change (changed ${CAP})`]);
 	});
 
 	test("Newer changed record wins", async () => {
