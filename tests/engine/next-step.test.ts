@@ -1222,6 +1222,24 @@ describe("escalation in the next step", () => {
 		expect(step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
 	});
 
+	test("No gate-only result keeps the caveat", () => {
+		const caveat = "Checks pass; the plan gate can pass unless a gate-only check fails.";
+		expect(nextStep(pack, reviewedState("plan", untagged)).next).toBe(caveat);
+		expect(nextStep(pack, reviewedState("plan", untagged, { gateChecksUnrun: ["verify-red-on-base"] })).next).toBe(caveat);
+		expect(nextStep(pack, reviewedState("plan", untagged, { gateChecksUnrun: ["review-clean"] })).next).toBe(caveat);
+	});
+
+	test("Passing gate-only result drops the caveat", () => {
+		const step = nextStep(pack, reviewedState("plan", untagged, { gateChecksUnrun: [] }));
+		expect(step.next).toBe("Checks pass; the plan gate can pass.");
+	});
+
+	test("Failing gate-only result names the escalation", () => {
+		const checks = [{ check: "verify-red-on-base", code: "verify-red-on-base", severity: "error" as const, message: "U2 green" }];
+		const step = nextStep(pack, reviewedState("plan", untagged, { gateChecksUnrun: [], checks }));
+		expect(step.next).toBe("The plan gate will ask the human: verify-red-on-base fails. Pass a briefing to spec_gate plan. The human can waive verify-red-on-base, or fix them first.");
+	});
+
 	test("missing review names the dispatch first", () => {
 		const step = nextStep(pack, state("plan", untagged));
 		expect(step.dispatch).toEqual({ role: "reviewer", subject: "plan", inline: true });

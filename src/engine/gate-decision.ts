@@ -11,7 +11,7 @@ function withNotes(text: string, notes: string): string {
 }
 
 /** The `gate-escalation` outcome the next step forecasts for a covered `self` gate (phase-gates "Escalation in the next step"). */
-export type GateForecast = { outcome: "self" | "human"; reason: string; waivable?: string[] };
+export type GateForecast = { outcome: "self" | "human"; reason: string; waivable?: string[]; unrun?: string[] };
 
 /** The sentence of a `self` or `human` gate with no gate result yet; a forecast `human` names the escalation. */
 function gateReady(phase: Phase, forecast: GateForecast | undefined): string {
@@ -19,8 +19,8 @@ function gateReady(phase: Phase, forecast: GateForecast | undefined): string {
 		const waive = forecast.waivable?.length ? ` The human can waive ${forecast.waivable.join(", ")}, or fix them first.` : "";
 		return `The ${phase.id} gate will ask the human: ${forecast.reason}. Pass a briefing to spec_gate ${phase.id}.${waive}`;
 	}
-	// Gate-only checks have not run here, so a covered gate may still escalate on them.
-	if (forecast?.outcome === "self") return `Checks pass; the ${phase.id} gate can pass unless a gate-only check fails.`;
+	// The caveat stays unless every gate-only check has a valid passing result (`unrun` is an empty array).
+	if (forecast?.outcome === "self" && forecast.unrun?.length !== 0) return `Checks pass; the ${phase.id} gate can pass unless a gate-only check fails.`;
 	return phase.gate === "self" ? `Checks pass; the ${phase.id} gate can pass.` : `Ready for the ${phase.id} gate.`;
 }
 
