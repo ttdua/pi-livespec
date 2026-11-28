@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
-import { decisionComment } from "../../src/decide/records.ts";
+import { decisionBody, decisionComment } from "../../src/decide/records.ts";
 import { registerBuiltinRules } from "../../src/decide/registry.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { registerBuiltinChecks } from "../../src/engine/checks.ts";
@@ -66,7 +66,7 @@ function pendingGate(target: string, id = `gate-${target}.abc`): PendingRequest 
 function decision(point: string, unit: string, outcome: unknown, reason: string, extra: Record<string, unknown> = {}): MarkedComment {
 	const u = parseChange(NO_QUESTION).units.find((x) => x.id === unit);
 	if (!u) throw new Error(unit);
-	const parsed = parseMarked(decisionComment({ point, subject: unit, digest: unitDigest(u), source: "rule", outcome, reason, ...extra }));
+	const parsed = parseMarked(decisionBody(decisionComment({ point, subject: unit, digest: unitDigest(u), source: "rule", outcome, reason, ...extra })));
 	if (!parsed) throw new Error("bad decision");
 	return { source: "forge", ref: `c-${point}-${unit}`, author: "bot", ...parsed };
 }
@@ -154,7 +154,7 @@ describe("gatePayload", () => {
 			decision("difficulty", "U3", "medium", "default"),
 		];
 		const otherContract = parseMarked(
-			decisionComment({ point: "tags", subject: "U3", digest: "0".repeat(64), source: "human", outcome: ["perf"], reason: "older contract reason" }),
+			decisionBody(decisionComment({ point: "tags", subject: "U3", digest: "0".repeat(64), source: "human", outcome: ["perf"], reason: "older contract reason" })),
 		);
 		if (!otherContract) throw new Error("bad decision");
 		marked.push({ source: "forge", ref: "c-old", author: "bot", ...otherContract });

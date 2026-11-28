@@ -105,6 +105,10 @@ export type UnitHarness = ToolHarness & {
 	/** The own records: marked comments merged with the ledger entries. */
 	marked(): Promise<MarkedComment[]>;
 	ofKind(kind: string): Promise<MarkedComment[]>;
+	/** The own records of `kind` that live in the ledger. */
+	inLedger(kind: string): Promise<MarkedComment[]>;
+	/** The own forge comments of `kind`: evidence and planning kinds must never be posted as comments. */
+	commentsOf(kind: string): Promise<MarkedComment[]>;
 	units(): Promise<Unit[]>;
 	/** Appends a ledger kind to the ledger (anchored after the last own comment), else posts an own marked comment; then refreshes. */
 	seed(kind: string, id: string, data: unknown): Promise<void>;
@@ -168,6 +172,8 @@ export async function unitHarness(o: UnitHarnessOptions): Promise<UnitHarness> {
 		},
 		marked,
 		ofKind: async (kind) => (await marked()).filter((m) => m.kind === kind),
+		inLedger: async (kind) => (await marked()).filter((m) => m.kind === kind && m.source === "ledger"),
+		commentsOf: async (kind) => filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments.filter((m) => m.kind === kind),
 		units: async () => parseChange(await h.world.bodyOf(h.n)).units,
 		seed: async (kind, id, data) => {
 			await seedRecord(kind, id, data);

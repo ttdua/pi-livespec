@@ -10,7 +10,7 @@ import { loadPack } from "../../src/engine/pack-load.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { checkNames, clearGateMemo, gateMemoGeneration, isGateOnly, onGateMemoClear, registerCheck, resetRegistryForTests } from "../../src/engine/registry.ts";
 import { unitDigest } from "../../src/core/digest.ts";
-import { decisionComment, type DecisionRecord } from "../../src/decide/records.ts";
+import { decisionBody, decisionComment, type DecisionRecord } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { commitAll, makeRepo, writeIn } from "../helpers/repo.ts";
@@ -188,7 +188,7 @@ describe("runChecks", () => {
 
 /** A `decision` comment as `filterMarked` returns it, from the real comment body. */
 function decisionMarked(r: DecisionRecord): MarkedComment {
-	const parsed = parseMarked(decisionComment(r));
+	const parsed = parseMarked(decisionBody(decisionComment(r)));
 	if (!parsed) throw new Error("decision comment does not parse");
 	return { source: "forge", ref: `c-${r.point}-${r.subject}`, author: "bot", ...parsed };
 }

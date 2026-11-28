@@ -4,7 +4,7 @@
 
 import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
-import { currentDecision, decisionComment, type DecisionRecord } from "../decide/records.ts";
+import { currentDecision, decisionBody, decisionComment, type DecisionRecord } from "../decide/records.ts";
 import { validApproval } from "../engine/locks.ts";
 import { writeMarked } from "../forge/markers.ts";
 import { amendedBody } from "./amend-body.ts";
@@ -35,7 +35,7 @@ function postedByThisAnswer(run: Run, requestId: string, r: DecisionRecord): boo
  */
 async function postRecords(run: Run, requestId: string, records: DecisionRecord[]): Promise<void> {
 	for (const { request: _request, proposal: _proposal, ...r } of records) {
-		if (!isCurrent(run, r) && !postedByThisAnswer(run, requestId, r)) await postComment(run, decisionComment(r));
+		if (!isCurrent(run, r) && !postedByThisAnswer(run, requestId, r)) await postComment(run, decisionBody(decisionComment(r)));
 	}
 }
 

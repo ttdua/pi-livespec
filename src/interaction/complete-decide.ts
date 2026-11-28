@@ -1,7 +1,7 @@
 // Applying a rule `ask` answer (design D10): the `decision` record with
 // `source: human` is the result comment; no other effect.
 
-import { decisionComment, type DecisionRecord } from "../decide/records.ts";
+import { decisionBody, decisionComment, type DecisionRecord } from "../decide/records.ts";
 import type { ApplyFn } from "./complete-effects.ts";
 import { snapshotOf } from "./requests.ts";
 
@@ -23,5 +23,5 @@ export const applyDecide: ApplyFn = async (_run, record) => {
 		...(s.proposal === true ? { proposal: true as const } : {}),
 		...(s.files === undefined ? {} : { files: s.files }),
 	};
-	return decisionComment(decision);
+	return decisionBody(decisionComment(decision));
 };

@@ -1,6 +1,6 @@
 // `unit_start { unit }` (design D10): under the evidence lock, refuses in D10
 // order, checks `Verify` with the guard, decides verifier pending, runs `Verify`
-// at HEAD for a unit that is not pending, and posts the `unit-start` record.
+// at HEAD for a unit that is not pending, and appends the `unit-start` entry.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Unit } from "../core/change.ts";
@@ -14,7 +14,8 @@ import { refactorPendingRefusal, unitStartRefusal } from "../evidence/refusals.t
 import { runVerify } from "../evidence/runner.ts";
 import { RECEIPT_OUTPUT_BYTES, type VerifyEnv } from "../evidence/verify-env.ts";
 import type { ChangeState } from "../engine/state-types.ts";
-import { afterForgeWrite, type ToolResult } from "./guard.ts";
+import { lastForgeRef } from "../ledger/merge.ts";
+import { afterLedgerWrite, type ToolResult } from "./guard.ts";
 import { registerLivespecTool } from "./register.ts";
 
 const TOOL = "unit_start";
@@ -67,8 +68,8 @@ async function startUnit(c: UnitCall): Promise<ToolResult<undefined>> {
 	if ("refused" in data) return c.refuse(data.refused);
 	const beforeWrite = c.cancelled();
 	if (beforeWrite !== undefined) return beforeWrite;
-	await w.forge.createComment(state.issue.number, startComment(newEvidenceId(u.id, new Date()), data));
-	await afterForgeWrite(w.session, state.issue.number);
+	await w.ledger.append(state.issue.number, { ...startComment(newEvidenceId(u.id, new Date()), data), after: lastForgeRef(state.marked) });
+	await afterLedgerWrite(w.session, state.issue.number);
 	const how = pending ? "verifier pending: commit the failing test alone first; unit_finish checks it" : `Verify was ${data.pre.verdict === "rebuild" || data.pre.verdict === "resumed" ? `green, ${data.pre.verdict}` : data.pre.verdict} (exit ${data.pre.exit})`;
 	return c.done(`Started ${u.id} at ${head.slice(0, 7)}; ${how}.${pending ? "" : `\n${unitResult(data.pre.output ?? "")}`}`);
 }

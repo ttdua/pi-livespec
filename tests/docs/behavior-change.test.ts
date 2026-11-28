@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
-import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
+import { decisionBody, type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import "../../src/decide/builtin.ts";
 import { type DecisionAsk, decide } from "../../src/decide/seam.ts";
 import { behaviorDigest, behaviorFacts, behaviorResults, type BehaviorItem } from "../../src/docs/behavior-change.ts";
@@ -27,7 +27,7 @@ function marked(body: string): MarkedComment {
 
 function record(outcome: string, item: BehaviorItem = ITEM, extra: Partial<DecisionRecord> = {}): MarkedComment {
 	const r: DecisionRecord = { point: "behavior-change", subject: item.capability, digest: behaviorDigest(item.files), source: "human", outcome, facts: item, files: item.files, reason: "chosen by alice", ...extra };
-	return marked(decisionComment(r));
+	return marked(decisionBody(decisionComment(r)));
 }
 
 function openRequest(capability: string): MarkedComment {

@@ -1,3 +1,4 @@
+import { decisionBody } from "../../src/decide/records.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
@@ -45,7 +46,7 @@ function startData(unit: string) {
 
 /** Posts an own `unit-start` comment for `unit`, as writers did before the ledger. */
 async function startUnitComment(world: MemoryWorld, n: number, unit: string): Promise<void> {
-	await world.postComment(n, BOT_LOGIN, startComment(newEvidenceId(unit, new Date()), startData(unit)));
+	await world.postComment(n, BOT_LOGIN, decisionBody(startComment(newEvidenceId(unit, new Date()), startData(unit))));
 }
 
 /** Appends a `unit-start` entry for `unit` to the ledger of change `n`. */

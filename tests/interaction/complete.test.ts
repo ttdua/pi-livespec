@@ -9,7 +9,7 @@ import { parseChange } from "../../src/core/change.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { splitLines } from "../../src/core/lines.ts";
 import { renderUnit } from "../../src/core/unit-blocks.ts";
-import { currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
+import { decisionBody, currentDecision, decisionComment, latestDecisions } from "../../src/decide/records.ts";
 import { advancePhase } from "../../src/engine/advance.ts";
 import { registerBuiltinChecks, runChecks } from "../../src/engine/checks.ts";
 import type { CommentsCache } from "../../src/engine/comments-cache.ts";
@@ -123,8 +123,8 @@ function ofKind(marked: MarkedComment[], kind: string, id?: string): MarkedComme
 async function seedClassification(f: Fixture): Promise<void> {
 	for (const u of parseChange(await f.world.bodyOf(f.n)).units) {
 		const digest = unitDigest(u);
-		await f.world.postComment(f.n, BOT_LOGIN, decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" }));
-		await f.world.postComment(f.n, BOT_LOGIN, decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" }));
+		await f.world.postComment(f.n, BOT_LOGIN, decisionBody(decisionComment({ point: "tags", subject: u.id, digest, source: "rule", outcome: u.tags, reason: "rule" })));
+		await f.world.postComment(f.n, BOT_LOGIN, decisionBody(decisionComment({ point: "difficulty", subject: u.id, digest, source: "rule", outcome: u.difficulty, reason: "rule" })));
 	}
 }
 

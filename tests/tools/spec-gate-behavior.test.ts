@@ -6,7 +6,7 @@ import { BRIEFING } from "../helpers/briefing.ts";
 import { pickById } from "../helpers/menu.ts";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
+import { decisionBody, type DecisionRecord, decisionComment } from "../../src/decide/records.ts";
 import { behaviorDigest } from "../../src/docs/behavior-change.ts";
 import { registerCheck } from "../../src/engine/registry.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
@@ -85,7 +85,7 @@ const behaviorTitles = (h: Gate): string[] => h.ctx.ui.select.mock.calls.map((c)
 async function seedRecord(h: Gate, files: string[], outcome: string): Promise<void> {
 	const item = { capability: "rate-limit", files };
 	const r: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome, facts: item, files, reason: "chosen by alice" };
-	await h.world.postComment(h.n, BOT_LOGIN, decisionComment(r));
+	await h.world.postComment(h.n, BOT_LOGIN, decisionBody(decisionComment(r)));
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
 }

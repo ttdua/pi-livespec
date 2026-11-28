@@ -37,6 +37,9 @@ describe("unit-evidence", () => {
 		const [start] = await h.ofKind("unit-start");
 		expect(start?.id).toMatch(/^U1\./);
 		expect(start?.data).toMatchObject({ unit: "U1", verify: "sh check.sh", pre: { sha: h.head, exit: 1, verdict: "red" } });
+		expect(start?.source).toBe("ledger");
+		expect(await h.inLedger("unit-start")).toHaveLength(1);
+		expect(await h.commentsOf("unit-start")).toEqual([]);
 		expect(h.runs()).toBe(1);
 		expect(Object.keys(cardState(h).state.evidence.started)).toEqual(["U1"]);
 	});
@@ -133,6 +136,8 @@ describe("unit-evidence", () => {
 		const starts = await h.ofKind("unit-start");
 		expect(starts).toHaveLength(2);
 		expect(starts[1]?.data).toMatchObject({ verify: "sh check-b.sh", digest });
+		expect(await h.inLedger("unit-start")).toHaveLength(2);
+		expect(await h.commentsOf("unit-start")).toEqual([]);
 	});
 
 	test("Command not found is not red", async () => {
@@ -160,6 +165,8 @@ describe("unit-evidence", () => {
 		const [start] = await h.ofKind("unit-start");
 		expect(start?.data).toMatchObject({ unit: "U1", pending: true, pre: { sha: h.head } });
 		expect((start?.data as { pre: Record<string, unknown> }).pre.exit).toBeUndefined();
+		expect(await h.commentsOf("unit-start")).toEqual([]);
+		expect(await h.inLedger("unit-start")).toHaveLength(1);
 		expect(h.runs()).toBe(0);
 		expect(cardState(h).step.pendingVerifier).toEqual(["U1"]);
 	});
@@ -178,6 +185,7 @@ describe("unit-evidence", () => {
 		expect(textOf(out)).not.toContain("s3cr3t");
 		const [start] = await h.ofKind("unit-start");
 		expect(JSON.stringify(start?.data)).not.toContain("s3cr3t");
+		expect(await h.commentsOf("unit-start")).toEqual([]);
 		expect((start?.data as { pre: { output: string } }).pre.output).toContain("token=***");
 	});
 
@@ -208,7 +216,7 @@ describe("unit-evidence", () => {
 		const h = await unitHarness({ units: [U1], scripts: SCRIPTS });
 		await h.start("U1");
 		await h.settle();
-		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
+		expect(h.gitCalls.some((args) => args.includes("push") && !args.some((a) => a.includes("refs/livespec/")))).toBe(false);
 	});
 });
 

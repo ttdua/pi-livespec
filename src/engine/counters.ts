@@ -1,10 +1,10 @@
-// Loop counters: own marked comments of kind `counter`, id `<loop>` or
+// Loop counters: own `counter` ledger entries, id `<loop>` or
 // `<loop>.<unit>`, data `{ value }`.
 
-import { type MarkedComment, writeMarked } from "../forge/markers.ts";
-import type { Forge } from "../forge/types.ts";
+import type { MarkedComment } from "../forge/markers.ts";
+import type { Ledger } from "../ledger/index.ts";
 
-export const COUNTER_KIND = "counter";
+export const COUNTER_KIND = "counter" as const;
 /**
  * Derived from own `stale` comments (src/engine/iterations.ts), aggregate review records (src/review/status.ts)
  * and `new-dependency` gate results (src/engine/deps-facts.ts); a counter comment for them is ignored.
@@ -33,22 +33,7 @@ export function readCounters(marked: MarkedComment[]): Record<string, number> {
 	return counters;
 }
 
-/**
- * Sets counter `id` on issue `n`. `marked` are the caller's own marked comments: an existing counter
- * comment is edited in place (own-marker edit), otherwise a new one is created.
- */
-export async function setCounter(forge: Forge, n: number, id: string, value: number, marked: MarkedComment[]): Promise<void> {
-	const body = writeMarked(COUNTER_KIND, id, { value });
-	const existing = marked.filter((m) => m.kind === COUNTER_KIND && m.id === id).pop();
-	if (!existing) {
-		await forge.createComment(n, body);
-		return;
-	}
-	// The edit needs the comment's current version, which MarkedComment does not carry.
-	const current = (await forge.listComments(n)).find((c) => c.id === existing.ref);
-	if (!current) throw new Error(`counter comment ${existing.ref} for ${id} no longer exists on issue #${n}`);
-	const result = await forge.updateComment(current.id, body, current.version);
-	if (result.status === "conflict") {
-		throw new Error(`counter ${id} on issue #${n} changed concurrently (${result.changed.join(", ")})`);
-	}
+/** Sets counter `id` on issue `n` by appending a `counter` entry; the latest entry wins on read, the earlier ones stay. */
+export async function setCounter(ledger: Ledger, n: number, id: string, value: number, after?: string): Promise<void> {
+	await ledger.append(n, { kind: COUNTER_KIND, id, data: { value }, ...(after === undefined ? {} : { after }) });
 }

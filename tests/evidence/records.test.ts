@@ -1,3 +1,4 @@
+import { decisionBody } from "../../src/decide/records.ts";
 import { describe, expect, test } from "vitest";
 import { type ReceiptData, type StartData, asRebuildRecord, newEvidenceId, readReceipts, readStarts, receiptComment, startComment } from "../../src/evidence/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
@@ -26,11 +27,11 @@ function asMarked(body: string, commentId: string): MarkedComment {
 
 describe("evidence records", () => {
 	test("unit-start round trip", () => {
-		expect(parseMarked(startComment("U1.abc", start))).toEqual({ kind: "unit-start", id: "U1.abc", data: start });
+		expect(parseMarked(decisionBody(startComment("U1.abc", start)))).toEqual({ kind: "unit-start", id: "U1.abc", data: start });
 	});
 
 	test("receipt round trip", () => {
-		expect(parseMarked(receiptComment("U1.abd", receipt))).toEqual({ kind: "receipt", id: "U1.abd", data: receipt });
+		expect(parseMarked(decisionBody(receiptComment("U1.abd", receipt)))).toEqual({ kind: "receipt", id: "U1.abd", data: receipt });
 	});
 
 	test("newEvidenceId", () => {
@@ -40,9 +41,9 @@ describe("evidence records", () => {
 
 	test("readStarts and readReceipts keep comment order and skip malformed records", () => {
 		const marked = [
-			asMarked(startComment("U1.a", start), "c1"),
+			asMarked(decisionBody(startComment("U1.a", start)), "c1"),
 			{ ref: "c2", source: "forge" as const, author: "bot", kind: "unit-start", id: "U1.b", data: { unit: "U1" } },
-			asMarked(receiptComment("U1.c", receipt), "c3"),
+			asMarked(decisionBody(receiptComment("U1.c", receipt)), "c3"),
 			{ ref: "c4", source: "forge" as const, author: "bot", kind: "receipt", id: "U2.d", data: { ...receipt, post: "x" } },
 		];
 		expect(readStarts(marked)).toEqual([{ ...start, id: "U1.a", commentId: "c1", index: 0 }]);

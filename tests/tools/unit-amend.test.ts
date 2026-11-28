@@ -5,7 +5,8 @@ import { unitDigest } from "../../src/core/digest.ts";
 import { setHeaderLine } from "../../src/core/sections.ts";
 import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { registerBuiltinRules, registerRule, resetRulesForTests } from "../../src/decide/registry.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import type { Subject } from "../../src/interaction/approver.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
@@ -106,7 +107,7 @@ async function lock(h: Amend): Promise<void> {
 }
 
 async function marked(h: Amend): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
 const ofKind = async (h: Amend, kind: string) => (await marked(h)).filter((m) => m.kind === kind);

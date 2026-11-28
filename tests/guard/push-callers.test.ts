@@ -60,7 +60,8 @@ describe("wip refspec", () => {
 		await writeIn(h.lanes.U2.path, "src/u2.ts", "u2\n");
 		const out = await h.park();
 		expect(out.isError, textOf(out)).toBeFalsy();
-		const pushes = h.gitCalls.filter((args) => args[0] === "push");
+		// Ledger syncs push `refs/livespec/*` on their own; the branch pushes are the ones asserted.
+		const pushes = h.gitCalls.filter((args) => args[0] === "push" && !args.some((a) => a.includes("refs/livespec/")));
 		expect(pushes).toEqual([["push", "--", "origin", `HEAD:refs/heads/${BRANCH}--wip-U2`]]);
 		expect(originRefs(h.origin)).toContain(`refs/heads/${BRANCH}--wip-U2`);
 	});

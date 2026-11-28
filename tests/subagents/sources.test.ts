@@ -1,4 +1,5 @@
 // Tests of the context manifest per role and subject.
+import { decisionBody } from "../../src/decide/records.ts";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -207,14 +208,14 @@ describe("manifest", () => {
 	test("a receipt keeps its whole output", async () => {
 		const world = await makeWorld();
 		const output = `${"line\n".repeat(1000)}END-OF-OUTPUT`;
-		world.post(BOT, receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "aaa", exit: 1 }, post: { sha: "bbb", exit: 0 }, output, start: "U1.s" }));
+		world.post(BOT, decisionBody(receiptComment("U1.r1", { unit: "U1", digest: "d", verify: "v", pre: { sha: "aaa", exit: 1 }, post: { sha: "bbb", exit: 0 }, output, start: "U1.s" })));
 		const found = (await sourcesOf(world, "implementer", "U3")).find((p) => p.source.id === "receipt:U1");
 		expect(found?.source.text).toContain(output);
 	});
 
 	test("verifier holds the owning unit verbatim and its receipts' evidence", async () => {
 		const world = await makeWorld();
-		world.post(BOT, receiptComment("U3.r1", { unit: "U3", digest: "d", verify: "v", pre: { sha: "pre1234", exit: 1 }, post: { sha: "post567", exit: 0 }, output: "3 passed", start: "U3.s" }));
+		world.post(BOT, decisionBody(receiptComment("U3.r1", { unit: "U3", digest: "d", verify: "v", pre: { sha: "pre1234", exit: 1 }, post: { sha: "post567", exit: 0 }, output: "3 passed", start: "U3.s" })));
 		const finding = { severity: "CRITICAL" as const, kind: "defect" as const, location: "src/middleware/ratelimit.ts:3", evidence: "e", fix: "f", scope: "unit" as const };
 		const target = resolveTarget(world.ctx.state, "verifier");
 		if (!target.ok) throw new Error(target.message);

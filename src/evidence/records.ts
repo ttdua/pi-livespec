@@ -1,9 +1,10 @@
 // Evidence records: the `unit-start`, `receipt` and `rebuild` marked comments, their ids and their parsers.
 
 import { type MarkedComment, registerKind, writeMarked } from "../forge/markers.ts";
+import type { AppendInput } from "../ledger/entry.ts";
 
-const START_KIND = "unit-start";
-const RECEIPT_KIND = "receipt";
+const START_KIND = "unit-start" as const;
+const RECEIPT_KIND = "receipt" as const;
 const REBUILD_KIND = "rebuild";
 
 registerKind(START_KIND);
@@ -29,7 +30,7 @@ export type ReceiptData = {
 	pre: { sha: string; exit: number };
 	post: { sha: string; exit: number };
 	output: string;
-	/** The id of the matching `unit-start` comment. */
+	/** The `ref` of the matching `unit-start` entry. */
 	start: string;
 	pending_commit?: string;
 };
@@ -68,14 +69,14 @@ function isReceiptData(d: unknown): d is ReceiptData {
 	return isString(d.output) && isString(d.start) && optional(d, "pending_commit", isString);
 }
 
-/** The `unit-start` comment body. */
-export function startComment(id: string, d: StartData): string {
-	return writeMarked(START_KIND, id, d);
+/** The `unit-start` ledger entry input. */
+export function startComment(id: string, d: StartData): AppendInput {
+	return { kind: START_KIND, id, data: d };
 }
 
-/** The `receipt` comment body. */
-export function receiptComment(id: string, d: ReceiptData): string {
-	return writeMarked(RECEIPT_KIND, id, d);
+/** The `receipt` ledger entry input. */
+export function receiptComment(id: string, d: ReceiptData): AppendInput {
+	return { kind: RECEIPT_KIND, id, data: d };
 }
 
 /** The `rebuild` comment body. */

@@ -1,4 +1,5 @@
 // Tests of the route effects: rebuild before untick, one question, pull request comments once.
+import { decisionBody } from "../../src/decide/records.ts";
 import { describe, expect, test } from "vitest";
 import { parseChange } from "../../src/core/change.ts";
 import { tickUnit } from "../../src/core/tick.ts";
@@ -140,8 +141,8 @@ describe("applyRoutes feedback round", () => {
 describe("applyRoutes retry after a question was not sent", () => {
 	const rebuilt = async (t: Awaited<ReturnType<typeof world>>) => {
 		const digest = "d";
-		await t.w.forge.createComment(t.n, startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } }));
-		await t.w.forge.createComment(t.n, receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a" }));
+		await t.w.forge.createComment(t.n, decisionBody(startComment("U2.a", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0, verdict: "rebuild" } })));
+		await t.w.forge.createComment(t.n, decisionBody(receiptComment("U2.b", { unit: "U2", digest, verify: "true", pre: { sha: "s", exit: 0 }, post: { sha: "t", exit: 0 }, output: "", start: "U2.a" })));
 		const issue = await t.w.forge.getIssue(t.n);
 		await t.w.forge.updateIssueBody(t.n, tickUnit(issue.body, "U2"), issue.version);
 	};

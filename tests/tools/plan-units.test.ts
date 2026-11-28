@@ -7,7 +7,8 @@ import type { UnitInput } from "../../src/core/unit-blocks.ts";
 import { unitDigest } from "../../src/core/digest.ts";
 import { createGit } from "../../src/engine/git.ts";
 import { ForgeError } from "../../src/forge/errors.ts";
-import { filterMarked, type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { type MarkedComment, writeMarked } from "../../src/forge/markers.ts";
+import { readOwnRecords } from "../../src/ledger/records.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import { setSession } from "../../src/hooks/session-store.ts";
 import { answerComment } from "../../src/interaction/requests.ts";
@@ -49,7 +50,7 @@ const U2: UnitInput = {
 	verify: "bun test readme",
 };
 
-/** `next` decides how the next `updateIssueBody` fails. */
+/** `next` decides how the next `updateIssueBody` fails; `comment` and `editOnComment` act on the ledger append of a decision record. */
 type Fault = { next: "none" | "conflict" | "lost"; comment?: boolean; editOnComment?: boolean };
 
 function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => Forge {
@@ -58,17 +59,6 @@ function faultyForge(fault: Fault, n: () => number): (world: MemoryWorld) => For
 			get(target, prop, receiver) {
 				const value = Reflect.get(target, prop, receiver);
 				if (typeof value !== "function") return value;
-				if (prop === "createComment") {
-					return async (...args: unknown[]) => {
-						if (fault.comment) throw new ForgeError({ code: "http", operation: "createComment", message: "bad gateway", status: 502 });
-						const created = await value.apply(target, args);
-						if (fault.editOnComment) {
-							fault.editOnComment = false;
-							await world.editBodyBehindBack(n(), `${await world.bodyOf(n())}edited elsewhere\n`);
-						}
-						return created;
-					};
-				}
 				if (prop !== "updateIssueBody") return value.bind(target);
 				return async (...args: unknown[]) => {
 					const f = fault.next;
@@ -90,6 +80,17 @@ async function planning(phase = "plan", config?: string, ui?: FakeUI): Promise<P
 	const h = await toolHarness({ branch: CHANGE_BRANCH, forge: faultyForge(fault, () => n), ...(config !== undefined ? { config } : {}), ...(ui ? { ui } : {}) });
 	h.git("config", "user.name", "t");
 	h.git("config", "user.email", "t@t");
+	const ledger = h.session.ledger;
+	const append = ledger.append.bind(ledger);
+	ledger.append = async (at, input) => {
+		if (fault.comment) throw new Error("bad gateway");
+		const entry = await append(at, input);
+		if (fault.editOnComment) {
+			fault.editOnComment = false;
+			await h.world.editBodyBehindBack(n, `${await h.world.bodyOf(n)}edited elsewhere\n`);
+		}
+		return entry;
+	};
 	const base = h.head;
 	h.git("config", BASE_KEY, base);
 	const body = setHeaderLine(setHeaderLine(CHANGE_BODY_TEMPLATE, "Base", base), "Branch", CHANGE_BRANCH);
@@ -110,7 +111,7 @@ async function advanceIntegration(h: Plan, file = "upstream.txt", text = "upstre
 }
 
 async function marked(h: Plan): Promise<MarkedComment[]> {
-	return filterMarked(await h.world.forge.listComments(h.n), BOT_LOGIN).comments;
+	return (await readOwnRecords(h.world.forge, h.session.ledger, h.n, { login: BOT_LOGIN })).records;
 }
 
 const decisions = async (h: Plan) => (await marked(h)).filter((m) => m.kind === "decision");

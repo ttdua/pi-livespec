@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { parseDocument, stringify } from "yaml";
 import { beforeEach, describe, expect, test } from "vitest";
-import { decisionComment } from "../../src/decide/records.ts";
+import { decisionBody, decisionComment } from "../../src/decide/records.ts";
 import { registerBuiltinRules, resetRulesForTests, ruleFor } from "../../src/decide/registry.ts";
 import { type Decided, decide } from "../../src/decide/seam.ts";
 import { PROGRESS_OUTPUT_BYTES, type ProgressFacts, previousSignature, progressRecord } from "../../src/evidence/progress-rule.ts";
@@ -67,7 +67,7 @@ describe("progress rule", () => {
 		const first = await run({ attempt: 1, cap: 3, signature: failA });
 		const record = progressRecord(recordInput(failA, "x".repeat(PROGRESS_OUTPUT_BYTES), first));
 		expect(stringify(record.facts).length).toBeGreaterThan(2000);
-		const parsed = parseMarked(decisionComment(record));
+		const parsed = parseMarked(decisionBody(decisionComment(record)));
 		if (!parsed) throw new Error("unparsable");
 		expect(parsed.id).toBe("progress.U1");
 		const data = parsed.data as Record<string, unknown>;

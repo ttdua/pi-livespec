@@ -5,7 +5,7 @@
 import { parseChange } from "../core/change.ts";
 import { unitDigest } from "../core/digest.ts";
 import { setUnitField } from "../core/unit-blocks.ts";
-import { decisionComment, type DecisionRecord, latestDecisions } from "../decide/records.ts";
+import { decisionBody, decisionComment, type DecisionRecord, latestDecisions } from "../decide/records.ts";
 import type { Answered, Override } from "./approver.ts";
 import { editBody, postComment, readIssue, type Run } from "./complete-effects.ts";
 
@@ -51,7 +51,7 @@ async function recordOverride(run: Run, f: Field, unit: string, answer: Answered
 		overridden_by: { by: answer.by, at: answer.at, from },
 	};
 	if (u) record.digest = unitDigest(u);
-	await postComment(run, decisionComment(record));
+	await postComment(run, decisionBody(decisionComment(record)));
 }
 
 /** Applies every override of `answer` to units present in the body. */

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { stringify } from "yaml";
 import { describe, expect, test } from "vitest";
-import { currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
+import { decisionBody, currentDecision, type DecisionRecord, decisionComment, formatDecisionBlock, latestDecisions, parseDecisionBlocks, reusableAnswer } from "../../src/decide/records.ts";
 import { type MarkedComment, parseMarked } from "../../src/forge/markers.ts";
 import { behaviorDigest, latestBehaviorRecords } from "../../src/docs/behavior-change.ts";
 
@@ -22,7 +22,7 @@ function marked(id: string, data: unknown, kind = "decision"): MarkedComment {
 
 describe("decision records", () => {
 	test("Record fields", () => {
-		const parsed = parseMarked(decisionComment(TAGS_U3));
+		const parsed = parseMarked(decisionBody(decisionComment(TAGS_U3)));
 		expect(parsed).toMatchObject({ kind: "decision", id: "tags.U3" });
 		expect(parsed?.data).toEqual(TAGS_U3);
 		expect(parsed?.data).toMatchObject({ source: "rule", outcome: ["security", "api"], agent_additions: ["api"] });
@@ -32,7 +32,7 @@ describe("decision records", () => {
 		const facts = { blob: "x".repeat(2001) };
 		const yaml = stringify(facts);
 		expect(yaml.length).toBeGreaterThan(2000);
-		const data = parseMarked(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
+		const data = parseMarked(decisionBody(decisionComment({ ...TAGS_U3, facts })))?.data as DecisionRecord;
 		expect(data.facts_hash).toBe(createHash("sha256").update(yaml).digest("hex"));
 		expect(data).not.toHaveProperty("facts");
 	});
@@ -40,7 +40,7 @@ describe("decision records", () => {
 	test("facts at the limit are kept", () => {
 		const facts = { blob: "x".repeat(1990) };
 		expect(stringify(facts).length).toBeLessThanOrEqual(2000);
-		const data = parseMarked(decisionComment({ ...TAGS_U3, facts }))?.data as DecisionRecord;
+		const data = parseMarked(decisionBody(decisionComment({ ...TAGS_U3, facts })))?.data as DecisionRecord;
 		expect(data.facts).toEqual(facts);
 		expect(data).not.toHaveProperty("facts_hash");
 	});
@@ -155,13 +155,13 @@ describe("decision records", () => {
 	test("reusableAnswer reuses by facts_hash for large facts", () => {
 		const facts = { blob: "x".repeat(2001) };
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts, reason: "r" };
-		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
+		const parsed = parseMarked(decisionBody(decisionComment(record))) as MarkedComment;
 		expect(reusableAnswer([parsed], "pick", "U1", "d1", facts)).toMatchObject({ outcome: "y", facts_hash: expect.any(String) });
 	});
 
 	test("reusableAnswer reuses after a forge round-trip", () => {
 		const record: DecisionRecord = { ...TAGS_U3, point: "pick", subject: "U1", digest: "d1", source: "human", outcome: "y", facts: { files: ["a.ts"], tags: ["ui"], n: 3 }, reason: "r" };
-		const parsed = parseMarked(decisionComment(record)) as MarkedComment;
+		const parsed = parseMarked(decisionBody(decisionComment(record))) as MarkedComment;
 		expect(reusableAnswer([parsed], "pick", "U1", "d1", { files: ["a.ts"], tags: ["ui"], n: 3 })).toMatchObject({ outcome: "y" });
 	});
 
@@ -187,7 +187,7 @@ describe("decision records", () => {
 		const files = Array.from({ length: 300 }, (_, i) => `src/limit/file-${String(i).padStart(3, "0")}.ts`);
 		const item = { capability: "rate-limit", files };
 		const record: DecisionRecord = { point: "behavior-change", subject: "rate-limit", digest: behaviorDigest(files), source: "human", outcome: "unchanged", facts: item, files, reason: "chosen by alice" };
-		const data = parseMarked(decisionComment(record))?.data as DecisionRecord;
+		const data = parseMarked(decisionBody(decisionComment(record)))?.data as DecisionRecord;
 		expect(data.facts_hash).toEqual(expect.any(String));
 		expect(data).not.toHaveProperty("facts");
 		expect(data.files).toHaveLength(300);

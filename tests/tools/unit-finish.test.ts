@@ -47,7 +47,10 @@ describe("unit-evidence", () => {
 		const [receipt] = await h.ofKind("receipt");
 		const [start] = await h.ofKind("unit-start");
 		expect(receipt?.id).toMatch(/^U1\./);
-		expect(receipt?.data).toMatchObject({ unit: "U1", verify: "sh check.sh", pre: { sha: h.head, exit: 1 }, post: { sha: post, exit: 0 }, start: start?.id });
+		expect(receipt?.source).toBe("ledger");
+		expect(await h.commentsOf("receipt")).toEqual([]);
+		expect(await h.commentsOf("unit-start")).toEqual([]);
+		expect(receipt?.data).toMatchObject({ unit: "U1", verify: "sh check.sh", pre: { sha: h.head, exit: 1 }, post: { sha: post, exit: 0 }, start: start?.ref });
 		const before = bodyBefore.split("\n");
 		const after = (await h.world.bodyOf(h.n)).split("\n");
 		expect(after).toHaveLength(before.length);
@@ -269,7 +272,11 @@ describe("unit-evidence", () => {
 		}
 		expect(outcomes).toEqual(["retry", "retry", "stop"]);
 		expect(last).toContain("spec_stuck");
-		expect(last).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-`);
+		const refs = (await h.ofKind("decision")).map((m) => `ledger:${h.n}/${m.ref}`);
+		expect(refs).toHaveLength(3);
+		expect(await h.commentsOf("decision")).toEqual([]);
+		expect(await h.inLedger("decision")).toHaveLength(3);
+		for (const ref of refs) expect(last).toContain(ref);
 		expect(cardState(h).state.evidence.blocked).toEqual({ U1: "attempts" });
 		await expectFinishRefusal(h, "U1", ["spec_stuck"]);
 	});
@@ -310,7 +317,7 @@ describe("unit-evidence", () => {
 		const decisions = (await h.ofKind("decision")).filter((m) => m.id === "progress.U1");
 		expect(decisions.length).toBeGreaterThan(1);
 		const text = await expectFinishRefusal(h, "U1", ["BLOCKED", "spec_stuck"]);
-		for (const d of decisions) expect(text).toContain(`https://forge.example/o/r/issues/${h.n}#issuecomment-${d.ref}`);
+		for (const d of decisions) expect(text).toContain(`ledger:${h.n}/${d.ref}`);
 	});
 
 	test("extra parameters are ignored", async () => {
@@ -326,7 +333,7 @@ describe("unit-evidence", () => {
 		await h.commit({ "src/u1.ts": "x\n" });
 		await h.finish("U1");
 		await h.settle();
-		expect(h.gitCalls.some((args) => args.includes("push"))).toBe(false);
+		expect(h.gitCalls.some((args) => args.includes("push") && !args.some((a) => a.includes("refs/livespec/")))).toBe(false);
 	});
 });
 

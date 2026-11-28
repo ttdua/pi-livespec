@@ -2,7 +2,7 @@
 // The tool reloads the change state after every stage, so each stage reads the records the previous one posted.
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { decisionComment } from "../decide/records.ts";
+import { decisionBody, decisionComment } from "../decide/records.ts";
 import { decide } from "../decide/seam.ts";
 import { diffFilesOf } from "../engine/git.ts";
 import type { ChangeState } from "../engine/state-types.ts";
@@ -61,7 +61,7 @@ async function startStage(c: StageCtx): Promise<StageReport> {
 	const inputs = await startInputs({ state: c.state, pack: c.w.pack, env });
 	if ("refused" in inputs) return { text: `spec_review refused: ${inputs.refused} Nothing was written.`, stop: true, error: true };
 	const round = roundNumber(c.state.marked);
-	await post(c, decisionComment({ point: "tags", subject: REVIEW, source: "rule", outcome: inputs.tags, facts: { files: inputs.diffFiles }, reason: `tags the diff's files carry that no unit has: ${inputs.tags.join(", ") || "none"}` }));
+	await post(c, decisionBody(decisionComment({ point: "tags", subject: REVIEW, source: "rule", outcome: inputs.tags, facts: { files: inputs.diffFiles }, reason: `tags the diff's files carry that no unit has: ${inputs.tags.join(", ") || "none"}` })));
 	const selected = selectSubjects(c.w.pack, c.state, inputs.tags);
 	await post(c, reviewRunComment({ round, head: c.state.git.head, selected, tags: inputs.tags, verify: inputs.verify, parentFindings: inputs.parent, routed: false }));
 	const red = Object.entries(inputs.verify).filter(([, v]) => v.verdict !== "green").map(([u, v]) => `${u} ${v.verdict}`);
@@ -165,7 +165,7 @@ async function aggregateStage(c: StageCtx): Promise<StageReport> {
 		routes.push(decided.outcome as RouteResult);
 	}
 	const outcome = Object.fromEntries(routes.map((r, i) => [String(i), r]));
-	await post(c, decisionComment({ point: "finding-scope", subject, source: "rule", outcome, facts: { diffFiles, units }, reason: "routes from the finding's location, the units' Files and the diff" }));
+	await post(c, decisionBody(decisionComment({ point: "finding-scope", subject, source: "rule", outcome, facts: { diffFiles, units }, reason: "routes from the finding's location, the units' Files and the diff" })));
 	const findings = withRoutes(merged, routes, verifierOff(c));
 	await post(c, aggregateComment({ round: run.round, head: run.head, reviews: reviews.map((r) => r.commentId), findings }));
 	const summary = findings.map((f, i) => `${i}: ${f.severity} ${untrusted(f.kind)} at ${untrusted(f.location)} → ${f.route}${f.routeUnit === undefined ? "" : ` ${f.routeUnit}`} (verify ${f.verify})`);

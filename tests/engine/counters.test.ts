@@ -6,8 +6,11 @@ import { loadPack } from "../../src/engine/pack-load.ts";
 import { deriveCommentFacts } from "../../src/engine/snapshot.ts";
 import { FIXTURE_BODY, stateFor } from "../helpers/change-state.ts";
 import { agg, aggregate } from "../review/review-fixtures.ts";
-import { type MarkedComment, readMarkedComments, writeMarked } from "../../src/forge/markers.ts";
-import type { Forge } from "../../src/forge/types.ts";
+import { type MarkedComment, readMarkedComments } from "../../src/forge/markers.ts";
+import { type LedgerEntry, newRef } from "../../src/ledger/entry.ts";
+import type { Ledger } from "../../src/ledger/index.ts";
+import { mergeRecords } from "../../src/ledger/merge.ts";
+import { emptyLedger } from "../helpers/ledger.ts";
 import { MemoryWorld } from "../forge/memory-forge.ts";
 import { BOT_LOGIN } from "../forge/world.ts";
 
@@ -27,16 +30,19 @@ async function own(): Promise<MarkedComment[]> {
 	return (await readMarkedComments(world.forge, n)).comments;
 }
 
-/** The memory forge with comment creation counted. */
-function countingCreates(forge: Forge, calls: { create: number }): Forge {
-	return new Proxy(forge, {
-		get(target, key, receiver) {
-			const value = Reflect.get(target, key, receiver);
-			if (typeof value !== "function") return value;
-			if (key === "createComment") return (...args: [number, string]) => (calls.create++, target.createComment(...args));
-			return value.bind(target);
+/** An in-memory ledger that keeps what is appended to it. */
+function recordingLedger(): { ledger: Ledger; entries: LedgerEntry[] } {
+	const entries: LedgerEntry[] = [];
+	const ledger: Ledger = {
+		...emptyLedger(),
+		append: async (_n, input) => {
+			const entry: LedgerEntry = { ref: newRef(input.id), kind: input.kind, id: input.id, seq: entries.length + 1, at: new Date().toISOString(), ...(input.after === undefined ? {} : { after: input.after }), data: input.data };
+			entries.push(entry);
+			return entry;
 		},
-	});
+		read: async () => ({ entries: [...entries], warnings: [] }),
+	};
+	return { ledger, entries };
 }
 
 describe("readCounters", () => {
@@ -58,18 +64,21 @@ describe("readCounters", () => {
 
 describe("setCounter", () => {
 	test("Counter update edits in place", async () => {
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 1 }));
-		const calls = { create: 0 };
-		await setCounter(countingCreates(world.forge, calls), n, "custom_loop", 2, await own());
-		expect(calls.create).toBe(0);
-		const after = await own();
-		expect(after).toHaveLength(1);
-		expect(readCounters(after)).toEqual({ custom_loop: 2 });
+		const { ledger, entries } = recordingLedger();
+		await setCounter(ledger, n, "custom_loop", 1);
+		const first = { ...entries[0] };
+		await setCounter(ledger, n, "custom_loop", 2);
+		expect(entries).toHaveLength(2);
+		expect(entries[0]).toEqual(first);
+		expect(readCounters(mergeRecords([], entries))).toEqual({ custom_loop: 2 });
+		expect(await own()).toEqual([]);
 	});
 
-	test("setCounter creates when missing", async () => {
-		await setCounter(world.forge, n, "custom_loop.U3", 1, await own());
-		expect(readCounters(await own())).toEqual({ "custom_loop.U3": 1 });
+	test("setCounter appends when missing, anchored after the given comment", async () => {
+		const { ledger, entries } = recordingLedger();
+		await setCounter(ledger, n, "custom_loop.U3", 1, "c9");
+		expect(entries[0]).toMatchObject({ kind: "counter", id: "custom_loop.U3", after: "c9", data: { value: 1 } });
+		expect(readCounters(mergeRecords([], entries))).toEqual({ "custom_loop.U3": 1 });
 	});
 });
 
