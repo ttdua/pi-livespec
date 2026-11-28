@@ -286,11 +286,11 @@ describe("gitea adapter", () => {
 		it("a marked comment by another account is refused with no PATCH sent", async () => {
 			const w = await world();
 			const n = await w.seedIssue();
-			await w.postComment(n, OTHER_LOGIN, writeMarked("decision", "d1", { choice: "x" }));
+			await w.postComment(n, OTHER_LOGIN, writeMarked("gate", "d1", { choice: "x" }));
 			const [foreign] = await w.forge.listComments(n);
 			w.fake.calls.length = 0;
 
-			await expect(w.forge.updateComment(foreign.id, writeMarked("decision", "d1", { choice: "y" }), foreign.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
+			await expect(w.forge.updateComment(foreign.id, writeMarked("gate", "d1", { choice: "y" }), foreign.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
 
 			expect(w.fake.calls.some((c) => c.method === "PATCH")).toBe(false);
 		});
@@ -309,9 +309,9 @@ describe("gitea adapter", () => {
 		it("a marked own comment is edited with one PATCH", async () => {
 			const w = await world();
 			const n = await w.seedIssue();
-			const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+			const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
 			w.fake.calls.length = 0;
-			const edited = writeMarked("receipt", "u1", { v: 2 });
+			const edited = writeMarked("stale", "u1", { v: 2 });
 
 			const result = await w.forge.updateComment(created.id, edited, created.version);
 
@@ -324,12 +324,12 @@ describe("gitea adapter", () => {
 	it("a marker removed behind the back after a read is refused with a fresh GET and no PATCH", async () => {
 		const w = await world();
 		const n = await w.seedIssue();
-		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+		const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
 		const [read] = await w.forge.listComments(n);
 		w.fake.editComment(Number(created.id), "marker stripped");
 		w.fake.calls.length = 0;
 
-		await expect(w.forge.updateComment(read.id, writeMarked("receipt", "u1", { v: 2 }), read.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
+		await expect(w.forge.updateComment(read.id, writeMarked("stale", "u1", { v: 2 }), read.version)).rejects.toMatchObject({ code: "unsupported", operation: "updateComment" });
 
 		expect(w.fake.calls.some((c) => c.method === "GET" && c.path.includes(`/issues/comments/${created.id}`))).toBe(true);
 		expect(w.fake.calls.some((c) => c.method === "PATCH")).toBe(false);

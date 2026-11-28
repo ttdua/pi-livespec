@@ -7,7 +7,6 @@ const START_KIND = "unit-start" as const;
 const RECEIPT_KIND = "receipt" as const;
 const REBUILD_KIND = "rebuild";
 
-registerKind(START_KIND);
 registerKind(REBUILD_KIND);
 
 /** `rebuild`: a review-routed rebuild started green; `resumed`: a unit of a resumed park started green. */

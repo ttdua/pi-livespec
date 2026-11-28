@@ -170,7 +170,7 @@ describe("nextStage refusals", () => {
 	});
 
 	test("a stray decision comment changes nothing", () => {
-		expect(nextStage(at([mark(writeMarked("decision", "tags.review", { point: "tags", subject: "review", source: "rule", outcome: [], reason: "r" }))]), pack)).toEqual({ stage: "start" });
+		expect(nextStage(at([mark({ kind: "decision", id: "tags.review", data: { point: "tags", subject: "review", source: "rule", outcome: [], reason: "r" } })]), pack)).toEqual({ stage: "start" });
 	});
 });
 

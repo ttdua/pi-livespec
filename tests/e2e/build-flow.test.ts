@@ -1,3 +1,4 @@
+import { ledgerKindComments } from "../helpers/ledger.ts";
 // End-to-end build flow: the real unit tools, the guard and the settle hook of
 // the loaded extension, over a memory forge and a temporary repository.
 
@@ -43,4 +44,7 @@ test("build flow: start red, finish green, receipt and tick, guarded bash, quiet
 	const settle = await pi.fire("agent_before_settle", { type: "agent_before_settle", entries: [], continue: false, context: {}, outcome: "completed" }, ctx);
 	expect(settle).toBeUndefined();
 	expect(await h.ofKind("incomplete")).toEqual([]);
+	expect(await ledgerKindComments(h)).toEqual([]);
+	expect((await h.inLedger("unit-start")).length).toBeGreaterThan(0);
+	expect((await h.inLedger("receipt")).length).toBeGreaterThan(0);
 });

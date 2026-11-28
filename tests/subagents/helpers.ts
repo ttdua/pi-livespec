@@ -18,7 +18,7 @@ export function mark(body: string | AppendInput): MarkedComment {
 }
 
 /** A placeholder own comment, so the next records sit after a `unit-start` at index 0. */
-export const pad = (): MarkedComment => mark(writeMarked("counter", "pad", {}));
+export const pad = (): MarkedComment => mark({ kind: "counter", id: "pad", data: {} });
 
 export const finding = (over: Partial<Finding> = {}): Finding => ({
 	severity: "WARNING", kind: "defect", location: "a.ts:1", evidence: "the cap is off by one", fix: "use >=", scope: "unit", ...over,

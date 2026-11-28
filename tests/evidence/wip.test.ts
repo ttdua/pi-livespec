@@ -10,7 +10,7 @@ import { type WorkInProgress, resetWorkInProgressForTests, workInProgress } from
 import { defaultGitExec } from "../../src/engine/git-exec.ts";
 import type { Pack } from "../../src/engine/pack-types.ts";
 import { newEvidenceId } from "../../src/evidence/records.ts";
-import { writeMarked } from "../../src/forge/markers.ts";
+import { stringify } from "yaml";
 import { registerStartedUnitWorkInProgress } from "../../src/evidence/wip.ts";
 import { LABEL_LIVESPEC, phaseLabel } from "../../src/forge/labels.ts";
 import { createLedger, type Ledger } from "../../src/ledger/index.ts";
@@ -44,9 +44,10 @@ function startData(unit: string) {
 	return data;
 }
 
-/** Posts a raw own `unit-start` comment for `unit`, as writers did before the ledger (older changes still carry them). */
+/** Posts a raw own `unit-start` comment for `unit`, as writers did before the ledger; built by hand because `writeMarked` refuses ledger kinds. */
 async function startUnitComment(world: MemoryWorld, n: number, unit: string): Promise<void> {
-	await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", newEvidenceId(unit, new Date()), startData(unit)));
+	const body = `<!-- livespec:unit-start:${newEvidenceId(unit, new Date())} -->\n\`\`\`yaml\n${stringify(startData(unit))}\`\`\``;
+	await world.postComment(n, BOT_LOGIN, body);
 }
 
 /** Appends a `unit-start` entry for `unit` to the ledger of change `n`. */
@@ -99,11 +100,11 @@ describe("unit-evidence", () => {
 		expect(await workInProgress(world.forge, ledger)).toEqual({ busy: true, change: 7, reason: "change #7 has U2 started" });
 	});
 
-	test("a unit-start comment is still work in progress", async () => {
+	test("an old unit-start comment is ignored: only the ledger counts", async () => {
 		const { world, n } = await worldWithChangeSeven(BODY);
 		await startUnitComment(world, n, "U2");
 		registerStartedUnitWorkInProgress();
-		expect(await workInProgress(world.forge, ledger)).toMatchObject({ busy: true, change: 7 });
+		expect(await workInProgress(world.forge, ledger)).toEqual({ busy: false });
 	});
 
 	test("Started unit blocks upgrades", async () => {

@@ -54,7 +54,7 @@ function state(phase: string, body: string, overrides: Partial<ChangeState> = {}
 /** A completed advisory review of a whole-change subject at the fixture HEAD: the phase's reviewer step is done. */
 function changeReview(subject: "spec" | "plan"): MarkedComment {
 	const { unit: _unit, ...data } = JSON.parse(JSON.stringify(reviewed({ subject, advisory: true }).data)) as Record<string, unknown>;
-	return mark(writeMarked("finding-summary", `finding-summary.change.${subject}.1`, data));
+	return mark({ kind: "finding-summary", id: `finding-summary.change.${subject}.1`, data: data });
 }
 
 /** A define or plan state whose default `always` reviewer already ran, so the gate is next. */

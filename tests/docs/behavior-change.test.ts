@@ -23,7 +23,7 @@ const ITEM: BehaviorItem = { capability: "rate-limit", files: [CAP] };
 function marked(body: string): MarkedComment {
 	const m = parseMarked(body);
 	if (m === undefined) throw new Error(`not a marked comment: ${body}`);
-	return { ...m, ref: `c-${Math.random()}`, author: "bot" } as MarkedComment;
+	return { ...m, source: "forge", ref: `c-${Math.random()}`, author: "bot" } as MarkedComment;
 }
 
 function record(outcome: string, item: BehaviorItem = ITEM, extra: Partial<DecisionRecord> = {}): MarkedComment {

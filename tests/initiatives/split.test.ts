@@ -37,7 +37,7 @@ const UNITS: U[] = [
 const bodyOf = (units: U[], caps = "new [], modified [rate-limit, request-context, audit-log, admin-ui]") =>
 	`Base: abc\nBranch: livespec/per-ip-cap\nDepends: —\nCapabilities: ${caps}\nProduct impact: —\n\n## Proposal\nCap.\n\n## Units\n${units.map(block).join("\n\n")}\n\n## Durable docs\n`;
 
-const comment = (kind: string, id: string, data: unknown, i = 0): MarkedComment => ({ kind, id, data, commentId: `c${i}`, author: "bot" }) as unknown as MarkedComment;
+const comment = (kind: string, id: string, data: unknown, i = 0): MarkedComment => ({ source: "forge", ref: `c${i}`, kind, id, data, author: "bot" });
 
 function setup(units = UNITS, o: Partial<ChangeState> = {}, caps?: string) {
 	const body = bodyOf(units, caps);

@@ -1,3 +1,5 @@
+import { isLedgerKind } from "../../src/core/record-kinds.ts";
+import { appendSeed } from "../helpers/ledger.ts";
 import { afterEach, describe, expect, test } from "vitest";
 import { pickByLabel } from "../helpers/menu.ts";
 import { parseChange } from "../../src/core/change.ts";
@@ -115,6 +117,7 @@ const units = async (h: Amend) => parseChange(await h.world.bodyOf(h.n)).units;
 
 /** Stores a marked comment on the issue and refreshes the comment cache. */
 async function seed(h: Amend, kind: string, id: string, data: unknown): Promise<void> {
+	if (isLedgerKind(kind)) return appendSeed(h, { kind, id, data });
 	await h.world.postComment(h.n, BOT_LOGIN, writeMarked(kind, id, data));
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();

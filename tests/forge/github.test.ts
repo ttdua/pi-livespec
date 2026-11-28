@@ -108,8 +108,8 @@ describe("github adapter", () => {
 	it("comment edits report best-effort", async () => {
 		const w = make();
 		const n = await w.seedIssue();
-		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
-		const result = await w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 2 }), created.version);
+		const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
+		const result = await w.forge.updateComment(created.id, writeMarked("stale", "u1", { v: 2 }), created.version);
 		expect(result).toMatchObject({ status: "written", check: "best-effort" });
 	});
 
@@ -244,8 +244,8 @@ describe("github adapter", () => {
 	it("the login is not cached: a changed login is re-checked before the next comment edit", async () => {
 		const w = make();
 		const n = await w.seedIssue();
-		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
-		await w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 2 }), created.version);
+		const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
+		await w.forge.updateComment(created.id, writeMarked("stale", "u1", { v: 2 }), created.version);
 		await w.forge.whoami();
 		w.store.update((d) => {
 			d.login = "someone-else";
@@ -254,20 +254,20 @@ describe("github adapter", () => {
 			d.calls = [];
 		});
 
-		await expect(w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 3 }), created.version)).rejects.toBeInstanceOf(ForgeError);
+		await expect(w.forge.updateComment(created.id, writeMarked("stale", "u1", { v: 3 }), created.version)).rejects.toBeInstanceOf(ForgeError);
 		expect(w.calls().filter((c) => c.method === "PATCH")).toEqual([]);
 	});
 
 	it("a comment that lost its marker after the caller read it is refused without a PATCH", async () => {
 		const w = make();
 		const n = await w.seedIssue();
-		const created = await w.forge.createComment(n, writeMarked("receipt", "u1", { v: 1 }));
+		const created = await w.forge.createComment(n, writeMarked("stale", "u1", { v: 1 }));
 		const [read] = await w.forge.listComments(n);
 		w.store.update((d) => {
 			d.comments[created.id].body = "plain text now";
 		});
 
-		await expect(w.forge.updateComment(created.id, writeMarked("receipt", "u1", { v: 2 }), read.version)).rejects.toBeInstanceOf(ForgeError);
+		await expect(w.forge.updateComment(created.id, writeMarked("stale", "u1", { v: 2 }), read.version)).rejects.toBeInstanceOf(ForgeError);
 		expect(w.calls().filter((c) => c.method === "PATCH")).toEqual([]);
 		expect(await w.commentBodyOf(created.id)).toBe("plain text now");
 	});

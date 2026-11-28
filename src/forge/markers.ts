@@ -3,6 +3,7 @@
 // or reported as a warning.
 
 import { parse, stringify } from "yaml";
+import { isLedgerKind } from "../core/record-kinds.ts";
 import { ForgeError } from "./errors.ts";
 import type { Comment, Forge } from "./types.ts";
 
@@ -27,15 +28,11 @@ export interface MarkedReadResult {
 }
 
 const CORE_KINDS = [
-	"receipt",
 	"gate",
 	"amendment",
-	"counter",
-	"decision",
 	"question",
 	"stale",
 	"incomplete",
-	"finding-summary",
 	"stuck",
 ] as const;
 
@@ -55,6 +52,9 @@ export function registerKind(name: string): void {
 	if (!KIND_TOKEN.test(name)) {
 		throw new Error(`invalid marker kind "${name}": use only [a-z0-9-]`);
 	}
+	if (isLedgerKind(name)) {
+		throw new Error(`marker kind "${name}" is a ledger kind: ${name} records live in the ledger`);
+	}
 	kinds.add(name);
 }
 
@@ -63,6 +63,9 @@ export function registerKind(name: string): void {
  * Throws on unregistered kinds, ids that cannot be parsed back, and data that cannot be serialized.
  */
 export function writeMarked(kind: string, id: string, data: unknown): string {
+	if (isLedgerKind(kind)) {
+		throw new Error(`marker kind "${kind}" is a ledger kind: ${kind} records live in the ledger`);
+	}
 	if (!kinds.has(kind)) {
 		throw new Error(`unregistered marker kind "${kind}"; call registerKind first`);
 	}
@@ -108,6 +111,7 @@ export async function readMarkedComments(forge: Forge, issue: number): Promise<M
  */
 export function filterMarked(comments: Comment[], login: string): MarkedReadResult {
 	const result: MarkedReadResult = { comments: [], warnings: [] };
+	const ignoredLedger = new Map<string, number>();
 
 	for (const comment of comments) {
 		const parsed = parseMarked(comment.body);
@@ -119,6 +123,10 @@ export function filterMarked(comments: Comment[], login: string): MarkedReadResu
 			);
 			continue;
 		}
+		if (isLedgerKind(parsed.kind)) {
+			ignoredLedger.set(parsed.kind, (ignoredLedger.get(parsed.kind) ?? 0) + 1);
+			continue;
+		}
 		result.comments.push({
 			ref: comment.id,
 			source: "forge",
@@ -128,6 +136,9 @@ export function filterMarked(comments: Comment[], login: string): MarkedReadResu
 			data: parsed.data,
 			createdAt: comment.createdAt,
 		});
+	}
+	for (const [kind, count] of ignoredLedger) {
+		result.warnings.push(`ignored ${count} ${kind} comments: ${kind} records live in the ledger`);
 	}
 	return result;
 }

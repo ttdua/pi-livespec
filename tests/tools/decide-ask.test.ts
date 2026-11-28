@@ -1,3 +1,4 @@
+import { appendSeed } from "../helpers/ledger.ts";
 // The application-boundary `ask` of the decision seam: a rule that asks reaches
 // the human through the configured approver chain, and the answer (in session
 // at once, or a forge command later) completes a `source: human` decision record.
@@ -182,7 +183,7 @@ describe("unit digest reuse", () => {
 	}
 
 	async function recordDecision(h: Change, data: Record<string, unknown>) {
-		await h.world.postComment(h.n, BOT_LOGIN, writeMarked("decision", "pick.U1", { point: "pick", subject: "U1", reason: "r", ...data }));
+		await appendSeed(h, { kind: "decision", id: "pick.U1", data: { point: "pick", subject: "U1", reason: "r", ...data } });
 	}
 
 	test("Human record carries the unit digest", async () => {

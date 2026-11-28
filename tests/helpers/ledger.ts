@@ -1,7 +1,7 @@
 // Ledger fixtures for tests without a repository: an empty in-memory ledger, and ledger records
 // built the way `mergeRecords` maps entries, for pure readers of `MarkedComment[]`.
 
-import type { LedgerKind } from "../../src/core/record-kinds.ts";
+import { LEDGER_KINDS, type LedgerKind } from "../../src/core/record-kinds.ts";
 import { filterMarked, type MarkedComment } from "../../src/forge/markers.ts";
 import type { Forge } from "../../src/forge/types.ts";
 import type { Session } from "../../src/hooks/session.ts";
@@ -55,4 +55,10 @@ export async function appendSeed(h: SeedTarget, input: AppendInput): Promise<voi
 	await appendEntry(h.session.exec, h.root, h.n, { ...input, ...(after === undefined ? {} : { after }) });
 	await h.session.comments?.invalidate(h.n);
 	await h.session.refresh();
+}
+
+/** Bodies of the change's forge comments that carry a ledger-kind marker; empty once nothing writes them as comments. */
+export async function ledgerKindComments(h: { n: number; world: { forge: Forge } }): Promise<string[]> {
+	const bodies = (await h.world.forge.listComments(h.n)).map((c) => c.body);
+	return bodies.filter((b) => LEDGER_KINDS.some((k) => b.startsWith(`<!-- livespec:${k}:`)));
 }

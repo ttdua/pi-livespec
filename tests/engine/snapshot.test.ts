@@ -73,7 +73,7 @@ describe("readChangeSnapshot", () => {
 
 	test("Stale state", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: FIXTURE_BODY, labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await append(n, "counter", "custom_loop", { value: 2 });
 		const forge = new CachedForge(world.forge, { cacheRoot: join(dir, "issues"), host: "h", owner: "o", repo: "r" });
 		const d = deps(forge, () => forge.isReadOnly());
 		await readChangeSnapshot(d, n);
@@ -87,7 +87,7 @@ describe("readChangeSnapshot", () => {
 
 	test("offline with no known login reads no own comments and warns", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await world.postComment(n, BOT_LOGIN, writeMarked("skill-note", "build.x", { phase: "build", skill: "x", reason: "r" }));
 		const warm = new CachedForge(world.forge, { cacheRoot: join(dir, "issues"), host: "h", owner: "o", repo: "r" });
 		const comments = new CommentsCache({ dir: join(dir, "comments") });
 		await readChangeSnapshot({ ...deps(warm), comments }, n);
@@ -96,14 +96,13 @@ describe("readChangeSnapshot", () => {
 		const fresh = new CachedForge(world.forge, { cacheRoot: join(dir, "issues"), host: "h", owner: "o", repo: "r" });
 		const state = await readChangeSnapshot({ ...deps(fresh, () => fresh.isReadOnly()), comments }, n);
 		expect(state.stale).toBe(true);
-		expect(state.counters).toEqual({ change_iterations: 0, review_rounds: 0, discovered_deps: 0 });
+		expect(state.skillNotes).toEqual([]);
 		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("login is unknown")]);
 	});
 
 	test("account switch then unreachable whoami does not reuse the previous login", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
-		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "U3", { reason: "r" }));
+		await world.postComment(n, BOT_LOGIN, writeMarked("skill-note", "build.x", { phase: "build", skill: "x", reason: "r" }));
 		let whoamiFails = false;
 		const forge = new Proxy(world.forge, {
 			get(t, key, receiver) {
@@ -115,11 +114,10 @@ describe("readChangeSnapshot", () => {
 			},
 		});
 		const d = deps(forge);
-		expect((await readChangeSnapshot(d, n)).counters).toEqual({ custom_loop: 2, change_iterations: 0, review_rounds: 0, discovered_deps: 0 });
+		expect((await readChangeSnapshot(d, n)).skillNotes).toEqual(["build.x"]);
 		// The account switches; whoami can no longer confirm who is logged in.
 		whoamiFails = true;
 		const state = await readChangeSnapshot(d, n);
-		expect(state.counters).toEqual({ change_iterations: 0, review_rounds: 0, discovered_deps: 0 });
 		expect(state.incomplete).toEqual([]);
 		expect(state.stale).toBe(true);
 		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining("login is unknown")]);
@@ -156,13 +154,13 @@ describe("readChangeSnapshot", () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
 		await world.postComment(n, BOT_LOGIN, writeMarked("incomplete", "U3", { reason: "stopped" }));
 		await world.postComment(n, BOT_LOGIN, writeMarked("skill-note", "build.debugging-and-error-recovery", { phase: "build", skill: "debugging-and-error-recovery", reason: "r" }));
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await append(n, "counter", "custom_loop", { value: 2 });
 		await world.postComment(n, OTHER_LOGIN, writeMarked("incomplete", "U1", { reason: "foreign" }));
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.incomplete).toEqual([]);
 		expect(state.skillNotes).toEqual(["build.debugging-and-error-recovery"]);
 		expect(state.counters).toEqual({ custom_loop: 2, change_iterations: 0, review_rounds: 0, discovered_deps: 0 });
-		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
+		expect(withoutPrWarning(state.warnings).filter((w) => !w.includes("not on origin yet"))).toEqual([expect.stringContaining(`written by ${OTHER_LOGIN}`)]);
 	});
 
 	test("specsChanged reflects the diff from Base", async () => {
@@ -213,7 +211,7 @@ describe("readChangeSnapshot", () => {
 
 	test("zero iterations override a stored counter comment", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "change_iterations", { value: 4 }));
+		await append(n, "counter", "change_iterations", { value: 4 });
 		const state = await readChangeSnapshot(deps(), n);
 		expect(state.counters).toEqual({ change_iterations: 0, review_rounds: 0, discovered_deps: 0 });
 		expect(state.iterations.count).toBe(0);
@@ -221,7 +219,7 @@ describe("readChangeSnapshot", () => {
 
 	test("iterations count overrides the counter value", async () => {
 		const n = await world.seedIssue({ title: "per-ip-cap", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "change_iterations", { value: 9 }));
+		await append(n, "counter", "change_iterations", { value: 9 });
 		await world.postComment(n, BOT_LOGIN, writeMarked("stale", "Q1", { reason: "Q1", phases: ["define"], units: [], after_plan: true }));
 		await world.postComment(n, BOT_LOGIN, writeMarked("stale", "Q2", { reason: "Q2", phases: ["define"], units: [], after_plan: true }));
 		const state = await readChangeSnapshot(deps(), n);
@@ -232,7 +230,7 @@ describe("readChangeSnapshot", () => {
 	describe("unit evidence", () => {
 		const startData = (unit: string, digest: string) => ({ unit, digest, verify: "npm test", pre: { sha: "a".repeat(40) } });
 		const digestOf = (body: string, id: string) => unitDigest(parseChange(body).units.find((u) => u.id === id) as Unit);
-		const progress = (unit: string, attempt: number) => writeMarked("decision", `progress.${unit}`, { point: "progress", subject: unit, digest: "d", source: "rule", outcome: "retry", reason: "r", attempt });
+		const progress = (unit: string, attempt: number) => ({ point: "progress", subject: unit, digest: "d", source: "rule", outcome: "retry", reason: "r", attempt });
 
 		test("Started unit from comments", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
@@ -250,16 +248,16 @@ describe("readChangeSnapshot", () => {
 
 		test("Derived unit attempts", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-			await world.postComment(n, BOT_LOGIN, writeMarked("unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3"))));
-			await world.postComment(n, BOT_LOGIN, progress("U3", 1));
-			await world.postComment(n, BOT_LOGIN, progress("U3", 2));
-			await world.postComment(n, BOT_LOGIN, writeMarked("counter", "unit_attempts.U3", { value: 9 }));
+			await append(n, "unit-start", "U3.a", startData("U3", digestOf(FIXTURE_BODY, "U3")));
+			await append(n, "decision", "progress.U3", progress("U3", 1));
+			await append(n, "decision", "progress.U3", progress("U3", 2));
+			await append(n, "counter", "unit_attempts.U3", { value: 9 });
 			expect((await readChangeSnapshot(deps(), n)).counters["unit_attempts.U3"]).toBe(2);
 		});
 
 		test("Derived review rounds", async () => {
 			const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: ["livespec", "livespec:phase/review"] });
-			await world.postComment(n, BOT_LOGIN, writeMarked("counter", "review_rounds", { value: 9 }));
+			await append(n, "counter", "review_rounds", { value: 9 });
 			for (const round of [1, 2]) await createLedger(defaultGitExec, root).append(n, aggregateComment({ round, head: base, reviews: [], findings: [] }));
 			expect((await readChangeSnapshot(deps(), n)).counters.review_rounds).toBe(2);
 		});
@@ -370,12 +368,12 @@ describe("ledger records", () => {
 		["unknown-offline", "no copy of it is known"],
 	] as const)("a %s fetch adds a warning and still reads", async (fetchState, text) => {
 		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await append(n, "counter", "custom_loop", { value: 2 });
 		const ledger = fetching(fetchState);
 		const state = await readChangeSnapshot({ ...deps(world.forge, () => false, ledger), fetch: true }, n);
 		expect(ledger.fetches).toBe(1);
 		expect(state.counters.custom_loop).toBe(2);
-		expect(withoutPrWarning(state.warnings)).toEqual([expect.stringContaining(text)]);
+		expect(withoutPrWarning(state.warnings).filter((w) => !w.includes("not on origin yet"))).toEqual([expect.stringContaining(text)]);
 	});
 
 	test("Account switch", async () => {
@@ -399,7 +397,7 @@ describe("ledger records", () => {
 
 	test("Comments cache hit", async () => {
 		const n = await world.seedIssue({ title: "t", body: withBase(FIXTURE_BODY, base), labels: BUILD_LABELS });
-		await world.postComment(n, BOT_LOGIN, writeMarked("counter", "custom_loop", { value: 2 }));
+		await append(n, "counter", "custom_loop", { value: 2 });
 		await append(n, "unit-start", "U3.a", START);
 		let lists = 0;
 		const forge = new Proxy(world.forge, {

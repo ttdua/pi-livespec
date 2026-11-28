@@ -1,12 +1,11 @@
 // Records of subagent runs: `dispatch` and `finding-summary` ledger entries, and the queries the flow reads from them.
 
 import type { Question } from "../core/change.ts";
-import { type MarkedComment, registerKind } from "../forge/markers.ts";
+import { type MarkedComment } from "../forge/markers.ts";
 import type { AppendInput } from "../ledger/entry.ts";
 import { isDispatchData, isSummaryData } from "./validate.ts";
 import type { Finding, ReviewSubject, Role, SubagentResult } from "./roles.ts";
 
-registerKind("dispatch");
 
 export type Thinking = "low" | "medium" | "high";
 

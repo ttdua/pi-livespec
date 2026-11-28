@@ -58,6 +58,7 @@ describe("records", () => {
 			status: "DONE", commits: ["a"], notes: "n", discoveries: ["d"], sources_used: [],
 		});
 		expect(input.kind).toBe("dispatch");
+		expect(() => writeMarked(input.kind, "dispatch.U1", {})).toThrow(/live in the ledger/);
 		expect(latestDispatch([mark(input)], "U1")?.discoveries).toEqual(["d"]);
 	});
 
@@ -146,10 +147,10 @@ describe("records", () => {
 describe("verifier and aggregate records", () => {
 	const aggregateFindings = [{ ...finding({ location: "src/u1.ts:1", severity: "CRITICAL" }), from: ["c9"], needsDecision: false, route: "unit" as const, routeUnit: "U1", verify: "required" as const }];
 	const aggregate = (over: Partial<FindingSummaryData> = {}) =>
-		mark(writeMarked("finding-summary", "finding-summary.change.review.1", {
+		mark({ kind: "finding-summary", id: "finding-summary.change.review.1", data: {
 			role: "reviewer", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,
 			agentSource: "s", requested: { thinking: "low" }, effective: {}, findings: aggregateFindings, aggregate: true, reviews: ["c9"], ...over,
-		}));
+		} });
 	const verifier = (over: Partial<FindingSummaryData> = {}) =>
 		mark(findingSummaryComment({
 			role: "verifier", subject: "change", round: 1, status: "DONE", advisory: false, head: "h1", packet: "p", sources_used: [], required: [], completed: true,

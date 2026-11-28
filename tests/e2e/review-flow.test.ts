@@ -1,3 +1,4 @@
+import { ledgerKindComments } from "../helpers/ledger.ts";
 // End-to-end review (LS-08): a two-unit change reaches review, a seeded defect sends U2 back to build, and a clean round 2 passes the gate.
 
 import { BRIEFING } from "../helpers/briefing.ts";
@@ -63,7 +64,7 @@ test("review sends U2 back to build, the rebuild is ticked, round 2 is clean and
 	expect(first.isError, textOf(first)).toBeFalsy();
 	const marked = await h.marked();
 	// Dispatch, review and routing records are ledger entries; `review-run` stays a comment.
-	for (const kind of ["dispatch", "finding-summary", "decision"]) expect(await h.commentsOf(kind), kind).toEqual([]);
+	expect(await ledgerKindComments(h)).toEqual([]);
 	const reviewers = (await h.inLedger("finding-summary")).filter((m) => (m.data as { aggregate?: boolean; role?: string }).aggregate !== true && (m.data as { role?: string }).role === "reviewer");
 	const aggregate = (await h.inLedger("finding-summary")).find((m) => (m.data as { aggregate?: boolean }).aggregate === true);
 	expect((aggregate?.data as { reviews: string[] }).reviews).toEqual(reviewers.map((m) => m.ref));
