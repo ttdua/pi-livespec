@@ -624,6 +624,12 @@ describe("reviewer behavior disputes", () => {
 		expect(behaviorDecisions(posted)).toHaveLength(1);
 	});
 
+	test("a BLOCKED result with a dispute is not returned", () => {
+		const blocked = review({ status: "BLOCKED", reason: "cannot run", evidence: "no tests" });
+		const h = { needsContext: 0, retries: 0, returns: 0, disputeReturns: 0, respawned: false };
+		expect(interpret({ id: "a", status: "completed", structuredResult: blocked }, packet({ behavior }), "reviewer", h).kind).toBe("accept");
+	});
+
 	test("behaviorDisputeMisses matches a location at a file, with a line suffix", () => {
 		const result = (f: ReturnType<typeof finding>[]) => review({ findings: f }) as never;
 		expect(behaviorDisputeMisses(result([finding("src/limit/cap.ts:12")]), behavior)).toEqual([]);

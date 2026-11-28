@@ -95,8 +95,13 @@ function withoutDisputes(result: SubagentResult, capabilities: string[]): Subage
 	return { ...result, behavior, notes: result.notes === "" ? note : `${result.notes}\n${note}` };
 }
 
+/** What a child or the parent is told when `capabilities` lack a blocking finding. */
+export const disputeMessage = (capabilities: string[]): string =>
+	capabilities.map((c) => `behavior ${c} changed needs a WARNING or CRITICAL finding at one of its files`).join("; ");
+
 /** A dispute without a finding is returned once; after that the entries are dropped and the result stands. */
 function disputeDecision(result: SubagentResult, packet: Packet, history: DispatchHistory): ResultDecision | undefined {
+	if (result.status !== "DONE" && result.status !== "DONE_WITH_CONCERNS") return undefined;
 	const misses = packet.behavior === undefined ? [] : behaviorDisputeMisses(result, packet.behavior);
 	if (misses.length === 0) return undefined;
 	if (history.disputeReturns < MISSING_DISPUTE_RETURNS) return { kind: "return-behavior", capabilities: misses };
@@ -123,6 +128,5 @@ export function interpret(record: RecordLike, packet: Packet, role: Role, histor
 		if (history.returns < MISSING_SOURCE_RETURNS) return { kind: "return", missing: omitted };
 		return { kind: "blocked", reason: `the result still omits required sources: ${omitted.join(", ")}` };
 	}
-	if (result.status === "NEEDS_CONTEXT") return statusDecision(result, history);
 	return disputeDecision(result, packet, history) ?? statusDecision(result, history);
 }

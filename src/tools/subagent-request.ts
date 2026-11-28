@@ -2,7 +2,7 @@
 
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { recordReviewerConclusions } from "../docs/behavior-review.ts";
+import { cleanReviewerBehavior, recordReviewerConclusions } from "../docs/behavior-review.ts";
 import { createGit } from "../engine/git.ts";
 import type { ChangeState } from "../engine/state-types.ts";
 import { untrusted } from "../hooks/phase-card.ts";
@@ -112,7 +112,7 @@ export function overrideWarner(session: Session, notify: (text: string) => void)
 /** The dispatch side effects of the tools: the executor, pi's event bus, the forge and git. */
 export function dispatchDeps(pi: ExtensionAPI, w: WriteContext, issue: number, service: DispatchDeps["service"], notify: (text: string) => void): DispatchDeps {
 	const record = recordDeps(w, issue);
-	return { ...record, afterRecord: (run, result) => recordReviewerConclusions(record.post, run, result, run.packet), service, events: (pi as unknown as { events: EventsLike }).events, onOverride: overrideWarner(w.session, notify) };
+	return { ...record, prepareResult: cleanReviewerBehavior, afterRecord: (run, result) => recordReviewerConclusions(record.post, run, result, run.packet), service, events: (pi as unknown as { events: EventsLike }).events, onOverride: overrideWarner(w.session, notify) };
 }
 
 /** The packet as text for the parent, untrusted parts already wrapped by the builder. */

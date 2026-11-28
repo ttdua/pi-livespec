@@ -23,7 +23,7 @@ function rationaleOf(value: unknown, i: number): { text: string } | { refusal: s
 	return { text: neutralise(trimmed) };
 }
 
-function entryOf(raw: unknown, i: number): { entry: BehaviorConclusionInput } | { refusal: string } {
+export function entryOf(raw: unknown, i: number): { entry: BehaviorConclusionInput } | { refusal: string } {
 	if (!isObject(raw)) return { refusal: `behavior[${i}] must be an object` };
 	const odd = Object.keys(raw).find((k) => !KEYS.includes(k));
 	if (odd !== undefined) return { refusal: `behavior[${i}].${odd} is not allowed; use ${KEYS.join(", ")}` };

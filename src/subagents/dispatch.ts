@@ -4,7 +4,7 @@ import { BUILTIN_SOURCE, type LaunchFacts, type RecordLike, type SubagentsServic
 import { checkLaunch, type EventsLike, type Mismatch, spawnOptions, watchLaunch } from "./launch.ts";
 import { dispatchComment, type QuestionLaunch, type Thinking } from "./records.ts";
 import { retryRun, resumeChild } from "./resume.ts";
-import { type DispatchHistory, interpret, type ResultDecision } from "./result.ts";
+import { type DispatchHistory, disputeMessage, interpret, type ResultDecision } from "./result.ts";
 import { AGENT_OF, type ReviewSubject, type Role, type SubagentEntry, type SubagentResult } from "./roles.ts";
 import { blockedResult, LAUNCH_MISMATCH, mismatchComment, recordResult, type RecordDeps, type RunFacts } from "./run-record.ts";
 import type { Packet } from "./source-types.ts";
@@ -35,6 +35,8 @@ export type DispatchDeps = RecordDeps & {
 	/** How long to wait for an aborted child to settle before the forge write; defaults to `ABORT_SETTLE_MS`. */
 	abortSettleMs?: number;
 	/** Called right after a run's result is recorded; the tools wire it to the reviewer behavior conclusions, which `subagents/` cannot import. */
+	/** Called before the result is recorded; returns the result to record (the tools wire it to the reviewer behavior clean-up). */
+	prepareResult?(run: RunFacts, result: SubagentResult): SubagentResult;
 	afterRecord?(run: RunFacts, result: SubagentResult): Promise<void>;
 	/** Called with the id of every child the dispatch spawns, right after the spawn. */
 	onLaunch?(agentId: string): void;
@@ -207,7 +209,7 @@ export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, fac
 		case "more-context":
 			return { kind: "result", result: await recordResult(deps, run, cwd, decision.result), facts, sourcesNamed: decision.ids };
 		case "accept": {
-			const result = await recordResult(deps, run, cwd, decision.result);
+			const result = await recordResult(deps, run, cwd, deps.prepareResult?.(run, decision.result) ?? decision.result);
 			await deps.afterRecord?.(run, result);
 			return { kind: "result", result, facts };
 		}
@@ -217,8 +219,7 @@ export async function finish(deps: DispatchDeps, run: RunFacts, cwd: string, fac
 /** What the child is told when its result omits required sources. */
 const returnMessage = (missing: string[]): string => `Your result omits required sources from sources_used: ${missing.join(", ")}. Read them, then submit your result again listing every required source.`;
 
-const disputeMessage = (capabilities: string[]): string =>
-	`${capabilities.map((c) => `behavior ${c} changed needs a WARNING or CRITICAL finding at one of its files`).join("; ")}. Add the finding or change the entry, then submit your result again.`;
+const disputeReturnMessage = (capabilities: string[]): string => `${disputeMessage(capabilities)}. Add the finding or change the entry, then submit your result again.`;
 
 /** Interprets settled runs until one ends the dispatch: a retry resumes the child (one fallback child at most), a return resumes it naming the missing sources or the unbacked behavior dispute once each. */
 async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: { run: Run; record: RecordLike }, history: DispatchHistory, trace: { respawn?: Respawn }): Promise<DispatchOutcome> {
@@ -244,7 +245,7 @@ async function settleLoop(deps: DispatchDeps, request: DispatchRequest, first: {
 			continue;
 		}
 		if (decision.kind === "return-behavior") {
-			const next = await resumeChild(deps, run.agentId, disputeMessage(decision.capabilities));
+			const next = await resumeChild(deps, run.agentId, disputeReturnMessage(decision.capabilities));
 			if (isCancelled(deps.signal)) return cancelledOutcome(run.agentId);
 			if (typeof next === "string") return finish(deps, runFacts(request, run), request.packet.cwd, run.facts, { kind: "blocked", reason: next });
 			record = next;

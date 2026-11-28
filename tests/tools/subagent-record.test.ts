@@ -271,6 +271,29 @@ describe("reviewer behavior conclusions", () => {
 		expect((await checkResults(h)).map((r) => r.message).join("\n")).toContain("specs/rate-limit/spec.md");
 	});
 
+	test("a rationale with a comment opener is stored neutralised", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [{ ...dispute, rationale: "x <!-- livespec --> y" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		const [record] = await reviewerRecords(h);
+		expect((record?.data as { reason: string }).reason).not.toContain("<!--");
+	});
+
+	test("an invalid reviewer entry is dropped and noted", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [{ ...dispute, rationale: "line one\nline two" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect(await reviewerRecords(h)).toEqual([]);
+		expect(((await h.latest("finding-summary"))?.data as { notes: string }).notes).toContain("behavior[0].rationale must be one line");
+	});
+
+	test("a capability listed twice posts one record, the first wins", async () => {
+		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
+		const out = await review(h, { findings: [atCap], behavior: [dispute, { ...dispute, rationale: "second" }] });
+		expect(out.isError, textOf(out)).toBeFalsy();
+		expect((await reviewerRecords(h)).map((m) => (m.data as { reason: string }).reason)).toEqual(["cap now rejects at 99"]);
+	});
+
 	test("Rebuttal does not clear a dispute", async () => {
 		const h = await behaviorHarness({ source: "agent", outcome: "unchanged" });
 		registerFindingRebut(h.pi.api as never);
