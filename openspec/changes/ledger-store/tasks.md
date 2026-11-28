@@ -66,9 +66,9 @@ Blocked by: 6
 
 Blocked by: 7
 
-- [ ] 8.1 `ApplyFn` returns `ResultRecord` (`{ comment } | { entry }`); the dispatcher in `complete.ts` posts or appends it last; `appendRecord(run, input)` in `complete-effects.ts`
-- [ ] 8.2 `complete-decide.ts`, `complete-overrides.ts`, `complete-amend.ts` append decisions; `session-ctx.ts` and the poll pass the ledger; a `decide:` request is completed by its `decision` entry (`requests.ts`); delete the temporary `decisionBody`
-- [ ] 8.3 Tests: approver-adapters ledger scenarios, durable-doc-checks "Answer recorded" and "Other refusal asks nothing", poll does not re-apply a completed decide (`tests/interaction/complete.test.ts`, `tests/interaction/poll.test.ts`, `tests/tools/decide-ask.test.ts`, `tests/tools/spec-gate-behavior.test.ts`, `tests/docs/behavior-change.test.ts`)
+- [x] 8.1 `ApplyFn` returns `ResultRecord` (`{ comment } | { entry }`); the dispatcher in `complete.ts` posts or appends it last; `appendRecord(run, input)` in `complete-effects.ts`
+- [x] 8.2 `complete-decide.ts`, `complete-overrides.ts`, `complete-amend.ts` append decisions; `session-ctx.ts` and the poll pass the ledger; a `decide:` request is completed by its `decision` entry (`requests.ts`); delete the temporary `decisionBody`
+- [x] 8.3 Tests: approver-adapters ledger scenarios, durable-doc-checks "Answer recorded" and "Other refusal asks nothing", poll does not re-apply a completed decide (`tests/interaction/complete.test.ts`, `tests/interaction/poll.test.ts`, `tests/tools/decide-ask.test.ts`, `tests/tools/spec-gate-behavior.test.ts`, `tests/docs/behavior-change.test.ts`)
 
 ## 9. Markers stop accepting ledger kinds
 
