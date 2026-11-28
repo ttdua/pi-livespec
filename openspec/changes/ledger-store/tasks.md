@@ -37,12 +37,12 @@ Blocked by: 2, 3
 
 Blocked by: 1, 4
 
-- [ ] 5.1 `src/ledger/merge.ts`: `mergeRecords` (anchors, `createdAt <= at` fallback also for absent `after`, before-all, file-order ties), `matchesRef`, `lastForgeRef`; unit tests
-- [ ] 5.2 `readOwnRecords(forge, ledger, n)`: own marked comments merged with entries, the one seam every reader of own records uses
-- [ ] 5.3 Snapshot reads through the seam with its cached comments; `Session.refresh({ fetch })` fetches by default and is threaded to `buildCardInput`/`readChangeSnapshot`; only the context hook and session start pass `fetch: false`; `prepareWrite` refuses on `unknown-offline` before any other work; ledger warnings (pending, may be out of date, invalid content); latest counter by merged position
-- [ ] 5.4 Direct readers switch to the seam: `interaction/poll.ts`, `tools/decide-ask.ts`, `interaction/forge.ts` and `tools/approver-for.ts`, `evidence/wip.ts` (`WorkInProgressFn` gains the ledger; callers `hooks/session.ts`, `commands/deps.ts`), `ship/feedback-poll.ts`
-- [ ] 5.5 `Session.ledger`, `WriteContext.ledger`, `CompletionCtx.ledger`, `afterLedgerWrite`; background session-start sync whose promise the test harness awaits
-- [ ] 5.6 Test helpers: `ofKind` reads the merged list, `h.seed` appends ledger kinds to the ledger, `ledgerRecord(input)` builds a `MarkedComment` for pure-reader tests; `originRefs` assertions meant as "no branch push" ignore `refs/livespec/`
+- [x] 5.1 `src/ledger/merge.ts`: `mergeRecords` (anchors, `createdAt <= at` fallback also for absent `after`, before-all, file-order ties), `matchesRef`, `lastForgeRef`; unit tests
+- [x] 5.2 `readOwnRecords(forge, ledger, n)`: own marked comments merged with entries, the one seam every reader of own records uses
+- [x] 5.3 Snapshot reads through the seam with its cached comments; `Session.refresh({ fetch })` fetches by default and is threaded to `buildCardInput`/`readChangeSnapshot`; only the context hook and session start pass `fetch: false`; `prepareWrite` refuses on `unknown-offline` before any other work; ledger warnings (pending, may be out of date, invalid content); latest counter by merged position
+- [x] 5.4 Direct readers switch to the seam: `interaction/poll.ts`, `tools/decide-ask.ts`, `interaction/forge.ts` and `tools/approver-for.ts`, `evidence/wip.ts` (`WorkInProgressFn` gains the ledger; callers `hooks/session.ts`, `commands/deps.ts`), `ship/feedback-poll.ts`
+- [x] 5.5 `Session.ledger`, `WriteContext.ledger`, `CompletionCtx.ledger`, `afterLedgerWrite`; background session-start sync whose promise the test harness awaits
+- [x] 5.6 Test helpers: `ofKind` reads the merged list, `h.seed` appends ledger kinds to the ledger, `ledgerRecord(input)` builds a `MarkedComment` for pure-reader tests; `originRefs` assertions meant as "no branch push" ignore `refs/livespec/`
 
 ## 6. Evidence and planning writers
 
