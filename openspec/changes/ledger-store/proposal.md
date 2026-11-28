@@ -38,6 +38,7 @@ Machine records flood the change issue: one real change produced 52 comments and
 - `approver-adapters`: a `decision` result is a ledger entry, and a request is completed by its result record from either source.
 - `decision-seam`: decision records are ledger entries.
 - `durable-doc-checks`: the `behavior-change` decision is a ledger entry.
+- `phase-gates`: the `gate-escalation` decision is a ledger entry.
 - `subagent-dispatch`: dispatch records (including `QUESTION`/`ANSWERED`) are ledger entries; packets cite them as `ledger:` sources.
 - `subagent-packets`: new source id form `ledger:<issue>/<entry-id>`; freshness and untrusted wrapping treat ledger entries as own records.
 - `review-findings`: finding summaries and rebuttals are ledger entries; `finding_rebut` takes an entry id.
