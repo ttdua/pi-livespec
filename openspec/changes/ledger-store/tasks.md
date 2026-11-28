@@ -57,10 +57,10 @@ Blocked by: 5
 
 Blocked by: 6
 
-- [ ] 7.1 Builders `dispatchComment`, `findingSummaryComment`, `rebuttalComment`, `aggregateComment` return `AppendInput`; dispatch deps `record(input)` replaces `post` for these kinds in `tools/subagent-request.ts` (`recordDeps`), `tools/lane-open.ts`, `tools/lane-merge.ts`, `tools/subagent-dispatch.ts`, `audit/confirm.ts` (no-op)
-- [ ] 7.2 `subagents/dispatch.ts` (QUESTION, mismatch), `run-record.ts`, `resume.ts` (RETRY), `lane-ops.ts`, `subagent-answer.ts` (ANSWERED), `subagent-record.ts`, `finding-rebut.ts` (write side only) append
-- [ ] 7.3 `review/stages.ts` appends `tags.review`, `finding-scope` and the aggregate (`reviews` as entry refs); `review-run` stays a comment
-- [ ] 7.4 Tests: subagent-dispatch, review-findings, finding-routing, forge-cache read-only append (`tests/subagents/*.test.ts`, `tests/tools/subagent-*.test.ts`, `tests/review/*.test.ts`, `tests/subagents/packet.test.ts`, `tests/subagents/freshness.test.ts`, `tests/e2e/review-flow.test.ts`, `tests/e2e/subagent-build.test.ts`)
+- [x] 7.1 Builders `dispatchComment`, `findingSummaryComment`, `rebuttalComment`, `aggregateComment` return `AppendInput`; dispatch deps `record(input)` replaces `post` for these kinds in `tools/subagent-request.ts` (`recordDeps`), `tools/lane-open.ts`, `tools/lane-merge.ts`, `tools/subagent-dispatch.ts`, `audit/confirm.ts` (no-op)
+- [x] 7.2 `subagents/dispatch.ts` (QUESTION, mismatch), `run-record.ts`, `resume.ts` (RETRY), `lane-ops.ts`, `subagent-answer.ts` (ANSWERED), `subagent-record.ts`, `finding-rebut.ts` (write side only) append
+- [x] 7.3 `review/stages.ts` appends `tags.review`, `finding-scope` and the aggregate (`reviews` as entry refs); `review-run` stays a comment
+- [x] 7.4 Tests: subagent-dispatch, review-findings, finding-routing, forge-cache read-only append (`tests/subagents/*.test.ts`, `tests/tools/subagent-*.test.ts`, `tests/review/*.test.ts`, `tests/subagents/packet.test.ts`, `tests/subagents/freshness.test.ts`, `tests/e2e/review-flow.test.ts`, `tests/e2e/subagent-build.test.ts`)
 
 ## 8. Completion engine writers
 
