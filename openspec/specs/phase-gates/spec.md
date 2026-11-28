@@ -28,7 +28,7 @@ It MUST refuse, writing nothing, when:
 - the working tree is dirty;
 - a check that is not waivable fails.
 
-For the `define` and `review` targets whose phase lists the `behavior-change` check, that check is the one exception: `spec_gate` SHALL evaluate the refusals above with the `behavior-change` results left out, and only when none applies MAY it write the `decide:behavior-change.<capability>` requests and their `decision` records of durable-doc-checks "Behavior change question at the gate". It SHALL then run the checks again, `behavior-change` included, and refuse without sending the gate request when one that is not waivable fails.
+For the `define` and `review` targets whose phase lists the `behavior-change` check, that check is the one exception: `spec_gate` SHALL evaluate the refusals above with the `behavior-change` results left out, and only when none applies MAY it write the agent's `decision` records of durable-doc-checks "Behavior conclusion at the gate". It SHALL then run the checks again, `behavior-change` included, and refuse without sending the gate request when one that is not waivable fails. `spec_gate` SHALL accept the `behavior` parameter of that requirement for every target and validate its shape before any check, with the briefing.
 
 #### Scenario: Blocking question keeps the gate closed
 - **WHEN** Q1 is an open blocking question and `spec_gate define` runs
@@ -90,9 +90,13 @@ For the `define` and `review` targets whose phase lists the `behavior-change` ch
 - **WHEN** the `new-dependency` request is answered with `changes`
 - **THEN** no registered effect runs
 
+#### Scenario: Bad behavior shape on another target
+- **WHEN** `spec_gate plan` runs with a `behavior` entry whose outcome is `maybe`
+- **THEN** the tool refuses naming `behavior`, runs no check, and writes nothing
+
 #### Scenario: Behavior answer before a refusal
-- **WHEN** `spec_gate define` runs with no other refusal and one unanswered behavior item, and the human answers `changed` in session
-- **THEN** the `decision` record is written, the tool refuses naming `behavior-change`, and no `gate:define` request is sent
+- **WHEN** `spec_gate define` runs with no other refusal and one behavior item, with `behavior` concluding it `changed`
+- **THEN** the agent `decision` record is written, the tool refuses naming `behavior-change`, and no `gate:define` request is sent
 
 #### Scenario: Human gate without a briefing
 - **WHEN** `spec_gate define` runs without `briefing`
@@ -112,7 +116,7 @@ For the `define` and `review` targets whose phase lists the `behavior-change` ch
 
 ### Requirement: Gate review payload
 Every gate request SHALL carry the content the human reviews for that phase, in the dialog for in-session and in the request comment for forge:
-- **define:** the `Capabilities` line, the `Product impact` line, the Proposal (or its start, with a link to the issue), and the stat and files of `git diff <Base>..HEAD -- specs/`;
+- **define:** the `Capabilities` line, the `Product impact` line, the Proposal (or its start, with a link to the issue), the stat and files of `git diff <Base>..HEAD -- specs/`, and, when the change has behavior items, a section "Behavior conclusions (please check)" with one line per item: capability, outcome, source, rationale (neutralised) and the number of files;
 - **plan:** each unit's id, title, `Difficulty`, `Tags` and `Covers`, with the reason of each decision record and any `agent_additions`;
 - **ship:** the `## Durable docs` table, plus the review result when a later spec registers it.
 
@@ -125,6 +129,14 @@ Later specs SHALL be able to add payload for a phase through `registerGatePayloa
 #### Scenario: Define payload
 - **WHEN** `spec_gate define` sends an in-session request
 - **THEN** the dialog text includes the `Capabilities` and `Product impact` lines and the changed spec files
+
+#### Scenario: Behavior conclusions listed
+- **WHEN** `spec_gate define` sends a forge request after concluding `rate-limit` and `forge-read` `unchanged` with rationales
+- **THEN** the request comment's facts, before the briefing, hold a "Behavior conclusions (please check)" section with one line each for `rate-limit` and `forge-read` naming `unchanged`, `agent` and the rationale
+
+#### Scenario: No behavior section without items
+- **WHEN** `spec_gate define` sends a request for a change with no behavior item
+- **THEN** the payload has no "Behavior conclusions" section
 
 ### Requirement: Waivable checks
 `registerCheck(name, fn, { waivable: true })` SHALL mark a check as waivable. When only waivable checks fail at a human gate, the request MUST offer a `waive` option, and the human MAY waive them in the same answer. A plain approve MUST NOT pass a gate with a failing waivable check. Waived checks SHALL be listed in the gate comment's `waivers`. A check waived by the phase's valid gate result MUST NOT hold the next step: the approved gate then moves the change as "Gate outcomes" says, so it moves to the successor except at `ship`, unless a rule earlier in "Next step precedence" holds it. A `self` gate MUST NOT pass with a failing check, waivable or not; when a waivable check fails at a phase that "Self gate escalation" covers, the gate SHALL escalate to the human instead of refusing.
