@@ -89,6 +89,16 @@ export async function deleteRef(exec: GitExec, root: string, ref: string): Promi
 	if (r.code !== 0) throw gitFailure(args, r.spawnError ?? r.stderr);
 }
 
+/** Deletes `ref` only while it still is at `expected`; false when it moved (or is gone), nothing deleted. */
+export async function deleteRefIf(exec: GitExec, root: string, ref: string, expected: string): Promise<boolean> {
+	const args = ["update-ref", "-d", ref, expected];
+	const r = await exec(args, { cwd: root });
+	if (r.code === 0) return true;
+	const failure = r.spawnError ?? r.stderr;
+	if (await isLostSwap(exec, root, ref, expected, failure)) return false;
+	throw gitFailure(args, failure);
+}
+
 /** Ancestry between immutable commits never changes, so answers are cached per repository and pair. */
 const ancestryCache = new Map<string, boolean>();
 const ANCESTRY_CACHE_LIMIT = 512;

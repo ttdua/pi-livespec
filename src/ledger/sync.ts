@@ -4,13 +4,13 @@
 import type { GitExec } from "../engine/git-exec.ts";
 import { GitError } from "../engine/git.ts";
 import { ledgerDelete, ledgerFetch, ledgerPush } from "../guard/push.ts";
-import { advanceRef, backoff, deleteRef, hasOrigin, isAncestor, ledgerRef, readLedgerRefs, readRef, swapRef, trackingRef } from "./refs.ts";
+import { advanceRef, backoff, deleteRef, deleteRefIf, hasOrigin, isAncestor, ledgerRef, readLedgerRefs, readRef, swapRef, trackingRef } from "./refs.ts";
 import { planReplay } from "./replay.ts";
 import { commitEntries, readTree } from "./store.ts";
 
 export type SyncResult = { status: "synced" } | { status: "pending"; reason: string } | { status: "error"; message: string };
 export type FetchState = "fetched" | "stale-known" | "unknown-offline";
-export type RemoveResult = { remote: "deleted" | "gone" | "moved" | "failed"; message?: string };
+export type RemoveResult = { remote: "deleted" | "gone" | "moved" | "failed"; message?: string; localKept?: boolean };
 
 const PUSH_RESTARTS = 3;
 /** Restarts from the fetch after a lost local compare-and-swap. */
@@ -26,18 +26,26 @@ type Integrated = { ok: true; local: string | undefined; remoteTip: string | und
 
 /** Fetch, fast-forward or replay, then push without force; never throws. */
 export async function syncLedger(exec: GitExec, root: string, n: number): Promise<SyncResult> {
+	return (await syncLedgerTip(exec, root, n)).result;
+}
+
+/** A sync outcome with the tip both sides held when it succeeded (undefined when no ledger exists). */
+export type SyncedTip = { result: SyncResult; tip?: string };
+
+/** Like `syncLedger`, also returning the synced tip: the commit local and origin agreed on. */
+export async function syncLedgerTip(exec: GitExec, root: string, n: number): Promise<SyncedTip> {
 	try {
 		for (let restart = 0; restart <= PUSH_RESTARTS; restart++) {
 			const state = await fetchAndIntegrate(exec, root, n);
-			if (!state.ok) return { status: "pending", reason: state.reason };
+			if (!state.ok) return { result: { status: "pending", reason: state.reason } };
 			const { local, remoteTip } = state;
-			if (local === undefined || local === remoteTip) return { status: "synced" };
+			if (local === undefined || local === remoteTip) return { result: { status: "synced" }, ...(local === undefined ? {} : { tip: local }) };
 			const pushed = await pushLocal(exec, root, n, local);
-			if (pushed !== "rejected") return pushed;
+			if (pushed !== "rejected") return { result: pushed, ...(pushed.status === "synced" ? { tip: local } : {}) };
 		}
-		return { status: "pending", reason: `origin kept moving refs/livespec/${n}; push rejected ${PUSH_RESTARTS + 1} times` };
+		return { result: { status: "pending", reason: `origin kept moving refs/livespec/${n}; push rejected ${PUSH_RESTARTS + 1} times` } };
 	} catch (error) {
-		return { status: "error", message: messageOf(error) };
+		return { result: { status: "error", message: messageOf(error) } };
 	}
 }
 
@@ -65,33 +73,47 @@ export async function isPending(exec: GitExec, root: string, n: number): Promise
 	return local !== tracking && !(await isAncestor(exec, root, local, tracking));
 }
 
-/** Syncs, deletes the ledger on origin under a lease on the synced tip, then the local refs; never throws. */
+/**
+ * Syncs, deletes the ledger on origin under a lease on the synced tip, then the local refs by compare-and-swap on
+ * that tip; an entry appended since the sync keeps the local ref (`localKept`). Never throws.
+ */
 export async function removeRemote(exec: GitExec, root: string, n: number): Promise<RemoveResult> {
+	let start: string | undefined;
 	let result: RemoveResult;
+	let tip: string | undefined;
 	try {
-		result = await deleteOnOrigin(exec, root, n);
+		start = await readRef(exec, root, ledgerRef(n));
+		const deleted = await deleteOnOrigin(exec, root, n, start);
+		result = deleted.result;
+		tip = deleted.tip;
 	} catch (error) {
 		result = { remote: "failed", message: messageOf(error) };
+		tip = start;
 	}
+	return deleteLocal(exec, root, n, result, tip);
+}
+
+/** Deletes the local ref only while it still is at `tip`, then the tracking ref; reports what stayed. */
+async function deleteLocal(exec: GitExec, root: string, n: number, result: RemoveResult, tip: string | undefined): Promise<RemoveResult> {
 	try {
-		await deleteRef(exec, root, ledgerRef(n));
+		const kept = tip !== undefined && !(await deleteRefIf(exec, root, ledgerRef(n), tip));
 		await deleteRef(exec, root, trackingRef(n));
+		if (!kept) return result;
+		const note = "local ref kept: entries were appended after the sync and are not on origin";
+		return { ...result, localKept: true, message: result.message ? `${result.message}; ${note}` : note };
 	} catch (error) {
 		const local = `local refs not deleted: ${messageOf(error)}`;
 		return { ...result, message: result.message ? `${result.message}; ${local}` : local };
 	}
-	return result;
 }
 
-async function deleteOnOrigin(exec: GitExec, root: string, n: number): Promise<RemoveResult> {
-	if (!(await hasOrigin(exec, root))) return { remote: "gone" };
-	const synced = await syncLedger(exec, root, n);
-	if (synced.status === "pending") return { remote: "failed", message: synced.reason };
-	if (synced.status === "error") return { remote: "failed", message: synced.message };
-	// The lease is the tip origin was last seen at, not a local tip that may hold entries appended since.
-	const tip = await readRef(exec, root, trackingRef(n));
-	if (tip === undefined) return { remote: "gone" };
-	return { remote: await ledgerDelete(exec, root, n, tip) };
+async function deleteOnOrigin(exec: GitExec, root: string, n: number, start: string | undefined): Promise<{ result: RemoveResult; tip: string | undefined }> {
+	if (!(await hasOrigin(exec, root))) return { result: { remote: "gone" }, tip: start };
+	const { result: synced, tip } = await syncLedgerTip(exec, root, n);
+	if (synced.status === "pending") return { result: { remote: "failed", message: synced.reason }, tip: start };
+	if (synced.status === "error") return { result: { remote: "failed", message: synced.message }, tip: start };
+	if (tip === undefined) return { result: { remote: "gone" }, tip: undefined };
+	return { result: { remote: await ledgerDelete(exec, root, n, tip) }, tip };
 }
 
 /** Fetches origin's ledger into the tracking ref, clearing the tracking ref when origin has none. */

@@ -63,7 +63,10 @@ export function createLedger(exec: GitExec, root: string): Ledger {
 		},
 		sync: trackedSync,
 		pending: (n) => isPending(exec, root, n),
-		remove: (n) => removeRemote(exec, root, n),
+		async remove(n) {
+			await Promise.allSettled([...running]); // a background sync of this clone must not race the delete
+			return removeRemote(exec, root, n);
+		},
 		async background() {
 			await Promise.allSettled([...running]);
 		},

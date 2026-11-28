@@ -385,22 +385,32 @@ describe("ledger remove", () => {
 		expect(refAt(a, LOCAL)).toBeUndefined();
 	});
 
-	it("leases the delete on the synced tip, not a later local tip", async () => {
+	it("C1: keeps the local ref when an entry was appended after the sync", async () => {
 		const { remote, a } = await twoClones();
 		const ledger = createLedger(exec, a);
 		await ledger.append(N, decision("D1"));
 		await ledger.background();
-		// After the fetch, the sync reads the tracking ref and the local ref; the third ledger ref read
-		// picks the lease tip. A local append lands right before it, after the sync has finished.
-		let fetched = false;
-		let refReads = 0;
-		const execA: GitExec = async (args, opts) => {
-			if (args[0] === "fetch") fetched = true;
-			const readsLedgerRef = args[0] === "rev-parse" && args.some((x) => x.startsWith(LOCAL) || x.startsWith(TRACKING));
-			if (fetched && readsLedgerRef && ++refReads === 3) await appendEntry(exec, a, N, decision("D2"));
-			return defaultGitExec(args, opts);
-		};
-		expect(await createLedger(execA, a).remove(N)).toEqual({ remote: "deleted" });
+		// The append lands after the sync finished, right before the lease delete on origin.
+		const execA = interceptOnce(
+			(args) => args[0] === "push" && args.some((x) => x.startsWith("--force-with-lease")),
+			async () => {
+				await appendEntry(exec, a, N, decision("D2"));
+			},
+		);
+		const result = await createLedger(execA, a).remove(N);
+		expect(result.remote).toBe("deleted");
+		expect(result.localKept).toBe(true);
+		expect(result.message).toMatch(/local ref kept/);
+		expect(refAt(remote, LOCAL)).toBeUndefined();
+		expect(await refsOf(a)).toHaveLength(2);
+		expect(refAt(a, TRACKING)).toBeUndefined();
+	});
+
+	it("C1: awaits a background sync of the same clone before deleting", async () => {
+		const { remote, a } = await twoClones();
+		const ledger = createLedger(exec, a);
+		await ledger.append(N, decision("D1"));
+		expect(await ledger.remove(N)).toEqual({ remote: "deleted" });
 		expect(refAt(remote, LOCAL)).toBeUndefined();
 		expect(refAt(a, LOCAL)).toBeUndefined();
 	});

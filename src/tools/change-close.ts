@@ -74,7 +74,9 @@ async function removeLedgerQuietly(w: WriteContext, n: number, abandon: string |
 		// `tip` is the local ledger ref: absent on a retry that already deleted it, so there is nothing to remove.
 		if ((await w.ledger.read(n)).tip === undefined) return undefined;
 		const removed = await w.ledger.remove(n);
-		return removed.remote === "failed" ? `the ledger of #${n} was not deleted from origin (${removed.message ?? "unknown error"})` : undefined;
+		if (removed.remote === "failed") return `the ledger of #${n} was not deleted from origin (${removed.message ?? "unknown error"})`;
+		if (removed.remote === "moved") return `the ledger of #${n} moved on origin after the sync and was not deleted there${removed.message ? ` (${removed.message})` : ""}`;
+		return removed.localKept || removed.message ? `the ledger of #${n}: ${removed.message ?? "local ref kept"}` : undefined;
 	} catch (error) {
 		return `the ledger of #${n} was not removed (${messageOf(error)})`;
 	}
