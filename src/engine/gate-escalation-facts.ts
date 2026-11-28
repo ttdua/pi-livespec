@@ -61,11 +61,11 @@ export function escalationOutcome(outcome: unknown): GateEscalationOutcome {
 }
 
 /** The next step's forecast of the gate (phase-gates "Escalation in the next step"), from the registered rule: writes nothing. */
-export function escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: GateEscalationOutcome; reason: string; waivable: string[] } | undefined {
+export function escalationForecast(pack: Pack, state: ChangeState, phase: Phase): { outcome: GateEscalationOutcome; reason: string; waivable: string[]; unrun?: string[] } | undefined {
 	const input = escalationInput(state, pack, phase.id);
 	const rule = ruleFor(GATE_ESCALATION_POINT);
 	if (input === undefined || rule === undefined) return undefined;
 	const result = rule.fn(input.facts, input.config);
 	if (!("outcome" in result)) throw new Error(`the ${GATE_ESCALATION_POINT} rule never asks`);
-	return { outcome: escalationOutcome(result.outcome), reason: result.reason, waivable: input.facts.failing_waivable };
+	return { outcome: escalationOutcome(result.outcome), reason: result.reason, waivable: input.facts.failing_waivable, unrun: state.gateChecksUnrun };
 }

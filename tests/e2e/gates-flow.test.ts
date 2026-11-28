@@ -3,7 +3,7 @@
 
 import { BRIEFING, WAIVE_BRIEFING } from "../helpers/briefing.ts";
 import { pickById, pickByLabel } from "../helpers/menu.ts";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config.ts";
 import { parseChange } from "../../src/core/change.ts";
@@ -184,7 +184,8 @@ describe("gates and decisions", () => {
 		expect(reopened.isError, textOf(reopened)).toBe(false);
 	});
 
-	test("plan gate passes alone once the advisory review is clean", async () => {
+	/** A plan-phase change with a clean advisory review at HEAD, before any plan gate run. */
+	async function reviewedPlan() {
 		const h = await toolHarness({ branch: CHANGE_BRANCH, ui: { hasUI: true, select: approveAll } });
 		h.git("config", "user.name", "t");
 		h.git("config", "user.email", "t@t");
@@ -202,6 +203,11 @@ describe("gates and decisions", () => {
 		expect((await h.call("plan_units", { units: [unit("Counter", "src/limits/counter.ts", "c"), unit("Readme note", "README.md", "r")] })).isError).toBe(false);
 
 		await appendSeed({ root: h.root, n, world: h.world, session: h.session }, planReview(h.git("rev-parse", "HEAD")));
+		return { h, n };
+	}
+
+	test("plan gate passes alone once the advisory review is clean", async () => {
+		const { h, n } = await reviewedPlan();
 		await h.call("spec_status");
 		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
 		const plan = await h.call("spec_gate", { target: "plan" });
@@ -212,6 +218,30 @@ describe("gates and decisions", () => {
 		// A self pass: no request was sent, the gate result is not bound to one.
 		expect(card(h).state.lock.gates.plan).toMatchObject({ outcome: "approved", superseded: false });
 		expect(card(h).state.lock.gates.plan?.request).toBeUndefined();
+	});
+
+	test("a failing gate-only run names the escalation", async () => {
+		const { h } = await reviewedPlan();
+		registerCheck("verify-red-on-base", async () => [{ code: "verify-red-on-base", severity: "error", message: "U2 green" }], { waivable: true, at: "gate", key: () => "stub" });
+		const refused = await h.call("spec_gate", { target: "plan" });
+		expect(refused.isError).toBe(true);
+		expect(textOf(refused)).toContain("briefing");
+		await h.call("spec_status");
+		expect(card(h).step.next).toBe("The plan gate will ask the human: verify-red-on-base fails. Pass a briefing to spec_gate plan. The human can waive verify-red-on-base, or fix them first.");
+	});
+
+	test("a passing gate-only run drops the caveat", async () => {
+		const { h } = await reviewedPlan();
+		registerCheck("verify-red-on-base", async () => [], { waivable: true, at: "gate", key: () => "stub" });
+		await h.call("spec_status");
+		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass unless a gate-only check fails.");
+		await writeIn(h.root, "scratch.txt", "x");
+		const refused = await h.call("spec_gate", { target: "plan" });
+		expect(refused.isError).toBe(true);
+		expect(textOf(refused)).toMatch(/dirty|uncommitted/i);
+		rmSync(`${h.root}/scratch.txt`);
+		await h.call("spec_status");
+		expect(card(h).step.next).toBe("Checks pass; the plan gate can pass.");
 	});
 
 	test("Stale before the first lock", async () => {

@@ -25,6 +25,7 @@ All notable changes to pi-livespec are documented here. The format follows [Keep
 
 ### Changed
 
+- After `spec_gate` ran the gate-only checks in this session and they passed, the next step no longer says the plan gate can pass only "unless a gate-only check fails" (#75).
 - Agent git commands that write `refs/livespec/*` are blocked; reads stay allowed.
 - Issues carry far fewer comments: only human-facing records stay on the forge.
 - The requirement cascade is derived from the spec diff, with whitespace-only edits ignored. Plan gates record requirement digests as the cascade baseline.

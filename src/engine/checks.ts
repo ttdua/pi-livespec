@@ -20,7 +20,7 @@ import type { ShipContext } from "../ship/context.ts";
 import { type Git, GitError } from "./git.ts";
 import type { Pack } from "./pack-types.ts";
 import { resolveGateTarget } from "./gates.ts";
-import { type CheckContext, type CheckFn, gateKey, gateMemoGeneration, getCheck, isGateOnly, registerCheck, storedGateResults, storeGateResults } from "./registry.ts";
+import { type CheckContext, type CheckFn, gateKey, gateMemoGeneration, getCheck, hasGateResults, isGateOnly, registerCheck, storedGateResults, storeGateResults } from "./registry.ts";
 import type { ChangeState, CheckResult } from "./state-types.ts";
 import { unitClassification } from "./unit-classification.ts";
 
@@ -114,19 +114,22 @@ function checkNamesToRun(pack: Pack, state: Omit<ChangeState, "checks">, target:
 }
 
 /** One check's tagged results: a gate-only check runs on a gate request and otherwise reports its stored results. */
-async function resultsOf(name: string, ctx: CheckContext, gate: boolean): Promise<CheckResult[]> {
-	if (!isGateOnly(name)) return tag(name, await runOne(name, ctx));
+async function resultsOf(name: string, ctx: CheckContext, gate: boolean): Promise<{ results: CheckResult[]; unrun: boolean }> {
+	if (!isGateOnly(name)) return { results: tag(name, await runOne(name, ctx)), unrun: false };
 	const key = gateKey(name, ctx);
-	if (!gate) return storedGateResults(name, key);
+	if (!gate) return { results: storedGateResults(name, key), unrun: !hasGateResults(name, key) };
 	const generation = gateMemoGeneration();
 	const results = tag(name, await runOne(name, ctx));
 	// A memo cleared while the check ran must not get these results back.
 	if (key !== undefined && generation === gateMemoGeneration()) storeGateResults(name, key, results);
-	return results;
+	return { results, unrun: false };
 }
 
 // The registered name is applied last, so a result cannot claim another check's name.
 const tag = (name: string, produced: Result[]): CheckResult[] => produced.map((r) => ({ ...r, check: name }));
+
+/** Checks results plus the gate-only checks reported with no valid result. */
+export type CheckEvaluation = { checks: CheckResult[]; unrun: string[] };
 
 /**
  * Runs the checks the active phase lists, in pack order, and concatenates their results.
@@ -140,9 +143,24 @@ export async function runChecks(
 	ctx: { root: string; git: Git; ship?: ShipContext | { refused: string } },
 	opts: { gate?: boolean; target?: string } = {},
 ): Promise<CheckResult[]> {
+	return (await evaluateChecks(pack, state, ctx, opts)).checks;
+}
+
+/** `runChecks` plus the names of gate-only checks that were not run and hold no valid stored result. */
+export async function evaluateChecks(
+	pack: Pack,
+	state: Omit<ChangeState, "checks">,
+	ctx: { root: string; git: Git; ship?: ShipContext | { refused: string } },
+	opts: { gate?: boolean; target?: string } = {},
+): Promise<CheckEvaluation> {
 	const names = checkNamesToRun(pack, state, opts.gate === true ? opts.target : undefined);
 	const checkCtx: CheckContext = { root: ctx.root, change: state.change, git: ctx.git, marked: state.marked, ...(state.phase.kind === "ok" ? { phase: state.phase.id } : {}), ...(ctx.ship === undefined ? {} : { ship: ctx.ship }), limits: pack.limits };
-	const results: CheckResult[] = [];
-	for (const name of names) results.push(...(await resultsOf(name, checkCtx, opts.gate === true)));
-	return results;
+	const checks: CheckResult[] = [];
+	const unrun: string[] = [];
+	for (const name of names) {
+		const one = await resultsOf(name, checkCtx, opts.gate === true);
+		checks.push(...one.results);
+		if (one.unrun) unrun.push(name);
+	}
+	return { checks, unrun };
 }

@@ -38,6 +38,8 @@ export type ChangeState = {
 	/** `specsChanged` is undefined without `Base`, else whether `git diff <Base>..HEAD -- specs/` is non-empty. */
 	git: { branch: string; head: string; dirty: boolean; specsChanged: boolean | undefined };
 	checks: CheckResult[];
+	/** Gate-only checks reported with no valid last result; undefined when unknown. */
+	gateChecksUnrun?: string[];
 	/** The pull request the `PR:` line names; absent without one, or when it cannot be read. */
 	pr?: { number: number; state: "open" | "closed"; merged: boolean; mergedAt?: string; pushedHead?: string };
 	/**

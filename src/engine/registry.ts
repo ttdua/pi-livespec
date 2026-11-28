@@ -89,7 +89,11 @@ export function storeGateResults(name: string, key: string, results: CheckResult
 /** The stored results of gate-only check `name` when stored under `key`, else none. */
 export function storedGateResults(name: string, key: string | undefined): CheckResult[] {
 	const memo = gateMemo.get(name);
-	return memo !== undefined && key !== undefined && memo.key === key ? memo.results : [];
+	return memo !== undefined && hasGateResults(name, key) ? memo.results : [];
+}
+/** Whether the memo of gate-only check `name` was stored under `key`. */
+export function hasGateResults(name: string, key: string | undefined): boolean {
+	return key !== undefined && gateMemo.get(name)?.key === key;
 }
 /** Empties the memo of gate-only results and tells every listener; a new session runs them again. */
 export function clearGateMemo(): void {
